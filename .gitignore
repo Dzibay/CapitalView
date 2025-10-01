@@ -22,6 +22,10 @@ __pycache__/
 # Node / Vue frontend
 # ======================
 
+frontend/.vscode/
+frontend/.vite/
+
+
 # Node modules
 frontend/node_modules/
 
