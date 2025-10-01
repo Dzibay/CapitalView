@@ -1,0 +1,51 @@
+# ======================
+# Python / Flask backend
+# ======================
+
+# Виртуальное окружение
+venv/
+.env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# PyCharm
+.idea/
+*.iml
+
+# Логи
+*.log
+
+# ======================
+# Node / Vue frontend
+# ======================
+
+# Node modules
+frontend/node_modules/
+
+# Логи npm/yarn
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Сборки Vue
+frontend/dist/
+frontend/.nuxt/
+
+# IDE
+frontend/.idea/
+frontend/*.iml
+
+# ======================
+# Общие файлы
+# ======================
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
