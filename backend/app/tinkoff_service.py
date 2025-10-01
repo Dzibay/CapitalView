@@ -1,5 +1,6 @@
 from tinkoff.invest import Client, InstrumentIdType
 
+
 def get_portfolio_assets(token):
     with Client(token) as client:
         accounts = client.users.get_accounts()
