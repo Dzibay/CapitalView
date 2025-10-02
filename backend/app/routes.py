@@ -36,3 +36,16 @@ def login():
 
     access_token = create_access_token(identity=user["email"])
     return jsonify({"access_token": access_token})
+
+
+assets_bp = Blueprint("assets", __name__)
+
+@assets_bp.route("/get_all", methods=["GET"])
+@jwt_required()
+def get_assets():
+    user_email = get_jwt_identity()
+    assets = [
+        {"id": 1, "name": "Недвижимость", "value": 5000000},
+        {"id": 2, "name": "Криптовалюта", "value": 250000},
+    ]
+    return jsonify({"assets": assets})
