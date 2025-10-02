@@ -1,4 +1,5 @@
 <script setup>
+import Header from '../components/Header.vue'
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { authService } from '../services/authService.js';
@@ -22,12 +23,48 @@ const doRegister = async () => {
 </script>
 
 <template>
-  <div>
-    <h2>Register</h2>
+  <Header />
+  <div class="form">
+    <h2>Регистрация</h2>
     <input v-model="email" placeholder="Email" />
     <input v-model="password" type="password" placeholder="Пароль" />
-    <button @click="doRegister">Зарегистрироваться</button>
+    <div class="form-buttons">
+      <button @click="doRegister">Загеристрироваться</button>
+      <button>
+        <router-link to="/login">Вход</router-link>
+      </button>
+    </div>
+
     <p>{{ message }}</p>
-    <router-link to="/login">Вход</router-link>
+    
   </div>
 </template>
+
+
+<style>
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.form input {
+  width: 400px;
+  padding: 20px;
+}
+
+.form button {
+  width: 190px;
+  padding: 20px;
+  cursor: pointer;
+}
+.form-buttons {
+  display: flex;
+  gap: 10px;
+}
+.form-buttons a {
+  text-decoration: none;
+  color: black
+}
+</style>
