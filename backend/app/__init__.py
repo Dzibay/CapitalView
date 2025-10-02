@@ -1,30 +1,28 @@
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
+from supabase import create_client, Client as SupabaseClient
+import os
 
-
-db = SQLAlchemy()
 bcrypt = Bcrypt()
 jwt = JWTManager()
 
+# Получаем ключ Supabase из переменных окружения
+SUPABASE_URL = "https://wnoulslvcvyhnwvjiixw.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indub3Vsc2x2Y3Z5aG53dmppaXh3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTM1Njg3NywiZXhwIjoyMDc0OTMyODc3fQ.bHnjP5uD5wLIkiRaaX60MdaCdEW5EK82ayWxYqxf0CY"
+supabase: SupabaseClient = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 def create_app():
     app = Flask(__name__)
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:SuFBz6vBq68z67rg@db.wnoulslvcvyhnwvjiixw.supabase.co:5432/postgres'
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['JWT_SECRET_KEY'] = 'secret'
+    app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-secret")
 
     CORS(app, origins=["http://localhost:5173"])
 
-    db.init_app(app)
     bcrypt.init_app(app)
     jwt.init_app(app)
 
     from .routes import auth_bp
-    app.register_blueprint(auth_bp)
-
-    with app.app_context():
-        db.create_all()
+    app.register_blueprint(auth_bp, url_prefix="/auth")
 
     return app
