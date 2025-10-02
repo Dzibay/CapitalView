@@ -13,4 +13,12 @@ export default {
 
     return res.data.assets || []; // ожидаем { assets: [...] } с сервера
   },
+
+  async addAsset(asset) {
+    const token = localStorage.getItem('access_token')
+    const res = await axios.post(`${API_URL}/assets/add`, asset, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    return res.data
+  },
 };

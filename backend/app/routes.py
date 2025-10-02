@@ -47,3 +47,29 @@ def get_assets():
     
     assets = get_all_assets(user_email)
     return jsonify({"assets": assets})
+
+@assets_bp.route("/add", methods=["POST"])
+@jwt_required()
+def add_asset():
+    user_email = get_jwt_identity()
+    data = request.get_json()
+
+    name = data.get("name")
+    count = data.get("count")
+    price = data.get("price")
+    currency = data.get("currency")
+    asset_type = data.get("type")
+
+    if not all([name, count, price, currency, asset_type]):
+        return jsonify({"msg": "Missing fields"}), 400
+
+    new_asset = {
+        "user_id": None,
+        "name": name,
+        "count": count,
+        "price": price,
+        "currency": currency,
+        "type": asset_type
+    }
+    asset = create_asset(user_email, new_asset)
+    return jsonify(asset)
