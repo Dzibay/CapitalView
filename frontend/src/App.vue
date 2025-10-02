@@ -1,7 +1,5 @@
 <template>
-  <Portfolio />
+  <router-view></router-view>
 </template>
 
-<script setup>
-import Portfolio from './components/Portfolio.vue'
-</script>
+<script setup></script>
