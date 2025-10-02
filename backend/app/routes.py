@@ -1,9 +1,16 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app.supabase_service import get_user_by_email, create_user
 from app import bcrypt
 
 auth_bp = Blueprint("auth", __name__)
+
+@auth_bp.route("/check-token", methods=["GET"])
+@jwt_required()
+def check_token():
+    # Получаем identity пользователя из токена
+    user_email = get_jwt_identity()
+    return jsonify({"msg": "Token is valid", "email": user_email}), 200
 
 @auth_bp.route("/register", methods=["POST"])
 def register():
