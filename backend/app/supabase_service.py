@@ -21,6 +21,17 @@ def create_asset(email: str, asset):
     try:
         supabase.table("assets").insert(asset).execute()
     except Exception as e:
-        print("Ошибка при вставке в Supabase:", e)
-        
-    return asset
+        pass
+    return {"success": True, "message": "Актив добавлен"}
+
+def delete_asset(asset_id: int, email: str):
+    user_id = get_user_by_email(email)["id"]
+    try:
+        response = supabase.table("assets").delete().filter("id", "eq", asset_id).execute()
+
+        if response.data is None:
+            return {"success": True, "message": "Актив удалён"}
+        return {"success": True, "deleted": response.data}
+    except Exception as e:
+        print("Ошибка при удалении:", e)
+        return {"success": False, "error": str(e)}

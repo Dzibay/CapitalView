@@ -11,6 +11,7 @@
     <ul v-else>
       <li v-for="asset in assets" :key="asset.id">
         {{ asset.count }} {{ asset.name }} — {{ asset.price }} {{ asset.currency }}
+      <button @click="removeAsset(asset.id)">❌ Удалить</button>
       </li>
     </ul>
   </div>
@@ -44,4 +45,14 @@ const handleAssetAdded = async () => {
   showModal.value = false;
   await loadAssets(); // 🔄 обновляем список
 };
+
+const removeAsset = async (id) => {
+  try {
+    await assetsService.deleteAsset(id)
+    assets.value = assets.value.filter(a => a.id !== id) // убираем локально
+  } catch (err) {
+    console.error("Ошибка удаления актива:", err)
+  }
+}
+
 </script>

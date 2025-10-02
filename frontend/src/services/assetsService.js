@@ -21,4 +21,12 @@ export default {
     })
     return res.data
   },
+
+  async deleteAsset(assetId) {
+    const token = localStorage.getItem('access_token')
+    const res = await axios.delete(`${API_URL}/assets/delete/${assetId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    return res.data
+  }
 };

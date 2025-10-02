@@ -73,3 +73,17 @@ def add_asset():
     }
     asset = create_asset(user_email, new_asset)
     return jsonify(asset)
+
+@assets_bp.route('/delete/<int:asset_id>', methods=['DELETE'])
+@jwt_required()
+def delete_asset_route(asset_id):
+    user_email = get_jwt_identity()
+
+    try:
+        deleted = delete_asset(asset_id, user_email)
+        if deleted:
+            return jsonify(deleted), 200
+        else:
+            return jsonify({"success": False, "message": "Asset not found"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
