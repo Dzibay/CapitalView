@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from app.supabase_service import get_user_by_email, create_user
+from app.supabase_service import *
 from app import bcrypt
 
 auth_bp = Blueprint("auth", __name__)
@@ -44,8 +44,6 @@ assets_bp = Blueprint("assets", __name__)
 @jwt_required()
 def get_assets():
     user_email = get_jwt_identity()
-    assets = [
-        {"id": 1, "name": "Недвижимость", "value": 5000000},
-        {"id": 2, "name": "Криптовалюта", "value": 250000},
-    ]
+    
+    assets = get_all_assets(user_email)
     return jsonify({"assets": assets})

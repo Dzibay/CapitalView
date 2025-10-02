@@ -5,7 +5,7 @@
     <div v-else-if="assets.length === 0">Активов нет</div>
     <ul v-else>
       <li v-for="asset in assets" :key="asset.id">
-        {{ asset.name }} — {{ asset.value }} ₽
+        {{ asset.count }} {{ asset.name }} — {{ asset.price }} {{ asset.currency }}
       </li>
     </ul>
   </div>

@@ -32,6 +32,11 @@ onMounted(async () => {
   <div>
     <h2>Profile</h2>
     <p v-if="user">Привет, {{ user.email }}!</p>
+
+    <router-link to="/assets">
+      <button>Мои активы</button>
+    </router-link>
+    
     <button @click="logout">Выйти</button>
   </div>
 </template>
