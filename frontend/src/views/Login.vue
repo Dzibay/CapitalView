@@ -12,7 +12,7 @@ const message = ref('');
 onMounted(async () => {
   try {
     const user = await authService.checkToken();
-    if (user) router.push('/profile');
+    if (user) router.push('/dashboard');
   } catch {
     authService.logout();
   }
@@ -22,7 +22,7 @@ const doLogin = async () => {
   try {
     const res = await authService.login(email.value, password.value);
     localStorage.setItem('access_token', res.data.access_token);
-    router.push('/profile');
+    router.push('/dashboard');
   } catch (err) {
     message.value = err.response?.data?.msg || 'Ошибка входа';
   }

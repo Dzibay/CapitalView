@@ -38,7 +38,7 @@ const logout = () => {
       <router-link to="/register">Регистрация</router-link>
     </div>
     <div v-else class="menu">
-      <router-link to="/profile">Профиль</router-link>
+      <router-link to="/dashboard">Профиль</router-link>
       <router-link to="/assets">Мои активы</router-link>
       <button @click="logout">Выйти</button>
     </div>
