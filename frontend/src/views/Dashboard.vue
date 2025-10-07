@@ -15,6 +15,7 @@ import GoalProgressWidget from '../components/widgets/GoalProgressWidget.vue';
 import PortfolioChartWidget from '../components/widgets/PortfolioChartWidget.vue';
 import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWidget.vue';
 import TopAssetsWidget from '../components/widgets/TopAssetsWidget.vue';
+import generatePortfolioData from '../data/generatePortfolioData.js';
 
 const user = ref(null);
 const router = useRouter();
@@ -50,20 +51,22 @@ function toggleSidebar() {
     <main class="main-content" :class="{ 'full-width': !isSidebarVisible }">
       <AppHeader :user="mockData.user" @toggle-sidebar="toggleSidebar" />
       
+      <div class="title-text">
+        <h1>С возвращением, {{ mockData.user.firstName }}</h1>
+        <h2>Главная</h2>
+      </div>
+
       <div class="widgets-grid">
         <TotalCapitalWidget 
           :total-amount="mockData.totalCapital.totalAmount" 
           :monthly-change="mockData.totalCapital.monthlyChange" 
         />
-        <RecentTransactionsWidget :transactions="mockData.recentTransactions" />
         <TopAssetsWidget :assets="mockData.topAssets" />
-        <AssetAllocationWidget :assets-data="mockData.assetAllocation" />
-        
-        
-        <PortfolioChartWidget :chart-data="mockData.portfolioChart" />
+        <RecentTransactionsWidget :transactions="mockData.recentTransactions" />
+        <AssetAllocationWidget :assetAllocation="mockData.assetAllocation" />
         <GoalProgressWidget :goal-data="mockData.investmentGoal" />
-        
-        
+        <PortfolioChartWidget :chartData="generatePortfolioData.data().portfolioChart" />
+        <RecentTransactionsWidget :transactions="mockData.recentTransactions" />
         
       </div>
     </main>
@@ -82,7 +85,7 @@ function toggleSidebar() {
 
 .main-content {
   flex-grow: 1;
-  margin-left: 260px; /* Ширина сайдбара */
+  margin-left: var(--sidebarWidth);
   transition: margin-left 0.3s ease-in-out;
   min-height: 100vh;
 }
@@ -91,10 +94,17 @@ function toggleSidebar() {
   margin-left: 0;
 }
 
-.widgets-grid {
-  padding: 2rem;
-  display: grid;
-  gap: 1.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+.title-text {
+  margin-top: var(--headerHeight);
+  padding: var(--spacing);
 }
+
+.main-content .widgets-grid {
+  padding: 0 var(--spacing) var(--spacing) var(--spacing);
+  display: grid;
+  gap: var(--spacing);
+  grid-template-columns: repeat(auto-fit, minmax(clamp(350px, 20%, 400px), 1fr));
+  grid-auto-rows: 150px;
+}
+
 </style>

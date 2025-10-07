@@ -1,92 +1,94 @@
 export const mockData = {
   user: {
     firstName: 'Антон',
-    lastName: 'Иванов',
+    lastName: 'Балыбин',
     email: 'a.ivanov@invest.com',
     avatarUrl: 'https://i.pravatar.cc/150?u=a042581f4e29026704d',
   },
   totalCapital: {
-    totalAmount: 125430.50,
+    totalAmount: 812430.50,
     monthlyChange: {
       percentage: 5.2,
-      absolute: 6190.22,
+      absolute: 60190.22,
     },
   },
   assetAllocation: {
     labels: ['Акции', 'Облигации', 'Криптовалюта', 'Золото'],
     datasets: [{
-      backgroundColor: ['#4A55A2', '#7895CB', '#A0BFE0', '#C5DFF8'],
-      data: [40, 25, 20, 15],
+      backgroundColor: ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'],
+      data: [447873, 210172, 40354, 76000],
     }],
   },
   portfolioChart: {
-    labels: ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл'],
-    datasets: [{
-      label: 'Стоимость портфеля',
-      data: [65000, 72000, 81000, 75000, 89000, 105000, 125430],
-      borderColor: '#4A55A2',
-      backgroundColor: 'rgba(74, 85, 162, 0.1)',
-      tension: 0.4,
-      fill: true,
-    }],
+    labels: ['Нояб', 'Дек', '2025', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Авг', 'Сент', 'Окт'],
+    data: [0, 0, 0, 0, 67000, 130000, 240000, 350000, 480000, 640000, 812000]
   },
   investmentGoal: {
-    title: 'Накопить на автомобиль',
-    targetAmount: 500000,
-    currentAmount: 125430,
-    // Данные для прогнозного графика
-    predictionData: {
-      labels: ['Q3', 'Q4', 'Q1 \'26', 'Q2 \'26'],
-      datasets: [{
-        label: 'Прогноз роста',
-        data: [125430, 210000, 350000, 500000],
-        borderColor: '#7895CB',
-        tension: 0.4,
-      }],
-    },
+    title: 'Накопить миллион',
+    targetAmount: 1000000,
+    currentAmount: 812430,
+    
   },
   recentTransactions: [{
       id: 1,
-      type: 'buy',
-      asset: 'Tesla (TSLA)',
-      amount: 1500,
-      date: '2025-10-03'
+      type: 'Покупка',
+      asset: 'EUTR',
+      count: 150,
+      amount: 20723.29,
+      date: '2025-10-05'
     },
     {
       id: 2,
-      type: 'sell',
-      asset: 'Bitcoin (BTC)',
-      amount: 850.75,
-      date: '2025-10-01'
+      type: 'Купон',
+      asset: 'ГК Самолет БО-П18',
+      count: 20,
+      amount: 394.60,
+      date: '2025-10-05'
     },
     {
       id: 3,
-      type: 'buy',
-      asset: 'Облигации ОФЗ-26238',
-      amount: 2200,
-      date: '2025-09-28'
+      type: 'Покупка',
+      asset: 'LKOH',
+      count: 1,
+      amount: 6320.03,
+      date: '2025-09-12'
+    },
+    {
+      id: 4,
+      type: 'Дивиденды',
+      asset: 'X5',
+      count: 25,
+      amount: 5638.00,
+      date: '2025-07-15'
     },
   ],
   topAssets: [{
       id: 1,
-      name: 'NVIDIA Corp.',
-      ticker: 'NVDA',
-      value: 25600,
-      changePercentage: 12.5
+      name: 'КЦ ИКС 5',
+      ticker: 'X5',
+      value: 65475,
+      changePercentage: 10.25
     },
     {
       id: 2,
-      name: 'Ethereum',
-      ticker: 'ETH',
-      value: 11200,
-      changePercentage: 8.2
+      name: 'Московская биржа',
+      ticker: 'MOEX',
+      value: 26479,
+      changePercentage: 8.32
     },
     {
       id: 3,
-      name: 'S&P 500 ETF',
-      ticker: 'VOO',
-      value: 18300,
-      changePercentage: -1.8
+      name: 'Лукойл',
+      ticker: 'LKOH',
+      value: 70668,
+      changePercentage: 5.78
+    },
+    {
+      id: 4,
+      name: 'Биткойн',
+      ticker: 'BTC',
+      value: 30652,
+      changePercentage: 3.24
     },
   ],
 };
