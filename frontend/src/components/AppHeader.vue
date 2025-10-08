@@ -26,9 +26,9 @@ const handleToggle = () => {
     </button>
     
     <div class="user-profile">
-      <img :src="user.avatarUrl" alt="User Avatar" class="avatar">
+      <img src="https://avatar.iran.liara.run/public/46" alt="User Avatar" class="avatar">
       <div class="user-info">
-        <span class="user-name">{{ user.firstName }} {{ user.lastName }}</span>
+        <span class="user-name">{{ user.name }}</span>
         <span class="user-email">{{ user.email }}</span>
       </div>
     </div>
@@ -58,7 +58,7 @@ header.sidebarOff {
   border: none;
   cursor: pointer;
   padding: 0.5rem;
-  border-radius: 50%;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -74,13 +74,16 @@ header.sidebarOff {
 }
 .user-profile {
   display: flex;
+  gap: calc(var(--spacing) / 2);
   align-items: center;
+}
+.user-profile:hover {
+  cursor: pointer;
 }
 .avatar {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  margin-right: var(--spacing);
 }
 .user-info {
   display: flex;

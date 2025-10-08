@@ -10,7 +10,7 @@ auth_bp = Blueprint("auth", __name__)
 def check_token():
     # Получаем identity пользователя из токена
     user_email = get_jwt_identity()
-    return jsonify({"msg": "Token is valid", "email": user_email}), 200
+    return jsonify({"msg": "Token is valid", "user": get_user_by_email(user_email)}), 200
 
 @auth_bp.route("/register", methods=["POST"])
 def register():
