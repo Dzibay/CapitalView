@@ -7,6 +7,7 @@ import Dashboard from '../views/Dashboard.vue';
 import Assets from '../views/Assets.vue'
 
 const routes = [
+  { path: '/', component: Home },
   {
     path: '/',
     component: DashboardLayout,
@@ -16,7 +17,6 @@ const routes = [
     ]
   },
   // Страницы без layout
-  { path: '/', component: Home },
   { path: '/login', component: Login },
   { path: '/register', component: Register },
 ]
