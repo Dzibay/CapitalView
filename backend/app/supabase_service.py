@@ -11,17 +11,47 @@ def create_user(email, password):
     response = supabase.table("users").insert({"email": email, "password_hash": hashed}, returning='representation').execute()
     return response.data
 
+
+
 def get_all_assets(email: str):
     user_id = get_user_by_email(email)["id"]
     response = supabase.rpc("get_user_assets", {"u_id": user_id}).execute()
     return response.data
 
-def create_asset(email: str, asset):
-    asset["user_id"] = get_user_by_email(email)["id"]
-    try:
-        supabase.table("assets").insert(asset).execute()
-    except Exception as e:
-        pass
+def create_asset(email: str, asset_data: dict):
+    """Добавляет новый актив пользователю (возможно кастомный)."""
+    user = get_user_by_email(email)
+    user_id = user["id"]
+
+    # получаем из тела запроса
+    portfolio_id = asset_data.get("portfolio_id")
+    asset_id = asset_data.get("asset_id")
+
+    # если актив новый — создаём его
+    if not asset_id:
+        new_asset = {
+            "asset_type_id": asset_data.get("asset_type_id"),
+            "user_id": user_id,
+            "name": asset_data.get("name"),
+            "ticker": asset_data.get("ticker"),
+            "properties": {},
+        }
+
+        res = supabase.table("assets").insert(new_asset).execute()
+        if not res.data:
+            raise Exception("Ошибка при создании актива")
+        asset_id = res.data[0]["id"]
+
+    # добавляем связь с портфелем
+    portfolio_asset = {
+        "portfolio_id": portfolio_id,
+        "asset_id": asset_id,
+        "quantity": asset_data.get("quantity"),
+        "average_price": asset_data.get("average_price"),
+    }
+
+    supabase.table("portfolio_assets").insert(portfolio_asset).execute()
+
     return {"success": True, "message": "Актив добавлен"}
 
 def delete_asset(asset_id: int):
@@ -40,3 +70,17 @@ def get_user_portfolios(email: str):
     response = supabase.table("portfolios").select("*").filter("user_id", "eq", user_id).execute()
     return response.data
 
+def get_asset_types():
+    """Возвращает все некастомные типы активов"""
+    response = supabase.table("asset_types").select("*").eq("is_custom", False).execute()
+    return response.data
+
+def get_currencies():
+    """Возвращает список валют"""
+    response = supabase.table("currencies").select("id, code, name").execute()
+    return response.data
+
+def get_existing_assets():
+    """Возвращает существующие (системные) активы"""
+    response = supabase.table("assets").select("id, name, ticker").limit(100).execute()
+    return response.data

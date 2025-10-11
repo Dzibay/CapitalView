@@ -1,57 +1,27 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import AddAssetModal from '../components/AddAssetModal.vue'
-import assetsService from "../services/assetsService";
 
-const portfolios = ref([]);
-const loading = ref(true);
 const showModal = ref(false);
 
-const loadAssets = async () => {
-  try {
-    loading.value = true;
-    const res = await assetsService.getAssets();
-    portfolios.value = res || [];
-    console.log(portfolios)
-  } catch (err) {
-    console.error("Ошибка получения активов:", err);
-  } finally {
-    loading.value = false;
-  }
-};
-
-
-onMounted(loadAssets);
-
-// 👇 вызывается после добавления актива в модалке
-const handleAssetAdded = async () => {
-  showModal.value = false;
-  await loadAssets(); // 🔄 обновляем список
-};
-
-const removeAsset = async (id) => {
-  if (!confirm("Удалить актив?")) return
-  try {
-    await assetsService.deleteAsset(id)
-    
-    // Обновляем локальные портфели
-    portfolios.value = portfolios.value.map(portfolio => ({
-      ...portfolio,
-      assets: portfolio.assets
-        ? portfolio.assets.filter(a => a.portfolio_asset_id !== id)
-        : []
-    }));
-    } // убираем локально
-  catch (err) {
-    console.error("Ошибка удаления актива:", err)
-  }
-}
+const user = inject('user')
+const portfolios = inject('portfolios')
+const loading = inject('loading')
+const reloadAssets = inject('reloadAssets')
+const addAsset = inject('addAsset')
+const removeAsset = inject('removeAsset')
 
 </script>
 
 
 <template>
   <div>
+    <button @click="showModal = true">➕ Добавить актив</button>
+    <AddAssetModal 
+      v-if="showModal" 
+      @close="showModal = false" 
+      :onSave="addAsset" 
+    />
     <div v-if="loading">Загрузка...</div>
 
     <div v-else-if="portfolios.length === 0">
@@ -59,11 +29,8 @@ const removeAsset = async (id) => {
     </div>
 
     <div v-else>
-      <div 
-        v-for="portfolio in portfolios" 
-        :key="portfolio.id" 
-        class="portfolio-block"
-      >
+      <div v-for="portfolio in portfolios" :key="portfolio.id" class="portfolio-block">
+
         <h2>{{ portfolio.name }}</h2>
         <p v-if="!portfolio.assets || portfolio.assets.length === 0">
           Активов нет
@@ -79,6 +46,7 @@ const removeAsset = async (id) => {
             <button @click="removeAsset(asset.portfolio_asset_id)">❌</button>
           </li>
         </ul>
+
       </div>
     </div>
   </div>

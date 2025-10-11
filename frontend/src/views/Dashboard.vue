@@ -1,4 +1,5 @@
 <script setup>
+import { inject } from 'vue'
 import { mockData } from '../data/mockData.js'
 import generatePortfolioData from '../data/generatePortfolioData.js'
 
@@ -10,11 +11,12 @@ import PortfolioChartWidget from '../components/widgets/PortfolioChartWidget.vue
 import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWidget.vue'
 import TopAssetsWidget from '../components/widgets/TopAssetsWidget.vue'
 
+const user = inject('user')
 </script>
 
 <template>
   <div class="title-text">
-    <h1>С возвращением, {{ mockData.user.firstName }}</h1>
+    <h1>С возвращением, {{ user?.name }}</h1>
     <h2>Главная</h2>
   </div>
 

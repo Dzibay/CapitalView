@@ -1,15 +1,50 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { authService } from '../services/authService.js'
+import assetsService from "../services/assetsService";
 
 // Компоненты макета
 import AppSidebar from '../components/AppSidebar.vue'
 import AppHeader from '../components/AppHeader.vue'
 
 const user = ref(null)
-const router = useRouter()
+const portfolios = ref([])
+const loading = ref(true)
 const isSidebarVisible = ref(true)
+const router = useRouter()
+
+// 🔹 Загрузка активов
+const loadAssets = async () => {
+  try {
+    const res = await assetsService.getAssets()
+    portfolios.value = res || []
+    console.log(portfolios.value)
+  } catch (err) {
+    console.error('Ошибка получения активов:', err)
+  }
+}
+
+// 🔹 Добавление актива
+const addAsset = async (assetData) => {
+  try {
+    await assetsService.addAsset(assetData)
+    await loadAssets()
+  } catch (err) {
+    console.error('Ошибка добавления актива:', err)
+  }
+}
+
+// 🔹 Удаление актива
+const removeAsset = async (assetId) => {
+  if (!confirm("Удалить актив?")) return
+  try {
+    await assetsService.deleteAsset(assetId)
+    await loadAssets()
+  } catch (err) {
+    console.error('Ошибка удаления актива:', err)
+  }
+}
 
 onMounted(async () => {
   try {
@@ -18,16 +53,29 @@ onMounted(async () => {
       router.push('/login')
     } else {
       user.value = u['user']
+      await loadAssets()
     }
-  } catch {
+  } catch (err) {
+    console.error('Ошибка проверки токена:', err)
     authService.logout()
     router.push('/login')
+  } finally {
+    loading.value = false
   }
 })
+
+// 👇 передаём все реактивные данные и функции дочерним страницам
+provide('user', user)
+provide('portfolios', portfolios)
+provide('loading', loading)
+provide('reloadAssets', loadAssets)
+provide('addAsset', addAsset)
+provide('removeAsset', removeAsset)
 
 function toggleSidebar() {
   isSidebarVisible.value = !isSidebarVisible.value
 }
+
 </script>
 
 <template>

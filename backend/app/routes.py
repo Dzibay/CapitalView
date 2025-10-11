@@ -46,7 +46,6 @@ def get_assets():
     user_email = get_jwt_identity()
     
     assets = get_all_assets(user_email)
-    print(assets)
     return jsonify({"portfolios": assets})
 
 @assets_bp.route("/add", methods=["POST"])
@@ -55,25 +54,11 @@ def add_asset():
     user_email = get_jwt_identity()
     data = request.get_json()
 
-    name = data.get("name")
-    count = data.get("count")
-    price = data.get("price")
-    currency = data.get("currency")
-    asset_type = data.get("type")
-
-    if not all([name, count, price, currency, asset_type]):
-        return jsonify({"msg": "Missing fields"}), 400
-
-    new_asset = {
-        "user_id": None,
-        "name": name,
-        "count": count,
-        "price": price,
-        "currency": currency,
-        "type": asset_type
-    }
-    asset = create_asset(user_email, new_asset)
-    return jsonify(asset)
+    try:
+        asset = create_asset(user_email, data)
+        return jsonify(asset), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @assets_bp.route('/delete/<int:asset_id>', methods=['DELETE'])
 @jwt_required()
@@ -90,3 +75,18 @@ def delete_asset_route(asset_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@assets_bp.route("/references", methods=["GET"])
+@jwt_required()
+def get_asset_references():
+    """Возвращает справочные данные для формы добавления актива."""
+    try:
+        asset_types = get_asset_types()
+        currencies = get_currencies()
+        assets = get_existing_assets()
+        return jsonify({
+            "asset_types": asset_types,
+            "currencies": currencies,
+            "assets": assets
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

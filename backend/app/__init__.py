@@ -27,6 +27,6 @@ def create_app():
 
     from .routes import auth_bp, assets_bp
     app.register_blueprint(auth_bp, url_prefix="/auth")
-    app.register_blueprint(assets_bp, url_prefix="/assets")
+    app.register_blueprint(assets_bp, url_prefix="/api/assets")
 
     return app

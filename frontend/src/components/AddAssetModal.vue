@@ -3,88 +3,156 @@
     <div class="modal-content">
       <h2>Добавить актив</h2>
 
-      <form @submit.prevent="submitForm">
-        <div>
-          <label for="name">Название:</label>
-          <input type="text" id="name" v-model="form.name" required />
-        </div>
+      <!-- Загрузка справочников -->
+      <div v-if="loadingReference" class="modal-loading">Загрузка данных...</div>
 
-        <div>
-          <label for="count">Количество:</label>
-          <input type="number" id="count" v-model.number="form.count" min="0" required />
-        </div>
+      <!-- Сохраняем актив -->
+      <div v-else-if="saving" class="modal-loading">Сохраняем...</div>
 
+      <!-- Форма добавления -->
+      <form v-else @submit.prevent="submitForm">
         <div>
-          <label for="price">Цена:</label>
-          <input type="number" id="price" v-model.number="form.price" min="0" step="0.01" required />
-        </div>
-
-        <div>
-          <label for="currency">Валюта:</label>
-          <select id="currency" v-model="form.currency" required>
-            <option value="RUB">RUB</option>
-            <option value="USD">USD</option>
-            <option value="EUR">EUR</option>
+          <label>Портфель:</label>
+          <select v-model="form.portfolio_id" required>
+            <option v-for="p in portfolios" :key="p.id" :value="p.id">
+              {{ p.name }}
+            </option>
           </select>
         </div>
 
         <div>
-          <label for="type">Тип актива:</label>
-          <select id="type" v-model="form.type" required>
-            <option value="Crypto">Крипта</option>
-            <option value="RealEstate">Недвижимость</option>
-            <option value="Cash">Валюта</option>
-            <option value="Other">Другое</option>
+          <label>Актив:</label>
+          <select v-model="form.asset_id">
+            <option value="">Создать новый</option>
+            <option v-for="a in referenceData.assets" :key="a.id" :value="a.id">
+              {{ a.name }} ({{ a.ticker || '—' }})
+            </option>
           </select>
         </div>
 
-        <button type="submit">Добавить</button>
-        <button type="button" @click="$emit('close')">Закрыть</button>
+        <!-- Поля для нового актива -->
+        <div v-if="!form.asset_id">
+          <label>Название:</label>
+          <input v-model="form.name" type="text" required />
+
+          <label>Тикер:</label>
+          <input v-model="form.ticker" type="text" />
+
+          <label>Тип:</label>
+          <select v-model="form.asset_type_id" required>
+            <option v-for="t in referenceData.asset_types" :key="t.id" :value="t.id">
+              {{ t.name }}
+            </option>
+          </select>
+
+          <label>Валюта:</label>
+          <select v-model="form.currency" required>
+            <option v-for="c in referenceData.currencies" :key="c.id" :value="c.id">
+              {{ c.code }}
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <label>Количество:</label>
+          <input v-model.number="form.quantity" type="number" min="0" required />
+        </div>
+
+        <div>
+          <label>Средняя цена:</label>
+          <input v-model.number="form.average_price" type="number" min="0" step="0.01" required />
+        </div>
+
+        <div class="buttons">
+          <button type="submit">Добавить</button>
+          <button type="button" @click="$emit('close')">Закрыть</button>
+        </div>
       </form>
     </div>
   </div>
 </template>
 
 <script setup>
-import { reactive } from 'vue'
-import assetsService from '../services/assetsService'
+import { reactive, ref, onMounted, inject } from 'vue'
+import assetsService from '../services/assetsService.js'
 
-// форма реактивная
-const form = reactive({
-  name: '',
-  count: 0,
-  price: 0,
-  currency: 'USD',
-  type: 'RealEstate',
+const props = defineProps({
+  onSave: Function // функция сохранения из родителя
 })
 
-const emit = defineEmits(['close', 'added'])
+const portfolios = inject('portfolios')
+const emit = defineEmits(['close'])
+
+const form = reactive({
+  portfolio_id: null,
+  asset_id: null,
+  asset_type_id: null,
+  name: '',
+  ticker: '',
+  quantity: 0,
+  average_price: 0,
+  currency: null
+})
+
+const referenceData = ref({ asset_types: [], currencies: [], assets: [] })
+const loadingReference = ref(true) // индикатор загрузки справочников
+const saving = ref(false)           // индикатор сохранения
+
+onMounted(async () => {
+  try {
+    const res = await assetsService.getReferenceData()
+    referenceData.value = res
+  } catch (err) {
+    console.error('Ошибка загрузки справочников:', err)
+  } finally {
+    loadingReference.value = false
+  }
+})
 
 const submitForm = async () => {
+  if (!props.onSave) return
+  saving.value = true
   try {
-    await assetsService.addAsset({ ...form })
-    // после успешного добавления вызываем событие close, родитель обновит список
-    emit('added')
+    await props.onSave({ ...form })  // ждём промис от родителя
+    emit('close')
   } catch (err) {
-    console.error('Ошибка добавления актива:', err)
+    console.error(err)
+    alert('Ошибка при сохранении')
+  } finally {
+    saving.value = false
   }
 }
 </script>
 
-<style>
+<style scoped>
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
 }
 .modal-content {
   background: white;
-  margin: 100px auto;
   padding: 20px;
-  width: 400px;
+  width: 420px;
   border-radius: 8px;
+  position: relative;
 }
 .modal-content form div {
   margin-bottom: 10px;
+}
+.buttons {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 15px;
+}
+.modal-loading {
+  text-align: center;
+  padding: 40px 0;
+  font-weight: bold;
+  font-size: 16px;
 }
 </style>
