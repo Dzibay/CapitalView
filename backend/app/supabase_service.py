@@ -84,3 +84,47 @@ def get_existing_assets():
     """Возвращает существующие (системные) активы"""
     response = supabase.table("assets").select("id, name, ticker").limit(100).execute()
     return response.data
+
+def get_user_total_capital(email: str, currency_code="RUB"):
+    """
+    Возвращает общий капитал пользователя в указанной валюте.
+    currency_code — код валюты, в которой считаем капитал.
+    """
+    user = supabase.table("users").select("id").filter("email", "eq", email).execute()
+    if not user.data:
+        return {"success": False, "error": "Пользователь не найден"}
+    
+    user_id = user.data[0]["id"]
+
+    # Получаем портфели пользователя
+    portfolios = supabase.table("portfolios").select("id").filter("user_id", "eq", user_id).execute()
+    portfolio_ids = [p["id"] for p in portfolios.data]
+
+    if not portfolio_ids:
+        return {"success": True, "total_capital": 0.0}
+
+    # Получаем активы пользователя в этих портфелях с количеством и средней ценой
+    portfolio_assets = supabase.table("portfolio_assets").select(
+        "asset_id, quantity"
+    ).in_("portfolio_id", portfolio_ids).execute()
+
+    if not portfolio_assets.data:
+        return {"success": True, "total_capital": 0.0}
+
+    total = 0.0
+
+    # Получаем id валюты
+    currency = supabase.table("currencies").select("id").filter("code", "eq", currency_code).execute()
+    if not currency.data:
+        return {"success": False, "error": f"Валюта {currency_code} не найдена"}
+    currency_id = currency.data[0]["id"]
+
+    for pa in portfolio_assets.data:
+        # Берем последнюю цену актива в нужной валюте
+        price_resp = supabase.table("asset_prices").select("price").filter("asset_id", "eq", pa["asset_id"]).filter("currency", "eq", currency_id).order("last_updated_at", desc=True).limit(1).execute()
+        
+        if price_resp.data:
+            print(pa["asset_id"], price_resp.data[0]["price"])
+            total += pa["quantity"] * price_resp.data[0]["price"]
+
+    return {"success": True, "total_capital": total}

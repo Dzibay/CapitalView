@@ -90,3 +90,18 @@ def get_asset_references():
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+statistics_bp = Blueprint("statistics", __name__)
+
+@statistics_bp.route("/capital", methods=["GET"])
+@jwt_required()
+def total_capital():
+    user_email = get_jwt_identity()
+    try:
+        result = get_user_total_capital(user_email)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    
