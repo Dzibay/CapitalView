@@ -87,3 +87,4 @@ def delete_asset_route(asset_id):
             return jsonify({"success": False, "message": "Asset not found"}), 404
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+

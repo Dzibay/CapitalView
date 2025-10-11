@@ -13,7 +13,8 @@ def create_user(email, password):
 
 def get_all_assets(email: str):
     user_id = get_user_by_email(email)["id"]
-    response = supabase.table("assets").select("*").filter("user_id", "eq", user_id).execute()
+    response = supabase.rpc("get_user_assets", {"u_id": user_id}).execute()
+    print(response)
     return response.data
 
 def create_asset(email: str, asset):
@@ -35,3 +36,9 @@ def delete_asset(asset_id: int, email: str):
     except Exception as e:
         print("Ошибка при удалении:", e)
         return {"success": False, "error": str(e)}
+
+def get_user_portfolios(email: str):
+    user_id = get_user_by_email(email)["id"]
+    response = supabase.table("portfolios").select("*").filter("user_id", "eq", user_id).execute()
+    return response.data
+

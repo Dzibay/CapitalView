@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import AddAssetModal from '../components/AddAssetModal.vue'
 import assetsService from "../services/assetsService";
 
-const assets = ref([]);
+const portfolios = ref([]);
 const loading = ref(true);
 const showModal = ref(false);
 
@@ -11,13 +11,15 @@ const loadAssets = async () => {
   try {
     loading.value = true;
     const res = await assetsService.getAssets();
-    assets.value = res || [];
+    portfolios.value = res || [];
+    console.log(portfolios)
   } catch (err) {
     console.error("Ошибка получения активов:", err);
   } finally {
     loading.value = false;
   }
 };
+
 
 onMounted(loadAssets);
 
@@ -40,18 +42,52 @@ const removeAsset = async (id) => {
 
 
 <template>
-  <h1>Мои активы</h1>
+  <div>
+    <div v-if="loading">Загрузка...</div>
 
-  <button @click="showModal = true">Добавить актив</button>
-  <!-- Модальное окно -->
-  <AddAssetModal v-if="showModal" @close="showModal = false" @added="handleAssetAdded" />
+    <div v-else-if="portfolios.length === 0">
+      У вас пока нет портфелей
+    </div>
 
-  <div v-if="loading">Загрузка...</div>
-  <div v-else-if="assets.length === 0">Активов нет</div>
-  <ul v-else>
-    <li v-for="asset in assets" :key="asset.id">
-      {{ asset.count }} {{ asset.name }} — {{ asset.price }} {{ asset.currency }}
-    <button @click="removeAsset(asset.id)">❌ Удалить</button>
-    </li>
-  </ul>
+    <div v-else>
+      <div 
+        v-for="portfolio in portfolios" 
+        :key="portfolio.id" 
+        class="portfolio-block"
+      >
+        <h2>{{ portfolio.name }}</h2>
+        <p v-if="!portfolio.assets || portfolio.assets.length === 0">
+          Активов нет
+        </p>
+
+        <ul v-else>
+          <li 
+            v-for="asset in portfolio.assets" 
+            :key="asset.id"
+            class="asset-item"
+          >
+            <strong>{{ asset.name }}</strong> ({{ asset.ticker }}) — 
+            {{ asset.quantity }} шт × {{ asset.average_price.toFixed(2) }} ₽  
+            <span v-if="asset.current_price">
+              (текущая: {{ asset.current_price.toFixed(2) }} ₽)
+            </span>
+            <button @click="removeAsset(asset.id)">❌</button>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
 </template>
+
+<style>
+.portfolio-block {
+  margin-bottom: 24px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.asset-item {
+  margin: 4px 0;
+}
+</style>

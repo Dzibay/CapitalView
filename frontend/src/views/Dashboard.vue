@@ -9,6 +9,7 @@ import GoalProgressWidget from '../components/widgets/GoalProgressWidget.vue'
 import PortfolioChartWidget from '../components/widgets/PortfolioChartWidget.vue'
 import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWidget.vue'
 import TopAssetsWidget from '../components/widgets/TopAssetsWidget.vue'
+
 </script>
 
 <template>

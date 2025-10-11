@@ -11,7 +11,7 @@ export default {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    return res.data.assets || []; // ожидаем { assets: [...] } с сервера
+    return res.data.assets || [];
   },
 
   async addAsset(asset) {
@@ -28,5 +28,7 @@ export default {
       headers: { Authorization: `Bearer ${token}` },
     })
     return res.data
-  }
+  },
+
+  
 };
