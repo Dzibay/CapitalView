@@ -82,7 +82,7 @@ function toggleSidebar() {
   <div class="dashboard-layout">
     <AppSidebar :class="{ 'sidebar-hidden': !isSidebarVisible }" />
     <main class="main-content" :class="{ 'full-width': !isSidebarVisible }">
-      <AppHeader v-if="user" :user="user" @toggle-sidebar="toggleSidebar" />
+      <AppHeader :user="user" @toggle-sidebar="toggleSidebar" />
       <div class="page-content">
         <router-view />
       </div>

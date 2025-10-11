@@ -25,7 +25,7 @@ const handleToggle = () => {
       </svg>
     </button>
     
-    <div class="user-profile">
+    <div v-if="user" class="user-profile">
       <img src="https://avatar.iran.liara.run/public/46" alt="User Avatar" class="avatar">
       <div class="user-info">
         <span class="user-name">{{ user.name }}</span>
