@@ -14,7 +14,6 @@ def create_user(email, password):
 def get_all_assets(email: str):
     user_id = get_user_by_email(email)["id"]
     response = supabase.rpc("get_user_assets", {"u_id": user_id}).execute()
-    print(response)
     return response.data
 
 def create_asset(email: str, asset):
@@ -25,10 +24,9 @@ def create_asset(email: str, asset):
         pass
     return {"success": True, "message": "Актив добавлен"}
 
-def delete_asset(asset_id: int, email: str):
-    user_id = get_user_by_email(email)["id"]
+def delete_asset(asset_id: int):
     try:
-        response = supabase.table("assets").delete().filter("id", "eq", asset_id).execute()
+        response = supabase.table("portfolio_assets").delete().filter("id", "eq", asset_id).execute()
 
         if response.data is None:
             return {"success": True, "message": "Актив удалён"}

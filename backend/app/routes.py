@@ -46,7 +46,8 @@ def get_assets():
     user_email = get_jwt_identity()
     
     assets = get_all_assets(user_email)
-    return jsonify({"assets": assets})
+    print(assets)
+    return jsonify({"portfolios": assets})
 
 @assets_bp.route("/add", methods=["POST"])
 @jwt_required()
@@ -80,7 +81,8 @@ def delete_asset_route(asset_id):
     user_email = get_jwt_identity()
 
     try:
-        deleted = delete_asset(asset_id, user_email)
+        print(asset_id)
+        deleted = delete_asset(asset_id)
         if deleted:
             return jsonify(deleted), 200
         else:

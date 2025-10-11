@@ -11,7 +11,7 @@ export default {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    return res.data.assets || [];
+    return res.data.portfolios || [];
   },
 
   async addAsset(asset) {

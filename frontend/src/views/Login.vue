@@ -5,8 +5,8 @@ import { useRouter } from 'vue-router';
 import { authService } from '../services/authService.js';
 
 const router = useRouter();
-const email = ref('');
-const password = ref('');
+const email = ref('root@gmail.com');
+const password = ref('root');
 const message = ref('');
 
 onMounted(async () => {
@@ -34,8 +34,8 @@ const doLogin = async () => {
   <Header />
   <div class="form">
     <h2>Вход</h2>
-    <input v-model="email" placeholder="Email" />
-    <input v-model="password" type="password" placeholder="Пароль" />
+    <input v-model="email" placeholder="Email" value="root@gmail.com" />
+    <input v-model="password" type="password" placeholder="Пароль" value="root" />
     <div class="form-buttons">
       <button @click="doLogin">Войти</button>
       <button>

@@ -30,10 +30,19 @@ const handleAssetAdded = async () => {
 };
 
 const removeAsset = async (id) => {
+  if (!confirm("Удалить актив?")) return
   try {
     await assetsService.deleteAsset(id)
-    assets.value = assets.value.filter(a => a.id !== id) // убираем локально
-  } catch (err) {
+    
+    // Обновляем локальные портфели
+    portfolios.value = portfolios.value.map(portfolio => ({
+      ...portfolio,
+      assets: portfolio.assets
+        ? portfolio.assets.filter(a => a.portfolio_asset_id !== id)
+        : []
+    }));
+    } // убираем локально
+  catch (err) {
     console.error("Ошибка удаления актива:", err)
   }
 }
@@ -61,17 +70,13 @@ const removeAsset = async (id) => {
         </p>
 
         <ul v-else>
-          <li 
-            v-for="asset in portfolio.assets" 
-            :key="asset.id"
-            class="asset-item"
-          >
+          <li v-for="asset in portfolio.assets" :key="asset.portfolio_asset_id" class="asset-item">
             <strong>{{ asset.name }}</strong> ({{ asset.ticker }}) — 
             {{ asset.quantity }} шт × {{ asset.average_price.toFixed(2) }} ₽  
             <span v-if="asset.current_price">
               (текущая: {{ asset.current_price.toFixed(2) }} ₽)
             </span>
-            <button @click="removeAsset(asset.id)">❌</button>
+            <button @click="removeAsset(asset.portfolio_asset_id)">❌</button>
           </li>
         </ul>
       </div>
@@ -83,7 +88,6 @@ const removeAsset = async (id) => {
 .portfolio-block {
   margin-bottom: 24px;
   padding: 12px;
-  background: #fafafa;
   border-radius: 8px;
 }
 
