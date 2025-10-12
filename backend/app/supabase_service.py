@@ -61,16 +61,45 @@ def create_asset(email: str, asset_data: dict):
 
     return {"success": True, "message": "Актив добавлен"}
 
-def delete_asset(asset_id: int):
+def delete_asset(portfolio_asset_id: int):
     try:
-        response = supabase.table("portfolio_assets").delete().filter("id", "eq", asset_id).execute()
+        # Получаем запись из portfolio_assets
+        pa_resp = supabase.table("portfolio_assets").select("asset_id").eq("id", portfolio_asset_id).execute()
+        if not pa_resp.data:
+            return {"success": False, "error": "Запись в портфеле не найдена"}
 
-        if response.data is None:
-            return {"success": True, "message": "Актив удалён"}
-        return {"success": True, "deleted": response.data}
+        asset_id = pa_resp.data[0]["asset_id"]
+
+        # Получаем asset_type_id из assets
+        asset_resp = supabase.table("assets").select("asset_type_id").eq("id", asset_id).execute()
+        if not asset_resp.data:
+            return {"success": False, "error": "Актив не найден"}
+
+        asset_type_id = asset_resp.data[0]["asset_type_id"]
+
+        # Проверяем, кастомный ли актив
+        asset_type_resp = supabase.table("asset_types").select("is_custom").eq("id", asset_type_id).execute()
+        if not asset_type_resp.data:
+            return {"success": False, "error": "Тип актива не найден"}
+
+        is_custom = asset_type_resp.data[0]["is_custom"]
+
+        # Удаляем из portfolio_assets
+        supabase.table("portfolio_assets").delete().eq("id", portfolio_asset_id).execute()
+
+        if is_custom:
+            # Удаляем кастомный актив из asset_prices и assets
+            supabase.table("asset_prices").delete().eq("asset_id", asset_id).execute()
+            supabase.table("assets").delete().eq("id", asset_id).execute()
+
+        return {"success": True, "message": "Актив удалён"}
+
     except Exception as e:
         print("Ошибка при удалении:", e)
         return {"success": False, "error": str(e)}
+
+
+
 
 def get_user_portfolios(email: str):
     user_id = get_user_by_email(email)["id"]

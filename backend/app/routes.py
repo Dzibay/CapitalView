@@ -66,7 +66,6 @@ def delete_asset_route(asset_id):
     user_email = get_jwt_identity()
 
     try:
-        print(asset_id)
         deleted = delete_asset(asset_id)
         if deleted:
             return jsonify(deleted), 200
