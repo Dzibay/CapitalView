@@ -32,7 +32,6 @@ const formatCurrency = (value) => {
   })
 }
 
-// Агрегирование данных
 function aggregateLabelsAndData(dataObj, period) {
   const labels = []
   const data = []
@@ -43,37 +42,49 @@ function aggregateLabelsAndData(dataObj, period) {
   const parseDate = d => new Date(d)
   const dateObjects = dataObj.labels.map(parseDate)
 
+  // === ГРАФИК ЗА МЕСЯЦ ===
   if (period === '1M') {
-    const today = new Date()
-    const oneMonthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate())
+    const oneMonthAgo = new Date(today)
+    oneMonthAgo.setDate(today.getDate() - 30)
 
-    const sliceLabels = []
-    const sliceData = []
+    // Сортируем по дате
+    const points = dataObj.labels
+      .map((label, idx) => ({ date: new Date(label), value: dataObj.data[idx] }))
+      .sort((a, b) => a.date - b.date)
 
-    dataObj.labels.forEach((label, idx) => {
-      const date = new Date(label)
-      if (date >= oneMonthAgo && date <= today) {
-        sliceLabels.push(label)
-        sliceData.push(dataObj.data[idx])
+    let lastKnownValue = points[0]?.value ?? 0
+    let pointIndex = 0
+
+    // Генерируем все даты за последние 30 дней
+    for (let d = new Date(oneMonthAgo); d <= today; d.setDate(d.getDate() + 1)) {
+      // Если есть запись на эту дату — обновляем значение
+      while (
+        pointIndex < points.length &&
+        points[pointIndex].date <= d
+      ) {
+        lastKnownValue = points[pointIndex].value
+        pointIndex++
       }
-    })
 
-    return { labels: sliceLabels, data: sliceData }
+      labels.push(d.toISOString().split('T')[0]) // формат YYYY-MM-DD
+      data.push(lastKnownValue)
+    }
+
+    return { labels, data }
   }
 
-
+  // === ГРАФИК ЗА ВСЕ ВРЕМЯ ===
   if (period === 'All') {
     const firstDate = dateObjects[0]
     const lastDate = dateObjects[dateObjects.length - 1]
-    const diffDays = (lastDate - firstDate) / (1000*60*60*24)
+    const diffDays = (lastDate - firstDate) / (1000 * 60 * 60 * 24)
 
     if (diffDays < 30) {
-      // строим по дням
       return { labels: dataObj.labels, data: dataObj.data }
     }
   }
 
-  // Для '1Y' и 'All' с большим диапазоном — помесячная агрегация
+  // === ГРАФИК ЗА ГОД ИЛИ ВСЕ ВРЕМЯ (АГРЕГАЦИЯ ПО МЕСЯЦАМ) ===
   const monthMap = {}
   dataObj.labels.forEach((dateStr, idx) => {
     const date = parseDate(dateStr)
@@ -82,10 +93,10 @@ function aggregateLabelsAndData(dataObj, period) {
     monthMap[monthKey].push({ date, value: dataObj.data[idx] })
   })
 
-  const firstDate = period === '1Y'
-    ? new Date(today.getFullYear(), today.getMonth() - 11, 1) // 12 месяцев назад
-    : new Date(Math.min(...dateObjects)) // All — от первой даты
-
+  const firstDate =
+    period === '1Y'
+      ? new Date(today.getFullYear(), today.getMonth() - 11, 1)
+      : new Date(Math.min(...dateObjects))
   const lastDate = today
   let iterDate = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1)
 
@@ -97,21 +108,26 @@ function aggregateLabelsAndData(dataObj, period) {
 
     if (monthMap[monthKey]) {
       const entries = monthMap[monthKey]
-      // Для текущего месяца берем ближайшую к today дату
-      if (iterDate.getFullYear() === today.getFullYear() && iterDate.getMonth() === today.getMonth()) {
-        const todayEntry = entries.reduce((prev, curr) => 
+      if (
+        iterDate.getFullYear() === today.getFullYear() &&
+        iterDate.getMonth() === today.getMonth()
+      ) {
+        const todayEntry = entries.reduce((prev, curr) =>
           Math.abs(curr.date - today) < Math.abs(prev.date - today) ? curr : prev
         )
         selectedValue = todayEntry.value
       } else {
-        // предыдущие месяцы — берем последний день месяца
-        const lastEntry = entries.reduce((prev, curr) => curr.date > prev.date ? curr : prev)
+        const lastEntry = entries.reduce((prev, curr) =>
+          curr.date > prev.date ? curr : prev
+        )
         selectedValue = lastEntry.value
       }
     }
 
     lastKnownValue = selectedValue
-    labels.push(iterDate.toLocaleString('ru-RU', { month: 'short', year: 'numeric' }))
+    labels.push(
+      iterDate.toLocaleString('ru-RU', { month: 'short', year: 'numeric' })
+    )
     data.push(selectedValue)
 
     iterDate.setMonth(iterDate.getMonth() + 1)
@@ -123,6 +139,7 @@ function aggregateLabelsAndData(dataObj, period) {
 
   return { labels, data }
 }
+
 
 
 

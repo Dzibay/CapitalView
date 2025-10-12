@@ -55,7 +55,7 @@
 
         <div>
           <label>Количество:</label>
-          <input v-model.number="form.quantity" type="number" min="0" required />
+          <input v-model.number="form.quantity" type="number" min="0" step="0.0001" required />
         </div>
 
         <div>
