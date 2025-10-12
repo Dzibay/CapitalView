@@ -20,7 +20,6 @@ def get_portfolio_assets(token):
                 id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
                 id=figi
             ).instrument
-
             result.append({
                 "ticker": instrument.ticker,
                 "name": instrument.name,
@@ -28,3 +27,5 @@ def get_portfolio_assets(token):
             })
 
         return result
+
+print(get_portfolio_assets('t.Wwc9-ETWh-SiWqphi_F3TQ-U7TZNsuhUryWHiDWu1vqvq19ypX7I9il3E9PlfZgKyt4gPiHrXD4RjyNiVUHzzA'))

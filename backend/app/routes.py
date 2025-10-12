@@ -55,7 +55,7 @@ def add_asset():
     data = request.get_json()
 
     try:
-        asset = create_asset(user_email, data)
+        asset = add_asset_transaction(user_email, data)
         return jsonify(asset), 201
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500

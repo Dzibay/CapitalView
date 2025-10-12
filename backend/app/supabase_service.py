@@ -16,50 +16,91 @@ def get_all_assets(email: str):
     response = supabase.rpc("get_user_portfolios", {"u_id": user_id}).execute()
     return response.data
 
-def create_asset(email: str, asset_data: dict):
-    """Добавляет новый актив пользователю (возможно кастомный) и создает цену для кастомного актива."""
+def add_asset_transaction(email: str, tx_data: dict):
+    """
+    Добавляет транзакцию для актива (покупка/продажа).
+    Если актив отсутствует в портфеле — создаёт его.
+    Для кастомных активов проверяет существование по ticker + user_id.
+    """
     user = get_user_by_email(email)
     user_id = user["id"]
 
-    portfolio_id = asset_data.get("portfolio_id")
-    asset_id = asset_data.get("asset_id")
+    portfolio_id = tx_data.get("portfolio_id")
+    asset_id = tx_data.get("asset_id")
+    ticker = tx_data.get("ticker")
 
-    # если актив новый — создаём его
+    # Если актив кастомный (передан без asset_id)
     if not asset_id:
-        new_asset = {
-            "asset_type_id": asset_data.get("asset_type_id"),
-            "user_id": user_id,
-            "name": asset_data.get("name"),
-            "ticker": asset_data.get("ticker"),
-            "properties": {},
-        }
+        # Проверяем, есть ли уже кастомный актив с таким тикером у пользователя
+        existing_asset = (
+            supabase.table("assets")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("ticker", ticker)
+            .execute()
+        )
 
-        res = supabase.table("assets").insert(new_asset).execute()
-        if not res.data:
-            raise Exception("Ошибка при создании актива")
-        print(res)
-        asset_id = res.data[0]["id"]
+        if existing_asset.data:
+            asset_id = existing_asset.data[0]["id"]
+        else:
+            # создаём новый кастомный актив
+            new_asset = {
+                "asset_type_id": tx_data.get("asset_type_id"),
+                "user_id": user_id,
+                "name": tx_data.get("name"),
+                "ticker": ticker,
+                "properties": {},
+            }
 
-        # создаем asset_price для кастомного актива
-        price_data = {
+            res = supabase.table("assets").insert(new_asset).execute()
+            if not res.data:
+                raise Exception("Ошибка при создании актива")
+
+            asset_id = res.data[0]["id"]
+
+            # создаем запись цены для кастомного актива
+            price_data = {
+                "asset_id": asset_id,
+                "price": tx_data.get("average_price", 0.0),
+                "trade_date": tx_data.get("date"),
+            }
+            supabase.table("asset_prices").insert(price_data).execute()
+
+    # Проверяем наличие связи в portfolio_assets
+    existing_pa = (
+        supabase.table("portfolio_assets")
+        .select("id")
+        .eq("portfolio_id", portfolio_id)
+        .eq("asset_id", asset_id)
+        .execute()
+    )
+
+    if existing_pa.data:
+        portfolio_asset_id = existing_pa.data[0]["id"]
+    else:
+        # создаём новую запись в портфеле (с нулевыми значениями)
+        pa = {
+            "portfolio_id": portfolio_id,
             "asset_id": asset_id,
-            "price": asset_data.get("average_price", 0.0),
-            "trade_date": asset_data.get("date")
+            "quantity": 0,
+            "average_price": 0,
         }
-        supabase.table("asset_prices").insert(price_data).execute()
+        res = supabase.table("portfolio_assets").insert(pa).execute()
+        portfolio_asset_id = res.data[0]["id"]
 
-    # добавляем связь с портфелем
-    portfolio_asset = {
-        "portfolio_id": portfolio_id,
-        "asset_id": asset_id,
-        "quantity": asset_data.get("quantity"),
-        "average_price": asset_data.get("average_price"),
-        "created_at": asset_data.get("date"),
+    # Добавляем транзакцию
+    tx = {
+        "portfolio_asset_id": portfolio_asset_id,
+        "transaction_type": 1,
+        "price": tx_data.get("average_price"),
+        "quantity": tx_data.get("quantity"),
+        "transaction_date": tx_data.get("date"),
     }
 
-    supabase.table("portfolio_assets").insert(portfolio_asset).execute()
+    supabase.table("transactions").insert(tx).execute()
 
-    return {"success": True, "message": "Актив добавлен"}
+    return {"success": True, "message": "Транзакция добавлена"}
+
 
 def delete_asset(portfolio_asset_id: int):
     try:
@@ -84,19 +125,23 @@ def delete_asset(portfolio_asset_id: int):
 
         is_custom = asset_type_resp.data[0]["is_custom"]
 
-        # Удаляем из portfolio_assets
+        # --- Удаляем все транзакции, связанные с этим активом ---
+        supabase.table("transactions").delete().eq("portfolio_asset_id", portfolio_asset_id).execute()
+
+        # --- Удаляем саму запись из portfolio_assets ---
         supabase.table("portfolio_assets").delete().eq("id", portfolio_asset_id).execute()
 
+        # --- Если актив кастомный — удаляем его полностью ---
         if is_custom:
-            # Удаляем кастомный актив из asset_prices и assets
             supabase.table("asset_prices").delete().eq("asset_id", asset_id).execute()
             supabase.table("assets").delete().eq("id", asset_id).execute()
 
-        return {"success": True, "message": "Актив удалён"}
+        return {"success": True, "message": "Актив и связанные данные удалены"}
 
     except Exception as e:
         print("Ошибка при удалении:", e)
         return {"success": False, "error": str(e)}
+
 
 
 
