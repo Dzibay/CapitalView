@@ -28,5 +28,5 @@ export default {
   async deleteAsset(id) {
     const res = await axios.delete(`${API_URL}/delete/${id}`, { headers: authHeaders() })
     return res.data
-  }
+  },
 }

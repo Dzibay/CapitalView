@@ -19,11 +19,19 @@ const totalAmount = computed(() => {
     ? Number(dashboardData.value.totalCapital.totalAmount)
     : 0
 })
+const investedAmount = computed(() => {
+  return dashboardData.value?.totalCapital
+    ? Number(dashboardData.value.totalCapital.investedAmount)
+    : 0
+})
 const monthlyChange = computed(() => {
   return dashboardData.value?.totalCapital?.monthlyChange ?? { absolute: 0, percentage: 0 }
 })
 const assetAllocation = computed(() => {
   return dashboardData.value?.assetAllocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
+})
+const portfolioChart = computed(() => {
+  return dashboardData.value?.portfolioChart ?? { labels: [], data: [] }
 })
 </script>
 
@@ -37,13 +45,15 @@ const assetAllocation = computed(() => {
     <TotalCapitalWidget 
       :total-amount="totalAmount" 
       :monthly-change="monthlyChange" 
+      :invested-amount="investedAmount" 
     />
 
     <TopAssetsWidget :assets="mockData.topAssets" />
     <RecentTransactionsWidget :transactions="mockData.recentTransactions" />
     <AssetAllocationWidget :assetAllocation="assetAllocation" />
     <GoalProgressWidget :goal-data="mockData.investmentGoal" />
-    <PortfolioChartWidget :chartData="generatePortfolioData.data().portfolioChart" />
+    <PortfolioChartWidget :chartData="portfolioChart" />
+
   </div>
 </template>
 

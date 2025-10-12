@@ -44,6 +44,7 @@ def create_asset(email: str, asset_data: dict):
         price_data = {
             "asset_id": asset_id,
             "price": asset_data.get("average_price", 0.0),
+            "trade_date": asset_data.get("date")
         }
         supabase.table("asset_prices").insert(price_data).execute()
 
@@ -53,6 +54,7 @@ def create_asset(email: str, asset_data: dict):
         "asset_id": asset_id,
         "quantity": asset_data.get("quantity"),
         "average_price": asset_data.get("average_price"),
+        "created_at": asset_data.get("date"),
     }
 
     supabase.table("portfolio_assets").insert(portfolio_asset).execute()
@@ -89,5 +91,66 @@ def get_existing_assets():
     """Возвращает существующие (системные) активы"""
     response = supabase.table("assets").select("id, name, ticker").limit(100).execute()
     return response.data
+
+
+# def get_all_asset_prices():
+#     """
+#     Возвращает рыночные данные всех активов с полной историей цен.
+#     """
+#     try:
+#         grouped = {}
+#         page_size = 1000  # количество записей за один запрос
+#         start = 0
+#         while True:
+#             response = (
+#                 supabase.table("asset_prices")
+#                 .select("asset_id, price, trade_date, assets(name, ticker), currencies(code)")
+#                 .order("trade_date", desc=False)
+#                 .range(start, start + page_size - 1)
+#                 .execute()
+#             )
+
+#             data = response.data
+#             if not data:
+#                 break  # больше данных нет
+
+#             for r in data:
+#                 asset_id = r["asset_id"]
+#                 name = r["assets"]["name"]
+#                 ticker = r["assets"]["ticker"]
+#                 currency = r["currencies"]["code"]
+#                 price = r["price"]
+#                 date = r["trade_date"].split("T")[0] if r.get("trade_date") else None
+
+#                 if asset_id not in grouped:
+#                     grouped[asset_id] = {
+#                         "asset_id": asset_id,
+#                         "name": name,
+#                         "ticker": ticker,
+#                         "currency": currency,
+#                         "price_history": []
+#                     }
+
+#                 grouped[asset_id]["price_history"].append({
+#                     "date": date,
+#                     "price": price
+#                 })
+
+#             start += page_size  # переход к следующей странице
+
+#         return list(grouped.values())
+
+#     except Exception as e:
+#         print("Ошибка при получении и группировке цен активов:", e)
+#         return {"error": str(e)}
+
+
+
+def get_user_portfolio_value(email: str):
+    user_id = get_user_by_email(email)["id"]
+
+    response = supabase.rpc("get_portfolio_value_history", {"user_uuid": user_id}).execute()
+    return response.data
+
 
 

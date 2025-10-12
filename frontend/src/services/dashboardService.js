@@ -1,29 +1,31 @@
 // services/dashboardService.js
 import assetsService from './assetsService.js';
+import { fetchPortfolioHistory } from './statisticsService.js';
 
+/* === Основная функция === */
 export async function fetchDashboardData(user) {
   try {
     const portfolios = await assetsService.getAssets();
-    // const transactions = await assetsService.getRecentTransactions(user.id);
+    const portfolioHistory = await fetchPortfolioHistory();
 
     return {
       totalCapital: calculateTotalCapital(portfolios),
       assetAllocation: calculateAssetAllocation(portfolios),
-    //   portfolioChart: calculatePortfolioChart(portfolios),
-    //   investmentGoal: await getInvestmentGoal(user.id),
-    //   recentTransactions: transactions,
-    //   topAssets: getTopAssets(portfolios)
+      portfolioChart: buildPortfolioChart(portfolioHistory),
+      // investmentGoal: await getInvestmentGoal(user.id),
+      // recentTransactions: transactions,
+      // topAssets: getTopAssets(portfolios)
     };
   } catch (error) {
     console.error(error);
-    return {totalCapital: 0};
+    return { totalCapital: 0 };
   }
 }
 
-/* 🔹 Функция расчёта общего капитала пользователя */
+/* === Расчёт общего капитала === */
 function calculateTotalCapital(portfolios) {
-  let totalCurrent = 0; // капитал по текущим ценам
-  let totalInvested = 0; // вложенные средства
+  let totalCurrent = 0;
+  let totalInvested = 0;
 
   portfolios.forEach(p => {
     if (p.assets && Array.isArray(p.assets)) {
@@ -39,9 +41,7 @@ function calculateTotalCapital(portfolios) {
   });
 
   const absoluteChange = totalCurrent - totalInvested;
-  const percentageChange = totalInvested > 0
-    ? (absoluteChange / totalInvested) * 100
-    : 0;
+  const percentageChange = totalInvested > 0 ? (absoluteChange / totalInvested) * 100 : 0;
 
   return {
     totalAmount: totalCurrent.toFixed(2),
@@ -53,6 +53,7 @@ function calculateTotalCapital(portfolios) {
   };
 }
 
+/* === Распределение активов === */
 function calculateAssetAllocation(portfolios = []) {
   if (!Array.isArray(portfolios) || portfolios.length === 0) {
     return { labels: [], datasets: [{ backgroundColor: [], data: [] }] };
@@ -81,20 +82,46 @@ function calculateAssetAllocation(portfolios = []) {
   };
 }
 
+function buildPortfolioChart(portfolioHistory) {
+  console.log('Собираем')
+  console.log(portfolioHistory)
+  if (!portfolioHistory || Object.keys(portfolioHistory).length === 0) {
+    return { labels: [], data: [] };
+  }
 
-function calculatePortfolioChart(portfolios) {
-  // пример: построение данных для графика
-  const data = []; // собрать динамику капитала по месяцам
-  return { labels: ['Янв', 'Фев', 'Мар'], data };
+  // Собираем все даты
+  const allDatesSet = new Set();
+  Object.values(portfolioHistory).forEach(portfolio => {
+    if (!Array.isArray(portfolio)) return;
+    portfolio.forEach(point => allDatesSet.add(point.date));
+  });
+
+  const allDates = Array.from(allDatesSet).sort();
+
+  // Агрегируем суммарную стоимость по каждой дате
+  const aggregatedByDate = {};
+  allDates.forEach(date => (aggregatedByDate[date] = 0));
+
+  Object.values(portfolioHistory).forEach(portfolio => {
+    if (!Array.isArray(portfolio)) return;
+    portfolio.forEach(point => {
+      aggregatedByDate[point.date] += point.total_value || 0;
+    });
+  });
+
+  const labels = Object.keys(aggregatedByDate);
+  const data = labels.map(date => aggregatedByDate[date]);
+
+  return { labels, data };
 }
 
+
+/* === Остальные вспомогательные функции (по желанию) === */
 async function getInvestmentGoal(userId) {
-  // пример: запрос цели пользователя
   return { title: 'Накопить миллион', targetAmount: 1000000, currentAmount: 812430 };
 }
 
 function getTopAssets(portfolios) {
-  // пример: топ-активы по суммарной стоимости
   const allAssets = [];
   portfolios.forEach(p => allAssets.push(...p.portfolio_assets));
   allAssets.sort((a, b) => (b.quantity * b.average_price) - (a.quantity * a.average_price));

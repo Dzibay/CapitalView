@@ -36,34 +36,96 @@ const formatCurrency = (value) => {
 function aggregateLabelsAndData(dataObj, period) {
   const labels = []
   const data = []
+  const today = new Date()
+
+  if (!dataObj?.data?.length) return { labels, data }
+
+  const parseDate = d => new Date(d)
+  const dateObjects = dataObj.labels.map(parseDate)
 
   if (period === '1M') {
-    const sliceData = dataObj.data.slice(-30)
-    const sliceLabels = dataObj.labels.slice(-30)
+    const today = new Date()
+    const oneMonthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate())
+
+    const sliceLabels = []
+    const sliceData = []
+
+    dataObj.labels.forEach((label, idx) => {
+      const date = new Date(label)
+      if (date >= oneMonthAgo && date <= today) {
+        sliceLabels.push(label)
+        sliceData.push(dataObj.data[idx])
+      }
+    })
+
     return { labels: sliceLabels, data: sliceData }
-  } else {
-    const monthMap = {}
-    dataObj.labels.forEach((dateStr, idx) => {
-      const date = new Date(dateStr)
-      const monthKey = date.toLocaleString('ru-RU', { month: 'short', year: 'numeric' })
-      if (!monthMap[monthKey]) monthMap[monthKey] = []
-      monthMap[monthKey].push(dataObj.data[idx])
-    })
+  }
 
-    Object.keys(monthMap).forEach(month => {
-      const values = monthMap[month]
-      const avg = Math.round(values.reduce((a,b)=>a+b,0)/values.length)
-      labels.push(month)
-      data.push(avg)
-    })
 
-    if (period === '1Y') {
-      return { labels: labels.slice(-12), data: data.slice(-12) }
+  if (period === 'All') {
+    const firstDate = dateObjects[0]
+    const lastDate = dateObjects[dateObjects.length - 1]
+    const diffDays = (lastDate - firstDate) / (1000*60*60*24)
+
+    if (diffDays < 30) {
+      // строим по дням
+      return { labels: dataObj.labels, data: dataObj.data }
+    }
+  }
+
+  // Для '1Y' и 'All' с большим диапазоном — помесячная агрегация
+  const monthMap = {}
+  dataObj.labels.forEach((dateStr, idx) => {
+    const date = parseDate(dateStr)
+    const monthKey = date.getFullYear() + '-' + (date.getMonth() + 1)
+    if (!monthMap[monthKey]) monthMap[monthKey] = []
+    monthMap[monthKey].push({ date, value: dataObj.data[idx] })
+  })
+
+  const firstDate = period === '1Y'
+    ? new Date(today.getFullYear(), today.getMonth() - 11, 1) // 12 месяцев назад
+    : new Date(Math.min(...dateObjects)) // All — от первой даты
+
+  const lastDate = today
+  let iterDate = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1)
+
+  let lastKnownValue = 0
+
+  while (iterDate <= lastDate) {
+    const monthKey = iterDate.getFullYear() + '-' + (iterDate.getMonth() + 1)
+    let selectedValue = lastKnownValue
+
+    if (monthMap[monthKey]) {
+      const entries = monthMap[monthKey]
+      // Для текущего месяца берем ближайшую к today дату
+      if (iterDate.getFullYear() === today.getFullYear() && iterDate.getMonth() === today.getMonth()) {
+        const todayEntry = entries.reduce((prev, curr) => 
+          Math.abs(curr.date - today) < Math.abs(prev.date - today) ? curr : prev
+        )
+        selectedValue = todayEntry.value
+      } else {
+        // предыдущие месяцы — берем последний день месяца
+        const lastEntry = entries.reduce((prev, curr) => curr.date > prev.date ? curr : prev)
+        selectedValue = lastEntry.value
+      }
     }
 
-    return { labels, data }
+    lastKnownValue = selectedValue
+    labels.push(iterDate.toLocaleString('ru-RU', { month: 'short', year: 'numeric' }))
+    data.push(selectedValue)
+
+    iterDate.setMonth(iterDate.getMonth() + 1)
   }
+
+  if (period === '1Y') {
+    return { labels: labels.slice(-12), data: data.slice(-12) }
+  }
+
+  return { labels, data }
 }
+
+
+
 
 // Вычисление статистики
 const calculateGrowth = (data) => {
@@ -72,6 +134,14 @@ const calculateGrowth = (data) => {
   endValue.value = data[data.length - 1]
   growthAmount.value = endValue.value - startValue.value
   growthPercent.value = ((growthAmount.value / startValue.value) * 100).toFixed(1)
+}
+
+// Функция округления вверх к ближайшей "красивой" величине
+function getNiceMax(value) {
+  if (value === 0) return 1000
+  const magnitude = Math.pow(10, Math.floor(Math.log10(value)))
+  const rounded = Math.ceil(value / magnitude) * magnitude
+  return rounded
 }
 
 // Создание графика
@@ -161,8 +231,8 @@ const renderChart = (aggregated) => {
   const ctx = document.getElementById('capitalChart')?.getContext('2d')
   if (!ctx) return
 
-  const yMin = Math.min(...aggregated.data)
-  const yMax = Math.max(...aggregated.data)
+  const yMin = 0
+  const yMax = getNiceMax(Math.max(...aggregated.data))
 
   if (chartInstance) {
     chartInstance.data.labels = aggregated.labels

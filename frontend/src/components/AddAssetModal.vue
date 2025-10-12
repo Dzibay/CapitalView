@@ -62,6 +62,10 @@
           <label>Средняя цена:</label>
           <input v-model.number="form.average_price" type="number" min="0" step="0.01" required />
         </div>
+        <div>
+          <label>Дата добавления:</label>
+          <input v-model="form.date" type="date" required />
+        </div>
 
         <div class="buttons">
           <button type="submit">Добавить</button>
@@ -91,7 +95,8 @@ const form = reactive({
   ticker: '',
   quantity: 0,
   average_price: 0,
-  currency: null
+  currency: null,
+  date: new Date().toISOString().slice(0, 10)
 })
 
 const referenceData = ref({ asset_types: [], currencies: [], assets: [] })

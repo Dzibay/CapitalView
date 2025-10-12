@@ -3,14 +3,22 @@ import { computed } from 'vue';
 
 const props = defineProps({
   totalAmount: { type: Number, required: true },
+  investedAmount: { type: Number, required: true },
   monthlyChange: { type: Object, required: true },
 });
 
-const formattedAmount = computed(() => {
+const formattedTotalAmount = computed(() => {
   return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(props.totalAmount);
 });
+const formattedInvestedAmount = computed(() => {
+  return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(props.investedAmount);
+});
 
-const isPositiveChange = computed(() => props.monthlyChange.absolute >= 0);
+const isPositiveChange = computed(() => {
+  console.log(props.monthlyChange.absolute)
+  return props.monthlyChange.absolute >= 0
+});
+
 </script>
 
 <template>
@@ -32,14 +40,14 @@ const isPositiveChange = computed(() => props.monthlyChange.absolute >= 0);
     </div>
 
     <div class="capital-value-with-change">
-      <div class="capital-values">{{ formattedAmount }}</div>
+      <div class="capital-values">{{ formattedTotalAmount }}</div>
       <div class="value-change" :class="{ 'positive': isPositiveChange, 'negative': !isPositiveChange }">
-        <span>{{ monthlyChange.percentage }}% за месяц</span>
+        <span>{{ monthlyChange.percentage }}% за все время</span>
         <!-- <span>({{ monthlyChange.absolute.toFixed(2) }} RUB) за месяц</span> -->
       </div>
     </div>
 
-    <p>Инвестировано: </p>
+    <p>Инвестировано: {{ formattedInvestedAmount }}</p>
 
   </div>
 </template>
@@ -60,5 +68,12 @@ const isPositiveChange = computed(() => props.monthlyChange.absolute >= 0);
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.value-change.positive {
+  color: var(--positiveColor);
+}
+.value-change.negative {
+  color: var(--negativeColor);
 }
 </style>

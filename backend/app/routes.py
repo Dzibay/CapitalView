@@ -76,7 +76,6 @@ def delete_asset_route(asset_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 @assets_bp.route("/references", methods=["GET"])
-@jwt_required()
 def get_asset_references():
     """Возвращает справочные данные для формы добавления актива."""
     try:
@@ -93,3 +92,10 @@ def get_asset_references():
 
 
 statistics_bp = Blueprint("statistics", __name__)
+
+@statistics_bp.route("/portfolio_value", methods=["GET"])
+@jwt_required()
+def get_portfolio_value():
+    user_email = get_jwt_identity()
+    prices = get_user_portfolio_value(user_email)
+    return jsonify(prices)
