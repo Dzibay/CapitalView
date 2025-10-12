@@ -40,8 +40,19 @@ const addAsset = async (assetData) => {
   try {
     await assetsService.addAsset(assetData)
     await loadAssets()
+    await loadDashboard(user.value)
   } catch (err) {
     console.error('Ошибка добавления актива:', err)
+  }
+}
+
+const sellAsset = async ({ portfolio_asset_id, quantity, price, date }) => {
+  try {
+    await assetsService.sellAsset(portfolio_asset_id, quantity, price, date)
+    await loadAssets()
+    await loadDashboard(user.value)
+  } catch (err) {
+    console.error('Ошибка продажи актива:', err)
   }
 }
 
@@ -51,8 +62,23 @@ const removeAsset = async (assetId) => {
   try {
     await assetsService.deleteAsset(assetId)
     await loadAssets()
+    await loadDashboard(user.value)
   } catch (err) {
     console.error('Ошибка удаления актива:', err)
+  }
+}
+
+// 🔹 Импорт портфеля из Tinkoff
+const importPortfolio = async ({ token, portfolio_name }) => {
+  try {
+    const res = await assetsService.importPortfolio(token, portfolio_name)
+    if (!res.success) throw new Error(res.error || 'Ошибка импорта портфеля')
+
+    await loadAssets()
+    await loadDashboard(user.value)
+  } catch (err) {
+    console.error('Ошибка импорта портфеля:', err)
+    throw err
   }
 }
 
@@ -84,7 +110,9 @@ provide('dashboardData', dashboardData)
 provide('loading', loading)
 provide('reloadAssets', loadAssets)
 provide('addAsset', addAsset)
+provide('sellAsset', sellAsset)
 provide('removeAsset', removeAsset)
+provide('importPortfolio', importPortfolio)
 
 function toggleSidebar() {
   isSidebarVisible.value = !isSidebarVisible.value

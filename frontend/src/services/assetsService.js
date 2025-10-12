@@ -19,6 +19,15 @@ export default {
     return res.data
   },
 
+  async sellAsset(portfolio_asset_id, quantity, price, date) {
+    const res = await axios.post(
+      `${API_URL}/sell`,
+      { portfolio_asset_id, quantity, price, date }, // ✅ axios сам сериализует JSON
+      { headers: authHeaders() }
+    )
+    return res.data
+  },
+
   async getAssets() {
     const res = await axios.get(`${API_URL}/get_all`, { headers: authHeaders() })
     console.log(res.data.portfolios)
@@ -29,4 +38,13 @@ export default {
     const res = await axios.delete(`${API_URL}/delete/${id}`, { headers: authHeaders() })
     return res.data
   },
+
+  async importPortfolio(token, portfolio_name) {
+    const res = await axios.post(
+      `${API_URL}/import_tinkoff_portfolio`,
+      { token, portfolio_name },
+      { headers: authHeaders() }
+    )
+    return res.data
+  }
 }

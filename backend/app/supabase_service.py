@@ -1,4 +1,5 @@
 from app import supabase, bcrypt
+from datetime import datetime
 
 def get_user_by_email(email: str):
     response = supabase.table("users").select("*").filter("email", "eq", email).execute()
@@ -143,6 +144,37 @@ def delete_asset(portfolio_asset_id: int):
         return {"success": False, "error": str(e)}
 
 
+def sell_asset(portfolio_asset_id, quantity, price, date):
+    print(date)
+    try:
+        # Проверяем, существует ли актив
+        pa_resp = supabase.table("portfolio_assets").select("id").eq("id", portfolio_asset_id).execute()
+        if not pa_resp.data:
+            return {"success": False, "error": "Актив в портфеле не найден"}
+
+        # Считаем общее количество через транзакции
+        transactions_resp = supabase.table("transactions").select("transaction_type, quantity").eq("portfolio_asset_id", portfolio_asset_id).execute()
+        total_quantity = sum(t["quantity"] if t["transaction_type"] == 1 else -t["quantity"] for t in transactions_resp.data)
+
+        if quantity > total_quantity:
+            return {"success": False, "error": "Недостаточно актива для продажи"}
+
+        # Создаём транзакцию
+        transaction_data = {
+            "portfolio_asset_id": portfolio_asset_id,
+            "transaction_type": 2,
+            "price": price,
+            "quantity": quantity,
+            "transaction_date": date
+        }
+        supabase.table("transactions").insert(transaction_data).execute()
+
+        return {"success": True, "message": "Продажа успешно зарегистрирована", "data": transaction_data}
+
+    except Exception as e:
+        print(str(e))
+        return {"success": False, "error": str(e)}
+
 
 
 
@@ -226,5 +258,75 @@ def get_user_portfolio_value(email: str):
     response = supabase.rpc("get_portfolio_value_history", {"user_uuid": user_id}).execute()
     return response.data
 
+
+def import_tinkoff_portfolio_to_db(email: str, portfolio_id: int, tinkoff_data: dict):
+    print('Импортирум данные')
+    user = get_user_by_email(email)
+    user_id = user["id"]
+    print(user_id)
+
+    # Словарь для сопоставления типов инструментов с asset_type_id
+    asset_types = supabase.table("asset_types").select("id, name").execute().data
+    asset_type_map = {at["name"].lower(): at["id"] for at in asset_types}
+
+    print('перебираем данные')
+    for pos in tinkoff_data.get("positions", []):
+        ticker = pos["ticker"]
+        name = pos["name"]
+        figi = pos["figi"]
+        print(ticker)
+        instrument_type = pos.get("instrument_type", "share").lower()
+        average_price = pos.get("average_price", 0.0)
+        quantity = pos.get("quantity", 0.0)
+        currency_code = pos.get("currency", "RUB").lower()
+
+        asset_type_id = asset_type_map.get(instrument_type, 1)  # 1 — дефолтный
+        print(asset_type_id)
+
+        # 1. Создаём или находим актив
+        existing_asset = supabase.table("assets").select("id").eq("ticker", ticker).execute()
+        if existing_asset.data:
+            asset_id = existing_asset.data[0]["id"]
+            print('Актив существует', asset_id)
+        else:
+            print('Актив не найден')
+            continue
+            
+
+        # 2. Создаём запись в portfolio_assets, если нет
+        existing_pa = supabase.table("portfolio_assets").select("id").eq("portfolio_id", portfolio_id).eq("asset_id", asset_id).execute()
+        if existing_pa.data:
+            portfolio_asset_id = existing_pa.data[0]["id"]
+            print('Запись существует', portfolio_asset_id)
+        else:
+            pa_data = {
+                "portfolio_id": portfolio_id,
+                "asset_id": asset_id,
+                "quantity": 0,
+                "average_price": 0,
+            }
+            print(pa_data)
+            res = supabase.table("portfolio_assets").insert(pa_data).execute()
+            portfolio_asset_id = res.data[0]["id"]
+
+        # 3. Добавляем транзакции
+        print('Добавляем транзакции')
+        for tx in tinkoff_data.get("transactions", []):
+            if tx.get("figi") != figi:
+                continue
+            transaction_type = 1 if tx.get("type") == 'buy' else 2
+            if tx.get("price") != 0 and tx.get("quantity") != 0:
+                print(transaction_type)
+                tx_data = {
+                    "portfolio_asset_id": portfolio_asset_id,
+                    "transaction_type": transaction_type,
+                    "price": tx.get("price"),
+                    "quantity": tx.get("quantity"),
+                    "transaction_date": tx.get("date").isoformat()
+                }
+                print(tx_data)
+                supabase.table("transactions").insert(tx_data).execute()
+
+    return {"success": True, "message": "Портфель и транзакции импортированы"}
 
 
