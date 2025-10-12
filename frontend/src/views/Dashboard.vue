@@ -1,5 +1,5 @@
 <script setup>
-import { inject } from 'vue'
+import { inject, computed } from 'vue'
 import { mockData } from '../data/mockData.js'
 import generatePortfolioData from '../data/generatePortfolioData.js'
 
@@ -12,6 +12,19 @@ import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWi
 import TopAssetsWidget from '../components/widgets/TopAssetsWidget.vue'
 
 const user = inject('user')
+const dashboardData = inject('dashboardData')
+
+const totalAmount = computed(() => {
+  return dashboardData.value?.totalCapital
+    ? Number(dashboardData.value.totalCapital.totalAmount)
+    : 0
+})
+const monthlyChange = computed(() => {
+  return dashboardData.value?.totalCapital?.monthlyChange ?? { absolute: 0, percentage: 0 }
+})
+const assetAllocation = computed(() => {
+  return dashboardData.value?.assetAllocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
+})
 </script>
 
 <template>
@@ -22,12 +35,13 @@ const user = inject('user')
 
   <div class="widgets-grid">
     <TotalCapitalWidget 
-      :total-amount="mockData.totalCapital.totalAmount" 
-      :monthly-change="mockData.totalCapital.monthlyChange" 
+      :total-amount="totalAmount" 
+      :monthly-change="monthlyChange" 
     />
+
     <TopAssetsWidget :assets="mockData.topAssets" />
     <RecentTransactionsWidget :transactions="mockData.recentTransactions" />
-    <AssetAllocationWidget :assetAllocation="mockData.assetAllocation" />
+    <AssetAllocationWidget :assetAllocation="assetAllocation" />
     <GoalProgressWidget :goal-data="mockData.investmentGoal" />
     <PortfolioChartWidget :chartData="generatePortfolioData.data().portfolioChart" />
   </div>

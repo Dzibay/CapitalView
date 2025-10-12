@@ -1,5 +1,3 @@
-import aiohttp
-import asyncio
 from supabase import create_client
 from datetime import date, timedelta
 
@@ -48,7 +46,6 @@ async def get_price_moex(session, ticker):
         return None
 
 async def get_price_moex_history(session, ticker, days=365):
-    from datetime import date, timedelta
     end = date.today()
     start = end - timedelta(days=days)
     url = (

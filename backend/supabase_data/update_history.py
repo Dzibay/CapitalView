@@ -1,5 +1,6 @@
 import asyncio
-from moex_utils import get_assets, insert_price, clear_prices, get_price_moex_history, aiohttp
+import aiohttp
+from moex_utils import get_assets, insert_price, clear_prices, get_price_moex_history
 
 async def update_history_prices():
     print("Очищаем таблицу цен...")

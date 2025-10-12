@@ -13,9 +13,6 @@ const props = defineProps({
   }
 })
 
-// Сохраняем во внутреннюю реактивную переменную (опционально)
-const assetAllocation = ref(props.assetAllocation)
-
 const centerInfo = ref({
   label: '',
   percentage: 0,
@@ -27,8 +24,8 @@ const formatCurrency = (value) => {
 }
 
 const chartData = computed(() => ({
-  labels: assetAllocation.value.labels,
-  datasets: assetAllocation.value.datasets
+  labels: props.assetAllocation?.labels ?? [],
+  datasets: props.assetAllocation?.datasets ?? []
 }))
 
 const chartOptions = {
@@ -41,15 +38,17 @@ const chartOptions = {
       enabled: false,
       external(context) {
         const tooltipModel = context.tooltip
-        if (tooltipModel.dataPoints?.length) {
+        const data = props.assetAllocation
+
+        if (tooltipModel.dataPoints?.length && data.datasets?.length) {
           const idx = tooltipModel.dataPoints[0].dataIndex
-          const label = assetAllocation.value.labels[idx]
-          const value = assetAllocation.value.datasets[0].data[idx]
-          const total = assetAllocation.value.datasets[0].data.reduce((a,b)=>a+b,0)
-          const percentage = Math.round((value/total)*100)
+          const label = data.labels[idx]
+          const value = data.datasets[0].data[idx]
+          const total = data.datasets[0].data.reduce((a, b) => a + b, 0)
+          const percentage = Math.round((value / total) * 100)
           centerInfo.value = { label, value, percentage }
-        } else {
-          const total = assetAllocation.value.datasets[0].data.reduce((a,b)=>a+b,0)
+        } else if (data.datasets?.length) {
+          const total = data.datasets[0].data.reduce((a, b) => a + b, 0)
           centerInfo.value = { label: 'Всего', value: total, percentage: 100 }
         }
       }
@@ -65,7 +64,7 @@ const chartOptions = {
       <h2>Распределение активов</h2>
     </div>
 
-    <div class="allocation-container">
+    <div v-if="assetAllocation && assetAllocation.labels" class="allocation-container">
       <div class="chart-wrapper">
         <Doughnut :data="chartData" :options="chartOptions" />
         <div v-if="centerInfo.label" class="chart-center">

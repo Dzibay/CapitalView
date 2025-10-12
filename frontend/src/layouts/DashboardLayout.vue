@@ -3,6 +3,7 @@ import { ref, onMounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { authService } from '../services/authService.js'
 import assetsService from "../services/assetsService";
+import { fetchDashboardData } from '../services/dashboardService.js';
 
 // Компоненты макета
 import AppSidebar from '../components/AppSidebar.vue'
@@ -10,6 +11,7 @@ import AppHeader from '../components/AppHeader.vue'
 
 const user = ref(null)
 const portfolios = ref([])
+const dashboardData = ref(null)
 const loading = ref(true)
 const isSidebarVisible = ref(true)
 const router = useRouter()
@@ -19,9 +21,17 @@ const loadAssets = async () => {
   try {
     const res = await assetsService.getAssets()
     portfolios.value = res || []
-    console.log(portfolios.value)
   } catch (err) {
     console.error('Ошибка получения активов:', err)
+  }
+}
+
+// 🔹 Загрузка данных дашборда
+const loadDashboard = async (user) => {
+  try {
+    dashboardData.value = await fetchDashboardData(user)
+  } catch (err) {
+    console.error('Ошибка получения данных дашборда:', err)
   }
 }
 
@@ -54,6 +64,9 @@ onMounted(async () => {
     } else {
       user.value = u['user']
       await loadAssets()
+      await loadDashboard(user.value)
+      console.log('Ураааа')
+      console.log(dashboardData.value)
     }
   } catch (err) {
     console.error('Ошибка проверки токена:', err)
@@ -67,6 +80,7 @@ onMounted(async () => {
 // 👇 передаём все реактивные данные и функции дочерним страницам
 provide('user', user)
 provide('portfolios', portfolios)
+provide('dashboardData', dashboardData)
 provide('loading', loading)
 provide('reloadAssets', loadAssets)
 provide('addAsset', addAsset)

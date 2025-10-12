@@ -34,7 +34,7 @@ const isPositiveChange = computed(() => props.monthlyChange.absolute >= 0);
     <div class="capital-value-with-change">
       <div class="capital-values">{{ formattedAmount }}</div>
       <div class="value-change" :class="{ 'positive': isPositiveChange, 'negative': !isPositiveChange }">
-        <span>+ {{ monthlyChange.percentage }}% за месяц</span>
+        <span>{{ monthlyChange.percentage }}% за месяц</span>
         <!-- <span>({{ monthlyChange.absolute.toFixed(2) }} RUB) за месяц</span> -->
       </div>
     </div>

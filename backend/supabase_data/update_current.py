@@ -1,5 +1,6 @@
 import asyncio
-from moex_utils import get_assets, insert_price, get_price_moex, aiohttp
+import aiohttp
+from moex_utils import get_assets, insert_price, get_price_moex
 
 async def update_current_prices():
     assets = get_assets()
