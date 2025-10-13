@@ -1,5 +1,7 @@
 from supabase import create_client
 from datetime import date, timedelta
+import asyncio
+import aiohttp
 
 # 🔹 Настройки Supabase
 URL = "https://wnoulslvcvyhnwvjiixw.supabase.co"
@@ -28,9 +30,12 @@ def clear_prices():
 # 🔹 MOEX async
 async def fetch_json(session, url):
     try:
-        async with session.get(url) as response:
-            return await response.json()
-    except Exception:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            if resp.status != 200:
+                return None
+            return await resp.json()
+    except Exception as e:
+        print(f"Ошибка при запросе {url}: {e}")
         return None
 
 async def get_price_moex(session, ticker):
@@ -46,17 +51,29 @@ async def get_price_moex(session, ticker):
         return None
 
 async def get_price_moex_history(session, ticker, days=365):
+    from datetime import date, timedelta
     end = date.today()
     start = end - timedelta(days=days)
-    url = (
-        f"https://iss.moex.com/iss/engines/stock/markets/shares/securities/{ticker}/candles.json"
-        f"?interval=24&from={start}&to={end}"
-    )
-    data = await fetch_json(session, url)
-    try:
-        candles = data['candles']['data']
-        res = [(row[6], row[0]) for row in candles if row[0] is not None]
-        return res
-    except Exception:
-        return []
+    base_url = "https://iss.moex.com/iss/engines/stock/markets"
+
+    for market in ["shares", "bonds"]:
+        url = (
+            f"{base_url}/{market}/securities/{ticker}/candles.json"
+            f"?interval=24&from={start}&to={end}"
+        )
+        for attempt in range(3):
+            try:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status != 200:
+                        await asyncio.sleep(0.5)
+                        continue
+                    data = await resp.json()
+                    candles = data.get('candles', {}).get('data')
+                    if candles:
+                        return [(row[6], row[0]) for row in candles if row[0] is not None]
+            except Exception as e:
+                print(f"{ticker}: попытка {attempt+1} неудачна — {e}")
+                await asyncio.sleep(1)
+    return []
+
 

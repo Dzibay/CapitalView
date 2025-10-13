@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
 
 const props = defineProps({
   onImport: Function
@@ -7,13 +7,15 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 const token = ref('t.Wwc9-ETWh-SiWqphi_F3TQ-U7TZNsuhUryWHiDWu1vqvq19ypX7I9il3E9PlfZgKyt4gPiHrXD4RjyNiVUHzzA')
+const portfolioId = ref(null)
 const portfolioName = ref('Акции-Тинькофф')
 const loading = ref(false)
 const error = ref('')
+const portfolios = inject('portfolios')
 
 const handleImport = async () => {
-  if (!token.value || !portfolioName.value) {
-    error.value = 'Введите токен и название портфеля'
+  if (!token.value) {
+    error.value = 'Введите токен'
     return
   }
 
@@ -23,6 +25,7 @@ const handleImport = async () => {
   try {
     await props.onImport({
       token: token.value,
+      portfolioId: portfolioId.value,
       portfolio_name: portfolioName.value
     })
     emit('close')
@@ -42,8 +45,15 @@ const handleImport = async () => {
       <label>Токен API:</label>
       <input v-model="token" type="text" placeholder="Введите токен" />
 
-      <label>Название портфеля:</label>
-      <input v-model="portfolioName" type="text" placeholder="Название нового портфеля" />
+      <label>Портфель:</label>
+      <select v-model="portfolioId" required>
+        <option value="">Создать новый</option>
+        <option v-for="p in portfolios" :key="p.id" :value="p.id">
+            {{ p.name }}
+        </option>
+      </select>
+
+      <input v-if="!portfolioId" v-model="portfolioName" type="text" placeholder="Название нового портфеля" /><br>
 
       <div v-if="error" class="error">{{ error }}</div>
 

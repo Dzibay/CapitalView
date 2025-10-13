@@ -39,10 +39,10 @@ export default {
     return res.data
   },
 
-  async importPortfolio(token, portfolio_name) {
+  async importPortfolio(token, portfolio_id, portfolio_name) {
     const res = await axios.post(
       `${API_URL}/import_tinkoff_portfolio`,
-      { token, portfolio_name },
+      { token, portfolio_id, portfolio_name },
       { headers: authHeaders() }
     )
     return res.data

@@ -17,6 +17,7 @@ def get_all_assets(email: str):
     response = supabase.rpc("get_user_portfolios", {"u_id": user_id}).execute()
     return response.data
 
+
 def add_asset_transaction(email: str, tx_data: dict):
     """
     Добавляет транзакцию для актива (покупка/продажа).
@@ -252,81 +253,117 @@ def get_existing_assets():
 
 
 
-def get_user_portfolio_value(email: str):
-    user_id = get_user_by_email(email)["id"]
+def get_user_portfolio_value(user_email: str):
+    portfolios = get_user_portfolios(user_email)  # список портфелей пользователя
+    result = {}
 
-    response = supabase.rpc("get_portfolio_value_history", {"user_uuid": user_id}).execute()
-    return response.data
+    for p in portfolios:
+        print(p)
+        portfolio_id = p["id"]
+        history = supabase.rpc("get_portfolio_value_history_single", {"p_portfolio_id": portfolio_id}).execute().data
+        result[str(portfolio_id)] = history
+
+    return result
 
 
-def import_tinkoff_portfolio_to_db(email: str, portfolio_id: int, tinkoff_data: dict):
-    print('Импортирум данные')
+def import_tinkoff_portfolio_to_db(email: str, parent_portfolio_id: int, tinkoff_data: dict):
+    print('Импортируем данные...')
+
+    # 1. Получаем пользователя
     user = get_user_by_email(email)
     user_id = user["id"]
-    print(user_id)
 
-    # Словарь для сопоставления типов инструментов с asset_type_id
+    # 2. Загружаем типы активов
     asset_types = supabase.table("asset_types").select("id, name").execute().data
     asset_type_map = {at["name"].lower(): at["id"] for at in asset_types}
 
-    print('перебираем данные')
-    for pos in tinkoff_data.get("positions", []):
-        ticker = pos["ticker"]
-        name = pos["name"]
-        figi = pos["figi"]
-        print(ticker)
-        instrument_type = pos.get("instrument_type", "share").lower()
-        average_price = pos.get("average_price", 0.0)
-        quantity = pos.get("quantity", 0.0)
-        currency_code = pos.get("currency", "RUB").lower()
+    total_transactions = 0
 
-        asset_type_id = asset_type_map.get(instrument_type, 1)  # 1 — дефолтный
-        print(asset_type_id)
+    # 3. Проходим по каждому портфелю из tinkoff_data
+    for portfolio_name, data in tinkoff_data.items():
+        print(f"\nОбрабатываем портфель: {portfolio_name}")
 
-        # 1. Создаём или находим актив
-        existing_asset = supabase.table("assets").select("id").eq("ticker", ticker).execute()
-        if existing_asset.data:
-            asset_id = existing_asset.data[0]["id"]
-            print('Актив существует', asset_id)
-        else:
-            print('Актив не найден')
+        # --- создаём дочерний портфель ---
+        child_portfolio = {
+            "user_id": user_id,
+            "name": portfolio_name,
+            "parent_portfolio_id": parent_portfolio_id
+        }
+
+        inserted = supabase.table("portfolios").insert(child_portfolio).execute()
+        if not inserted.data:
+            print(f"❌ Ошибка при создании дочернего портфеля '{portfolio_name}'")
             continue
-            
 
-        # 2. Создаём запись в portfolio_assets, если нет
-        existing_pa = supabase.table("portfolio_assets").select("id").eq("portfolio_id", portfolio_id).eq("asset_id", asset_id).execute()
-        if existing_pa.data:
-            portfolio_asset_id = existing_pa.data[0]["id"]
-            print('Запись существует', portfolio_asset_id)
-        else:
-            pa_data = {
-                "portfolio_id": portfolio_id,
-                "asset_id": asset_id,
-                "quantity": 0,
-                "average_price": 0,
-            }
-            print(pa_data)
-            res = supabase.table("portfolio_assets").insert(pa_data).execute()
-            portfolio_asset_id = res.data[0]["id"]
+        child_portfolio_id = inserted.data[0]["id"]
+        print(f"✅ Создан дочерний портфель (id={child_portfolio_id})")
 
-        # 3. Добавляем транзакции
-        print('Добавляем транзакции')
-        for tx in tinkoff_data.get("transactions", []):
-            if tx.get("figi") != figi:
+        # --- импортируем активы и транзакции ---
+        portfolio_transactions = 0
+        for pos in data.get("positions", []):
+            ticker = pos["ticker"]
+            figi = pos["figi"]
+            instrument_type = pos.get("instrument_type", "share").lower()
+            quantity = pos.get("quantity", 0.0)
+            currency_code = pos.get("currency", "RUB").lower()
+
+            asset_type_id = asset_type_map.get(instrument_type, 1)
+
+            # 1️⃣ Ищем актив в базе
+            existing_asset = supabase.table("assets").select("id").eq("ticker", ticker).execute()
+            if existing_asset.data:
+                asset_id = existing_asset.data[0]["id"]
+            else:
+                print(f"Актив {ticker} не найден, пропускаем")
                 continue
-            transaction_type = 1 if tx.get("type") == 'buy' else 2
-            if tx.get("price") != 0 and tx.get("quantity") != 0:
-                print(transaction_type)
-                tx_data = {
-                    "portfolio_asset_id": portfolio_asset_id,
-                    "transaction_type": transaction_type,
-                    "price": tx.get("price"),
-                    "quantity": tx.get("quantity"),
-                    "transaction_date": tx.get("date").isoformat()
-                }
-                print(tx_data)
-                supabase.table("transactions").insert(tx_data).execute()
 
-    return {"success": True, "message": "Портфель и транзакции импортированы"}
+            # 2️⃣ Создаём или получаем portfolio_asset
+            existing_pa = supabase.table("portfolio_assets") \
+                .select("id") \
+                .eq("portfolio_id", child_portfolio_id) \
+                .eq("asset_id", asset_id) \
+                .execute()
+
+            if existing_pa.data:
+                portfolio_asset_id = existing_pa.data[0]["id"]
+            else:
+                pa_data = {
+                    "portfolio_id": child_portfolio_id,
+                    "asset_id": asset_id,
+                    "quantity": 0,
+                    "average_price": 0
+                }
+                res = supabase.table("portfolio_assets").insert(pa_data).execute()
+                portfolio_asset_id = res.data[0]["id"]
+
+            # 3️⃣ Добавляем транзакции
+            for tx in data.get("transactions", []):
+                if tx.get("figi") != figi:
+                    continue
+
+                tx_date = tx.get("date")
+                transaction_type = 1 if tx.get("type") == 'buy' else 2
+
+                if tx.get("price") and tx.get("quantity"):
+                    tx_data = {
+                        "portfolio_asset_id": portfolio_asset_id,
+                        "transaction_type": transaction_type,
+                        "price": tx["price"],
+                        "quantity": tx["quantity"],
+                        # убираем микросекунды у даты
+                        "transaction_date": (
+                            tx_date.replace(microsecond=0).isoformat()
+                            if hasattr(tx_date, "replace") else tx_date
+                        )
+                    }
+                    supabase.table("transactions").insert(tx_data).execute()
+                    portfolio_transactions += 1
+
+        print(f"  → Импортировано {portfolio_transactions} транзакций для {portfolio_name}")
+        total_transactions += portfolio_transactions
+
+    print(f'\nИмпорт завершён. Всего добавлено {total_transactions} транзакций.')
+
+
 
 

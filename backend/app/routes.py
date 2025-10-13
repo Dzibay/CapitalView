@@ -115,43 +115,81 @@ def import_tinkoff_portfolio_route():
     data = request.get_json()
 
     token = data.get("token")
+    portfolio_id = data.get("portfolio_id")
     portfolio_name = data.get("portfolio_name")
 
-    if not token or not portfolio_name:
+    if not token or all([not portfolio_name, not portfolio_id]):
         return jsonify({"success": False, "error": "Не указан токен или название портфеля"}), 400
 
     try:
-        # Создаём новый портфель
+        # 1️⃣ Получаем пользователя
         user = get_user_by_email(user_email)
         user_id = user["id"]
 
-        new_portfolio = {
-            "user_id": user_id,
-            "name": portfolio_name,
-            "description": f"Импорт из Tinkoff {datetime.utcnow().isoformat()}"
-        }
-        print('Создаем портфель')
-        res = supabase.table("portfolios").insert(new_portfolio).execute()
-        if not res.data:
-            return jsonify({"success": False, "error": "Ошибка при создании портфеля"}), 500
-        portfolio_id = res.data[0]["id"]
+        # 2️⃣ Если portfolio_id не указан — создаём новый портфель
+        if not portfolio_id:
+            new_portfolio = {
+                "user_id": user_id,
+                "name": portfolio_name,
+                "description": f"Импорт из Tinkoff {datetime.utcnow().isoformat()}"
+            }
+            print('Создаем новый портфель...')
+            res = supabase.table("portfolios").insert(new_portfolio).execute()
+            if not res.data:
+                return jsonify({"success": False, "error": "Ошибка при создании портфеля"}), 500
+            portfolio_id = res.data[0]["id"]
 
-        # Получаем данные из Tinkoff и импортируем
-        print('Получаем данные тинькофф')
-        tinkoff_data = get_full_portfolio(token)
-        print('Получили данные')
+        # 3️⃣ Проверяем, есть ли уже подключение к брокеру
+        print('Проверяем существующее подключение...')
+        broker_id = 1  # например, 1 = Тинькофф, можно сделать справочник brokers
+        connection_res = supabase.table("user_broker_connections") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .eq("broker_id", broker_id) \
+            .eq("portfolio_id", portfolio_id) \
+            .execute()
+
+        # 4️⃣ Определяем период загрузки
+        if connection_res.data:
+            connection = connection_res.data[0]
+            last_sync_at = connection["last_sync_at"]
+            print(f"Существующее подключение найдено. Последняя синхронизация: {last_sync_at}")
+            # Загружаем данные только после last_sync_at
+            tinkoff_data = get_full_portfolio(token, 365, since=last_sync_at)
+        else:
+            print('Создаём новое подключение...')
+            tinkoff_data = get_full_portfolio(token, 365)
+            # Создаём запись подключения
+            conn_data = {
+                "user_id": user_id,
+                "broker_id": broker_id,
+                "portfolio_id": portfolio_id,
+                "api_key": token,
+                "last_sync_at": datetime.utcnow().isoformat()
+            }
+            supabase.table("user_broker_connections").insert(conn_data).execute()
+
+        # 5️⃣ Импортируем портфель и транзакции
+        print('Импортируем данные портфеля...')
         import_result = import_tinkoff_portfolio_to_db(user_email, portfolio_id, tinkoff_data)
+
+        # 6️⃣ Обновляем дату синхронизации
+        if connection_res.data:
+            supabase.table("user_broker_connections") \
+                .update({"last_sync_at": datetime.utcnow().replace(microsecond=0).isoformat()}) \
+                .eq("id", connection["id"]) \
+                .execute()
 
         return jsonify({
             "success": True,
             "portfolio_id": portfolio_id,
-            "message": "Портфель и транзакции успешно импортированы",
+            "message": "Импорт завершён успешно",
             "import_result": import_result
         }), 201
 
     except Exception as e:
-        # всегда возвращаем JSON, даже при исключении
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 
 

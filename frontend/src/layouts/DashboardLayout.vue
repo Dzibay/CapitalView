@@ -69,9 +69,9 @@ const removeAsset = async (assetId) => {
 }
 
 // 🔹 Импорт портфеля из Tinkoff
-const importPortfolio = async ({ token, portfolio_name }) => {
+const importPortfolio = async ({ token, portfolioId, portfolio_name }) => {
   try {
-    const res = await assetsService.importPortfolio(token, portfolio_name)
+    const res = await assetsService.importPortfolio(token, portfolioId, portfolio_name)
     if (!res.success) throw new Error(res.error || 'Ошибка импорта портфеля')
 
     await loadAssets()
