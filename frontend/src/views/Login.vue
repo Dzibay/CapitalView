@@ -34,19 +34,35 @@ const doLogin = async () => {
   <Header />
   <div class="form">
     <h2>Вход</h2>
-    <input v-model="email" placeholder="Email" value="root@gmail.com" />
-    <input v-model="password" type="password" placeholder="Пароль" value="root" />
-    <div class="form-buttons">
-      <button @click="doLogin">Войти</button>
-      <button>
-        <router-link to="/register">Регистрация</router-link>
-      </button>
-    </div>
+
+    <form class="form" @submit.prevent="doLogin">
+      <input
+        v-model="email"
+        type="email"
+        placeholder="Email"
+        required
+        autocomplete="username"
+      />
+      <input
+        v-model="password"
+        type="password"
+        placeholder="Пароль"
+        required
+        autocomplete="current-password"
+      />
+
+      <div class="form-buttons">
+        <button type="submit">Войти</button>
+        <router-link to="/register">
+          <button type="button">Регистрация</button>
+        </router-link>
+      </div>
+    </form>
 
     <p>{{ message }}</p>
-    
   </div>
 </template>
+
 
 
 <style scoped>

@@ -1,7 +1,6 @@
 <script setup>
 import { inject, computed } from 'vue'
 import { mockData } from '../data/mockData.js'
-import generatePortfolioData from '../data/generatePortfolioData.js'
 
 // Виджеты
 import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
@@ -15,8 +14,8 @@ const user = inject('user')
 const dashboardData = inject('dashboardData')
 
 const totalAmount = computed(() => {
-  return dashboardData.value?.totalCapital
-    ? Number(dashboardData.value.totalCapital.totalAmount)
+  return dashboardData.value?.data?.summary?.total_value
+    ? Number(dashboardData.value?.data?.summary?.total_value)
     : 0
 })
 const investedAmount = computed(() => {
@@ -25,13 +24,15 @@ const investedAmount = computed(() => {
     : 0
 })
 const monthlyChange = computed(() => {
-  return dashboardData.value?.totalCapital?.monthlyChange ?? { absolute: 0, percentage: 0 }
+  return { absolute: dashboardData.value?.data?.summary?.total_profit,
+    percentage: dashboardData.value?.data?.summary?.profit_percent
+   } ?? { absolute: 0, percentage: 0 }
 })
 const assetAllocation = computed(() => {
-  return dashboardData.value?.assetAllocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
+  return dashboardData.value?.data?.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
 })
 const portfolioChart = computed(() => {
-  return dashboardData.value?.portfolioChart ?? { labels: [], data: [] }
+  return dashboardData.value?.data?.combined_history ?? { labels: [], data: [] }
 })
 </script>
 

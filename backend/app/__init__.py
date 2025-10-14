@@ -1,6 +1,6 @@
 from flask import Flask
-from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager
+from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 from supabase import create_client, Client as SupabaseClient
 import os
@@ -16,20 +16,22 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh" \
 "iRaaX60MdaCdEW5EK82ayWxYqxf0CY"
 
 supabase: SupabaseClient = create_client(SUPABASE_URL, SUPABASE_KEY)
+bcrypt = Bcrypt()
 
     
 def create_app():
     app = Flask(__name__)
-    app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-secret")
-
+    app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "supersecret")
     CORS(app, origins=["http://localhost:5173"], supports_credentials=True, resources={r"/*": {"origins": "*"}}, methods=["GET", "POST", "DELETE", "OPTIONS"])
-
+    jwt = JWTManager(app)
     bcrypt.init_app(app)
-    jwt.init_app(app)
 
-    from .routes import auth_bp, assets_bp, statistics_bp
-    app.register_blueprint(auth_bp, url_prefix="/auth")
-    app.register_blueprint(assets_bp, url_prefix="/api/assets")
-    app.register_blueprint(statistics_bp, url_prefix="/api/statistics")
+    from app.routes.auth_routes import auth_bp
+    from app.routes.portfolio_routes import portfolio_bp
+    from app.routes.dashboard_routes import dashboard_bp
+
+    app.register_blueprint(auth_bp, url_prefix="/api/auth")
+    app.register_blueprint(portfolio_bp, url_prefix="/api/portfolio")
+    app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
 
     return app

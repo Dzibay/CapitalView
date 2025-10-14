@@ -3,99 +3,81 @@ import { ref, onMounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { authService } from '../services/authService.js'
 import assetsService from "../services/assetsService";
-import { fetchDashboardData } from '../services/dashboardService.js';
+import { fetchDashboardData } from '../services/dashboardService.js'
 
-// Компоненты макета
 import AppSidebar from '../components/AppSidebar.vue'
 import AppHeader from '../components/AppHeader.vue'
 
 const user = ref(null)
-const portfolios = ref([])
 const dashboardData = ref(null)
 const loading = ref(true)
 const isSidebarVisible = ref(true)
 const router = useRouter()
 
-// 🔹 Загрузка активов
-const loadAssets = async () => {
+// 🔹 Универсальная перезагрузка Dashboard
+const reloadDashboard = async () => {
   try {
-    const res = await assetsService.getAssets()
-    portfolios.value = res || []
+    dashboardData.value = await fetchDashboardData()
   } catch (err) {
-    console.error('Ошибка получения активов:', err)
+    console.error('Ошибка получения данных Dashboard:', err)
   }
 }
 
-// 🔹 Загрузка данных дашборда
-const loadDashboard = async (user) => {
-  try {
-    dashboardData.value = await fetchDashboardData(user)
-  } catch (err) {
-    console.error('Ошибка получения данных дашборда:', err)
-  }
-}
+// // 🔹 Добавление актива
+// const addAsset = async (assetData) => {
+//   try {
+//     await assetsService.addAsset(assetData)
+//     await reloadDashboard()
+//   } catch (err) {
+//     console.error('Ошибка добавления актива:', err)
+//   }
+// }
 
-// 🔹 Добавление актива
-const addAsset = async (assetData) => {
-  try {
-    await assetsService.addAsset(assetData)
-    await loadAssets()
-    await loadDashboard(user.value)
-  } catch (err) {
-    console.error('Ошибка добавления актива:', err)
-  }
-}
+// // 🔹 Продажа актива
+// const sellAsset = async ({ portfolio_asset_id, quantity, price, date }) => {
+//   try {
+//     await assetsService.sellAsset(portfolio_asset_id, quantity, price, date)
+//     await reloadDashboard()
+//   } catch (err) {
+//     console.error('Ошибка продажи актива:', err)
+//   }
+// }
 
-const sellAsset = async ({ portfolio_asset_id, quantity, price, date }) => {
-  try {
-    await assetsService.sellAsset(portfolio_asset_id, quantity, price, date)
-    await loadAssets()
-    await loadDashboard(user.value)
-  } catch (err) {
-    console.error('Ошибка продажи актива:', err)
-  }
-}
+// // 🔹 Удаление актива
+// const removeAsset = async (assetId) => {
+//   if (!confirm("Удалить актив?")) return
+//   try {
+//     await assetsService.deleteAsset(assetId)
+//     await reloadDashboard()
+//   } catch (err) {
+//     console.error('Ошибка удаления актива:', err)
+//   }
+// }
 
-// 🔹 Удаление актива
-const removeAsset = async (assetId) => {
-  if (!confirm("Удалить актив?")) return
-  try {
-    await assetsService.deleteAsset(assetId)
-    await loadAssets()
-    await loadDashboard(user.value)
-  } catch (err) {
-    console.error('Ошибка удаления актива:', err)
-  }
-}
+// // 🔹 Импорт портфеля из Tinkoff
+// const importPortfolio = async ({ token, portfolioId, portfolio_name }) => {
+//   try {
+//     const res = await assetsService.importPortfolio(token, portfolioId, portfolio_name)
+//     if (!res.success) throw new Error(res.error || 'Ошибка импорта портфеля')
+//     await reloadDashboard()
+//   } catch (err) {
+//     console.error('Ошибка импорта портфеля:', err)
+//   }
+// }
 
-// 🔹 Импорт портфеля из Tinkoff
-const importPortfolio = async ({ token, portfolioId, portfolio_name }) => {
-  try {
-    const res = await assetsService.importPortfolio(token, portfolioId, portfolio_name)
-    if (!res.success) throw new Error(res.error || 'Ошибка импорта портфеля')
-
-    await loadAssets()
-    await loadDashboard(user.value)
-  } catch (err) {
-    console.error('Ошибка импорта портфеля:', err)
-    throw err
-  }
-}
-
+// 🔹 Инициализация при загрузке
 onMounted(async () => {
   try {
     const u = await authService.checkToken()
     if (!u) {
       router.push('/login')
-    } else {
-      user.value = u['user']
-      await loadAssets()
-      await loadDashboard(user.value)
-      console.log('Ураааа')
-      console.log(dashboardData.value)
+      return
     }
+    user.value = u.user
+    await reloadDashboard()
+    console.log('✅ Dashboard данные загружены', dashboardData.value)
   } catch (err) {
-    console.error('Ошибка проверки токена:', err)
+    console.error('Ошибка при авторизации:', err)
     authService.logout()
     router.push('/login')
   } finally {
@@ -103,25 +85,23 @@ onMounted(async () => {
   }
 })
 
-// 👇 передаём все реактивные данные и функции дочерним страницам
+// 👇 передаём всё дочерним страницам
 provide('user', user)
-provide('portfolios', portfolios)
 provide('dashboardData', dashboardData)
 provide('loading', loading)
-provide('reloadAssets', loadAssets)
-provide('addAsset', addAsset)
-provide('sellAsset', sellAsset)
-provide('removeAsset', removeAsset)
-provide('importPortfolio', importPortfolio)
+provide('reloadDashboard', reloadDashboard)
+// provide('addAsset', addAsset)
+// provide('sellAsset', sellAsset)
+// provide('removeAsset', removeAsset)
+// provide('importPortfolio', importPortfolio)
 
 function toggleSidebar() {
   isSidebarVisible.value = !isSidebarVisible.value
 }
-
 </script>
 
 <template>
-  <div class="dashboard-layout">
+  <div class="dashboard-layout" v-if="!loading">
     <AppSidebar :class="{ 'sidebar-hidden': !isSidebarVisible }" />
     <main class="main-content" :class="{ 'full-width': !isSidebarVisible }">
       <AppHeader :user="user" @toggle-sidebar="toggleSidebar" />
@@ -129,6 +109,10 @@ function toggleSidebar() {
         <router-view />
       </div>
     </main>
+  </div>
+
+  <div v-else class="loading-screen">
+    <p>Загрузка данных...</p>
   </div>
 </template>
 
@@ -151,5 +135,13 @@ function toggleSidebar() {
 .page-content {
   margin-top: var(--headerHeight);
   padding: var(--spacing);
+}
+
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 1.5rem;
 }
 </style>
