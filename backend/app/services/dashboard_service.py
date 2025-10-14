@@ -1,17 +1,7 @@
 import asyncio
-from app.services.portfolio_service_async import (
-    get_user_portfolios,
-    get_portfolio_assets,
-    get_portfolio_value_history,
-)
-
-import asyncio
 from collections import defaultdict
-from app.services.portfolio_service_async import (
-    get_user_portfolios,
-    get_portfolio_assets,
-    get_portfolio_value_history,
-)
+from app.services.portfolio_service_async import (get_user_portfolios, get_portfolio_assets, get_portfolio_value_history)
+from app.services.reference_service import (get_asset_types, get_currencies, get_system_assets)
 
 async def get_dashboard_data(user_email: str):
     portfolios = await get_user_portfolios(user_email) or []
@@ -36,10 +26,15 @@ async def get_dashboard_data(user_email: str):
 
     # Сбор всех активов
     assets = []
-    for r in assets_results:
-        if isinstance(r, Exception):
+    for portfolio, result in zip(portfolios, assets_results):
+        if isinstance(result, Exception):
+            portfolio["assets"] = []
             continue
-        assets.extend(r or [])
+        if result:
+            portfolio["assets"] = result
+            # for asset in result:
+            #     asset["portfolio_id"] = pid   # 👈 добавляем ID портфеля к каждому активу
+            assets.extend(result)
 
     # Итоговая сводка
     total_value = round(sum([p.get("total_value") or 0 for p in portfolios]), 2)
@@ -95,12 +90,29 @@ async def get_dashboard_data(user_email: str):
         "data": [round(v, 2) for d, v in sorted_items]
     }
 
+
+    # === 🧩 Добавляем referenceData ===
+    # эти функции синхронные, вызываем их параллельно через asyncio.to_thread
+    asset_types, currencies, system_assets = await asyncio.gather(
+        asyncio.to_thread(get_asset_types),
+        asyncio.to_thread(get_currencies),
+        asyncio.to_thread(get_system_assets),
+    )
+
+    reference_data = {
+        "asset_types": asset_types,
+        "currencies": currencies,
+        "assets": system_assets
+    }
+
     return {
         "portfolios": portfolios,
         "assets": assets,
         "histories": histories,
-        "combined_history": combined_history,  # ✅ объединённая история
+        "combined_history": combined_history,
         "summary": summary,
-        "asset_allocation": asset_allocation
+        "asset_allocation": asset_allocation,
+        "referenceData": reference_data  # ✅ добавлено сюда
     }
+
 

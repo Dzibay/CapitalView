@@ -29,9 +29,11 @@ def create_app():
     from app.routes.auth_routes import auth_bp
     from app.routes.portfolio_routes import portfolio_bp
     from app.routes.dashboard_routes import dashboard_bp
+    from app.routes.assets_routes import assets_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(portfolio_bp, url_prefix="/api/portfolio")
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
+    app.register_blueprint(assets_bp, url_prefix="/api/assets")
 
     return app

@@ -23,36 +23,36 @@ const reloadDashboard = async () => {
   }
 }
 
-// // 🔹 Добавление актива
-// const addAsset = async (assetData) => {
-//   try {
-//     await assetsService.addAsset(assetData)
-//     await reloadDashboard()
-//   } catch (err) {
-//     console.error('Ошибка добавления актива:', err)
-//   }
-// }
+// 🔹 Добавление актива
+const addAsset = async (assetData) => {
+  try {
+    await assetsService.addAsset(assetData)
+    await reloadDashboard()
+  } catch (err) {
+    console.error('Ошибка добавления актива:', err)
+  }
+}
 
-// // 🔹 Продажа актива
-// const sellAsset = async ({ portfolio_asset_id, quantity, price, date }) => {
-//   try {
-//     await assetsService.sellAsset(portfolio_asset_id, quantity, price, date)
-//     await reloadDashboard()
-//   } catch (err) {
-//     console.error('Ошибка продажи актива:', err)
-//   }
-// }
+// 🔹 Продажа актива
+const sellAsset = async ({ portfolio_asset_id, quantity, price, date }) => {
+  try {
+    await assetsService.sellAsset(portfolio_asset_id, quantity, price, date)
+    await reloadDashboard()
+  } catch (err) {
+    console.error('Ошибка продажи актива:', err)
+  }
+}
 
-// // 🔹 Удаление актива
-// const removeAsset = async (assetId) => {
-//   if (!confirm("Удалить актив?")) return
-//   try {
-//     await assetsService.deleteAsset(assetId)
-//     await reloadDashboard()
-//   } catch (err) {
-//     console.error('Ошибка удаления актива:', err)
-//   }
-// }
+// 🔹 Удаление актива
+const removeAsset = async (assetId) => {
+  if (!confirm("Удалить актив?")) return
+  try {
+    await assetsService.deleteAsset(assetId)
+    await reloadDashboard()
+  } catch (err) {
+    console.error('Ошибка удаления актива:', err)
+  }
+}
 
 // // 🔹 Импорт портфеля из Tinkoff
 // const importPortfolio = async ({ token, portfolioId, portfolio_name }) => {
@@ -90,9 +90,9 @@ provide('user', user)
 provide('dashboardData', dashboardData)
 provide('loading', loading)
 provide('reloadDashboard', reloadDashboard)
-// provide('addAsset', addAsset)
+provide('addAsset', addAsset)
 // provide('sellAsset', sellAsset)
-// provide('removeAsset', removeAsset)
+provide('removeAsset', removeAsset)
 // provide('importPortfolio', importPortfolio)
 
 function toggleSidebar() {
@@ -101,7 +101,7 @@ function toggleSidebar() {
 </script>
 
 <template>
-  <div class="dashboard-layout" v-if="!loading">
+  <div class="dashboard-layout">
     <AppSidebar :class="{ 'sidebar-hidden': !isSidebarVisible }" />
     <main class="main-content" :class="{ 'full-width': !isSidebarVisible }">
       <AppHeader :user="user" @toggle-sidebar="toggleSidebar" />
@@ -111,9 +111,7 @@ function toggleSidebar() {
     </main>
   </div>
 
-  <div v-else class="loading-screen">
-    <p>Загрузка данных...</p>
-  </div>
+  
 </template>
 
 <style scoped>
@@ -135,13 +133,5 @@ function toggleSidebar() {
 .page-content {
   margin-top: var(--headerHeight);
   padding: var(--spacing);
-}
-
-.loading-screen {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  font-size: 1.5rem;
 }
 </style>

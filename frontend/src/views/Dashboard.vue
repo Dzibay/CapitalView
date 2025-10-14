@@ -12,49 +12,50 @@ import TopAssetsWidget from '../components/widgets/TopAssetsWidget.vue'
 
 const user = inject('user')
 const dashboardData = inject('dashboardData')
+const loading = inject('loading')
 
-const totalAmount = computed(() => {
-  return dashboardData.value?.data?.summary?.total_value
-    ? Number(dashboardData.value?.data?.summary?.total_value)
-    : 0
+const parsedDashboard = computed(() => {
+  const data = dashboardData.value?.data
+  if (!data) return null
+
+  return {
+    totalAmount: Number(data.summary?.total_value || 0),
+    investedAmount: Number(dashboardData.value?.totalCapital?.investedAmount || 0),
+    monthlyChange: {
+      absolute: data.summary?.total_profit || 0,
+      percentage: data.summary?.profit_percent || 0
+    },
+    assetAllocation: data.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] },
+    portfolioChart: data.combined_history ?? { labels: [], data: [] }
+  }
 })
-const investedAmount = computed(() => {
-  return dashboardData.value?.totalCapital
-    ? Number(dashboardData.value.totalCapital.investedAmount)
-    : 0
-})
-const monthlyChange = computed(() => {
-  return { absolute: dashboardData.value?.data?.summary?.total_profit,
-    percentage: dashboardData.value?.data?.summary?.profit_percent
-   } ?? { absolute: 0, percentage: 0 }
-})
-const assetAllocation = computed(() => {
-  return dashboardData.value?.data?.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
-})
-const portfolioChart = computed(() => {
-  return dashboardData.value?.data?.combined_history ?? { labels: [], data: [] }
-})
+
 </script>
 
 <template>
-  <div class="title-text">
-    <h1>С возвращением, {{ user?.name }}</h1>
-    <h2>Главная</h2>
+  <div v-if="!loading">
+    <div class="title-text">
+      <h1>С возвращением, {{ user?.name }}</h1>
+      <h2>Главная</h2>
+    </div>
+
+    <div class="widgets-grid">
+      <TotalCapitalWidget 
+        :total-amount="parsedDashboard.totalAmount" 
+        :monthly-change="parsedDashboard.monthlyChange" 
+        :invested-amount="parsedDashboard.investedAmount" 
+      />
+
+      <TopAssetsWidget :assets="mockData.topAssets" />
+      <RecentTransactionsWidget :transactions="mockData.recentTransactions" />
+      <AssetAllocationWidget :assetAllocation="parsedDashboard.assetAllocation" />
+      <GoalProgressWidget :goal-data="mockData.investmentGoal" />
+      <PortfolioChartWidget :chartData="parsedDashboard.portfolioChart" />
+
+    </div>
   </div>
-
-  <div class="widgets-grid">
-    <TotalCapitalWidget 
-      :total-amount="totalAmount" 
-      :monthly-change="monthlyChange" 
-      :invested-amount="investedAmount" 
-    />
-
-    <TopAssetsWidget :assets="mockData.topAssets" />
-    <RecentTransactionsWidget :transactions="mockData.recentTransactions" />
-    <AssetAllocationWidget :assetAllocation="assetAllocation" />
-    <GoalProgressWidget :goal-data="mockData.investmentGoal" />
-    <PortfolioChartWidget :chartData="portfolioChart" />
-
+  <div v-else class="loading-screen">
+    <p>Загрузка данных...</p>
   </div>
 </template>
 
@@ -68,5 +69,13 @@ const portfolioChart = computed(() => {
   gap: var(--spacing);
   grid-template-columns: repeat(auto-fit, minmax(clamp(350px, 20%, 400px), 1fr));
   grid-auto-rows: 150px;
+}
+
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 1.5rem;
 }
 </style>

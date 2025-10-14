@@ -1,5 +1,5 @@
 <script setup>
-import { ref, inject } from 'vue'
+import { ref, inject, computed } from 'vue'
 import AddAssetModal from '../components/AddAssetModal.vue'
 import SellAssetModal from '../components/SellAssetModal.vue'
 import ImportPortfolioModal from '../components/ImportPortfolioModal.vue'
@@ -10,15 +10,24 @@ const showImportModal = ref(false)
 const selectedAsset = ref(null)
 
 const user = inject('user')
-const portfolios = inject('portfolios')
 const loading = inject('loading')
-const reloadAssets = inject('reloadAssets')
+const dashboardData = inject('dashboardData')
+const reloadDasboard = inject('reloadDashboard')
+
 const addAsset = inject('addAsset')
 const removeAsset = inject('removeAsset')
-const sellAsset = inject('sellAsset')
-const importPortfolio = inject('importPortfolio')
+// const sellAsset = inject('sellAsset')
+// const importPortfolio = inject('importPortfolio')
 
+const parsedDashboard = computed(() => {
+  const data = dashboardData.value?.data
+  if (!data) return null
 
+  return {
+    portfolios: data.portfolios ?? [],
+    reference: data.referenceData ?? []
+  }
+})
 </script>
 
 <template>
@@ -30,6 +39,8 @@ const importPortfolio = inject('importPortfolio')
       v-if="showAddModal" 
       @close="showAddModal = false" 
       :onSave="addAsset" 
+      :referenceData="parsedDashboard.reference" 
+      :portfolios="parsedDashboard.portfolios" 
     />
 
     <SellAssetModal
@@ -47,13 +58,13 @@ const importPortfolio = inject('importPortfolio')
 
     <div v-if="loading">Загрузка...</div>
 
-    <div v-else-if="portfolios.length === 0">
+    <div v-else-if="parsedDashboard.portfolios.length === 0">
       У вас пока нет портфелей
     </div>
 
     <div v-else>
       <div
-        v-for="portfolio in portfolios"
+        v-for="portfolio in parsedDashboard.portfolios"
         :key="portfolio.id"
         class="portfolio-block"
       >

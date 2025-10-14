@@ -3,18 +3,15 @@
     <div class="modal-content">
       <h2>Добавить актив</h2>
 
-      <!-- Загрузка справочников -->
-      <div v-if="loadingReference" class="modal-loading">Загрузка данных...</div>
-
       <!-- Сохраняем актив -->
-      <div v-else-if="saving" class="modal-loading">Сохраняем...</div>
+      <div v-if="saving" class="modal-loading">Сохраняем...</div>
 
       <!-- Форма добавления -->
       <form v-else @submit.prevent="submitForm">
         <div>
           <label>Портфель:</label>
           <select v-model="form.portfolio_id" required>
-            <option v-for="p in portfolios" :key="p.id" :value="p.id">
+            <option v-for="p in portfolios" :key="p.portfolio_id" :value="p.portfolio_id">
               {{ p.name }}
             </option>
           </select>
@@ -78,13 +75,13 @@
 
 <script setup>
 import { reactive, ref, onMounted, inject } from 'vue'
-import assetsService from '../services/assetsService.js'
 
 const props = defineProps({
-  onSave: Function // функция сохранения из родителя
+  onSave: Function, // функция сохранения из родителя
+  referenceData: Object,
+  portfolios: Object
 })
 
-const portfolios = inject('portfolios')
 const emit = defineEmits(['close'])
 
 const form = reactive({
@@ -99,20 +96,8 @@ const form = reactive({
   date: new Date().toISOString().slice(0, 10)
 })
 
-const referenceData = ref({ asset_types: [], currencies: [], assets: [] })
-const loadingReference = ref(true) // индикатор загрузки справочников
 const saving = ref(false)           // индикатор сохранения
 
-onMounted(async () => {
-  try {
-    const res = await assetsService.getReferenceData()
-    referenceData.value = res
-  } catch (err) {
-    console.error('Ошибка загрузки справочников:', err)
-  } finally {
-    loadingReference.value = false
-  }
-})
 
 const submitForm = async () => {
   if (!props.onSave) return
