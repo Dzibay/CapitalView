@@ -2,7 +2,6 @@ import axios from "axios";
 
 function authHeaders() {
   const token = localStorage.getItem('access_token')
-  console.log(token)
   return { Authorization: `Bearer ${token}` }
 }
 const API_URL = 'http://localhost:5000/api/dashboard';

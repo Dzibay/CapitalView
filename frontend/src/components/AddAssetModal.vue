@@ -11,7 +11,7 @@
         <div>
           <label>Портфель:</label>
           <select v-model="form.portfolio_id" required>
-            <option v-for="p in portfolios" :key="p.portfolio_id" :value="p.portfolio_id">
+            <option v-for="p in portfolios" :key="p.id" :value="p.id">
               {{ p.name }}
             </option>
           </select>

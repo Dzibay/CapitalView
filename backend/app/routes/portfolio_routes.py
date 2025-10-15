@@ -25,6 +25,25 @@ def list_portfolios_route():
     data = asyncio.run(get_user_portfolios(user_email))
     return jsonify(data)
 
+@portfolio_bp.route("/add", methods=["POST"])
+@jwt_required()
+def add_portfolio_route():
+    user_email = get_jwt_identity()
+    user_id = get_user_by_email(user_email)["id"]
+
+    data = request.get_json()
+    parent_portfolio_id = data.get("parent_portfolio_id")
+    portfolio_name = data.get("name")
+
+    insert_data = {
+        "user_id": user_id,
+        "parent_portfolio_id": parent_portfolio_id,
+        "name": portfolio_name,
+        "description": {}
+    }
+    res = table_insert("portfolios", insert_data)
+    return jsonify(res)
+
 @portfolio_bp.route("/<int:portfolio_id>/assets", methods=["GET"])
 @jwt_required()
 def portfolio_assets_route(portfolio_id):

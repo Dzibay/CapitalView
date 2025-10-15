@@ -1,8 +1,8 @@
 from app.services.supabase_service import table_select
 
 def get_asset_types():
-    """Возвращает системные (некастомные) типы активов"""
-    return table_select("asset_types", filters={"is_custom": False})
+    """Возвращает типы активов"""
+    return table_select("asset_types")
 
 def get_currencies():
     """Возвращает список валют"""

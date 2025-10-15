@@ -3,8 +3,10 @@ import { ref, inject, computed } from 'vue'
 import AddAssetModal from '../components/AddAssetModal.vue'
 import SellAssetModal from '../components/SellAssetModal.vue'
 import ImportPortfolioModal from '../components/ImportPortfolioModal.vue'
+import AddPortfolioModal from '../components/AddPortfolioModal.vue'
 
 const showAddModal = ref(false)
+const showAddPortfolioModal = ref(false)
 const showSellModal = ref(false)
 const showImportModal = ref(false)
 const selectedAsset = ref(null)
@@ -17,6 +19,7 @@ const reloadDasboard = inject('reloadDashboard')
 const addAsset = inject('addAsset')
 const removeAsset = inject('removeAsset')
 const clearPortfolio = inject('clearPortfolio')
+const addPortfolio = inject('addPortfolio')
 // const sellAsset = inject('sellAsset')
 const importPortfolio = inject('importPortfolio')
 
@@ -34,6 +37,7 @@ const parsedDashboard = computed(() => {
 <template>
   <div>
     <button @click="showAddModal = true">➕ Добавить актив</button>
+    <button @click="showAddPortfolioModal = true">➕ Создать портфель</button>
     <button @click="showImportModal = true">📥 Импорт портфеля</button>
 
     <AddAssetModal 
@@ -41,6 +45,13 @@ const parsedDashboard = computed(() => {
       @close="showAddModal = false" 
       :onSave="addAsset" 
       :referenceData="parsedDashboard.reference" 
+      :portfolios="parsedDashboard.portfolios" 
+    />
+
+    <AddPortfolioModal 
+      v-if="showAddPortfolioModal" 
+      @close="showAddPortfolioModal = false" 
+      :onSave="addPortfolio" 
       :portfolios="parsedDashboard.portfolios" 
     />
 

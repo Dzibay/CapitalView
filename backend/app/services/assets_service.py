@@ -17,6 +17,7 @@ def create_asset(email: str, data: dict):
         name = data.get("name")
         ticker = data.get("ticker")
         quantity = float(data.get("quantity", 0))
+        currency = int(data.get("currency", 1))
         price = float(data.get("average_price", 0))
         date = data.get("date") or datetime.utcnow().isoformat()
         print(portfolio_id, asset_id, asset_type_id, name, ticker, quantity, price, date)
@@ -54,9 +55,11 @@ def create_asset(email: str, data: dict):
                 price_data = {
                     "asset_id": asset_id,
                     "price": price,
+                    "currency": currency,
                     "trade_date": date,
                 }
-                table_insert("asset_prices", price_data)
+                price_res = table_insert("asset_prices", price_data)
+                print('Добавление цены актива', price_res)
                 # supabase.table("asset_prices").insert(price_data).execute()
 
         # --- Проверяем, есть ли актив в портфеле ---

@@ -37,6 +37,16 @@ const addAsset = async (assetData) => {
   }
 }
 
+// 🔹 Добавление актива
+const addPortfolio = async (portfolioData) => {
+  try {
+    await portfolioService.addPortfolio(portfolioData)
+    await reloadDashboard()
+  } catch (err) {
+    console.error('Ошибка создания портфеля:', err)
+  }
+}
+
 // 🔹 Продажа актива
 const sellAsset = async ({ portfolio_asset_id, quantity, price, date }) => {
   try {
@@ -109,6 +119,7 @@ provide('reloadDashboard', reloadDashboard)
 provide('addAsset', addAsset)
 // provide('sellAsset', sellAsset)
 provide('removeAsset', removeAsset)
+provide('addPortfolio', addPortfolio)
 provide('clearPortfolio', clearPortfolio)
 provide('importPortfolio', importPortfolio)
 
