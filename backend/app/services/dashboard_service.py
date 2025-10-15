@@ -55,7 +55,8 @@ async def get_dashboard_data(user_email: str):
             continue
         quantity = float(asset.get("quantity") or 0.0)
         price = float(asset.get("last_price") or 0.0)
-        allocation[atype] = allocation.get(atype, 0) + quantity * price
+        currency_multiplier = float(asset.get("currency_rate_to_rub") or 1.0)
+        allocation[atype] = allocation.get(atype, 0) + quantity * price * currency_multiplier
 
     asset_allocation = {
         "labels": list(allocation.keys()),
