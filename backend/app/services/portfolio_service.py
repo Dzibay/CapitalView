@@ -208,7 +208,14 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
         if tasks:
             results = await asyncio.gather(*tasks)
             total_transactions += len(results)
+
+            p_asset_ids = table_select("portfolio_assets", "id", {"portfolio_id": child_portfolio_id})
+            for p_asset in p_asset_ids:
+                pa_id = int(p_asset["id"])
+                resp = rpc("update_portfolio_asset", {"pa_id": pa_id})
+
             print(f"→ Импортировано {len(results)} транзакций в {broker_portfolio_name}")
+
 
     print(f"✅ Импорт завершён. Всего транзакций: {total_transactions}")
     return {"success": True, "total_transactions": total_transactions}

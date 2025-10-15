@@ -1,7 +1,6 @@
 from app import supabase
 
 def rpc(fn_name: str, params: dict):
-    """Вызов RPC-функции Supabase (sync)"""
     return supabase.rpc(fn_name, params).execute().data
 
 def table_select(table: str, select="*", filters: dict = None, order=None, limit=None, offset=None):
