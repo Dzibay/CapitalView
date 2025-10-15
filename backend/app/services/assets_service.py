@@ -17,7 +17,7 @@ def create_asset(email: str, data: dict):
         name = data.get("name")
         ticker = data.get("ticker")
         quantity = float(data.get("quantity", 0))
-        currency = int(data.get("currency", 1))
+        currency = int(data.get("currency")) if data.get("currency") else None
         price = float(data.get("average_price", 0))
         date = data.get("date") or datetime.utcnow().isoformat()
         print(portfolio_id, asset_id, asset_type_id, name, ticker, quantity, price, date)

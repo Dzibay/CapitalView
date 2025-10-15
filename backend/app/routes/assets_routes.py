@@ -10,6 +10,7 @@ assets_bp = Blueprint("assets", __name__)
 def create_asset_route():
     email = get_jwt_identity()
     data = request.get_json()
+    print(data)
     res = create_asset(email, data)
     return jsonify(res)
     

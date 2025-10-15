@@ -6,7 +6,7 @@ def get_asset_types():
 
 def get_currencies():
     """Возвращает список валют"""
-    return table_select("currencies", select="id, code, name")
+    return table_select("assets", select="id, ticker", filters={"asset_type_id": 7})
 
 def get_system_assets(limit: int = 100):
     """Возвращает системные активы (is_custom = false через тип актива)"""

@@ -94,9 +94,9 @@ const parsedDashboard = computed(() => {
             class="asset-item"
           >
             <strong>{{ asset.name }}</strong> ({{ asset.ticker }}) — 
-            {{ asset.quantity }} шт × {{ asset.average_price.toFixed(2) }} ₽  
+            {{ asset.quantity }} шт × {{ asset.average_price }} 
             <span v-if="asset.last_price">
-              (текущая: {{ asset.last_price.toFixed(2) }} ₽) (стоимость: {{ asset.quantity * asset.last_price.toFixed(2) }} ₽)
+              (текущая: {{ asset.last_price }} {{ asset.currency_ticker }}) (стоимость: {{ asset.quantity * asset.last_price * asset.currency_rate_to_rub }} ₽)
             </span>
 
             <button @click="removeAsset(asset.portfolio_asset_id)">❌</button>

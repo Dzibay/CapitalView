@@ -55,27 +55,28 @@ def get_full_portfolio(token, days=365):
             )
             transactions_data = []
             for op in operations.operations:
-                price = getattr(op, 'price', None)
-                op_type_str = op.operation_type.name.lower()
+                if getattr(op, 'quantity', 0) > 0:
+                    price = getattr(op, 'price', None)
+                    op_type_str = op.operation_type.name.lower()
 
-                # Определяем тип операции (buy/sell)
-                if "buy" in op_type_str:
-                    op_type_str = "buy"
-                elif "sell" in op_type_str:
-                    op_type_str = "sell"
-                else:
-                    op_type_str = "other"
+                    # Определяем тип операции (buy/sell)
+                    if "buy" in op_type_str:
+                        op_type_str = "buy"
+                    elif "sell" in op_type_str:
+                        op_type_str = "sell"
+                    else:
+                        op_type_str = "other"
 
-                transactions_data.append({
-                    "id": getattr(op, 'id', None),
-                    "figi": getattr(op, 'figi', None),
-                    "instrument_type": getattr(op, 'instrument_type', None),
-                    "date": getattr(op, 'date', None),
-                    "price": price.units + price.nano / 1e9 if price else None,
-                    "quantity": getattr(op, 'quantity', None),
-                    "type": op_type_str,
-                    "currency": getattr(price, 'currency', None) if price else None
-                })
+                    transactions_data.append({
+                        "id": getattr(op, 'id', None),
+                        "figi": getattr(op, 'figi', None),
+                        "instrument_type": getattr(op, 'instrument_type', None),
+                        "date": getattr(op, 'date', None),
+                        "price": price.units + price.nano / 1e9 if price else None,
+                        "quantity": getattr(op, 'quantity', None),
+                        "type": op_type_str,
+                        "currency": getattr(price, 'currency', None) if price else None
+                    })
             result_data[account.name] = {"positions": positions_data, "transactions": transactions_data}
         return result_data
 

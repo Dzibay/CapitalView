@@ -45,7 +45,7 @@
           <label>Валюта:</label>
           <select v-model="form.currency" required>
             <option v-for="c in referenceData.currencies" :key="c.id" :value="c.id">
-              {{ c.code }}
+              {{ c.ticker }}
             </option>
           </select>
         </div>

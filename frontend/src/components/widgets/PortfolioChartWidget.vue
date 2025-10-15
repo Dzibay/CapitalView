@@ -55,16 +55,23 @@ function aggregateLabelsAndData(dataObj, period) {
   }
 
   const lastDate = today;
-  let lastKnownValue = points[0]?.value ?? 0;
   let pointIndex = 0;
 
+  let lastKnownValue = 0; // до первой транзакции 0
+  let firstPointDate = points[0]?.date;
+
   for (let d = new Date(firstDate); d <= lastDate; d.setDate(d.getDate() + 1)) {
-    while (pointIndex < points.length && points[pointIndex].date <= d) {
-      lastKnownValue = points[pointIndex].value;
-      pointIndex++;
+    if (firstPointDate && d < firstPointDate) {
+      // до появления первых данных — 0
+      data.push(0);
+    } else {
+      while (pointIndex < points.length && points[pointIndex].date <= d) {
+        lastKnownValue = points[pointIndex].value;
+        pointIndex++;
+      }
+      data.push(lastKnownValue);
     }
-    labels.push(d.toISOString().split('T')[0]); // сохраняем дату в ISO
-    data.push(lastKnownValue);
+    labels.push(d.toISOString().split('T')[0]);
   }
 
   return { labels, data, firstDate, lastDate };
