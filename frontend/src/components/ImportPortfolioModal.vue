@@ -2,7 +2,8 @@
 import { ref, inject } from 'vue'
 
 const props = defineProps({
-  onImport: Function
+  onImport: Function,
+  portfolios: Array
 })
 const emit = defineEmits(['close'])
 
@@ -11,7 +12,6 @@ const portfolioId = ref(null)
 const portfolioName = ref('Акции-Тинькофф')
 const loading = ref(false)
 const error = ref('')
-const portfolios = inject('portfolios')
 
 const handleImport = async () => {
   if (!token.value) {
@@ -48,7 +48,7 @@ const handleImport = async () => {
       <label>Портфель:</label>
       <select v-model="portfolioId" required>
         <option value="">Создать новый</option>
-        <option v-for="p in portfolios" :key="p.id" :value="p.id">
+        <option v-for="p in portfolios" :key="p.portfolio_id" :value="p.portfolio_id">
             {{ p.name }}
         </option>
       </select>

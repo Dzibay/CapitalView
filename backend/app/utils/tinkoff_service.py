@@ -1,11 +1,10 @@
 from tinkoff.invest import Client, InstrumentIdType
 from datetime import datetime, timedelta
 
-def get_full_portfolio(token, days=365, since: datetime = None):
+def get_full_portfolio(token, days=365):
     print('Получаем данные от брокера')
     """
     Получает портфель и транзакции пользователя в Тинькофф Инвестициях.
-    Если указана дата since — загружаются только операции после этой даты.
     """
 
     with Client(token) as client:
@@ -47,12 +46,7 @@ def get_full_portfolio(token, days=365, since: datetime = None):
 
             # 2️⃣ Получаем операции
             now = datetime.utcnow()
-            if since:
-                # Если задана дата последней синхронизации — берём только новые
-                from_date = datetime.fromisoformat(since)
-            else:
-                # Иначе — операции за заданное число дней
-                from_date = now - timedelta(days=days)
+            from_date = now - timedelta(days=days)
 
             operations = client.operations.get_operations(
                 account_id=account_id,
@@ -84,5 +78,4 @@ def get_full_portfolio(token, days=365, since: datetime = None):
                 })
             result_data[account.name] = {"positions": positions_data, "transactions": transactions_data}
         return result_data
-
 

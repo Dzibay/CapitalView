@@ -3,6 +3,7 @@ import { ref, onMounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { authService } from '../services/authService.js'
 import assetsService from "../services/assetsService";
+import portfolioService from '../services/portfolioService'
 import { fetchDashboardData } from '../services/dashboardService.js'
 
 import AppSidebar from '../components/AppSidebar.vue'
@@ -17,9 +18,12 @@ const router = useRouter()
 // 🔹 Универсальная перезагрузка Dashboard
 const reloadDashboard = async () => {
   try {
+    loading.value = true
     dashboardData.value = await fetchDashboardData()
   } catch (err) {
     console.error('Ошибка получения данных Dashboard:', err)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -54,16 +58,28 @@ const removeAsset = async (assetId) => {
   }
 }
 
-// // 🔹 Импорт портфеля из Tinkoff
-// const importPortfolio = async ({ token, portfolioId, portfolio_name }) => {
-//   try {
-//     const res = await assetsService.importPortfolio(token, portfolioId, portfolio_name)
-//     if (!res.success) throw new Error(res.error || 'Ошибка импорта портфеля')
-//     await reloadDashboard()
-//   } catch (err) {
-//     console.error('Ошибка импорта портфеля:', err)
-//   }
-// }
+// 🔹 Очистка портфеля
+const clearPortfolio = async ( portfolioId ) => {
+  try {
+    const loading = true
+    const res = await portfolioService.clearPortfolio(portfolioId)
+    if (!res.success) throw new Error(res.error || 'Ошибка удаления портфеля')
+    await reloadDashboard()
+  } catch (err) {
+    console.error('Ошибка удаления портфеля:', err)
+  }
+}
+
+// 🔹 Импорт портфеля из Tinkoff
+const importPortfolio = async ({ token, portfolioId, portfolio_name }) => {
+  try {
+    const res = await portfolioService.importPortfolio(token, portfolioId, portfolio_name)
+    if (!res.success) throw new Error(res.error || 'Ошибка импорта портфеля')
+    await reloadDashboard()
+  } catch (err) {
+    console.error('Ошибка импорта портфеля:', err)
+  }
+}
 
 // 🔹 Инициализация при загрузке
 onMounted(async () => {
@@ -93,7 +109,8 @@ provide('reloadDashboard', reloadDashboard)
 provide('addAsset', addAsset)
 // provide('sellAsset', sellAsset)
 provide('removeAsset', removeAsset)
-// provide('importPortfolio', importPortfolio)
+provide('clearPortfolio', clearPortfolio)
+provide('importPortfolio', importPortfolio)
 
 function toggleSidebar() {
   isSidebarVisible.value = !isSidebarVisible.value

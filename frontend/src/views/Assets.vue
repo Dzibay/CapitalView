@@ -16,8 +16,9 @@ const reloadDasboard = inject('reloadDashboard')
 
 const addAsset = inject('addAsset')
 const removeAsset = inject('removeAsset')
+const clearPortfolio = inject('clearPortfolio')
 // const sellAsset = inject('sellAsset')
-// const importPortfolio = inject('importPortfolio')
+const importPortfolio = inject('importPortfolio')
 
 const parsedDashboard = computed(() => {
   const data = dashboardData.value?.data
@@ -54,6 +55,7 @@ const parsedDashboard = computed(() => {
       v-if="showImportModal"
       @close="showImportModal = false"
       :onImport="importPortfolio"
+      :portfolios="parsedDashboard.portfolios"
     />
 
     <div v-if="loading">Загрузка...</div>
@@ -69,6 +71,7 @@ const parsedDashboard = computed(() => {
         class="portfolio-block"
       >
         <h2>{{ portfolio.name }}</h2>
+        <button @click="clearPortfolio(portfolio.id)">Очистить портфель</button>
         <p v-if="!portfolio.assets || portfolio.assets.length === 0">
           Активов нет
         </p>
@@ -81,8 +84,8 @@ const parsedDashboard = computed(() => {
           >
             <strong>{{ asset.name }}</strong> ({{ asset.ticker }}) — 
             {{ asset.quantity }} шт × {{ asset.average_price.toFixed(2) }} ₽  
-            <span v-if="asset.current_price">
-              (текущая: {{ asset.current_price.toFixed(2) }} ₽)
+            <span v-if="asset.last_price">
+              (текущая: {{ asset.last_price.toFixed(2) }} ₽) (стоимость: {{ asset.quantity * asset.last_price.toFixed(2) }} ₽)
             </span>
 
             <button @click="removeAsset(asset.portfolio_asset_id)">❌</button>

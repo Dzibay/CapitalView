@@ -1,6 +1,6 @@
 import asyncio
 from collections import defaultdict
-from app.services.portfolio_service_async import (get_user_portfolios, get_portfolio_assets, get_portfolio_value_history)
+from app.services.portfolio_service import (get_user_portfolios, get_portfolio_assets, get_portfolio_value_history)
 from app.services.reference_service import (get_asset_types, get_currencies, get_system_assets)
 
 async def get_dashboard_data(user_email: str):
@@ -17,7 +17,7 @@ async def get_dashboard_data(user_email: str):
         }
 
     # Параллельная загрузка активов и историй
-    portfolio_ids = [p["portfolio_id"] for p in portfolios]
+    portfolio_ids = [p["id"] for p in portfolios]
     assets_tasks = [asyncio.create_task(get_portfolio_assets(pid)) for pid in portfolio_ids]
     histories_tasks = [asyncio.create_task(get_portfolio_value_history(pid)) for pid in portfolio_ids]
 

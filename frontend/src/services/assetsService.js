@@ -27,11 +27,4 @@ export default {
     const res = await axios.delete(`${API_URL}/${assetId}`, { headers: authHeaders() })
     return res.data
   },
-
-  // Импорт портфеля из Tinkoff
-  // async importPortfolio(token, portfolioId, portfolio_name) {
-  //   const payload = { token, portfolioId, portfolio_name }
-  //   const res = await axios.post(`${API_URL}/import_tinkoff_portfolio`, payload, { headers: authHeaders() })
-  //   return res.data
-  // }
 }
