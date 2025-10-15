@@ -25,14 +25,6 @@ def create_asset(email: str, data: dict):
         # --- Если актив кастомный или новый ---
         if not asset_id:
             existing_asset = table_select("assets", select="id", filters={"user_id": user_id, "ticker": ticker})
-            # Проверяем, существует ли актив с таким тикером у пользователя
-            # existing_asset = (
-            #     supabase.table("assets")
-            #     .select("id")
-            #     .eq("user_id", user_id)
-            #     .eq("ticker", ticker)
-            #     .execute()
-            # )
 
             if existing_asset:
                 asset_id = existing_asset[0]["id"]
@@ -44,9 +36,9 @@ def create_asset(email: str, data: dict):
                     "name": name,
                     "ticker": ticker,
                     "properties": {},
+                    "quote_asset_id": currency
                 }
                 asset_res = table_insert("assets", new_asset)
-                # asset_res = supabase.table("assets").insert(new_asset).execute()
                 if not asset_res:
                     return {"success": False, "error": "Ошибка при создании кастомного актива"}
                 asset_id = asset_res[0]["id"]
@@ -55,22 +47,13 @@ def create_asset(email: str, data: dict):
                 price_data = {
                     "asset_id": asset_id,
                     "price": price,
-                    "currency": currency,
                     "trade_date": date,
                 }
                 price_res = table_insert("asset_prices", price_data)
                 print('Добавление цены актива', price_res)
-                # supabase.table("asset_prices").insert(price_data).execute()
 
         # --- Проверяем, есть ли актив в портфеле ---
         pa_resp = table_select("portfolio_assets", select="id", filters={"portfolio_id": portfolio_id, "asset_id": asset_id})
-        # pa_resp = (
-        #     supabase.table("portfolio_assets")
-        #     .select("id")
-        #     .eq("portfolio_id", portfolio_id)
-        #     .eq("asset_id", asset_id)
-        #     .execute()
-        # )
 
         if pa_resp:
             portfolio_asset_id = pa_resp[0]["id"]
@@ -83,7 +66,6 @@ def create_asset(email: str, data: dict):
             }
             print('Добавление актива', pa_data)
             pa_res = table_insert("portfolio_assets", pa_data)
-            # pa_res = supabase.table("portfolio_assets").insert(pa_data).execute()
             if not pa_res:
                 return {"success": False, "error": "Ошибка при добавлении актива в портфель"}
             portfolio_asset_id = pa_res[0]["id"]
@@ -97,7 +79,6 @@ def create_asset(email: str, data: dict):
             "transaction_date": date,
         }
         table_insert("transactions", tx_data)
-        # supabase.table("transactions").insert(tx_data).execute()
 
         return {"success": True, "message": "Актив успешно добавлен в портфель", "asset_id": asset_id}
 
@@ -115,13 +96,6 @@ def delete_asset(portfolio_asset_id: int):
     """
     try:
         pa_resp = table_select('portfolio_assets', select='asset_id', filters={"id": portfolio_asset_id})
-        # 1️⃣ Проверяем, существует ли запись в portfolio_assets
-        # pa_resp = (
-        #     supabase.table("portfolio_assets")
-        #     .select("asset_id")
-        #     .eq("id", portfolio_asset_id)
-        #     .execute()
-        # )
 
         if not pa_resp:
             return {"success": False, "error": "Запись portfolio_assets не найдена"}
@@ -130,12 +104,6 @@ def delete_asset(portfolio_asset_id: int):
 
         # 2️⃣ Получаем тип актива
         asset_resp = table_select("assets", select="asset_type_id", filters={"id": asset_id})
-        # asset_resp = (
-        #     supabase.table("assets")
-        #     .select("asset_type_id")
-        #     .eq("id", asset_id)
-        #     .execute()
-        # )
 
         if not asset_resp:
             return {"success": False, "error": "Актив не найден"}
@@ -144,12 +112,6 @@ def delete_asset(portfolio_asset_id: int):
 
         # 3️⃣ Проверяем, кастомный ли актив
         type_resp = table_select("asset_types", select="is_custom", filters={"id": asset_type_id})
-        # type_resp = (
-        #     supabase.table("asset_types")
-        #     .select("is_custom")
-        #     .eq("id", asset_type_id)
-        #     .execute()
-        # )
 
         if not type_resp:
             return {"success": False, "error": "Тип актива не найден"}
@@ -158,18 +120,14 @@ def delete_asset(portfolio_asset_id: int):
 
         # 4️⃣ Удаляем все транзакции
         table_delete("transactions", {"portfolio_asset_id": portfolio_asset_id})
-        # supabase.table("transactions").delete().eq("portfolio_asset_id", portfolio_asset_id).execute()
 
         # 5️⃣ Удаляем саму запись portfolio_assets
         table_delete("portfolio_assets", {"id": portfolio_asset_id})
-        # supabase.table("portfolio_assets").delete().eq("id", portfolio_asset_id).execute()
 
         # 6️⃣ Если актив кастомный — удаляем и сам актив
         if is_custom:
             table_delete("asset_prices", {"asset_id": asset_id})
             table_delete("assets", {"id": asset_id})
-            # supabase.table("asset_prices").delete().eq("asset_id", asset_id).execute()
-            # supabase.table("assets").delete().eq("id", asset_id).execute()
 
         return {"success": True, "message": "Актив и связанные записи успешно удалены"}
 

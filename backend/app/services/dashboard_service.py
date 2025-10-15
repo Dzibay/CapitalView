@@ -32,8 +32,6 @@ async def get_dashboard_data(user_email: str):
             continue
         if result:
             portfolio["assets"] = result
-            # for asset in result:
-            #     asset["portfolio_id"] = pid   # 👈 добавляем ID портфеля к каждому активу
             assets.extend(result)
 
     # Итоговая сводка
@@ -62,7 +60,7 @@ async def get_dashboard_data(user_email: str):
     asset_allocation = {
         "labels": list(allocation.keys()),
         "datasets": [{
-            "backgroundColor": ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'],
+            "backgroundColor": ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#10b981', '#f472b6', '#60a5fa', '#fbbf24', '#a78bfa'],
             "data": list(allocation.values())
         }]
     }
