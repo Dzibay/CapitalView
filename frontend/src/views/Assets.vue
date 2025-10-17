@@ -1,67 +1,110 @@
 <script setup>
-import { ref, inject, computed } from 'vue'
-import AddAssetModal from '../components/AddAssetModal.vue'
-import SellAssetModal from '../components/SellAssetModal.vue'
-import ImportPortfolioModal from '../components/ImportPortfolioModal.vue'
-import AddPortfolioModal from '../components/AddPortfolioModal.vue'
+import { ref, inject, computed } from "vue";
+import AddAssetModal from "../components/AddAssetModal.vue";
+import SellAssetModal from "../components/SellAssetModal.vue";
+import ImportPortfolioModal from "../components/ImportPortfolioModal.vue";
+import AddPortfolioModal from "../components/AddPortfolioModal.vue";
+import PortfolioTree from '../components/PortfolioTree.vue'
 
-const showAddModal = ref(false)
-const showAddPortfolioModal = ref(false)
-const showSellModal = ref(false)
-const showImportModal = ref(false)
-const selectedAsset = ref(null)
+const showAddModal = ref(false);
+const showAddPortfolioModal = ref(false);
+const showSellModal = ref(false);
+const showImportModal = ref(false);
 
-const user = inject('user')
-const loading = inject('loading')
-const dashboardData = inject('dashboardData')
-const reloadDasboard = inject('reloadDashboard')
+const selectedAsset = ref(null);
+const expandedPortfolios = ref([]);
+const activeAssetMenu = ref(null);
+const activePortfolioMenu = ref(null);
 
-const addAsset = inject('addAsset')
-const removeAsset = inject('removeAsset')
-const clearPortfolio = inject('clearPortfolio')
-const addPortfolio = inject('addPortfolio')
+const loading = inject("loading");
+const dashboardData = inject("dashboardData");
+const addAsset = inject("addAsset");
+const removeAsset = inject("removeAsset");
+const clearPortfolio = inject("clearPortfolio");
+const addPortfolio = inject("addPortfolio");
 // const sellAsset = inject('sellAsset')
-const importPortfolio = inject('importPortfolio')
+const importPortfolio = inject("importPortfolio");
 
+/* === 1️⃣ Построение иерархического дерева портфелей === */
+function buildPortfolioTree(portfolios) {
+  const map = {};
+  const roots = [];
+
+  portfolios.forEach((p) => {
+    map[p.id] = { ...p, children: [] };
+  });
+
+  portfolios.forEach((p) => {
+    if (p.parent_portfolio_id && map[p.parent_portfolio_id]) {
+      map[p.parent_portfolio_id].children.push(map[p.id]);
+    } else {
+      roots.push(map[p.id]);
+    }
+  });
+
+  return roots;
+}
+
+/* === 2️⃣ Парсинг данных === */
 const parsedDashboard = computed(() => {
-  const data = dashboardData.value?.data
-  if (!data) return null
+  const data = dashboardData.value?.data;
+  if (!data) return { portfolios: [], reference: [] };
 
+  const portfolios = data.portfolios ?? [];
+  const portfolioTree = buildPortfolioTree(data.portfolios ?? []);
   return {
-    portfolios: data.portfolios ?? [],
-    reference: data.referenceData ?? []
-  }
-})
+    portfolios,
+    portfolioTree,
+    reference: data.referenceData ?? [],
+  };
+});
+
+/* === 3️⃣ Поведение меню и раскрытия === */
+const togglePortfolio = (id) => {
+  if (expandedPortfolios.value.includes(id))
+    expandedPortfolios.value = expandedPortfolios.value.filter((i) => i !== id);
+  else expandedPortfolios.value.push(id);
+};
+
+const toggleAssetMenu = (id) => {
+  activeAssetMenu.value = activeAssetMenu.value === id ? null : id;
+  activePortfolioMenu.value = null;
+};
+
+const togglePortfolioMenu = (id) => {
+  activePortfolioMenu.value = activePortfolioMenu.value === id ? null : id;
+  activeAssetMenu.value = null;
+};
 </script>
 
 <template>
-  <div>
-    <button @click="showAddModal = true">➕ Добавить актив</button>
-    <button @click="showAddPortfolioModal = true">➕ Создать портфель</button>
-    <button @click="showImportModal = true">📥 Импорт портфеля</button>
+  <div class="dashboard">
+    <!-- Верхняя панель -->
+    <div class="toolbar">
+      <button class="btn" @click="showAddModal = true">➕ Добавить актив</button>
+      <button class="btn" @click="showAddPortfolioModal = true">📁 Создать портфель</button>
+      <button class="btn" @click="showImportModal = true">📥 Импорт портфеля</button>
+    </div>
 
-    <AddAssetModal 
-      v-if="showAddModal" 
-      @close="showAddModal = false" 
-      :onSave="addAsset" 
-      :referenceData="parsedDashboard.reference" 
-      :portfolios="parsedDashboard.portfolios" 
+    <!-- Модалки -->
+    <AddAssetModal
+      v-if="showAddModal"
+      @close="showAddModal = false"
+      :onSave="addAsset"
+      :referenceData="parsedDashboard.reference"
+      :portfolios="parsedDashboard.portfolios"
     />
-
-    <AddPortfolioModal 
-      v-if="showAddPortfolioModal" 
-      @close="showAddPortfolioModal = false" 
-      :onSave="addPortfolio" 
-      :portfolios="parsedDashboard.portfolios" 
+    <AddPortfolioModal
+      v-if="showAddPortfolioModal"
+      @close="showAddPortfolioModal = false"
+      :onSave="addPortfolio"
+      :portfolios="parsedDashboard.portfolios"
     />
-
     <SellAssetModal
       v-if="showSellModal"
       :asset="selectedAsset"
       @close="showSellModal = false"
-      :onSell="sellAsset"
     />
-
     <ImportPortfolioModal
       v-if="showImportModal"
       @close="showImportModal = false"
@@ -69,41 +112,51 @@ const parsedDashboard = computed(() => {
       :portfolios="parsedDashboard.portfolios"
     />
 
-    <div v-if="loading">Загрузка...</div>
-
-    <div v-else-if="parsedDashboard.portfolios.length === 0">
+    <!-- Загрузка -->
+    <div v-if="loading" class="status">Загрузка...</div>
+    <div v-else-if="parsedDashboard.portfolios.length === 0" class="status">
       У вас пока нет портфелей
     </div>
 
+    <!-- Основной список -->
     <div v-else>
-      <div
-        v-for="portfolio in parsedDashboard.portfolios"
-        :key="portfolio.id"
-        class="portfolio-block"
-      >
-        <h2>{{ portfolio.name }}</h2>
-        <button @click="clearPortfolio(portfolio.id)">Очистить портфель</button>
-        <p v-if="!portfolio.assets || portfolio.assets.length === 0">
-          Активов нет
-        </p>
-
-        <ul v-else>
-          <li
-            v-for="asset in portfolio.assets"
-            :key="asset.portfolio_asset_id"
-            class="asset-item"
-          >
-            <strong>{{ asset.name }}</strong> ({{ asset.ticker }}) — 
-            {{ asset.quantity }} шт × {{ asset.average_price }} 
-            <span v-if="asset.last_price">
-              (текущая: {{ asset.last_price }} {{ asset.currency_ticker }}) (стоимость: {{ asset.quantity * asset.last_price * asset.currency_rate_to_rub }} ₽)
-            </span>
-
-            <button @click="removeAsset(asset.portfolio_asset_id)">❌</button>
-            <button @click="() => { selectedAsset = asset; showSellModal = true }">💰 Продать</button>
-          </li>
-        </ul>
-      </div>
+      <PortfolioTree
+        :portfolios="parsedDashboard.portfolioTree"
+        :expandedPortfolios="expandedPortfolios"
+        :activePortfolioMenu="activePortfolioMenu"
+        :activeAssetMenu="activeAssetMenu"
+        @togglePortfolio="togglePortfolio"
+        @toggleAssetMenu="toggleAssetMenu"
+        @togglePortfolioMenu="togglePortfolioMenu"
+        @removeAsset="removeAsset"
+        @clearPortfolio="clearPortfolio"
+        @selectAsset="(asset) => { selectedAsset = asset; showSellModal = true }"
+      />
     </div>
   </div>
 </template>
+
+<style scoped>
+.dashboard {
+  padding: 20px;
+  font-family: Arial, sans-serif;
+  color: #222;
+}
+.toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.btn {
+  background: #7c858c;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn:hover {
+  background: #005ea3;
+}
+
+</style>
