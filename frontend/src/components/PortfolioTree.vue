@@ -10,6 +10,7 @@
         <div class="portfolio-title" @click="togglePortfolio(portfolio.id)">
           <span>{{ expandedPortfolios.includes(portfolio.id) ? '▼' : '▶' }}</span>
           <span class="name">{{ portfolio.name }}</span>
+          <span v-if="portfolio.total_value > 0"> (стоимость: {{ portfolio.total_value }})</span>
         </div>
 
         <div class="menu">
@@ -42,14 +43,23 @@
             </thead>
             <tbody>
               <tr v-for="asset in portfolio.assets" :key="asset.portfolio_asset_id">
-                <td>{{ asset.name }}</td>
+                <td>
+                    {{ asset.name }}
+                    <span v-if="asset.leverage && asset.leverage > 1" class="leveraged">💹×{{ asset.leverage }}</span>
+                </td>
                 <td>{{ asset.ticker }}</td>
                 <td class="right">{{ asset.quantity }}</td>
                 <td class="right">{{ asset.average_price }}</td>
                 <td class="right">{{ asset.last_price || '-' }}</td>
                 <td class="right">
-                  {{ (asset.quantity * asset.last_price * asset.currency_rate_to_rub).toFixed(2) }}
+                    {{
+                        Math.max(
+                        0,
+                        (asset.quantity * asset.last_price / asset.leverage) * (1 + asset.leverage * (asset.last_price - asset.average_price) / asset.average_price) * asset.currency_rate_to_rub
+                        ).toFixed(2)
+                    }}
                 </td>
+
                 <td class="center">
                   <div class="menu">
                     <button class="menu-btn" @click.stop="toggleAssetMenu(asset.portfolio_asset_id)">⋯</button>
@@ -218,5 +228,11 @@ onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside))
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.leveraged {
+  color: #e67e22;
+  font-weight: bold;
+  margin-left: 4px;
 }
 </style>
