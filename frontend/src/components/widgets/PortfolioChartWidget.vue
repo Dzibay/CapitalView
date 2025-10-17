@@ -94,12 +94,19 @@ function getNiceMax(value) {
   return Math.ceil(value / magnitude) * magnitude
 }
 
+// --- Функция округления вниз к "красивой" величине ---
+function getNiceMin(value) {
+  if (value === 0) return 0
+  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.abs(value))))
+  return Math.floor(value / magnitude) * magnitude
+}
+
 // --- Рендер графика ---
 const renderChart = (aggregated) => {
   const ctx = document.getElementById('capitalChart')?.getContext('2d')
   if (!ctx) return
 
-  const yMin = 0
+  const yMin = getNiceMin(Math.min(...aggregated.data))
   const yMax = getNiceMax(Math.max(...aggregated.data))
 
   if (chartInstance) {
