@@ -50,8 +50,8 @@ h2, p {
 }
 
 .value-change {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 400;
 }
 .value-change.positive {
   color: #1CBD88;

@@ -10,7 +10,7 @@
         <div class="portfolio-title" @click="togglePortfolio(portfolio.id)">
           <span>{{ expandedPortfolios.includes(portfolio.id) ? '▼' : '▶' }}</span>
           <span class="name">{{ portfolio.name }}</span>
-          <span v-if="portfolio.total_value > 0"> (стоимость: {{ portfolio.total_value }})</span>
+          <span v-if="portfolio.total_value > 0"> (стоимость: {{ portfolio.total_value }} ₽)</span>
         </div>
 
         <div class="menu">

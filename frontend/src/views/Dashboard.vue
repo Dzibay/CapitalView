@@ -26,7 +26,8 @@ const parsedDashboard = computed(() => {
       percentage: data.summary?.profit_percent || 0
     },
     assetAllocation: data.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] },
-    portfolioChart: data.combined_history ?? { labels: [], data: [] }
+    portfolioChart: data.combined_history ?? { labels: [], data: [] },
+    assets: data.assets ?? []
   }
 })
 
@@ -46,7 +47,7 @@ const parsedDashboard = computed(() => {
         :invested-amount="parsedDashboard.investedAmount" 
       />
 
-      <TopAssetsWidget :assets="mockData.topAssets" />
+      <TopAssetsWidget :assets="parsedDashboard.assets" />
       <RecentTransactionsWidget :transactions="mockData.recentTransactions" />
       <AssetAllocationWidget :assetAllocation="parsedDashboard.assetAllocation" />
       <GoalProgressWidget :goal-data="mockData.investmentGoal" />
