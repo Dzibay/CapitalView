@@ -14,15 +14,15 @@ defineProps({
       <h2>Последние операции</h2>
     </div>
     <ul class="transactions-list">
-      <li v-for="tx in transactions" :key="tx.id" class="transaction-item">
+      <li v-for="tx in transactions.slice(0, 4)" :key="tx.id" class="transaction-item">
         <div class="tx-info">
           <span class="tx-type">{{ tx.type }}</span>
-          <span class="tx-asset">{{ tx.asset }} · {{ tx.count }} шт.</span>
+          <span class="tx-asset">{{ tx.asset }} · {{ tx.quantity }} шт.</span>
         </div>
         <div class="tx-info-right">
           <span>{{ tx.date }}</span>
           <span class="tx-amount" :class="tx.type == 'Покупка' ? 'buy' : 'sell'">
-            {{ tx.type === 'Покупка' ? '-' : '+' }} {{ tx.amount.toLocaleString('ru-RU') }} RUB
+            {{ tx.type === 'Покупка' ? '-' : '+' }} {{ (tx.quantity * tx.price).toFixed(2) }} RUB
           </span>
         </div>
       </li>

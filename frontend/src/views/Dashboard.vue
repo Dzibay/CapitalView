@@ -27,7 +27,8 @@ const parsedDashboard = computed(() => {
     },
     assetAllocation: data.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] },
     portfolioChart: data.combined_history ?? { labels: [], data: [] },
-    assets: data.assets ?? []
+    assets: data.assets ?? [],
+    transactions: data.transactions ?? []
   }
 })
 
@@ -48,7 +49,7 @@ const parsedDashboard = computed(() => {
       />
 
       <TopAssetsWidget :assets="parsedDashboard.assets" />
-      <RecentTransactionsWidget :transactions="mockData.recentTransactions" />
+      <RecentTransactionsWidget :transactions="parsedDashboard.transactions" />
       <AssetAllocationWidget :assetAllocation="parsedDashboard.assetAllocation" />
       <GoalProgressWidget :goal-data="mockData.investmentGoal" />
       <PortfolioChartWidget :chartData="parsedDashboard.portfolioChart" />

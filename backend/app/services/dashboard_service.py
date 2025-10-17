@@ -2,8 +2,11 @@ import asyncio
 from collections import defaultdict
 from app.services.portfolio_service import (get_user_portfolios, get_portfolio_assets, get_portfolio_value_history)
 from app.services.reference_service import (get_asset_types, get_currencies, get_system_assets)
+from app.services.transactions_service import get_user_transactions
+from app.services.user_service import get_user_by_email
 
 async def get_dashboard_data(user_email: str):
+    user_id = get_user_by_email(user_email)["id"]
     portfolios = await get_user_portfolios(user_email) or []
 
     if not portfolios:
@@ -107,7 +110,7 @@ async def get_dashboard_data(user_email: str):
     return {
         "portfolios": portfolios,
         "assets": assets,
-        "histories": histories,
+        "transactions": await get_user_transactions(user_id) or [],
         "combined_history": combined_history,
         "summary": summary,
         "asset_allocation": asset_allocation,
