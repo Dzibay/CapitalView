@@ -1,48 +1,18 @@
 import asyncio
 from collections import defaultdict
-from app.services.portfolio_service import (get_user_portfolios, get_portfolio_assets, get_portfolio_value_history)
+from app.services.portfolio_service import get_portfolios_with_assets_and_history
 from app.services.reference_service import (get_asset_types, get_currencies, get_system_assets)
 from app.services.transactions_service import get_user_transactions
 from app.services.user_service import get_user_by_email
 
-async def get_dashboard_data(user_email: str):
-    user_id = get_user_by_email(user_email)["id"]
-    portfolios = await get_user_portfolios(user_email) or []
 
-    if not portfolios:
-        return {
-            "portfolios": [],
-            "assets": [],
-            "histories": {},
-            "combined_history": [],
-            "summary": {"total_value": 0, "total_profit": 0, "profit_percent": 0},
-            "asset_allocation": {"labels": [], "datasets": [{"backgroundColor": [], "data": []}]}
-        }
-
-    # Параллельная загрузка активов и историй
-    portfolio_ids = [p["id"] for p in portfolios]
-    assets_tasks = [asyncio.create_task(get_portfolio_assets(pid)) for pid in portfolio_ids]
-    histories_tasks = [asyncio.create_task(get_portfolio_value_history(pid)) for pid in portfolio_ids]
-
-    assets_results = await asyncio.gather(*assets_tasks, return_exceptions=True)
-    histories_results = await asyncio.gather(*histories_tasks, return_exceptions=True)
-
-    # Сбор всех активов
-    assets = []
-    for portfolio, result in zip(portfolios, assets_results):
-        if isinstance(result, Exception):
-            portfolio["assets"] = []
-            continue
-        if result:
-            portfolio["assets"] = result
-            assets.extend(result)
-
-    # Итоговая сводка
-    total_value = round(sum([p.get("total_value") or 0 for p in portfolios]), 2)
-    total_profit = round(sum([p.get("total_profit") or 0 for p in portfolios]), 2)
+def calculate_summary(portfolios, assets):
+    """Вычисляет итоговую сводку по портфелям и активам."""
+    total_value = round(portfolios[0]["total_value"], 2)
+    total_profit = round(portfolios[0]["total_profit"], 2)
     profit_percent = round((total_profit / total_value * 100) if total_value else 0, 2)
 
-    summary = {
+    return {
         "total_value": total_value,
         "total_profit": total_profit,
         "profit_percent": profit_percent,
@@ -50,7 +20,9 @@ async def get_dashboard_data(user_email: str):
         "asset_count": len(assets)
     }
 
-    # Распределение активов
+
+def calculate_asset_allocation(assets):
+    """Вычисляет распределение активов по типам."""
     allocation = {}
     for asset in assets:
         atype = asset.get("type")
@@ -61,7 +33,7 @@ async def get_dashboard_data(user_email: str):
         currency_multiplier = float(asset.get("currency_rate_to_rub") or 1.0)
         allocation[atype] = allocation.get(atype, 0) + quantity * price * currency_multiplier / float(asset.get("leverage") or 1.0)
 
-    asset_allocation = {
+    return {
         "labels": list(allocation.keys()),
         "datasets": [{
             "backgroundColor": ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#10b981', '#f472b6', '#60a5fa', '#fbbf24', '#a78bfa'],
@@ -69,13 +41,9 @@ async def get_dashboard_data(user_email: str):
         }]
     }
 
-    # Собираем истории в словарь
-    histories = {
-        str(pid): histories_results[i] if not isinstance(histories_results[i], Exception) else []
-        for i, pid in enumerate(portfolio_ids)
-    }
 
-    # === 🔥 Объединение всех историй ===
+def combine_histories(histories):
+    """Объединяет истории всех портфелей в одну."""
     combined = defaultdict(float)
     for hlist in histories.values():
         for h in hlist or []:
@@ -84,37 +52,98 @@ async def get_dashboard_data(user_email: str):
             if date:
                 combined[date] += value
 
-    # Сортируем по дате
     sorted_items = sorted(combined.items())
-
-    combined_history = {
+    return {
         "labels": [d for d, v in sorted_items],
         "data": [round(v, 2) for d, v in sorted_items]
     }
 
 
-    # === 🧩 Добавляем referenceData ===
-    # эти функции синхронные, вызываем их параллельно через asyncio.to_thread
+async def get_reference_data():
+    """Возвращает справочные данные о типах активов, валютах и системных активах."""
     asset_types, currencies, system_assets = await asyncio.gather(
         asyncio.to_thread(get_asset_types),
         asyncio.to_thread(get_currencies),
         asyncio.to_thread(get_system_assets),
     )
-
-    reference_data = {
+    return {
         "asset_types": asset_types,
         "currencies": currencies,
         "assets": system_assets
     }
 
+
+def sum_portfolio_total_value(portfolio_id: int, portfolio_map: dict):
+    """
+    Рекурсивно суммирует total_value и total_profit для портфеля
+    с учётом всех дочерних портфелей и перезаписывает исходные поля.
+    """
+    portfolio = portfolio_map[portfolio_id]
+    total_value = portfolio.get("total_value") or 0
+    total_profit = portfolio.get("total_profit") or 0
+
+    # находим дочерние портфели
+    children = [p for p in portfolio_map.values() if p.get("parent_portfolio_id") == portfolio_id]
+    for child in children:
+        child_value, child_profit = sum_portfolio_total_value(child["id"], portfolio_map)
+        total_value += child_value
+        total_profit += child_profit
+
+    # перезаписываем исходные поля
+    portfolio["total_value"] = total_value
+    portfolio["total_profit"] = total_profit
+
+    return total_value, total_profit
+
+
+async def get_dashboard_data(user_email: str):
+    """Основная функция сборки данных для дашборда."""
+    user_id = get_user_by_email(user_email)["id"]
+
+    # 1️⃣ Портфели, активы и истории
+    portfolios, assets, histories = await get_portfolios_with_assets_and_history(user_email)
+
+    if not portfolios:
+        return {
+            "portfolios": [],
+            "assets": [],
+            "transactions": [],
+            "combined_history": [],
+            "summary": {"total_value": 0, "total_profit": 0, "profit_percent": 0},
+            "asset_allocation": {"labels": [], "datasets": [{"backgroundColor": [], "data": []}]},
+            "referenceData": {}
+        }
+
+    # 2️⃣ Суммируем стоимость дочерних портфелей в родительские
+    portfolio_map = {p["id"]: p for p in portfolios}
+    for p in portfolios:
+        if not p.get("parent_portfolio_id"):  # только корневые портфели
+            sum_portfolio_total_value(p["id"], portfolio_map)
+
+    # 3️⃣ Итоговая сводка
+    summary = calculate_summary(portfolios, assets)
+
+    # 4️⃣ Распределение активов
+    asset_allocation = calculate_asset_allocation(assets)
+
+    # 5️⃣ Объединяем истории
+    combined_history = combine_histories(histories)
+
+    # 6️⃣ Справочные данные
+    reference_data = await get_reference_data()
+
+    # 7️⃣ Транзакции пользователя
+    transactions = await get_user_transactions(user_id) or []
+
     return {
         "portfolios": portfolios,
         "assets": assets,
-        "transactions": await get_user_transactions(user_id) or [],
+        "transactions": transactions,
         "combined_history": combined_history,
         "summary": summary,
         "asset_allocation": asset_allocation,
-        "referenceData": reference_data  # ✅ добавлено сюда
+        "referenceData": reference_data
     }
+
 
 

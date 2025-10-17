@@ -32,6 +32,36 @@ def get_portfolio_value_history_sync(portfolio_id: int):
     return  rpc("get_portfolio_value_history", {"p_portfolio_id": portfolio_id})
 
 
+async def get_portfolios_with_assets_and_history(user_email: str):
+    """Загружает портфели, их активы и историю стоимости параллельно."""
+    portfolios = await get_user_portfolios(user_email) or []
+    if not portfolios:
+        return [], [], {}
+
+    portfolio_ids = [p["id"] for p in portfolios]
+    
+    assets_tasks = [asyncio.create_task(get_portfolio_assets(pid)) for pid in portfolio_ids]
+    histories_tasks = [asyncio.create_task(get_portfolio_value_history(pid)) for pid in portfolio_ids]
+
+    assets_results = await asyncio.gather(*assets_tasks, return_exceptions=True)
+    histories_results = await asyncio.gather(*histories_tasks, return_exceptions=True)
+
+    assets = []
+    histories = {}
+    for i, p in enumerate(portfolios):
+        # Активы
+        if isinstance(assets_results[i], Exception):
+            p["assets"] = []
+        else:
+            p["assets"] = assets_results[i]
+            assets.extend(assets_results[i])
+
+        # История
+        histories[str(p["id"])] = histories_results[i] if not isinstance(histories_results[i], Exception) else []
+
+    return portfolios, assets, histories
+
+
 async def get_user_portfolio_parent(user_email: str):
     portfolios = await get_user_portfolios(user_email)
     for portfolio in portfolios:
