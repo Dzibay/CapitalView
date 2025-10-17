@@ -68,14 +68,17 @@ async def clear_portfolio(portfolio_id: int, delete_self: bool = False):
             table_select, "portfolio_assets", select="id, asset_id", filters={"portfolio_id": portfolio_id}
         )
 
+        asset_ids = [pa["asset_id"] for pa in portfolio_assets] if portfolio_assets else []
+
+        # --- Удаляем все транзакции для этих portfolio_asset_id ---
         for pa in portfolio_assets or []:
-            pa_id = pa["id"]
-            asset_id = pa["asset_id"]
+            await asyncio.to_thread(table_delete, "transactions", {"portfolio_asset_id": pa["id"]})
 
-            # --- Удаляем транзакции ---
-            await asyncio.to_thread(table_delete, "transactions", {"portfolio_asset_id": pa_id})
+        # --- Удаляем связи portfolio_assets ---
+        await asyncio.to_thread(table_delete, "portfolio_assets", {"portfolio_id": portfolio_id})
 
-            # --- Проверяем тип актива ---
+        # --- Теперь можно удалить кастомные активы, если они больше нигде не используются ---
+        for asset_id in asset_ids:
             asset_info = await asyncio.to_thread(
                 table_select, "assets", select="asset_type_id", filters={"id": asset_id}
             )
@@ -87,7 +90,6 @@ async def clear_portfolio(portfolio_id: int, delete_self: bool = False):
                 table_select, "asset_types", select="is_custom", filters={"id": asset_type_id}
             )
 
-            # --- Удаляем кастомный актив, если не используется больше нигде ---
             if asset_type and asset_type[0].get("is_custom"):
                 used_elsewhere = supabase.table("portfolio_assets") \
                     .select("id") \

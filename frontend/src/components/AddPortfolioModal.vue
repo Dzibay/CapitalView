@@ -11,7 +11,7 @@
           <select v-model="form.parent_portfolio_id">
             <option :value="null">— Нет —</option>
             <option v-for="p in portfolios" :key="p.id" :value="p.id">
-              {{ p.name }}
+              {{ p.name }} 
             </option>
           </select>
         </div>

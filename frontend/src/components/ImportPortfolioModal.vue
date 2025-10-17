@@ -7,9 +7,9 @@ const props = defineProps({
 })
 const emit = defineEmits(['close'])
 
-const token = ref('t.Wwc9-ETWh-SiWqphi_F3TQ-U7TZNsuhUryWHiDWu1vqvq19ypX7I9il3E9PlfZgKyt4gPiHrXD4RjyNiVUHzzA')
+const token = ref('t.b7cVknEoyjXW6FG39o4woo12yzoCAKsTwYgT0LqYFvNEH0hC5IGSMtLxVEwGfwXOv048FR5kGmxMeFpEM-GCRQ')
 const portfolioId = ref(null)
-const portfolioName = ref('Акции-Тинькофф')
+const portfolioName = ref('Тинькофф')
 const loading = ref(false)
 const error = ref('')
 
@@ -48,7 +48,7 @@ const handleImport = async () => {
       <label>Портфель:</label>
       <select v-model="portfolioId" required>
         <option value="">Создать новый</option>
-        <option v-for="p in portfolios" :key="p.portfolio_id" :value="p.portfolio_id">
+        <option v-for="p in portfolios" :key="p.id" :value="p.id">
             {{ p.name }}
         </option>
       </select>

@@ -4,9 +4,7 @@ from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 from supabase import create_client, Client as SupabaseClient
 import os
-
-bcrypt = Bcrypt()
-jwt = JWTManager()
+from datetime import timedelta
 
 # Получаем ключ Supabase из переменных окружения
 SUPABASE_URL = "https://wnoulslvcvyhnwvjiixw.supabase.co"
@@ -23,6 +21,7 @@ def create_app():
     app = Flask(__name__)
     app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "supersecret")
     CORS(app, origins=["http://localhost:5173"], supports_credentials=True, resources={r"/*": {"origins": "*"}}, methods=["GET", "POST", "DELETE", "OPTIONS"])
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
     jwt = JWTManager(app)
     bcrypt.init_app(app)
 
