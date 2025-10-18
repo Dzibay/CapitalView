@@ -27,8 +27,8 @@ export const mockData = {
     title: 'Накопить миллион',
     targetAmount: 1000000,
     currentAmount: 812430,
-    
   },
+  
   recentTransactions: [{
       id: 1,
       type: 'Покупка',

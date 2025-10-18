@@ -24,5 +24,20 @@ export default {
   async clearPortfolio(portfolio_id) {
     const res = await axios.post(`${API_URL}/${portfolio_id}/clear`, {}, { headers: authHeaders() })
     return res.data
+  },
+
+  async updatePortfolioGoal(portfolioId, { title, targetAmount }) {
+    const payload = {
+      text: title,
+      capital_target_name: title,
+      capital_target_value: targetAmount
+    };
+
+    const response = await axios.post(`${API_URL}/${portfolioId}/description`, payload, { headers: authHeaders() });
+    if (response.data.success) {
+      return response.data.description;
+    } else {
+      throw new Error(response.data.error || 'Ошибка при обновлении цели');
+    }
   }
 }

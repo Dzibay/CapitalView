@@ -12,6 +12,7 @@ import TopAssetsWidget from '../components/widgets/TopAssetsWidget.vue'
 
 const user = inject('user')
 const dashboardData = inject('dashboardData')
+const updatePortfolioGoal = inject('updatePortfolioGoal');
 const loading = inject('loading')
 
 const parsedDashboard = computed(() => {
@@ -32,6 +33,24 @@ const parsedDashboard = computed(() => {
   }
 })
 
+const goalData = computed(() => {
+  const data = dashboardData.value?.data;
+  if (!data) return null;
+
+  const mainPortfolio = data.portfolios?.find(p => !p.parent_portfolio_id);
+  const desc = data.main_portfolio_description || {}; // если пустой, используем пустой объект
+
+  return {
+    portfolioId: mainPortfolio?.id || null,
+    title: desc.capital_target_name || desc.text || 'Цель не задана',
+    targetAmount: desc.capital_target_value || 0,
+    currentAmount: data.summary?.total_value || 0,
+    deadline: desc.capital_target_deadline || null,
+    currency: desc.capital_target_currency || 'RUB'
+  };
+});
+
+
 </script>
 
 <template>
@@ -51,7 +70,10 @@ const parsedDashboard = computed(() => {
       <TopAssetsWidget :assets="parsedDashboard.assets" />
       <RecentTransactionsWidget :transactions="parsedDashboard.transactions" />
       <AssetAllocationWidget :assetAllocation="parsedDashboard.assetAllocation" />
-      <GoalProgressWidget :goal-data="mockData.investmentGoal" />
+      <GoalProgressWidget 
+        :goal-data="goalData"
+        :onSaveGoal="updatePortfolioGoal"
+      />
       <PortfolioChartWidget :chartData="parsedDashboard.portfolioChart" />
 
     </div>

@@ -62,6 +62,28 @@ async def get_portfolios_with_assets_and_history(user_email: str):
     return portfolios, assets, histories
 
 
+def update_portfolio_description(portfolio_id: int, text: str = None, capital_target_name: str = None,
+                                 capital_target_value: float = None, capital_target_deadline: str = None,
+                                 capital_target_currency: str = "RUB"):
+    # Получаем текущее описание
+    portfolio = table_select("portfolios", select="description", filters={"id": portfolio_id})
+    desc = portfolio[0].get("description") or {}
+
+    if text is not None:
+        desc["text"] = text
+    if capital_target_name is not None:
+        desc["capital_target_name"] = capital_target_name
+    if capital_target_value is not None:
+        desc["capital_target_value"] = capital_target_value
+    if capital_target_deadline is not None:
+        desc["capital_target_deadline"] = capital_target_deadline
+    if capital_target_currency is not None:
+        desc["capital_target_currency"] = capital_target_currency
+
+    # Обновляем запись
+    return table_update("portfolios", {"description": desc}, filters={"id": portfolio_id})
+
+
 async def get_user_portfolio_parent(user_email: str):
     portfolios = await get_user_portfolios(user_email)
     for portfolio in portfolios:

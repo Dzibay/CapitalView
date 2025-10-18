@@ -93,6 +93,20 @@ const importPortfolio = async ({ token, portfolioId, portfolio_name }) => {
   }
 }
 
+// 🔹 Обновление цели портфеля
+const updatePortfolioGoal = async ({ portfolioId, title, targetAmount }) => {
+  try {
+    const res = await portfolioService.updatePortfolioGoal(portfolioId, { title, targetAmount });
+    if (!res) throw new Error('Ошибка при обновлении цели');
+    
+    // Перезагружаем дашборд, чтобы отобразить новые данные
+    await reloadDashboard();
+  } catch (err) {
+    console.error('Ошибка обновления цели портфеля:', err);
+  }
+}
+
+
 // 🔹 Инициализация при загрузке
 onMounted(async () => {
   try {
@@ -124,6 +138,7 @@ provide('removeAsset', removeAsset)
 provide('addPortfolio', addPortfolio)
 provide('clearPortfolio', clearPortfolio)
 provide('importPortfolio', importPortfolio)
+provide('updatePortfolioGoal', updatePortfolioGoal)
 
 function toggleSidebar() {
   isSidebarVisible.value = !isSidebarVisible.value

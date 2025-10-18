@@ -1,6 +1,6 @@
 import asyncio
 from collections import defaultdict
-from app.services.portfolio_service import get_portfolios_with_assets_and_history
+from app.services.portfolio_service import get_portfolios_with_assets_and_history, get_user_portfolio_parent
 from app.services.reference_service import (get_asset_types, get_currencies, get_system_assets)
 from app.services.transactions_service import get_user_transactions
 from app.services.user_service import get_user_by_email
@@ -135,6 +135,11 @@ async def get_dashboard_data(user_email: str):
     # 7️⃣ Транзакции пользователя
     transactions = await get_user_transactions(user_id) or []
 
+    # 8️⃣ Получаем описание главного портфеля
+    main_portfolio = await get_user_portfolio_parent(user_email)
+    print('Главный портфель', main_portfolio)
+    main_portfolio_description = main_portfolio.get("description") if main_portfolio else None
+
     return {
         "portfolios": portfolios,
         "assets": assets,
@@ -142,7 +147,8 @@ async def get_dashboard_data(user_email: str):
         "combined_history": combined_history,
         "summary": summary,
         "asset_allocation": asset_allocation,
-        "referenceData": reference_data
+        "referenceData": reference_data,
+        "main_portfolio_description": main_portfolio_description
     }
 
 

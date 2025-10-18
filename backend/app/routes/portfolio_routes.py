@@ -10,7 +10,8 @@ from app.services.portfolio_service import (
     get_portfolio_value_history,
     import_broker_portfolio,
     clear_portfolio,
-    get_user_portfolio_parent
+    get_user_portfolio_parent,
+    update_portfolio_description
 )
 from app.services.user_service import get_user_by_email
 from app.utils.tinkoff_service import get_full_portfolio
@@ -105,6 +106,34 @@ def add_transaction_route():
     supabase.rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id}).execute()
 
     return jsonify({"success": True, "transaction": res_transaction.data[0]}), 201
+
+
+@portfolio_bp.route("/<int:portfolio_id>/description", methods=["POST"])
+@jwt_required()
+def update_portfolio_description_route(portfolio_id):
+    user_email = get_jwt_identity()
+    data = request.get_json()
+
+    text = data.get("text")
+    capital_target_name = data.get("capital_target_name")
+    capital_target_value = data.get("capital_target_value")
+    capital_target_deadline = data.get("capital_target_deadline")
+    capital_target_currency = data.get("capital_target_currency", "RUB")
+
+    try:
+        # Можно дополнительно проверить, что портфель принадлежит пользователю
+        updated = update_portfolio_description(
+            portfolio_id,
+            text=text,
+            capital_target_name=capital_target_name,
+            capital_target_value=capital_target_value,
+            capital_target_deadline=capital_target_deadline,
+            capital_target_currency=capital_target_currency
+        )
+        return jsonify({"success": True, "description": updated}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 
 
