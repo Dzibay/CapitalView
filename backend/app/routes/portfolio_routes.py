@@ -56,13 +56,57 @@ def portfolio_transactions_route(portfolio_id):
     data = asyncio.run(get_portfolio_transactions(portfolio_id))
     return jsonify(data)
 
-@portfolio_bp.route("/transaction/add", methods=["POST"])
+
+@portfolio_bp.route("/add_transaction", methods=["POST"])
 @jwt_required()
 def add_transaction_route():
+    """Добавление транзакции и автоматическое создание цены актива, если на дату её нет."""
     payload = request.get_json()
-    # предполагаем, что payload уже содержит portfolio_id, asset_id или ticker...
-    res = table_insert("transactions", payload)
-    return jsonify(res), 201
+    user_email = get_jwt_identity()
+    user_id = get_user_by_email(user_email)["id"]
+
+    portfolio_asset_id = payload.get("portfolio_asset_id")
+    asset_id = payload.get("asset_id")        # только для asset_prices
+    tx_date = payload.get("transaction_date")
+    price = payload.get("price")
+
+    # --- 1️⃣ Добавляем транзакцию ---
+    tx_data = {
+        "user_id": user_id,
+        "portfolio_asset_id": portfolio_asset_id,
+        "transaction_type": payload.get("transaction_type"),
+        "quantity": payload.get("quantity"),
+        "price": price,
+        "transaction_date": tx_date,
+    }
+    res_transaction = supabase.table("transactions").insert(tx_data).execute()
+
+    if not res_transaction.data:
+        return jsonify({"success": False, "error": "Ошибка при добавлении транзакции"}), 500
+
+    # --- 2️⃣ Проверяем наличие цены ---
+    existing_price = (
+        supabase.table("asset_prices")
+        .select("id")
+        .eq("asset_id", asset_id)
+        .eq("trade_date", tx_date)
+        .execute()
+    )
+
+    # --- 3️⃣ Если цены нет — добавляем ---
+    if not existing_price.data:
+        supabase.table("asset_prices").insert({
+            "asset_id": asset_id,
+            "price": price,
+            "trade_date": tx_date
+        }).execute()
+
+    # --- 4️⃣ Обновляем расчёты по портфельному активу ---
+    supabase.rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id}).execute()
+
+    return jsonify({"success": True, "transaction": res_transaction.data[0]}), 201
+
+
 
 @portfolio_bp.route("/<int:portfolio_id>/history", methods=["GET"])
 @jwt_required()
@@ -134,14 +178,7 @@ async def import_broker_portfolio_route():
         result = await import_broker_portfolio(user_email, portfolio_id, broker_data)
 
         # 5️⃣ Создаём или обновляем связь с брокером
-        connection_res = (
-            supabase.table("user_broker_connections")
-            .select("*")
-            .eq("user_id", user_id)
-            .eq("broker_id", broker_id)
-            .eq("portfolio_id", portfolio_id)
-            .execute()
-        )
+        connection_res = table_select("user_broker_connections", "*", {"user_id": user_id, "broker_id": broker_id, "portfolio_id": portfolio_id})
 
         conn_data = {
             "user_id": user_id,

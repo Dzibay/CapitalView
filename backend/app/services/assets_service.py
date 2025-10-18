@@ -20,7 +20,6 @@ def create_asset(email: str, data: dict):
         currency = int(data.get("currency")) if data.get("currency") else None
         price = float(data.get("average_price", 0))
         date = data.get("date") or datetime.utcnow().isoformat()
-        print(portfolio_id, asset_id, asset_type_id, name, ticker, quantity, price, date)
 
         # --- Если актив кастомный или новый ---
         if not asset_id:

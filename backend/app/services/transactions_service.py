@@ -1,4 +1,4 @@
-from app.services.supabase_service import table_select
+from app.services.supabase_service import table_select, table_insert
 import asyncio
 
 async def get_user_transactions(user_id: str, limit=20):
@@ -56,3 +56,4 @@ async def get_user_transactions(user_id: str, limit=20):
         })
 
     return recent_data
+

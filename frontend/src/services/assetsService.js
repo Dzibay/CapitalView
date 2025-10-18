@@ -15,13 +15,6 @@ export default {
     return res.data
   },
 
-  // Продать актив
-  async sellAsset(portfolio_asset_id, quantity, price, date) {
-    const payload = { portfolio_asset_id, quantity, price, date }
-    const res = await axios.post(`${API_URL}/sell`, payload, { headers: authHeaders() })
-    return res.data
-  },
-
   // Удалить актив
   async deleteAsset(assetId) {
     const res = await axios.delete(`${API_URL}/${assetId}`, { headers: authHeaders() })

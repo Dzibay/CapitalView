@@ -1,14 +1,14 @@
 <script setup>
 import { ref, inject, computed } from "vue";
-import AddAssetModal from "../components/AddAssetModal.vue";
-import SellAssetModal from "../components/SellAssetModal.vue";
-import ImportPortfolioModal from "../components/ImportPortfolioModal.vue";
-import AddPortfolioModal from "../components/AddPortfolioModal.vue";
+import AddAssetModal from "../components/modals/AddAssetModal.vue";
+import AddTransactionModal from "../components/modals/AddTransactionModal.vue";
+import ImportPortfolioModal from "../components/modals/ImportPortfolioModal.vue";
+import AddPortfolioModal from "../components/modals/AddPortfolioModal.vue";
 import PortfolioTree from '../components/PortfolioTree.vue'
 
 const showAddModal = ref(false);
 const showAddPortfolioModal = ref(false);
-const showSellModal = ref(false);
+const showAddTransactionModal = ref(false);
 const showImportModal = ref(false);
 
 const selectedAsset = ref(null);
@@ -22,7 +22,7 @@ const addAsset = inject("addAsset");
 const removeAsset = inject("removeAsset");
 const clearPortfolio = inject("clearPortfolio");
 const addPortfolio = inject("addPortfolio");
-// const sellAsset = inject('sellAsset')
+const addTransaction = inject("addTransaction")
 const importPortfolio = inject("importPortfolio");
 
 /* === 1️⃣ Построение иерархического дерева портфелей === */
@@ -100,10 +100,11 @@ const togglePortfolioMenu = (id) => {
       :onSave="addPortfolio"
       :portfolios="parsedDashboard.portfolios"
     />
-    <SellAssetModal
-      v-if="showSellModal"
+    <AddTransactionModal
+      v-if="showAddTransactionModal"
       :asset="selectedAsset"
-      @close="showSellModal = false"
+      :onSubmit="addTransaction"
+      @close="showAddTransactionModal = false"
     />
     <ImportPortfolioModal
       v-if="showImportModal"
@@ -130,7 +131,7 @@ const togglePortfolioMenu = (id) => {
         @togglePortfolioMenu="togglePortfolioMenu"
         @removeAsset="removeAsset"
         @clearPortfolio="clearPortfolio"
-        @selectAsset="(asset) => { selectedAsset = asset; showSellModal = true }"
+        @selectAsset="(asset) => { selectedAsset = asset; showAddTransactionModal = true }"
       />
     </div>
   </div>

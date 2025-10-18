@@ -2,9 +2,10 @@
 import { ref, onMounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { authService } from '../services/authService.js'
+import { fetchDashboardData } from '../services/dashboardService.js'
 import assetsService from "../services/assetsService";
 import portfolioService from '../services/portfolioService'
-import { fetchDashboardData } from '../services/dashboardService.js'
+import transactionService from '../services/transactionService.js';
 
 import AppSidebar from '../components/AppSidebar.vue'
 import AppHeader from '../components/AppHeader.vue'
@@ -48,12 +49,13 @@ const addPortfolio = async (portfolioData) => {
 }
 
 // 🔹 Продажа актива
-const sellAsset = async ({ portfolio_asset_id, quantity, price, date }) => {
+const addTransaction = async ({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date }) => {
+  console.log(asset_id, portfolio_asset_id, transaction_type, quantity, price, date)
   try {
-    await assetsService.sellAsset(portfolio_asset_id, quantity, price, date)
+    await transactionService.addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, date)
     await reloadDashboard()
   } catch (err) {
-    console.error('Ошибка продажи актива:', err)
+    console.error('Ошибка добавления транзакции:', err)
   }
 }
 
@@ -117,7 +119,7 @@ provide('dashboardData', dashboardData)
 provide('loading', loading)
 provide('reloadDashboard', reloadDashboard)
 provide('addAsset', addAsset)
-// provide('sellAsset', sellAsset)
+provide('addTransaction', addTransaction)
 provide('removeAsset', removeAsset)
 provide('addPortfolio', addPortfolio)
 provide('clearPortfolio', clearPortfolio)
