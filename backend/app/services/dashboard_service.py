@@ -1,24 +1,28 @@
 import asyncio
 from collections import defaultdict
 from app.services.portfolio_service import get_portfolios_with_assets_and_history, get_user_portfolio_parent
-from app.services.reference_service import (get_asset_types, get_currencies, get_system_assets)
-from app.services.transactions_service import get_user_transactions
+from app.services.reference_service import get_reference_data
+from app.services.transactions_service import get_portfolio_transactions
 from app.services.user_service import get_user_by_email
+from time import time
 
 
 def calculate_summary(portfolios, assets):
     """Вычисляет итоговую сводку по портфелям и активам."""
-    total_value = round(portfolios[0]["total_value"], 2)
-    total_profit = round(portfolios[0]["total_profit"], 2)
-    profit_percent = round((total_profit / total_value * 100) if total_value else 0, 2)
+    for p in portfolios:
+        if not p.get("parent_portfolio_id"):
+            total_value = round(p["total_value"], 2)
+            total_profit = round(p["total_profit"], 2)
+            profit_percent = round((total_profit / total_value * 100) if total_value else 0, 2)
 
-    return {
-        "total_value": total_value,
-        "total_profit": total_profit,
-        "profit_percent": profit_percent,
-        "portfolio_count": len(portfolios),
-        "asset_count": len(assets)
-    }
+            return {
+                "total_value": total_value,
+                "total_profit": total_profit,
+                "profit_percent": profit_percent,
+                "portfolio_count": len(portfolios),
+                "asset_count": len(assets)
+            }
+    return None
 
 
 def calculate_asset_allocation(assets):
@@ -59,20 +63,6 @@ def combine_histories(histories):
     }
 
 
-async def get_reference_data():
-    """Возвращает справочные данные о типах активов, валютах и системных активах."""
-    asset_types, currencies, system_assets = await asyncio.gather(
-        asyncio.to_thread(get_asset_types),
-        asyncio.to_thread(get_currencies),
-        asyncio.to_thread(get_system_assets),
-    )
-    return {
-        "asset_types": asset_types,
-        "currencies": currencies,
-        "assets": system_assets
-    }
-
-
 def sum_portfolio_total_value(portfolio_id: int, portfolio_map: dict):
     """
     Рекурсивно суммирует total_value и total_profit для портфеля
@@ -101,8 +91,9 @@ async def get_dashboard_data(user_email: str):
     user_id = get_user_by_email(user_email)["id"]
 
     # 1️⃣ Портфели, активы и истории
+    start = time()
     portfolios, assets, histories = await get_portfolios_with_assets_and_history(user_email)
-
+    print('1. Портфели, активы и истории: ', time() - start)
     if not portfolios:
         return {
             "portfolios": [],
@@ -114,31 +105,47 @@ async def get_dashboard_data(user_email: str):
             "referenceData": {}
         }
 
+    start = time()
     # 2️⃣ Суммируем стоимость дочерних портфелей в родительские
     portfolio_map = {p["id"]: p for p in portfolios}
     for p in portfolios:
         if not p.get("parent_portfolio_id"):  # только корневые портфели
             sum_portfolio_total_value(p["id"], portfolio_map)
+    print('2. Суммируем стоимость дочерних портфелей в родительские: ', time() - start)
 
-    # 3️⃣ Итоговая сводка
-    summary = calculate_summary(portfolios, assets)
-
+    start = time()
     # 4️⃣ Распределение активов
     asset_allocation = calculate_asset_allocation(assets)
+    print('4. Распределение активов: ', time() - start)
 
+    start = time()
     # 5️⃣ Объединяем истории
     combined_history = combine_histories(histories)
+    print('5. Объединяем истории: ', time() - start)
 
+    start = time()
     # 6️⃣ Справочные данные
-    reference_data = await get_reference_data()
+    reference_data = get_reference_data()
+    print('6. Справочные данные: ', time() - start)
 
-    # 7️⃣ Транзакции пользователя
-    transactions = await get_user_transactions(user_id) or []
-
+    start = time()
     # 8️⃣ Получаем описание главного портфеля
-    main_portfolio = await get_user_portfolio_parent(user_email)
-    print('Главный портфель', main_portfolio)
-    main_portfolio_description = main_portfolio.get("description") if main_portfolio else None
+    main_portfolio_description = None
+    for p in portfolios:
+        if not p["parent_portfolio_id"]:
+            main_portfolio = p
+            main_portfolio_description = p.get("description")
+    print('8. Получаем описание главного портфеля: ', time() - start)
+
+    start = time()
+    # 7️⃣ Транзакции пользователя
+    transactions = await get_portfolio_transactions(main_portfolio["id"]) or []
+    print('7. Транзакции пользователя: ', time() - start)
+
+    start = time()
+    # 3️⃣ Итоговая сводка
+    summary = calculate_summary(portfolios, assets)
+    print('3. Итоговая сводка: ', time() - start)
 
     return {
         "portfolios": portfolios,

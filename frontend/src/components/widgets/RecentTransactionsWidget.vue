@@ -16,11 +16,11 @@ defineProps({
     <ul class="transactions-list">
       <li v-for="tx in transactions.slice(0, 4)" :key="tx.id" class="transaction-item">
         <div class="tx-info">
-          <span class="tx-type">{{ tx.type }}</span>
-          <span class="tx-asset">{{ tx.asset }} · {{ tx.quantity }} шт.</span>
+          <span class="tx-type">{{ tx.transaction_type }}</span>
+          <span class="tx-asset">{{ tx.asset_name }} · {{ tx.quantity }} шт.</span>
         </div>
         <div class="tx-info-right">
-          <span>{{ tx.date }}</span>
+          <span>{{ tx.transaction_date }}</span>
           <span class="tx-amount" :class="tx.type == 'Покупка' ? 'buy' : 'sell'">
             {{ tx.type === 'Покупка' ? '-' : '+' }} {{ (tx.quantity * tx.price).toFixed(2) }} RUB
           </span>

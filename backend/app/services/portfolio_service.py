@@ -3,6 +3,7 @@ from app.services.supabase_service import rpc, table_select, table_insert, table
 from app.services.user_service import get_user_by_email
 from app import supabase
 from concurrent.futures import ThreadPoolExecutor
+from time import time
 
 # Используем asyncio.to_thread, чтобы выполнять sync вызовы в потоках
 async def get_user_portfolios(user_email: str):
@@ -34,17 +35,25 @@ def get_portfolio_value_history_sync(portfolio_id: int):
 
 async def get_portfolios_with_assets_and_history(user_email: str):
     """Загружает портфели, их активы и историю стоимости параллельно."""
+    start = time()
     portfolios = await get_user_portfolios(user_email) or []
     if not portfolios:
         return [], [], {}
+    print('  Портфели: ', time() - start)
 
+    start = time()
     portfolio_ids = [p["id"] for p in portfolios]
     
     assets_tasks = [asyncio.create_task(get_portfolio_assets(pid)) for pid in portfolio_ids]
     histories_tasks = [asyncio.create_task(get_portfolio_value_history(pid)) for pid in portfolio_ids]
+    print('  Создание задач: ', time() - start)
 
+    start = time()
     assets_results = await asyncio.gather(*assets_tasks, return_exceptions=True)
+    print('  Выполнение задач assets: ', time() - start)
+    start = time()
     histories_results = await asyncio.gather(*histories_tasks, return_exceptions=True)
+    print('  Выполнение задач histories: ', time() - start)
 
     assets = []
     histories = {}

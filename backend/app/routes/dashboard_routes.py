@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.services.dashboard_service import get_dashboard_data
-import asyncio
+import time
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -10,5 +10,7 @@ dashboard_bp = Blueprint("dashboard", __name__)
 @jwt_required()
 async def dashboard():
     email = get_jwt_identity()
+    start = time.time()
     data = await get_dashboard_data(email)
+    print('Данные сформированы за ', time.time() - start)
     return jsonify(data)
