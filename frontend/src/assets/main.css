@@ -5,6 +5,7 @@ html {
   --spacing: 25px;
   --headerHeight: 100px;
   --sidebarWidth : 260px;
+  --sidebarWidthCollapsed: 80px;
   --positiveColor: #1CBD88;
   --negativeColor: #EF4444;
 }

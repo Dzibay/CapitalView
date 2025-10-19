@@ -37,6 +37,7 @@ const handleToggle = () => {
 
 <style scoped>
 .header {
+  width: 100%;
   position: fixed;
   height: var(--headerHeight);
   display: flex;
@@ -51,7 +52,7 @@ const handleToggle = () => {
   width: calc(100% - var(--sidebarWidth))
 }
 header.sidebarOff {
-  width: 100%;
+  width: calc(100% - var(--sidebarWidthCollapsed));
 }
 .burger-button {
   background: none;

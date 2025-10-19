@@ -8,12 +8,12 @@ import portfolioService from '../services/portfolioService'
 import transactionService from '../services/transactionService.js';
 
 import AppSidebar from '../components/AppSidebar.vue'
+import NewSidebar from '../components/NewSidebar.vue';
 import AppHeader from '../components/AppHeader.vue'
 
 const user = ref(null)
 const dashboardData = ref(null)
 const loading = ref(true)
-const isSidebarVisible = ref(true)
 const router = useRouter()
 
 // 🔹 Универсальная перезагрузка Dashboard
@@ -206,15 +206,18 @@ provide('clearPortfolio', clearPortfolio)
 provide('importPortfolio', importPortfolio)
 provide('updatePortfolioGoal', updatePortfolioGoal)
 
+const isSidebarCollapsed = ref(false)
+
 function toggleSidebar() {
-  isSidebarVisible.value = !isSidebarVisible.value
+  isSidebarCollapsed.value = !isSidebarCollapsed.value
 }
+
 </script>
 
 <template>
   <div class="dashboard-layout">
-    <AppSidebar :class="{ 'sidebar-hidden': !isSidebarVisible }" />
-    <main class="main-content" :class="{ 'full-width': !isSidebarVisible }">
+    <AppSidebar :user="user" :collapsed="isSidebarCollapsed" />
+    <main class="main-content" :class="{ 'full-width': isSidebarCollapsed }">
       <AppHeader :user="user" @toggle-sidebar="toggleSidebar" />
       <div class="page-content">
         <router-view />
@@ -238,7 +241,7 @@ function toggleSidebar() {
 }
 
 .main-content.full-width {
-  margin-left: 0;
+  margin-left: var(--sidebarWidthCollapsed);
 }
 
 .page-content {
