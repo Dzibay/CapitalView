@@ -1,8 +1,9 @@
 <script setup>
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, watch } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 
 const router = useRouter();
+const route = useRoute();
 
 // Свойство для управления состоянием меню из родительского компонента
 defineProps({
@@ -55,22 +56,33 @@ const icons = {
 
 const menuItems = ref([
   { name: 'Дашборд', link: '/dashboard', icon: icons.dashboard, active: true, submenuOpen: false },
-  { name: 'Аналитика', link: '/dashboard', icon: icons.category, active: false, submenuOpen: false, submenu: [ { name: 'UI Face', href: '#' }, { name: 'Pigments', href: '#' }, { name: 'Box Icons', href: '#' } ] },
+  { name: 'Аналитика', link: '/a', icon: icons.category, active: false, submenuOpen: false, submenu: [ { name: 'UI Face', href: '#' }, { name: 'Pigments', href: '#' }, { name: 'Box Icons', href: '#' } ] },
   { name: 'Активы', link: '/assets', icon: icons.posts, active: false, submenuOpen: false },
-  { name: 'Операции', link: '/dashboard', icon: icons.analytics, active: false, submenuOpen: false },
-  { name: 'Вложения', link: '/dashboard', icon: icons.chart, active: false, submenuOpen: false },
-  { name: 'Транзакции', link: '/dashboard', icon: icons.plugins, active: false, submenuOpen: false, submenu: [ { name: 'UI Face', href: '#' }, { name: 'Pigments', href: '#' }, { name: 'Box Icons', href: '#' } ] },
-  { name: 'Настройки', link: '/dashboard', icon: icons.setting, active: false, submenuOpen: false },
+  { name: 'Отчеты', link: '/a', icon: icons.analytics, active: false, submenuOpen: false },
+  { name: 'Вложения', link: '/a', icon: icons.chart, active: false, submenuOpen: false },
+  { name: 'Операции', link: '/transactions', icon: icons.plugins, active: false, submenuOpen: false, submenu: [ { name: 'UI Face', href: '#' }, { name: 'Pigments', href: '#' }, { name: 'Box Icons', href: '#' } ] },
+  { name: 'Настройки', link: '/a', icon: icons.setting, active: false, submenuOpen: false },
 ]);
 
 const handleMenuClick = (clickedItem) => {
   if (clickedItem.submenu) {
     clickedItem.submenuOpen = !clickedItem.submenuOpen;
   }
+}
+// Обновление активного пункта меню по текущему маршруту
+const updateActiveMenu = () => {
   menuItems.value.forEach(item => {
-    item.active = item === clickedItem;
+    item.active = route.path.startsWith(item.link);
   });
 };
+
+// Инициализация
+updateActiveMenu();
+
+// Слежение за изменением маршрута
+watch(route, () => {
+  updateActiveMenu();
+});
 </script>
 
 

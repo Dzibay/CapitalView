@@ -1,7 +1,13 @@
-from app.services.supabase_service import table_select, table_insert, rpc
-import asyncio
+from app.services.supabase_service import rpc
 
-async def get_portfolio_transactions(porttfolio_id, limit=20):
-    return rpc("get_portfolio_recent_transactions", {"p_portfolio_id": porttfolio_id, "p_limit": limit})
-
+def get_transactions(user_id, portfolio_id=None, asset_name=None, start_date=None, end_date=None, limit=1000):
+    params = {
+        "p_user_id": user_id,
+        "p_portfolio_id": portfolio_id,
+        "p_asset_name": asset_name,
+        "p_start_date": start_date,
+        "p_end_date": end_date,
+        "p_limit": limit
+    }
+    return rpc("get_transactions_filtered", params)
 

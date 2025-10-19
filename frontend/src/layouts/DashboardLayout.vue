@@ -5,10 +5,9 @@ import { authService } from '../services/authService.js'
 import { fetchDashboardData } from '../services/dashboardService.js'
 import assetsService from "../services/assetsService";
 import portfolioService from '../services/portfolioService'
-import transactionService from '../services/transactionService.js';
+import transactionsService from '../services/transactionsService.js';
 
 import AppSidebar from '../components/AppSidebar.vue'
-import NewSidebar from '../components/NewSidebar.vue';
 import AppHeader from '../components/AppHeader.vue'
 
 const user = ref(null)
@@ -24,6 +23,23 @@ const reloadDashboard = async () => {
     console.error('Ошибка получения данных Dashboard:', err)
   } finally {
     loading.value = false
+  }
+}
+
+// 🔹 Фоновая подгрузка транзакций за последние 6 месяцев
+const transactionsLoaded = ref(false)
+
+const preloadTransactions = async () => {
+  if (transactionsLoaded.value) return // уже загружали
+  try {
+    const data = await transactionsService.getTransactions({})
+    dashboardData.value.data.transactions = [
+      ...(dashboardData.value.data.transactions || []),
+      ...data
+    ]
+    transactionsLoaded.value = true
+  } catch (err) {
+    console.error("Ошибка фоновой загрузки транзакций:", err)
   }
 }
 
@@ -205,6 +221,7 @@ provide('deletePortfolio', deletePortfolio)
 provide('clearPortfolio', clearPortfolio)
 provide('importPortfolio', importPortfolio)
 provide('updatePortfolioGoal', updatePortfolioGoal)
+provide("preloadTransactions", preloadTransactions)
 
 const isSidebarCollapsed = ref(false)
 

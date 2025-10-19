@@ -5,6 +5,7 @@ import Login from '../views/Login.vue';
 import Register from '../views/Register.vue';
 import Dashboard from '../views/Dashboard.vue';
 import Assets from '../views/Assets.vue'
+import Transactions from '../views/Transactions.vue';
 
 const routes = [
   { path: '/', component: Home },
@@ -14,6 +15,7 @@ const routes = [
     children: [
       { path: '/dashboard', component: Dashboard },
       { path: '/assets', component: Assets },
+      { path: '/transactions', component: Transactions}
     ]
   },
   // Страницы без layout

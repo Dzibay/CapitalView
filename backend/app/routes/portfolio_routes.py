@@ -55,7 +55,6 @@ def delete_portfolio_route(portfolio_id):
     data = asyncio.run(clear_portfolio(portfolio_id, True))
     return jsonify(data)
 
-
 @portfolio_bp.route("/<int:portfolio_id>/clear", methods=["POST"])
 @jwt_required()
 def portfolio_clear_route(portfolio_id):
@@ -68,13 +67,6 @@ def portfolio_clear_route(portfolio_id):
 def portfolio_assets_route(portfolio_id):
     data = asyncio.run(get_portfolio_assets(portfolio_id))
     return jsonify(data)
-
-@portfolio_bp.route("/<int:portfolio_id>/transactions", methods=["GET"])
-@jwt_required()
-def portfolio_transactions_route(portfolio_id):
-    data = asyncio.run(get_portfolio_transactions(portfolio_id))
-    return jsonify(data)
-
 
 @portfolio_bp.route("/add_transaction", methods=["POST"])
 @jwt_required()
