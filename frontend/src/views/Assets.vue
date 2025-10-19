@@ -20,6 +20,7 @@ const loading = inject("loading");
 const dashboardData = inject("dashboardData");
 const addAsset = inject("addAsset");
 const removeAsset = inject("removeAsset");
+const deletePortfolio = inject("deletePortfolio")
 const clearPortfolio = inject("clearPortfolio");
 const addPortfolio = inject("addPortfolio");
 const addTransaction = inject("addTransaction")
@@ -131,6 +132,7 @@ const togglePortfolioMenu = (id) => {
         @togglePortfolioMenu="togglePortfolioMenu"
         @removeAsset="removeAsset"
         @clearPortfolio="clearPortfolio"
+        @deletePortfolio="deletePortfolio"
         @selectAsset="(asset) => { selectedAsset = asset; showAddTransactionModal = true }"
       />
     </div>

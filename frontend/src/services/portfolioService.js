@@ -10,15 +10,21 @@ const API_URL = 'http://localhost:5000/api/portfolio'
 export default {
   async addPortfolio(data) {
     console.log('добавление портфеля')
-      const res = await axios.post(`${API_URL}/add`, data, { headers: authHeaders() })
-      return res.data
-    },
+    const res = await axios.post(`${API_URL}/add`, data, { headers: authHeaders() })
+    console.log(res)
+    return res.data
+  },
 
   // Импорт портфеля из Tinkoff
   async importPortfolio(token, portfolio_id, portfolio_name) {
       const payload = { token, portfolio_id, portfolio_name }
       const res = await axios.post(`${API_URL}/import_tinkoff`, payload, { headers: authHeaders() })
       return res.data
+  },
+
+  async deletePortfolio(portfolio_id) {
+    const res = await axios.delete(`${API_URL}/${portfolio_id}/delete`, { headers: authHeaders() })
+    return res.data
   },
 
   async clearPortfolio(portfolio_id) {

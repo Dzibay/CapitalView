@@ -15,7 +15,6 @@ from app.services.portfolio_service import (
 )
 from app.services.user_service import get_user_by_email
 from app.utils.tinkoff_service import get_full_portfolio
-import asyncio
 
 portfolio_bp = Blueprint("portfolio", __name__)
 
@@ -36,6 +35,10 @@ def add_portfolio_route():
     parent_portfolio_id = data.get("parent_portfolio_id")
     portfolio_name = data.get("name")
 
+    if not parent_portfolio_id:
+        parent_portfolio_id = asyncio.run(get_user_portfolio_parent(user_email))["id"]
+        print(parent_portfolio_id)
+
     insert_data = {
         "user_id": user_id,
         "parent_portfolio_id": parent_portfolio_id,
@@ -43,7 +46,22 @@ def add_portfolio_route():
         "description": {}
     }
     res = table_insert("portfolios", insert_data)
-    return jsonify(res)
+    return jsonify({"success": True, "portfolio": res[0]}), 201
+
+@portfolio_bp.route("/<int:portfolio_id>/delete", methods=["DELETE"])
+@jwt_required()
+def delete_portfolio_route(portfolio_id):
+    print('Запрос удаления портфеля', portfolio_id)
+    data = asyncio.run(clear_portfolio(portfolio_id, True))
+    return jsonify(data)
+
+
+@portfolio_bp.route("/<int:portfolio_id>/clear", methods=["POST"])
+@jwt_required()
+def portfolio_clear_route(portfolio_id):
+    print('Запрос очистки портфеля', portfolio_id)
+    data = asyncio.run(clear_portfolio(portfolio_id))
+    return jsonify(data)
 
 @portfolio_bp.route("/<int:portfolio_id>/assets", methods=["GET"])
 @jwt_required()
@@ -135,21 +153,12 @@ def update_portfolio_description_route(portfolio_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-
-
 @portfolio_bp.route("/<int:portfolio_id>/history", methods=["GET"])
 @jwt_required()
 def portfolio_history_route(portfolio_id):
     data = asyncio.run(get_portfolio_value_history(portfolio_id))
     return jsonify(data)
 
-@portfolio_bp.route("/<int:portfolio_id>/clear", methods=["POST"])
-@jwt_required()
-def portfolio_clear_route(portfolio_id):
-    email = get_jwt_identity()
-    print('Запрос очистки портфеля', portfolio_id)
-    data = asyncio.run(clear_portfolio(portfolio_id))
-    return jsonify(data)
 
 @portfolio_bp.route("/import_tinkoff", methods=["POST"])
 @jwt_required()

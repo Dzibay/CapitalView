@@ -17,7 +17,7 @@
           <button class="menu-btn" @click.stop="togglePortfolioMenu(portfolio.id)">⋯</button>
           <div v-if="activePortfolioMenu === portfolio.id" class="menu-dropdown">
             <button @click="clearPortfolio(portfolio.id)">🧹 Очистить</button>
-            <button class="danger">🗑️ Удалить</button>
+            <button @click="deletePortfolio(portfolio.id)" class="danger">🗑️ Удалить</button>
           </div>
         </div>
       </div>
@@ -55,7 +55,7 @@
                     {{
                         Math.max(
                         0,
-                        (asset.quantity * asset.last_price / asset.leverage) * (1 + asset.leverage * (asset.last_price - asset.average_price) / asset.average_price) * asset.currency_rate_to_rub
+                        (asset.quantity * asset.last_price / asset.leverage) * asset.currency_rate_to_rub
                         ).toFixed(2)
                     }}
                 </td>
@@ -82,6 +82,7 @@
               @togglePortfolio="togglePortfolio"
               @togglePortfolioMenu="togglePortfolioMenu"
               @removeAsset="removeAsset"
+              @deletePortfolio="deletePortfolio"
               @clearPortfolio="clearPortfolio"
               @selectAsset="selectAsset"
             />
@@ -106,6 +107,7 @@ const emit = defineEmits([
   "togglePortfolioMenu",
   "removeAsset",
   "clearPortfolio",
+  "deletePortfolio",
   "selectAsset",
 ]);
 
@@ -125,6 +127,7 @@ const toggleAssetMenu = (id) => {
 const removeAsset = (id) => emit("removeAsset", id);
 const clearPortfolio = (id) => emit("clearPortfolio", id);
 const selectAsset = (asset) => emit("selectAsset", asset);
+const deletePortfolio = (id) => emit("deletePortfolio", id)
 
 // Закрытие всех dropdown при клике вне
 const handleClickOutside = (event) => {
