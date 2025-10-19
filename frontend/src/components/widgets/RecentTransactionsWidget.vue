@@ -21,8 +21,8 @@ defineProps({
         </div>
         <div class="tx-info-right">
           <span>{{ tx.transaction_date }}</span>
-          <span class="tx-amount" :class="tx.type == 'Покупка' ? 'buy' : 'sell'">
-            {{ tx.type === 'Покупка' ? '-' : '+' }} {{ (tx.quantity * tx.price).toFixed(2) }} RUB
+          <span class="tx-amount" :class="tx.transaction_type == 'Покупка' ? 'buy' : 'sell'">
+            {{ tx.transaction_type === 'Покупка' ? '-' : '+' }} {{ (tx.quantity * tx.price).toFixed(2) }} RUB
           </span>
         </div>
       </li>
