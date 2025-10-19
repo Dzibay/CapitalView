@@ -67,7 +67,6 @@
                     <button class="menu-btn" @click.stop="toggleAssetMenu(asset.portfolio_asset_id)">⋯</button>
                     <div v-if="activeAssetMenu === asset.portfolio_asset_id" class="menu-dropdown">
                       <button @click="selectAsset(asset)">💰 Добавить транзакцию</button>
-                      <button>Импортировать</button>
                       <button class="danger" @click="removeAsset(asset.portfolio_asset_id)">🗑️ Удалить актив</button>
                     </div>
                   </div>

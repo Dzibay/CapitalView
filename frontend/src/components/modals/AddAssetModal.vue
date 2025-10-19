@@ -37,7 +37,11 @@
 
           <label>Тип:</label>
           <select v-model="form.asset_type_id" required>
-            <option v-for="t in referenceData.asset_types" :key="t.id" :value="t.id">
+            <option
+              v-for="t in referenceData.asset_types.filter(t => t.is_custom)"
+              :key="t.id"
+              :value="t.id"
+            >
               {{ t.name }}
             </option>
           </select>
