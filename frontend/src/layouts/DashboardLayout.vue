@@ -71,8 +71,6 @@ const addAsset = async (assetData) => {
   }
 }
 
-
-
 // 🔹 Добавление портфеля
 const addPortfolio = async (portfolioData) => {
   try {
@@ -147,8 +145,6 @@ const removeAsset = async (portfolioAssetId) => {
   }
 }
 
-
-
 // 🔹 Импорт портфеля из Tinkoff
 const importPortfolio = async ({ token, portfolioId, portfolio_name }) => {
   try {
@@ -166,10 +162,9 @@ const updatePortfolioGoal = async ({ portfolioId, title, targetAmount }) => {
   try {
     const res = await portfolioService.updatePortfolioGoal(portfolioId, { title, targetAmount });
     if (!res) throw new Error('Ошибка при обновлении цели');
-    
+    dashboardData.value.data.main_portfolio_description = res[0]["description"]
     // Перезагружаем дашборд, чтобы отобразить новые данные
-    loading.value = true
-    await reloadDashboard();
+    
   } catch (err) {
     console.error('Ошибка обновления цели портфеля:', err);
   }
