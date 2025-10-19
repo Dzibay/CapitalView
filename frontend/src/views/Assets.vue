@@ -18,6 +18,7 @@ const activePortfolioMenu = ref(null);
 
 const loading = inject("loading");
 const dashboardData = inject("dashboardData");
+const reloadDashboard = inject('reloadDashboard')
 const addAsset = inject("addAsset");
 const removeAsset = inject("removeAsset");
 const deletePortfolio = inject("deletePortfolio")
@@ -60,6 +61,38 @@ const parsedDashboard = computed(() => {
   };
 });
 
+// Функция обновления всех портфелей с подключением
+const updatingPortfolios = ref(new Set());
+
+
+const refreshPortfolios = async () => {
+  const portfolios = dashboardData.value?.data?.portfolios ?? [];
+  
+  // Создаем массив промисов для асинхронных вызовов
+  const importPromises = portfolios.map(async (p) => {
+  if (p.connection?.api_key) {
+    updatingPortfolios.value.add(p.id)
+    try {
+      await importPortfolio({
+          token: p.connection.api_key,
+          portfolioId: p.id,
+          portfolio_name: null
+        });
+      } finally {
+        updatingPortfolios.value.delete(p.id)
+      }
+  }
+});
+
+  // Ждем завершения всех промисов
+  console.log(updatingPortfolios.value)
+  await Promise.all(importPromises);
+
+  await reloadDashboard();
+  console.log("Обновление портфелей завершено");
+};
+
+
 /* === 3️⃣ Поведение меню и раскрытия === */
 const togglePortfolio = (id) => {
   if (expandedPortfolios.value.includes(id))
@@ -85,6 +118,7 @@ const togglePortfolioMenu = (id) => {
       <button class="btn" @click="showAddModal = true">➕ Добавить актив</button>
       <button class="btn" @click="showAddPortfolioModal = true">📁 Создать портфель</button>
       <button class="btn" @click="showImportModal = true">📥 Импорт портфеля</button>
+      <button class="btn" @click="refreshPortfolios">🔄 Обновить портфели</button>
     </div>
 
     <!-- Модалки -->
@@ -134,6 +168,7 @@ const togglePortfolioMenu = (id) => {
         @clearPortfolio="clearPortfolio"
         @deletePortfolio="deletePortfolio"
         @selectAsset="(asset) => { selectedAsset = asset; showAddTransactionModal = true }"
+        :updatingPortfolios="updatingPortfolios"
       />
     </div>
   </div>

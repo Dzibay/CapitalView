@@ -11,6 +11,8 @@
           <span>{{ expandedPortfolios.includes(portfolio.id) ? '▼' : '▶' }}</span>
           <span class="name">{{ portfolio.name }}</span>
           <span v-if="portfolio.total_value > 0"> (стоимость: {{ portfolio.total_value.toFixed(2) }} ₽)</span>
+          <span v-if="updatingPortfolios && unref(updatingPortfolios).has(portfolio.id)" class="spinner">⏳</span>
+
         </div>
 
         <div class="menu">
@@ -65,6 +67,7 @@
                     <button class="menu-btn" @click.stop="toggleAssetMenu(asset.portfolio_asset_id)">⋯</button>
                     <div v-if="activeAssetMenu === asset.portfolio_asset_id" class="menu-dropdown">
                       <button @click="selectAsset(asset)">💰 Добавить транзакцию</button>
+                      <button>Импортировать</button>
                       <button class="danger" @click="removeAsset(asset.portfolio_asset_id)">🗑️ Удалить актив</button>
                     </div>
                   </div>
@@ -79,6 +82,7 @@
               :portfolios="portfolio.children"
               :expandedPortfolios="expandedPortfolios"
               :activePortfolioMenu="activePortfolioMenu"
+              :updatingPortfolios="updatingPortfolios"
               @togglePortfolio="togglePortfolio"
               @togglePortfolioMenu="togglePortfolioMenu"
               @removeAsset="removeAsset"
@@ -94,12 +98,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { ref, unref, onMounted, onBeforeUnmount } from "vue";
 
 defineProps({
   portfolios: Array,
   expandedPortfolios: Array,
   activePortfolioMenu: Number, // управление портфельным dropdown из родителя
+  updatingPortfolios: Object,
 });
 
 const emit = defineEmits([

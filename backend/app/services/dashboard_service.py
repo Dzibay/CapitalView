@@ -1,6 +1,6 @@
 import asyncio
 from collections import defaultdict
-from app.services.portfolio_service import get_portfolios_with_assets_and_history, get_user_portfolio_parent
+from app.services.portfolio_service import get_portfolios_with_assets_and_history
 from app.services.reference_service import get_reference_data
 from app.services.transactions_service import get_transactions
 from app.services.user_service import get_user_by_email

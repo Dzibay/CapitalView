@@ -218,10 +218,10 @@ async def import_broker_portfolio_route():
             "last_sync_at": datetime.utcnow().isoformat(),
         }
 
-        if connection_res.data:
+        if connection_res:
             supabase.table("user_broker_connections") \
                 .update(conn_data) \
-                .eq("id", connection_res.data[0]["id"]) \
+                .eq("id", connection_res[0]["id"]) \
                 .execute()
         else:
             supabase.table("user_broker_connections").insert(conn_data).execute()
