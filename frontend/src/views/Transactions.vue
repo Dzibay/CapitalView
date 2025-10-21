@@ -89,6 +89,7 @@ watch(
           <th>Портфель</th>
           <th>Количество</th>
           <th>Цена</th>
+          <th>Стоимость</th>
         </tr>
       </thead>
       <tbody>
@@ -99,6 +100,7 @@ watch(
           <td>{{ tx.portfolio_name }}</td>
           <td>{{ tx.quantity }}</td>
           <td>{{ tx.price.toLocaleString() }}</td>
+          <td>{{ (tx.quantity * tx.price).toFixed(2) }}</td>
         </tr>
       </tbody>
     </table>
