@@ -1,7 +1,7 @@
 from tinkoff.invest import Client, InstrumentIdType
 from datetime import datetime, timedelta
 
-def get_full_portfolio(token, days=365):
+def get_tinkoff_portfolio(token, days=365):
     print('Получаем данные от брокера')
     """
     Получает портфель и транзакции пользователя в Тинькофф Инвестициях.
@@ -80,3 +80,6 @@ def get_full_portfolio(token, days=365):
             result_data[account.name] = {"positions": positions_data, "transactions": transactions_data}
         return result_data
 
+
+if __name__ == 'main':
+    print(get_tinkoff_portfolio())

@@ -16,9 +16,9 @@ export default {
   },
 
   // Импорт портфеля из Tinkoff
-  async importPortfolio(token, portfolio_id, portfolio_name) {
-      const payload = { token, portfolio_id, portfolio_name }
-      const res = await axios.post(`${API_URL}/import_tinkoff`, payload, { headers: authHeaders() })
+  async importPortfolio(broker_id, token, portfolio_id, portfolio_name) {
+      const payload = { broker_id, token, portfolio_id, portfolio_name }
+      const res = await axios.post(`${API_URL}/import_broker`, payload, { headers: authHeaders() })
       return res.data
   },
 

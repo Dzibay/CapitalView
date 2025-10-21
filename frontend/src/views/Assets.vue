@@ -74,6 +74,7 @@ const refreshPortfolios = async () => {
     updatingPortfolios.value.add(p.id)
     try {
       await importPortfolio({
+          broker_id: p.connection.broker_id,
           token: p.connection.api_key,
           portfolioId: p.id,
           portfolio_name: null
