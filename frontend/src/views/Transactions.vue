@@ -3,7 +3,7 @@ import { inject, ref, computed, watch } from 'vue'
 
 // получаем данные от родителя
 const dashboardData = inject('dashboardData')
-const preloadTransactions = inject('preloadTransactions')
+// const preloadTransactions = inject('preloadTransactions')
 
 // доступ к последним 20 транзакциям
 const transactions = computed(() => dashboardData.value?.data?.transactions || [])
@@ -45,15 +45,15 @@ watch(
   { immediate: true }
 )
 
-watch(
-  () => dashboardData.value,
-  async (newVal) => {
-    if (newVal) {
-      await preloadTransactions() // вызываем функцию родителя
-    }
-  },
-  { immediate: true }
-)
+// watch(
+//   () => dashboardData.value,
+//   async (newVal) => {
+//     if (newVal) {
+//       await preloadTransactions() // вызываем функцию родителя
+//     }
+//   },
+//   { immediate: true }
+// )
 
 </script>
 
