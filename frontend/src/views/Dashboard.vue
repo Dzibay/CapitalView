@@ -30,6 +30,47 @@ const selectedPortfolio = computed(() => {
   return portfolios.value.find(p => p.id === selectedPortfolioId.value) || null
 })
 
+// Обработчики для управления фокусом
+const clickCount = ref(0)
+const clickBlocked = ref(false)
+const portfolioSelect = ref(null)
+
+const handleSelectChange = () => {
+
+  // Сбрасываем счётчик
+  clickCount.value = 0
+  clickBlocked.value = true // Блокируем клики на короткое время
+
+  // Убираем фокус
+  if (portfolioSelect.value) {
+    portfolioSelect.value.blur()
+  }
+
+  // Разблокируем клики через 200 мс
+  setTimeout(() => {
+    clickBlocked.value = false
+  }, 200)
+}
+
+const handleSelectBlur = () => {
+  clickCount.value = 0
+}
+
+const handleSelectClick = () => {
+  if (clickBlocked.value) {
+    return
+  }
+  clickCount.value++
+
+  // Если второй клик — убираем фокус и сбрасываем счётчик
+  if (clickCount.value >= 2) {
+    portfolioSelect.value.blur()
+    clickCount.value = 0
+  }
+}
+
+
+
 // Функция для сбора всех id выбранного портфеля и его дочерних
 function collectPortfolioIds(portfolio, allPortfolios) {
   let ids = [portfolio.id];
@@ -98,18 +139,31 @@ const goalData = computed(() => {
 
 <template>
   <div v-if="!loading">
-    <div class="title-text" style="display: flex; align-items: center; justify-content: space-between;">
-      <h1>С возвращением, {{ user?.name }}</h1>
-
+    <div class="title" style="display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <h1>С возвращением, {{ user?.name }}</h1>
+        <h2>Главная</h2>
+      </div>
       <!-- Селектор портфеля -->
-      <select v-model="selectedPortfolioId">
-        <option v-for="p in portfolios" :key="p.id" :value="p.id">
-          {{ p.name }}
-        </option>
-      </select>
+      <div class="portfolio-selector">
+        <select 
+          v-model="selectedPortfolioId" 
+          class="portfolio-select"
+          ref="portfolioSelect"
+          @click="handleSelectClick"
+          @change="handleSelectChange"
+          @blur="handleSelectBlur"
+        >
+          <option v-for="p in portfolios" :key="p.id" :value="p.id">
+            {{ p.name }}
+          </option>
+        </select>
+        <div class="select-arrow">▼</div>
+      </div>
+
     </div>
 
-    <h2>Главная</h2>
+    
 
     <div class="widgets-grid">
       <TotalCapitalWidget 
@@ -134,7 +188,7 @@ const goalData = computed(() => {
 </template>
 
 <style scoped>
-.title-text {
+.title {
   margin-bottom: var(--spacing);
 }
 
@@ -151,5 +205,72 @@ const goalData = computed(() => {
   justify-content: center;
   height: 100vh;
   font-size: 1.5rem;
+}
+
+
+.portfolio-selector {
+  position: relative;
+  display: inline-block;
+  min-width: 200px;
+}
+
+.portfolio-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 100%;
+  padding: 10px 16px;
+  padding-right: 40px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #1a1a1a);
+  background: var(--bg-secondary, #f8f9fa);
+  border: 2px solid var(--border-color, #e1e5e9);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  outline: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.portfolio-select:hover {
+  border-color: var(--primary-color, #007bff);
+  background: var(--bg-primary, #ffffff);
+  box-shadow: 0 4px 8px rgba(0, 123, 255, 0.15);
+}
+
+.portfolio-select:focus {
+  border-color: var(--primary-color, #007bff);
+  background: var(--bg-primary, #ffffff);
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.select-arrow {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--text-secondary, #6c757d);
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.portfolio-select:focus + .select-arrow {
+  transform: translateY(-50%) rotate(180deg);
+  color: var(--primary-color, #007bff);
+}
+
+/* Стили для опций */
+.portfolio-select option {
+  padding: 12px;
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-primary, #1a1a1a);
+  font-size: 14px;
+}
+
+.portfolio-select option:hover {
+  background: var(--primary-color, #007bff);
+  color: white;
 }
 </style>
