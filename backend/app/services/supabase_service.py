@@ -33,13 +33,21 @@ def table_update(table: str, data: dict, filters: dict):
         q = q.eq(k, v)
     return q.execute().data
 
-def table_delete(table: str, filters: dict = None, neq_filters: dict = None):
+def table_delete(table: str, filters: dict = None, neq_filters: dict = None, in_filters: dict = None):
     q = supabase.table(table).delete()
+
     if filters:
         for k, v in filters.items():
             q = q.eq(k, v)
+
     if neq_filters:
         for k, v in neq_filters.items():
             q = q.neq(k, v)
+
+    if in_filters:
+        for k, v in in_filters.items():
+            q = q.in_(k, v)
+
     return q.execute().data
+
 

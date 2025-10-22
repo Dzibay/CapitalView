@@ -125,7 +125,7 @@ const clearPortfolio = async ( portfolioId ) => {
   }
 }
 
-// 🔹 Добавление транзакции
+// 🔹 Транзакции
 const addTransaction = async ({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date }) => {
   try {
     await transactionsService.addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, date)
@@ -133,6 +133,24 @@ const addTransaction = async ({ asset_id, portfolio_asset_id, transaction_type, 
     await reloadDashboard()
   } catch (err) {
     console.error('Ошибка добавления транзакции:', err)
+  }
+}
+const editTransaction = async (updated_transaction) => {
+  try {
+    await transactionsService.editTransaction(updated_transaction)
+    loading.value = true
+    await reloadDashboard()
+  } catch (err) {
+    console.error('Ошибка редактирования транзакции:', err)
+  }
+}
+const deleteTransactions = async (transaction_ids) => {
+  try {
+    await transactionsService.deleteTransactions(transaction_ids)
+    loading.value = true
+    await reloadDashboard()
+  } catch (err) {
+    console.error('Ошибка удаления транзакций:', err)
   }
 }
 
@@ -234,6 +252,8 @@ provide('loading', loading)
 provide('reloadDashboard', reloadDashboard)
 provide('addAsset', addAsset)
 provide('addTransaction', addTransaction)
+provide('editTransaction', editTransaction)
+provide('deleteTransactions', deleteTransactions)
 provide('removeAsset', removeAsset)
 provide('addPortfolio', addPortfolio)
 provide('deletePortfolio', deletePortfolio)

@@ -46,4 +46,21 @@ export default {
 
     return res.data
   },
+
+  async editTransaction(updated_transaction) {
+    const res = await axios.put(`${API_URL}/`, updated_transaction, 
+      { headers: authHeaders() }
+    )
+    return res.data
+  },
+
+  async deleteTransactions(transaction_ids) {
+    const res = await axios.delete(`${API_URL}/`, 
+      {
+        data: { ids: transaction_ids },
+        headers: authHeaders()
+      }
+    )
+    return res.data
+  }
 };

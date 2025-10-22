@@ -1,9 +1,11 @@
 <script setup>
 import { inject, ref, computed, watch } from 'vue'
+import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 
-// получаем данные от родителя
+// получаем данные и функции от родителя
 const dashboardData = inject('dashboardData')
-// const preloadTransactions = inject('preloadTransactions')
+const deleteTransactions = inject('deleteTransactions') // принимает массив id
+const editTransaction = inject('editTransaction') // обновляет транзакцию в Supabase
 
 // доступ к последним 20 транзакциям
 const transactions = computed(() => dashboardData.value?.data?.transactions || [])
@@ -23,7 +25,17 @@ const endDate = ref('')
 // отфильтрованные транзакции
 const filteredTransactions = ref([])
 
-// функция фильтрации
+// выделенные транзакции
+const selectedTxIds = ref([])
+
+// главный чекбокс
+const allSelected = ref(false)
+
+// модальное окно
+const showEditModal = ref(false)
+const currentTransaction = ref(null)
+
+// применяем фильтр
 const applyFilter = () => {
   filteredTransactions.value = transactions.value.filter(tx => {
     const matchAsset = selectedAsset.value ? tx.asset_name === selectedAsset.value : true
@@ -33,41 +45,61 @@ const applyFilter = () => {
     const matchEnd = endDate.value ? txDate <= new Date(endDate.value) : true
     return matchAsset && matchPortfolio && matchStart && matchEnd
   })
+  selectedTxIds.value = []
+  allSelected.value = false
 }
 
 // формат даты
 const formatDate = date => new Date(date).toLocaleDateString()
 
-// применяем фильтр при изменении dashboardData
-watch(
-  transactions,
-  () => applyFilter(),
-  { immediate: true }
-)
+watch(transactions, applyFilter, { immediate: true })
 
-// watch(
-//   () => dashboardData.value,
-//   async (newVal) => {
-//     if (newVal) {
-//       await preloadTransactions() // вызываем функцию родителя
-//     }
-//   },
-//   { immediate: true }
-// )
+// переключение всех
+const toggleAll = () => {
+  if (allSelected.value) {
+    selectedTxIds.value = filteredTransactions.value.map(tx => tx.transaction_id)
+  } else {
+    selectedTxIds.value = []
+  }
+}
 
+// синхронизация главного чекбокса
+watch(selectedTxIds, () => {
+  allSelected.value =
+    selectedTxIds.value.length > 0 &&
+    selectedTxIds.value.length === filteredTransactions.value.length
+})
+
+// удаление выделенных
+const deleteSelected = () => {
+  if (selectedTxIds.value.length) {
+    deleteTransactions(selectedTxIds.value)
+    selectedTxIds.value = []
+    allSelected.value = false
+  }
+}
+
+// открыть модалку редактирования
+const openEditModal = tx => {
+  currentTransaction.value = { ...tx }
+  showEditModal.value = true
+}
+
+// сохранить изменения из модалки
+const handleSaveEdit = async newTx => {
+  await editTransaction(newTx)
+  showEditModal.value = false
+}
 </script>
 
 <template>
   <div class="transactions-page">
     <h1 class="page-title">История транзакций</h1>
 
-    <!-- Фильтры -->
     <div class="filters">
       <select v-model="selectedPortfolio" @change="applyFilter">
         <option value="">Все портфели</option>
-        <option v-for="p in portfolios" :key="p.id" :value="p.name">
-          {{ p.name }}
-        </option>
+        <option v-for="p in portfolios" :key="p.id" :value="p.name">{{ p.name }}</option>
       </select>
 
       <select v-model="selectedAsset" @change="applyFilter">
@@ -79,10 +111,14 @@ watch(
       <input type="date" v-model="endDate" @change="applyFilter" />
     </div>
 
-    <!-- Таблица транзакций -->
+    <button @click="deleteSelected" :disabled="selectedTxIds.length === 0">
+      Удалить выбранные {{ selectedTxIds.size }}
+    </button>
+
     <table class="transactions-table">
       <thead>
         <tr>
+          <th><input type="checkbox" v-model="allSelected" @change="toggleAll" /></th>
           <th>Дата</th>
           <th>Тип</th>
           <th>Актив</th>
@@ -90,10 +126,12 @@ watch(
           <th>Количество</th>
           <th>Цена</th>
           <th>Стоимость</th>
+          <th>Действия</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="tx in filteredTransactions" :key="tx.id">
+        <tr v-for="tx in filteredTransactions" :key="tx.transaction_id">
+          <td><input type="checkbox" :value="tx.transaction_id" v-model="selectedTxIds" /></td>
           <td>{{ formatDate(tx.transaction_date) }}</td>
           <td>{{ tx.transaction_type }}</td>
           <td>{{ tx.asset_name }}</td>
@@ -101,6 +139,9 @@ watch(
           <td>{{ tx.quantity }}</td>
           <td>{{ tx.price.toLocaleString() }}</td>
           <td>{{ (tx.quantity * tx.price).toFixed(2) }}</td>
+          <td>
+            <button @click="openEditModal(tx)">Редактировать</button>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -108,8 +149,17 @@ watch(
     <p v-if="filteredTransactions.length === 0" class="empty-state">
       Нет транзакций за выбранный период.
     </p>
+
+    <EditTransactionModal
+      :visible="showEditModal"
+      :transaction="currentTransaction"
+      @close="showEditModal = false"
+      @save="handleSaveEdit"
+    />
   </div>
 </template>
+
+
 
 
 <style scoped>
