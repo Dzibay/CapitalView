@@ -66,7 +66,7 @@ async def get_portfolios_with_assets_and_history(user_email: str):
             assets.extend(assets_results[i])
 
         # История
-        histories[str(p["id"])] = histories_results[i] if not isinstance(histories_results[i], Exception) else []
+        histories[p["id"]] = histories_results[i] if not isinstance(histories_results[i], Exception) else []
 
     return portfolios, assets, histories
 

@@ -1,32 +1,15 @@
-import asyncio
 from collections import defaultdict
 from app.services.portfolio_service import get_portfolios_with_assets_and_history
 from app.services.reference_service import get_reference_data
 from app.services.transactions_service import get_transactions
 from app.services.user_service import get_user_by_email
-from time import time
-
-
-def calculate_summary(portfolios, assets):
-    """Вычисляет итоговую сводку по портфелям и активам."""
-    for p in portfolios:
-        if not p.get("parent_portfolio_id"):
-            total_value = round(p["total_value"], 2)
-            total_profit = round(p["total_profit"], 2)
-            profit_percent = round((total_profit / total_value * 100) if total_value else 0, 2)
-
-            return {
-                "total_value": total_value,
-                "total_profit": total_profit,
-                "profit_percent": profit_percent,
-                "portfolio_count": len(portfolios),
-                "asset_count": len(assets)
-            }
-    return None
 
 
 def calculate_asset_allocation(assets):
-    """Вычисляет распределение активов по типам."""
+    """
+    Считает распределение активов для ОДНОГО портфеля 
+    (на основе переданного списка всех его активов, вкл. дочерние).
+    """
     allocation = {}
     for asset in assets:
         atype = asset.get("type")
@@ -46,116 +29,135 @@ def calculate_asset_allocation(assets):
     }
 
 
-def combine_histories(histories):
-    """Объединяет истории всех портфелей в одну."""
-    combined = defaultdict(float)
-    for hlist in histories.values():
-        for h in hlist or []:
-            date = h.get("report_date")
-            value = float(h.get("total_value") or 0)
-            if date:
-                combined[date] += value
-
-    sorted_items = sorted(combined.items())
-    return {
-        "labels": [d for d, v in sorted_items],
-        "data": [round(v, 2) for d, v in sorted_items]
-    }
-
-
-def sum_portfolio_total_value(portfolio_id: int, portfolio_map: dict):
+def aggregate_and_sort_history_list(history_list):
     """
-    Рекурсивно суммирует total_value и total_profit для портфеля
-    с учётом всех дочерних портфелей и перезаписывает исходные поля.
+    Агрегирует ПЛОСКИЙ СПИСОК точек истории и возвращает 
+    отсортированный список словарей в формате [{'date': ..., 'value': ...}].
+    Используется для КАЖДОГО портфеля.
+    """
+    combined = defaultdict(float)
+    for h in history_list or []:
+        date = h.get("report_date")
+        value = float(h.get("total_value") or 0)
+        if date:
+            combined[date] += value
+
+    # Сортируем по дате (ключу)
+    sorted_items = sorted(combined.items())
+    
+    # Возвращаем в требуемом формате
+    return [
+        {"date": d, "value": round(v, 2)}
+        for d, v in sorted_items
+    ]
+
+
+def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map, asset_map, history_map):
+    """
+    Рекурсивная функция для суммирования.
+    Модифицирует `portfolio` в `portfolio_map` НА МЕСТЕ,
+    добавляя в него 'asset_allocation' и 'history'.
     """
     portfolio = portfolio_map[portfolio_id]
+    
+    # 1. Берем собственные активы и историю портфеля
+    combined_assets = asset_map.get(portfolio_id, []).copy()
+    combined_history_list = history_map.get(portfolio_id, []).copy() 
+
     total_value = portfolio.get("total_value") or 0
     total_profit = portfolio.get("total_profit") or 0
 
-    # находим дочерние портфели
+    # 2. Рекурсивно обрабатываем дочерние портфели
     children = [p for p in portfolio_map.values() if p.get("parent_portfolio_id") == portfolio_id]
     for child in children:
-        child_value, child_profit = sum_portfolio_total_value(child["id"], portfolio_map)
+        # Рекурсивный вызов вернет СУММАРНЫЕ данные ребенка
+        child_value, child_profit, child_assets, child_history_list = sum_portfolio_totals_bottom_up(
+            child["id"], portfolio_map, asset_map, history_map
+        )
+        
+        # 3. Добавляем данные ребенка к текущему портфелю
         total_value += child_value
         total_profit += child_profit
+        combined_assets.extend(child_assets) # Добавляем активы ребенка
+        asset_map[portfolio_id] = combined_assets
+        combined_history_list.extend(child_history_list) # Добавляем точки истории ребенка
 
-    # перезаписываем исходные поля
+    # 4. Обновляем сам портфель в portfolio_map (in-place)
     portfolio["total_value"] = total_value
     portfolio["total_profit"] = total_profit
+    
+    # Считаем аллокацию на основе ПОЛНОГО списка активов (своих + дочерних)
+    portfolio["asset_allocation"] = calculate_asset_allocation(combined_assets)
+    
+    # Агрегируем и форматируем ПОЛНЫЙ список истории в нужный вам формат
+    portfolio["history"] = aggregate_and_sort_history_list(combined_history_list)
 
-    return total_value, total_profit
+    # 5. Возвращаем сырые данные для родителя
+    return total_value, total_profit, combined_assets, combined_history_list
+
+
+def build_portfolio_hierarchy(portfolios, histories):
+    """
+    Эта функция запускает 'sum_portfolio_totals_bottom_up' для каждого портфеля,
+    гарантируя, что 'asset_allocation' и 'history' посчитаны для каждого.
+    """
+    
+    portfolio_map = {p['id']: p for p in portfolios}
+
+    asset_map = defaultdict(list)
+    
+    for p in portfolios:
+        asset_map[p["id"]] = p["assets"]
+
+    history_map = defaultdict(list)
+    for pid, hlist in histories.items():
+        history_map[pid] = hlist or []
+
+    root_portfolios = [p for p in portfolios if not p.get('parent_portfolio_id')]
+    for root in root_portfolios:
+        sum_portfolio_totals_bottom_up(root['id'], portfolio_map, asset_map, history_map)
+
+
+    return list(portfolio_map.values())
 
 
 async def get_dashboard_data(user_email: str):
-    """Основная функция сборки данных для дашборда."""
-    user_id = get_user_by_email(user_email)["id"]
+    """
+    (ИЗМЕНЕНА)
+    Убрана функция combine_histories и поле combined_history из ответа.
+    """
+    user = get_user_by_email(user_email)
+    if not user:
+        return None
 
-    # 1️⃣ Портфели, активы и истории
-    start = time()
+    user_id = user['id']
+
     portfolios, assets, histories = await get_portfolios_with_assets_and_history(user_email)
-    print('1. Портфели, активы и истории: ', time() - start)
     if not portfolios:
         return {
             "portfolios": [],
-            "assets": [],
             "transactions": [],
-            "combined_history": [],
-            "summary": {"total_value": 0, "total_profit": 0, "profit_percent": 0},
-            "asset_allocation": {"labels": [], "datasets": [{"backgroundColor": [], "data": []}]},
             "referenceData": {}
         }
 
-    start = time()
-    # 2️⃣ Суммируем стоимость дочерних портфелей в родительские
-    portfolio_map = {p["id"]: p for p in portfolios}
-    for p in portfolios:
-        if not p.get("parent_portfolio_id"):  # только корневые портфели
-            sum_portfolio_total_value(p["id"], portfolio_map)
-    print('2. Суммируем стоимость дочерних портфелей в родительские: ', time() - start)
-
-    start = time()
-    # 4️⃣ Распределение активов
-    asset_allocation = calculate_asset_allocation(assets)
-    print('4. Распределение активов: ', time() - start)
-
-    start = time()
-    # 5️⃣ Объединяем истории
-    combined_history = combine_histories(histories)
-    print('5. Объединяем истории: ', time() - start)
-
-    start = time()
-    # 6️⃣ Справочные данные
+    portfolios = build_portfolio_hierarchy(portfolios, histories)
+    
     reference_data = get_reference_data()
-    print('6. Справочные данные: ', time() - start)
+    transactions = get_transactions(user_id) or []
 
-    start = time()
-    # 8️⃣ Получаем описание главного портфеля
-    main_portfolio_description = None
     for p in portfolios:
-        if not p["parent_portfolio_id"]:
-            main_portfolio_description = p.get("description")
-    print('8. Получаем описание главного портфеля: ', time() - start)
-
-    start = time()
-    # 7️⃣ Транзакции пользователя
-    transactions = get_transactions(user_id, limit=20) or []
-    print('7. Транзакции пользователя: ', time() - start)
-
-    start = time()
-    # 3️⃣ Итоговая сводка
-    summary = calculate_summary(portfolios, assets)
-    print('3. Итоговая сводка: ', time() - start)
+        hist = p.get('history', [])
+        
+        # сортируем по дате
+        sorted_hist = sorted(hist, key=lambda x: x['date'])
+        
+        p['history'] = {
+            'labels': [item['date'] for item in sorted_hist],
+            'data': [item['value'] for item in sorted_hist]
+        }
 
     return {
         "portfolios": portfolios,
-        "assets": assets,
         "transactions": transactions,
-        "combined_history": combined_history,
-        "summary": summary,
-        "asset_allocation": asset_allocation,
-        "referenceData": reference_data,
-        "main_portfolio_description": main_portfolio_description
+        "referenceData": reference_data
     }
-
-
-
