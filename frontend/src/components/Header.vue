@@ -19,10 +19,7 @@ onMounted(async () => {
   }
 })
 
-const logout = () => {
-  authService.logout();
-  router.push('/login');
-};
+
 
 </script>
 

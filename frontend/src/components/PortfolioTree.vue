@@ -51,7 +51,7 @@
                 </td>
                 <td>{{ asset.ticker }}</td>
                 <td class="right">{{ asset.quantity }}</td>
-                <td class="right">{{ asset.average_price }}</td>
+                <td class="right">{{ asset.average_price.toFixed(2) }}</td>
                 <td class="right">{{ asset.last_price || '-' }}</td>
                 <td class="right">
                     {{

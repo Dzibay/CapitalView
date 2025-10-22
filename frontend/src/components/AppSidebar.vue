@@ -1,9 +1,10 @@
 <script setup>
 import { ref, watch } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { authService } from '../services/authService.js';
 
-const router = useRouter();
 const route = useRoute();
+const router = useRouter();
 
 // Свойство для управления состоянием меню из родительского компонента
 defineProps({
@@ -17,6 +18,10 @@ defineProps({
   },
 });
 
+const logout = () => {
+  authService.logout();
+  router.push('/login');
+};
 // Иконки в формате SVG (для удобства)
 const icons = {
   dashboard: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 20 20">
@@ -56,12 +61,12 @@ const icons = {
 
 const menuItems = ref([
   { name: 'Дашборд', link: '/dashboard', icon: icons.dashboard, active: true, submenuOpen: false },
-  { name: 'Аналитика', link: '/a', icon: icons.category, active: false, submenuOpen: false, submenu: [ { name: 'UI Face', href: '#' }, { name: 'Pigments', href: '#' }, { name: 'Box Icons', href: '#' } ] },
+  { name: 'Аналитика', icon: icons.category, active: false, submenuOpen: false, submenu: [ { name: 'UI Face', href: '#' }, { name: 'Pigments', href: '#' }, { name: 'Box Icons', href: '#' } ] },
   { name: 'Активы', link: '/assets', icon: icons.posts, active: false, submenuOpen: false },
-  { name: 'Отчеты', link: '/a', icon: icons.analytics, active: false, submenuOpen: false },
-  { name: 'Вложения', link: '/a', icon: icons.chart, active: false, submenuOpen: false },
+  { name: 'Отчеты', icon: icons.analytics, active: false, submenuOpen: false },
+  { name: 'Вложения', icon: icons.chart, active: false, submenuOpen: false },
   { name: 'Операции', link: '/transactions', icon: icons.plugins, active: false, submenuOpen: false, submenu: [ { name: 'UI Face', href: '#' }, { name: 'Pigments', href: '#' }, { name: 'Box Icons', href: '#' } ] },
-  { name: 'Настройки', link: '/a', icon: icons.setting, active: false, submenuOpen: false },
+  { name: 'Настройки', icon: icons.setting, active: false, submenuOpen: false },
 ]);
 
 const handleMenuClick = (clickedItem) => {
@@ -167,7 +172,7 @@ watch(route, () => {
         <p class="sidebar__user-role">{{ user.email }}</p>
       </div>
       <!-- Иконка выхода -->
-      <div class="sidebar__logout-icon" v-html="icons.logout"></div>
+      <button @click="logout" class="sidebar__logout-icon" v-html="icons.logout"></button>
     </div>
   </aside>
 </template>
