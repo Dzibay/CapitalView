@@ -161,18 +161,20 @@ watch(route, () => {
     <!-- Нижний блок: Профиль пользователя -->
     <div class="sidebar__footer">
       <!-- Аватар -->
-      <img
+      <!-- <img
         src="https://placehold.co/40x40/ffffff/333333?text=PS"
         alt="User Avatar"
         class="sidebar__user-avatar"
       />
-      <!-- Информация о пользователе, плавно исчезает -->
+
       <div class="sidebar__user-info" v-if="user">
         <p class="sidebar__user-name">{{ user.name }}</p>
         <p class="sidebar__user-role">{{ user.email }}</p>
       </div>
-      <!-- Иконка выхода -->
-      <button @click="logout" class="sidebar__logout-icon" v-html="icons.logout"></button>
+
+      <button @click="logout" class="sidebar__logout" >
+        <span v-html="icons.logout" class="sidebar__logout-icon"></span>
+      </button> -->
     </div>
   </aside>
 </template>
@@ -423,8 +425,14 @@ watch(route, () => {
   color: #a0aec0;
 }
 
-.sidebar__logout-icon {
+.sidebar__logout {
+  background: none;
+  border: none;
   margin-left: auto;
-  transition: opacity 0.2s;
+  transition: opacity 0.3s;
 }
+.sidebar__logout:hover {
+  border: 1px solid grey;
+}
+
 </style>
