@@ -67,56 +67,6 @@ def portfolio_assets_route(portfolio_id):
     data = asyncio.run(get_portfolio_assets(portfolio_id))
     return jsonify(data)
 
-@portfolio_bp.route("/add_transaction", methods=["POST"])
-@jwt_required()
-def add_transaction_route():
-    """Добавление транзакции и автоматическое создание цены актива, если на дату её нет."""
-    payload = request.get_json()
-    user_email = get_jwt_identity()
-    user_id = get_user_by_email(user_email)["id"]
-
-    portfolio_asset_id = payload.get("portfolio_asset_id")
-    asset_id = payload.get("asset_id")        # только для asset_prices
-    tx_date = payload.get("transaction_date")
-    price = payload.get("price")
-
-    # --- 1️⃣ Добавляем транзакцию ---
-    tx_data = {
-        "user_id": user_id,
-        "portfolio_asset_id": portfolio_asset_id,
-        "transaction_type": payload.get("transaction_type"),
-        "quantity": payload.get("quantity"),
-        "price": price,
-        "transaction_date": tx_date,
-    }
-    res_transaction = supabase.table("transactions").insert(tx_data).execute()
-
-    if not res_transaction.data:
-        return jsonify({"success": False, "error": "Ошибка при добавлении транзакции"}), 500
-
-    # --- 2️⃣ Проверяем наличие цены ---
-    existing_price = (
-        supabase.table("asset_prices")
-        .select("id")
-        .eq("asset_id", asset_id)
-        .eq("trade_date", tx_date)
-        .execute()
-    )
-
-    # --- 3️⃣ Если цены нет — добавляем ---
-    if not existing_price.data:
-        supabase.table("asset_prices").insert({
-            "asset_id": asset_id,
-            "price": price,
-            "trade_date": tx_date
-        }).execute()
-
-    # --- 4️⃣ Обновляем расчёты по портфельному активу ---
-    supabase.rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id}).execute()
-
-    return jsonify({"success": True, "transaction": res_transaction.data[0]}), 201
-
-
 @portfolio_bp.route("/<int:portfolio_id>/description", methods=["POST"])
 @jwt_required()
 def update_portfolio_description_route(portfolio_id):

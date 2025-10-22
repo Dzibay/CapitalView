@@ -125,11 +125,10 @@ const clearPortfolio = async ( portfolioId ) => {
   }
 }
 
-// 🔹 Продажа актива
+// 🔹 Добавление транзакции
 const addTransaction = async ({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date }) => {
-  console.log(asset_id, portfolio_asset_id, transaction_type, quantity, price, date)
   try {
-    await transactionService.addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, date)
+    await transactionsService.addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, date)
     loading.value = true
     await reloadDashboard()
   } catch (err) {
@@ -143,7 +142,7 @@ const removeAsset = async (portfolioAssetId) => {
   try {
     const res = await assetsService.deleteAsset(portfolioAssetId)
     if (!res.success) throw new Error(res.error || 'Ошибка удаления актива')
-    
+
     // --- Локальное удаление ---
     dashboardData.value.data.portfolios.forEach(portfolio => {
       if (portfolio.assets) {
@@ -152,8 +151,8 @@ const removeAsset = async (portfolioAssetId) => {
         )
       }
     })
-
     console.log("Актив удалён локально:", portfolioAssetId)
+
     await reloadDashboard()
     
   } catch (err) {
@@ -178,9 +177,29 @@ const updatePortfolioGoal = async ({ portfolioId, title, targetAmount }) => {
   try {
     const res = await portfolioService.updatePortfolioGoal(portfolioId, { title, targetAmount });
     if (!res) throw new Error('Ошибка при обновлении цели');
-    dashboardData.value.data.main_portfolio_description = res[0]["description"]
-    // Перезагружаем дашборд, чтобы отобразить новые данные
-    
+
+    // Сохраняем объект из ответа
+    const updated = res[0];
+
+    // Получаем список портфелей
+    const portfolios = dashboardData.value.data.portfolios;
+
+    // Ищем нужный портфель по id
+    const targetPortfolio = portfolios.find(p => p.id === portfolioId);
+    if (!targetPortfolio) {
+      console.warn(`Портфель с id=${portfolioId} не найден`);
+      return;
+    }
+
+    // Обновляем реактивно поля
+    Object.assign(targetPortfolio, {
+      description: updated.description,
+      capital_target_name: updated.capital_target_name,
+      capital_target_value: updated.capital_target_value,
+      capital_target_currency: updated.capital_target_currency
+    });
+
+    console.log('Цель обновлена для портфеля:', targetPortfolio);
   } catch (err) {
     console.error('Ошибка обновления цели портфеля:', err);
   }

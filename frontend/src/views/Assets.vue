@@ -1,5 +1,5 @@
 <script setup>
-import { ref, inject, computed } from "vue";
+import { ref, inject, computed, onMounted, watch } from "vue";
 import AddAssetModal from "../components/modals/AddAssetModal.vue";
 import AddTransactionModal from "../components/modals/AddTransactionModal.vue";
 import ImportPortfolioModal from "../components/modals/ImportPortfolioModal.vue";
@@ -12,7 +12,6 @@ const showAddTransactionModal = ref(false);
 const showImportModal = ref(false);
 
 const selectedAsset = ref(null);
-const expandedPortfolios = ref([]);
 const activeAssetMenu = ref(null);
 const activePortfolioMenu = ref(null);
 
@@ -26,6 +25,21 @@ const clearPortfolio = inject("clearPortfolio");
 const addPortfolio = inject("addPortfolio");
 const addTransaction = inject("addTransaction")
 const importPortfolio = inject("importPortfolio");
+
+
+// === localStorage для раскрытых портфелей ===
+const STORAGE_KEY = 'expandedPortfolios';
+const expandedPortfolios = ref([]);
+onMounted(() => {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) expandedPortfolios.value = JSON.parse(saved);
+});
+
+// Автоматическое сохранение при изменении
+watch(expandedPortfolios, (val) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(val));
+}, { deep: true });
+
 
 /* === 1️⃣ Построение иерархического дерева портфелей === */
 function buildPortfolioTree(portfolios) {
@@ -64,7 +78,6 @@ const parsedDashboard = computed(() => {
 // Функция обновления всех портфелей с подключением
 const updatingPortfolios = ref(new Set());
 
-
 const refreshPortfolios = async () => {
   const portfolios = dashboardData.value?.data?.portfolios ?? [];
   
@@ -92,7 +105,6 @@ const refreshPortfolios = async () => {
   await reloadDashboard();
   console.log("Обновление портфелей завершено");
 };
-
 
 /* === 3️⃣ Поведение меню и раскрытия === */
 const togglePortfolio = (id) => {

@@ -1,6 +1,5 @@
 <script setup>
 import { inject, computed, ref, watch } from 'vue'
-import { mockData } from '../data/mockData.js'
 
 // Виджеты
 import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
@@ -35,7 +34,6 @@ const selectedPortfolio = computed(() => {
 function collectPortfolioIds(portfolio, allPortfolios) {
   let ids = [portfolio.id];
   const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id);
-  console.log('children', children)
 
   for (const child of children) {
     ids = ids.concat(collectPortfolioIds(child, allPortfolios));

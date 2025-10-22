@@ -15,7 +15,6 @@ const formattedInvestedAmount = computed(() => {
 });
 
 const isPositiveChange = computed(() => {
-  console.log(props.monthlyChange.absolute)
   return props.monthlyChange.absolute >= 0
 });
 
