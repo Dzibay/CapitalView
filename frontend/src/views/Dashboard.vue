@@ -109,11 +109,8 @@ const parsedDashboard = computed(() => {
 
   return {
     totalAmount: Number(selectedPortfolio.value.total_value || 0),
-    investedAmount: Number(selectedPortfolio.value.invested_amount || 0),
-    monthlyChange: {
-      absolute: selectedPortfolio.value.total_profit || 0,
-      percentage: selectedPortfolio.value.profit_percent || 0
-    },
+    investedAmount: Number(selectedPortfolio.value.total_invested || 0),
+    monthlyChange: selectedPortfolio.value.monthly_change || 0,
     assetAllocation: selectedPortfolio.value.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] },
     portfolioChart: selectedPortfolio.value.history ?? { labels: [], data: [] },
     assets,

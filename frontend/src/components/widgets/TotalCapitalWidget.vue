@@ -4,7 +4,7 @@ import { computed } from 'vue';
 const props = defineProps({
   totalAmount: { type: Number, required: true },
   investedAmount: { type: Number, required: true },
-  monthlyChange: { type: Object, required: true },
+  monthlyChange: { type: Number, required: true },
 });
 
 const formattedTotalAmount = computed(() => {
@@ -15,7 +15,7 @@ const formattedInvestedAmount = computed(() => {
 });
 
 const isPositiveChange = computed(() => {
-  return props.monthlyChange.absolute >= 0
+  return props.monthlyChange >= 0
 });
 
 </script>
@@ -41,8 +41,8 @@ const isPositiveChange = computed(() => {
     <div class="capital-value-with-change">
       <div class="capital-values">{{ formattedTotalAmount }}</div>
       <div class="value-change" :class="{ 'positive': isPositiveChange, 'negative': !isPositiveChange }">
-        <span>{{ monthlyChange.percentage }}% за все время</span>
-        <!-- <span>({{ monthlyChange.absolute.toFixed(2) }} RUB) за месяц</span> -->
+        <span v-if="monthlyChange > 0">+</span>
+        <span>{{ (monthlyChange / totalAmount * 100).toFixed(2) }}% за месяц</span>
       </div>
     </div>
 

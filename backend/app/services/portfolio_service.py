@@ -70,7 +70,6 @@ async def get_portfolios_with_assets_and_history(user_email: str):
 
     return portfolios, assets, histories
 
-
 def update_portfolio_description(portfolio_id: int, text: str = None, capital_target_name: str = None,
                                  capital_target_value: float = None, capital_target_deadline: str = None,
                                  capital_target_currency: str = "RUB"):
@@ -91,7 +90,6 @@ def update_portfolio_description(portfolio_id: int, text: str = None, capital_ta
 
     # Обновляем запись
     return table_update("portfolios", {"description": desc}, filters={"id": portfolio_id})
-
 
 async def get_user_portfolio_parent(user_email: str):
     portfolios = await get_user_portfolios(user_email)

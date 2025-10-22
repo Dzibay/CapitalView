@@ -65,26 +65,26 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map, asset_map, histo
     combined_history_list = history_map.get(portfolio_id, []).copy() 
 
     total_value = portfolio.get("total_value") or 0
-    total_profit = portfolio.get("total_profit") or 0
+    total_invested = portfolio.get("total_invested") or 0
 
     # 2. Рекурсивно обрабатываем дочерние портфели
     children = [p for p in portfolio_map.values() if p.get("parent_portfolio_id") == portfolio_id]
     for child in children:
         # Рекурсивный вызов вернет СУММАРНЫЕ данные ребенка
-        child_value, child_profit, child_assets, child_history_list = sum_portfolio_totals_bottom_up(
+        child_value, child_invested, child_assets, child_history_list = sum_portfolio_totals_bottom_up(
             child["id"], portfolio_map, asset_map, history_map
         )
         
         # 3. Добавляем данные ребенка к текущему портфелю
         total_value += child_value
-        total_profit += child_profit
+        total_invested += child_invested
         combined_assets.extend(child_assets) # Добавляем активы ребенка
         asset_map[portfolio_id] = combined_assets
         combined_history_list.extend(child_history_list) # Добавляем точки истории ребенка
 
     # 4. Обновляем сам портфель в portfolio_map (in-place)
-    portfolio["total_value"] = total_value
-    portfolio["total_profit"] = total_profit
+    portfolio["total_value"] = round(total_value, 2)
+    portfolio["total_invested"] = round(total_invested, 2)
     
     # Считаем аллокацию на основе ПОЛНОГО списка активов (своих + дочерних)
     portfolio["asset_allocation"] = calculate_asset_allocation(combined_assets)
@@ -93,7 +93,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map, asset_map, histo
     portfolio["history"] = aggregate_and_sort_history_list(combined_history_list)
 
     # 5. Возвращаем сырые данные для родителя
-    return total_value, total_profit, combined_assets, combined_history_list
+    return total_value, total_invested, combined_assets, combined_history_list
 
 
 def build_portfolio_hierarchy(portfolios, histories):
@@ -119,6 +119,18 @@ def build_portfolio_hierarchy(portfolios, histories):
 
 
     return list(portfolio_map.values())
+
+
+def calculate_monthly_change(history):
+    if len(history) >= 2:
+        try:
+            return history[-1]['value'] - history[-30]['value']
+        except:
+            return history[-1]['value']
+    elif len(history) == 1:
+        return history[0]['value']
+    else:
+        return 0
 
 
 async def get_dashboard_data(user_email: str):
@@ -155,6 +167,9 @@ async def get_dashboard_data(user_email: str):
             'labels': [item['date'] for item in sorted_hist],
             'data': [item['value'] for item in sorted_hist]
         }
+
+        # добавляем monthly_change
+        p['monthly_change'] = calculate_monthly_change(sorted_hist)
 
     return {
         "portfolios": portfolios,
