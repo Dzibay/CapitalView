@@ -104,14 +104,18 @@ def portfolio_history_route(portfolio_id):
 @portfolio_bp.route("/import_broker", methods=["POST"])
 @jwt_required()
 async def import_broker_route():
+    """
+    Импорт или синхронизация портфелей с брокером (например, Тинькофф).
+    Работает с двухуровневой структурой: родительский + дочерние портфели.
+    """
     print('📥 Запрос универсального импорта портфеля')
 
     data = request.get_json()
     user_email = get_jwt_identity()
 
-    broker_id = data.get("broker_id")          # например, "tinkoff" или "bybit"
+    broker_id = data.get("broker_id")          # например, 1 = Tinkoff
     token = data.get("token")
-    portfolio_id = data.get("portfolio_id")
+    portfolio_id = data.get("portfolio_id")    # id родительского портфеля
     portfolio_name = data.get("portfolio_name")
 
     if not broker_id:
@@ -120,51 +124,41 @@ async def import_broker_route():
         return jsonify({"success": False, "error": "Не указан токен или API-ключ брокера"}), 400
 
     try:
-        # 1️⃣ Получаем пользователя
+        # === 1️⃣ Получаем пользователя ===
         user = get_user_by_email(user_email)
         user_id = user["id"]
 
-        # 3️⃣ Создание или очистка портфеля
+        # === 2️⃣ Создание или поиск родительского портфеля ===
         if not portfolio_id:
-            user_parent_portfolio = await get_user_portfolio_parent(user_email)
+            user_root_portfolio = await get_user_portfolio_parent(user_email)
             new_portfolio = {
                 "user_id": user_id,
-                "parent_portfolio_id": user_parent_portfolio["id"],
-                "name": portfolio_name,
+                "parent_portfolio_id": user_root_portfolio["id"],
+                "name": portfolio_name or f"Портфель {broker_id}",
                 "description": f"Импорт из брокера {broker_id} — {datetime.utcnow().isoformat()}",
             }
             res = supabase.table("portfolios").insert(new_portfolio).execute()
             if not res.data:
                 return jsonify({"success": False, "error": "Ошибка при создании портфеля"}), 500
             portfolio_id = res.data[0]["id"]
-            print(f"✅ Создан новый портфель (id={portfolio_id})")
+            print(f"✅ Создан новый родительский портфель id={portfolio_id}")
         else:
-            print(f"⚙️ Очищаем существующий портфель {portfolio_id}...")
-            await clear_portfolio(portfolio_id)
+            print(f"🔁 Синхронизация существующего портфеля id={portfolio_id}")
 
-        # 4️⃣ Импорт данных в зависимости от брокера
+        # === 3️⃣ Получаем данные от брокера ===
         print(f"🚀 Импортируем данные брокера: {broker_id}")
 
-        broker_data = None
         if broker_id == 1:
             from app.services.integrations.tinkoff_import import get_tinkoff_portfolio
             broker_data = get_tinkoff_portfolio(token, 365)
-            result = await import_broker_portfolio(user_email, portfolio_id, broker_data)
-
-        elif broker_id == 2:
-            from app.services.integrations.bybit_import import import_bybit_portfolio
-            result = await import_bybit_portfolio(user_email, portfolio_id)
-
         else:
             return jsonify({"success": False, "error": f"Импорт для брокера {broker_id} не реализован"}), 400
 
-        # 5️⃣ Создаём или обновляем связь в user_broker_connections
-        connection_res = table_select(
-            "user_broker_connections",
-            "*",
-            {"user_id": user_id, "broker_id": broker_id, "portfolio_id": portfolio_id}
-        )
+        # === 4️⃣ Синхронизация портфелей и активов ===
+        from app.services.portfolio_service import import_broker_portfolio
+        result = await import_broker_portfolio(user_email, portfolio_id, broker_data)
 
+        # === 5️⃣ Обновляем user_broker_connections ===
         conn_data = {
             "user_id": user_id,
             "broker_id": broker_id,
@@ -173,10 +167,15 @@ async def import_broker_route():
             "last_sync_at": datetime.utcnow().isoformat(),
         }
 
-        if connection_res:
+        existing_conn = table_select(
+            "user_broker_connections",
+            "*",
+            {"user_id": user_id, "broker_id": broker_id, "portfolio_id": portfolio_id}
+        )
+        if existing_conn:
             supabase.table("user_broker_connections") \
                 .update(conn_data) \
-                .eq("id", connection_res[0]["id"]) \
+                .eq("id", existing_conn[0]["id"]) \
                 .execute()
         else:
             supabase.table("user_broker_connections").insert(conn_data).execute()
@@ -193,3 +192,4 @@ async def import_broker_route():
     except Exception as e:
         print("❌ Ошибка при импорте брокера:", e)
         return jsonify({"success": False, "error": str(e)}), 500
+

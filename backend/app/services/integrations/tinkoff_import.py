@@ -82,4 +82,5 @@ def get_tinkoff_portfolio(token, days=365):
 
 
 if __name__ == 'main':
-    print(get_tinkoff_portfolio())
+    print(get_tinkoff_portfolio('t.Wwc9-ETWh-SiWqphi_F3TQ-U7TZNsuhUryWHiDWu1vqvq19ypX7I9il3E9PlfZgKyt4gPiHrXD4RjyNiVUHzzA'))
+    
