@@ -1,7 +1,78 @@
+<script setup>
+import { ref, computed, unref, onMounted, onBeforeUnmount } from "vue";
+
+// ✅ сохраняем props в переменную
+const props = defineProps({
+  portfolios: Array,
+  expandedPortfolios: Array,
+  activePortfolioMenu: Number,
+  updatingPortfolios: Object,
+});
+
+const emit = defineEmits([
+  "togglePortfolio",
+  "togglePortfolioMenu",
+  "removeAsset",
+  "clearPortfolio",
+  "deletePortfolio",
+  "selectAsset",
+]);
+
+const activeAssetMenu = ref(null);
+
+// 📊 === Функция сортировки активов по стоимости ===
+const sortAssets = (assets) => {
+  if (!assets) return [];
+  return [...assets].sort((a, b) => {
+    const valA = (a.quantity * (a.last_price || 0) / (a.leverage || 1)) * (a.currency_rate_to_rub || 1);
+    const valB = (b.quantity * (b.last_price || 0) / (b.leverage || 1)) * (b.currency_rate_to_rub || 1);
+    return valB - valA; // по убыванию
+  });
+};
+
+// 📦 === Рекурсивная сортировка портфелей по total_value ===
+const sortPortfolios = (portfolios) => {
+  if (!portfolios) return [];
+  return [...portfolios]
+    .map((p) => ({
+      ...p,
+      assets: sortAssets(p.assets),
+      children: sortPortfolios(p.children || []),
+    }))
+    .sort((a, b) => (b.total_value || 0) - (a.total_value || 0));
+};
+
+// === Вычисляемая коллекция для рендера ===
+const sortedPortfolios = computed(() => sortPortfolios(unref(props.portfolios)));
+
+// ==== Остальная логика ====
+const togglePortfolio = (id) => emit("togglePortfolio", id);
+const togglePortfolioMenu = (id) => emit("togglePortfolioMenu", id);
+
+const toggleAssetMenu = (id) => {
+  activeAssetMenu.value = activeAssetMenu.value === id ? null : id;
+};
+
+const removeAsset = (id) => emit("removeAsset", id);
+const clearPortfolio = (id) => emit("clearPortfolio", id);
+const selectAsset = (asset) => emit("selectAsset", asset);
+const deletePortfolio = (id) => emit("deletePortfolio", id);
+
+const handleClickOutside = (event) => {
+  if (!event.target.closest(".menu")) {
+    activeAssetMenu.value = null;
+    emit("togglePortfolioMenu", null);
+  }
+};
+
+onMounted(() => document.addEventListener("click", handleClickOutside));
+onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside));
+</script>
+
 <template>
   <div class="portfolio-tree">
     <div
-      v-for="portfolio in portfolios"
+      v-for="portfolio in sortedPortfolios"
       :key="portfolio.id"
       class="portfolio"
     >
@@ -96,54 +167,6 @@
   </div>
 </template>
 
-<script setup>
-import { ref, unref, onMounted, onBeforeUnmount } from "vue";
-
-defineProps({
-  portfolios: Array,
-  expandedPortfolios: Array,
-  activePortfolioMenu: Number, // управление портфельным dropdown из родителя
-  updatingPortfolios: Object,
-});
-
-const emit = defineEmits([
-  "togglePortfolio",
-  "togglePortfolioMenu",
-  "removeAsset",
-  "clearPortfolio",
-  "deletePortfolio",
-  "selectAsset",
-]);
-
-// локальное состояние для dropdown активов в этом компоненте
-const activeAssetMenu = ref(null);
-
-// Функции управления портфелями
-const togglePortfolio = (id) => emit("togglePortfolio", id);
-const togglePortfolioMenu = (id) => emit("togglePortfolioMenu", id);
-
-// Функции управления активами
-const toggleAssetMenu = (id) => {
-    console.log('Открыто меню ', id)
-  activeAssetMenu.value = activeAssetMenu.value === id ? null : id;
-};
-
-const removeAsset = (id) => emit("removeAsset", id);
-const clearPortfolio = (id) => emit("clearPortfolio", id);
-const selectAsset = (asset) => emit("selectAsset", asset);
-const deletePortfolio = (id) => emit("deletePortfolio", id)
-
-// Закрытие всех dropdown при клике вне
-const handleClickOutside = (event) => {
-  if (!event.target.closest(".menu")) {
-    activeAssetMenu.value = null;
-    emit("togglePortfolioMenu", null); // закрывает любой открытый портфель
-  }
-};
-
-onMounted(() => document.addEventListener("click", handleClickOutside));
-onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside));
-</script>
 
 <style scoped>
 .portfolio {

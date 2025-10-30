@@ -135,8 +135,10 @@ def calculate_monthly_change(history):
 
 async def get_dashboard_data(user_email: str):
     """
-    (ИЗМЕНЕНА)
-    Убрана функция combine_histories и поле combined_history из ответа.
+    Возвращает данные для дашборда:
+    - портфели (отсортированы по total_value по убыванию)
+    - транзакции
+    - справочные данные
     """
     user = get_user_by_email(user_email)
     if not user:
@@ -152,25 +154,34 @@ async def get_dashboard_data(user_email: str):
             "referenceData": {}
         }
 
+    # === 1️⃣ Формируем дерево и считаем total_value ===
     portfolios = build_portfolio_hierarchy(portfolios, histories)
-    
+
     reference_data = get_reference_data()
     transactions = get_transactions(user_id) or []
 
+    # === 2️⃣ Обрабатываем историю и считаем monthly_change ===
     for p in portfolios:
         hist = p.get('history', [])
-        
-        # сортируем по дате
         sorted_hist = sorted(hist, key=lambda x: x['date'])
-        
         p['history'] = {
             'labels': [item['date'] for item in sorted_hist],
             'data': [item['value'] for item in sorted_hist]
         }
-
-        # добавляем monthly_change
         p['monthly_change'] = calculate_monthly_change(sorted_hist)
 
+    # === 3️⃣ Сортировка по total_value ===
+    def sort_portfolios_recursively(portfolios):
+        """Рекурсивно сортирует портфели и их детей по total_value"""
+        sorted_list = sorted(portfolios, key=lambda p: p.get('total_value', 0), reverse=True)
+        for p in sorted_list:
+            if "children" in p and p["children"]:
+                p["children"] = sort_portfolios_recursively(p["children"])
+        return sorted_list
+
+    portfolios = sort_portfolios_recursively(portfolios)
+
+    # === 4️⃣ Возвращаем результат ===
     return {
         "portfolios": portfolios,
         "transactions": transactions,

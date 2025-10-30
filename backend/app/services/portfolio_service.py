@@ -4,6 +4,19 @@ from app.services.user_service import get_user_by_email
 from app import supabase
 from concurrent.futures import ThreadPoolExecutor
 from time import time
+import json
+from datetime import datetime, timezone
+
+def normalize_tx_date(dt):
+    """Приводит дату к UTC без микросекунд и без таймзоны (строка, как в Supabase)."""
+    if isinstance(dt, str):
+        # пример: '2025-05-03T07:36:09'
+        dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+    if dt.tzinfo:
+        dt = dt.astimezone(timezone.utc)
+    dt = dt.replace(tzinfo=None, microsecond=0)
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
 
 # Используем asyncio.to_thread, чтобы выполнять sync вызовы в потоках
 async def get_user_portfolios(user_email: str):
@@ -187,78 +200,66 @@ async def table_insert_async(table: str, data: dict):
 
 async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_data: dict):
     """
-    Импорт или синхронизация портфелей и транзакций из broker_data.
-    Без пересоздания — обновляет существующие активы и транзакции.
+    Безопасная синхронизация портфелей и транзакций.
+    Не удаляет старые данные и не вставляет дубликаты.
     """
     user = get_user_by_email(email)
     user_id = user["id"]
 
-    # === 1️⃣ Загружаем типы активов ===
     asset_types = table_select("asset_types")
     asset_type_map = {at["name"].lower(): at["id"] for at in asset_types}
 
-    total_transactions = 0
+    total_new_tx = 0
+    total_updated_tx = 0
     summary = {"added": [], "updated": [], "removed": []}
 
     for broker_portfolio_name, pdata in broker_data.items():
         print(f"📦 Синхронизируем портфель: {broker_portfolio_name}")
 
-        # === 2️⃣ Ищем или создаём дочерний портфель ===
+        # === 1️⃣ Находим или создаём портфель ===
         existing = table_select(
             "portfolios",
             select="id",
             filters={"parent_portfolio_id": parent_portfolio_id, "name": broker_portfolio_name}
         )
-
         if existing:
             child_portfolio_id = existing[0]["id"]
-            print(f"🔁 Обновляем существующий портфель {child_portfolio_id}")
         else:
-            new_portfolio = {
+            inserted = table_insert("portfolios", {
                 "user_id": user_id,
                 "name": broker_portfolio_name,
                 "parent_portfolio_id": parent_portfolio_id,
                 "description": json.dumps({"source": "broker_import"})
-            }
-            inserted = table_insert("portfolios", new_portfolio)
+            })
             if not inserted:
-                print(f"❌ Ошибка при создании портфеля {broker_portfolio_name}")
+                print(f"❌ Ошибка при создании {broker_portfolio_name}")
                 continue
             child_portfolio_id = inserted[0]["id"]
-            print(f"✅ Создан новый портфель {child_portfolio_id}")
 
-        # === 3️⃣ Загружаем активы этого портфеля ===
-        db_assets = table_select(
+        # === 2️⃣ Получаем активы портфеля ===
+        pa_rows = table_select(
             "portfolio_assets",
             select="id, asset_id, quantity, average_price",
             filters={"portfolio_id": child_portfolio_id}
         )
+        asset_ids = [r["asset_id"] for r in pa_rows]
+        asset_rows = table_select("assets", select="id, ticker", in_filters={"id": asset_ids})
+        db_by_ticker = {
+            r["ticker"]: next(a for a in pa_rows if a["asset_id"] == r["id"])
+            for r in asset_rows
+        }
 
-        # Получаем tickers для этих asset_id
-        if db_assets:
-            asset_ids = [a["asset_id"] for a in db_assets]
-            asset_rows = table_select("assets", select="id, ticker", in_filters={"id": asset_ids})
-            ticker_map = {r["ticker"]: r["id"] for r in asset_rows}
-            db_by_ticker = {
-                r["ticker"]: next(a for a in db_assets if a["asset_id"] == r["id"])
-                for r in asset_rows
-            }
-        else:
-            db_by_ticker = {}
-
-        # === 4️⃣ Синхронизация активов ===
         broker_positions = pdata.get("positions", [])
         broker_by_ticker = {p["ticker"]: p for p in broker_positions}
 
+        # === 3️⃣ Добавляем активы (без обновления quantity/avg_price) ===
         for ticker, pos in broker_by_ticker.items():
             instrument_type = pos.get("instrument_type", "share").lower()
             asset_type_id = asset_type_map.get(instrument_type, 1)
+            asset = table_select("assets", "id", {"ticker": ticker})
+            asset_id = asset[0]["id"] if asset else None
 
-            # --- Проверяем наличие актива ---
-            existing_asset = table_select("assets", "id", {"ticker": ticker})
-            if existing_asset:
-                asset_id = existing_asset[0]["id"]
-            else:
+            if not asset_id:
                 new_asset = {
                     "asset_type_id": asset_type_id,
                     "user_id": user_id,
@@ -272,79 +273,113 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
             if not asset_id:
                 continue
 
+            # проверяем, есть ли актив в портфеле
             db_asset = db_by_ticker.get(ticker)
-
             if not db_asset:
-                # 🆕 Новый актив в портфеле
-                new_pa = {
+                pa = table_insert("portfolio_assets", {
                     "portfolio_id": child_portfolio_id,
                     "asset_id": asset_id,
-                    "quantity": pos["quantity"],
-                    "average_price": pos["average_price"],
-                }
-                table_insert("portfolio_assets", new_pa)
+                })
+                pa_id = pa[0]["id"]
                 summary["added"].append(ticker)
             else:
-                # ⚙️ Обновляем при изменении
-                if abs(pos["quantity"] - db_asset["quantity"]) > 1e-8 or \
-                   abs(pos["average_price"] - db_asset["average_price"]) > 1e-3:
-                    table_update(
-                        "portfolio_assets",
-                        {"quantity": pos["quantity"], "average_price": pos["average_price"]},
-                        {"id": db_asset["id"]}
-                    )
-                    summary["updated"].append(ticker)
+                pa_id = db_asset["id"]
 
-        # === 5️⃣ Удаляем активы, которых нет у брокера ===
-        for ticker, db_asset in db_by_ticker.items():
-            if ticker not in broker_by_ticker:
-                table_delete("portfolio_assets", {"id": db_asset["id"]})
-                summary["removed"].append(ticker)
+        # === 4️⃣ Синхронизация активов ===
+        broker_positions = pdata.get("positions", [])
+        broker_by_ticker = {}
+        figi_to_ticker = {}
 
-        # === 6️⃣ Обновляем транзакции ===
+        for p in broker_positions:
+            ticker = p.get("ticker") or p.get("name") or p.get("figi")
+            if not ticker:
+                print(f"⚠️ Пропускаем позицию без тикера: {p}")
+                continue
+            broker_by_ticker[ticker] = p
+            figi_to_ticker[p.get("figi")] = ticker  # сохраняем связь figi → ticker
+
+
+        # === 5️⃣ Синхронизация транзакций ===
         broker_tx = pdata.get("transactions", [])
-        if broker_tx:
-            # Загружаем все portfolio_assets, чтобы маппить по ticker
-            p_assets = table_select(
-                "portfolio_assets",
-                select="id, asset_id",
-                filters={"portfolio_id": child_portfolio_id}
-            )
-            asset_ids = [p["asset_id"] for p in p_assets]
-            asset_map = table_select("assets", select="id, ticker", in_filters={"id": asset_ids})
-            ticker_to_pa = {
-                r["ticker"]: p["id"]
-                for p in p_assets
-                for r in asset_map
-                if p["asset_id"] == r["id"]
+        if not broker_tx:
+            continue
+
+        # portfolio_asset_id по тикеру
+        p_assets = table_select("portfolio_assets", "id, asset_id", {"portfolio_id": child_portfolio_id})
+        asset_rows = table_select("assets", select="id, ticker", in_filters={"id": [p["asset_id"] for p in p_assets]})
+        ticker_to_pa = {
+            r["ticker"]: p["id"]
+            for p in p_assets
+            for r in asset_rows
+            if p["asset_id"] == r["id"]
+        }
+
+        db_tx = table_select(
+            "transactions",
+            select="id, portfolio_asset_id, price, quantity, transaction_date, transaction_type",
+            filters={"user_id": user_id}
+        )
+
+        db_index = {
+            (tx["portfolio_asset_id"], float(tx["price"]), float(tx["quantity"]),
+            normalize_tx_date(tx["transaction_date"])): tx
+            for tx in db_tx
+        }
+        print(db_index)
+
+        new_tx = 0
+        affected_pa_ids = set()  # <- сюда будем собирать все portfolio_asset_id, по которым были новые транзакции
+
+        for tx in broker_tx:
+            figi = tx.get("figi")
+            ticker = figi_to_ticker.get(figi)
+            if not ticker:
+                print(f"⚠️ Не найден тикер для figi={figi}, пропускаем транзакцию")
+                continue
+
+            pa_id = ticker_to_pa.get(ticker)
+            if not pa_id:
+                print(f"⚠️ Не найден portfolio_asset для {ticker}, пропускаем транзакцию")
+                continue
+
+            tx_date_str = normalize_tx_date(tx["date"])
+            key = (pa_id, float(tx["price"]), float(tx["quantity"]), tx_date_str)
+            print(key)
+
+            tx_type = 1 if tx["type"] == "buy" else 2
+
+            if key in db_index:
+                continue  # уже есть такая транзакция
+
+            tx_data = {
+                "portfolio_asset_id": pa_id,
+                "transaction_type": tx_type,
+                "price": tx["price"],
+                "quantity": tx["quantity"],
+                "transaction_date": tx_date_str,
+                "user_id": user_id
             }
+            table_insert("transactions", tx_data)
+            new_tx += 1
+            affected_pa_ids.add(pa_id)  # запоминаем, что этот актив нужно пересчитать
 
-            tx_tasks = []
-            for tx in broker_tx:
-                ticker = next((t for t in ticker_to_pa if t == tx.get("ticker")), None)
-                if not ticker:
-                    continue
-                tx_data = {
-                    "portfolio_asset_id": ticker_to_pa[ticker],
-                    "transaction_type": 1 if tx["type"] == "buy" else 2,
-                    "price": tx["price"],
-                    "quantity": tx["quantity"],
-                    "transaction_date": tx["date"].replace(microsecond=0).isoformat(),
-                    "user_id": user_id
-                }
-                tx_tasks.append(table_insert_async("transactions", tx_data))
+        print(f"→ Добавлено {new_tx} новых транзакций")
 
-            if tx_tasks:
-                results = await asyncio.gather(*tx_tasks)
-                total_transactions += len(results)
+        # === 6️⃣ После добавления всех транзакций обновляем все затронутые активы ===
+        for pa_id in affected_pa_ids:
+            try:
+                rpc("update_portfolio_asset", {"pa_id": pa_id})
+            except Exception as e:
+                print(f"⚠️ Ошибка при вызове update_portfolio_asset для pa_id={pa_id}: {e}")
 
-        print(f"→ Обновлено {len(broker_positions)} активов, {len(broker_tx)} транзакций")
 
-    print(f"✅ Импорт завершён. Добавлено {len(summary['added'])}, обновлено {len(summary['updated'])}, удалено {len(summary['removed'])}. Транзакций: {total_transactions}")
+    print(f"✅ Импорт завершён. Добавлено {len(summary['added'])}, обновлено {len(summary['updated'])}. Новых транзакций: {total_new_tx}")
 
     return {
         "success": True,
         "summary": summary,
-        "total_transactions": total_transactions
+        "new_transactions": total_new_tx,
+        "updated_transactions": total_updated_tx
     }
+
 

@@ -69,8 +69,6 @@ const handleSelectClick = () => {
   }
 }
 
-
-
 // Функция для сбора всех id выбранного портфеля и его дочерних
 function collectPortfolioIds(portfolio, allPortfolios) {
   let ids = [portfolio.id];

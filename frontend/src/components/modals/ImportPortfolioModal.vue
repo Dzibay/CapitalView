@@ -24,6 +24,7 @@ const handleImport = async () => {
 
   try {
     await props.onImport({
+      broker_id: 1,
       token: token.value,
       portfolioId: portfolioId.value,
       portfolio_name: portfolioName.value
