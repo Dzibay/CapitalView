@@ -365,6 +365,46 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
 
         print(f"→ Добавлено {new_tx} новых транзакций")
 
+        # === 5️⃣.2 Удаляем транзакции, которых больше нет у брокера ===
+        broker_keys = set()
+        for tx in broker_tx:
+            figi = tx.get("figi")
+            ticker = figi_to_ticker.get(figi)
+            if not ticker:
+                continue
+            pa_id = ticker_to_pa.get(ticker)
+            if not pa_id:
+                continue
+            tx_date_str = normalize_tx_date(tx["date"])
+            key = (pa_id, round(float(tx["price"]), 4), round(float(tx["quantity"]), 4), tx_date_str)
+            broker_keys.add(key)
+
+        # обновляем db_index после вставок
+        db_tx = table_select(
+            "transactions",
+            select="id, portfolio_asset_id, price, quantity, transaction_date, transaction_type",
+            in_filters={"portfolio_asset_id": list(ticker_to_pa.values())}
+        )
+        db_index = {
+            (tx["portfolio_asset_id"], round(float(tx["price"]), 4),
+             round(float(tx["quantity"]), 4), normalize_tx_date(tx["transaction_date"])): tx
+            for tx in db_tx
+        }
+
+        db_keys = set(db_index.keys())
+        to_remove = db_keys - broker_keys
+
+        removed_pa_ids = set()
+        for key in to_remove:
+            tx = db_index[key]
+            print(f"🗑 Удаляем лишнюю транзакцию: {tx}")
+            table_delete("transactions", {"id": tx["id"]})
+            summary["removed"].append(tx["id"])
+            removed_pa_ids.add(tx["portfolio_asset_id"])
+
+        affected_pa_ids.update(removed_pa_ids)
+
+
         # === 6️⃣ После добавления всех транзакций обновляем все затронутые активы ===
         for pa_id in affected_pa_ids:
             try:

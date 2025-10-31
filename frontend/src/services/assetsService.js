@@ -20,4 +20,14 @@ export default {
     const res = await axios.delete(`${API_URL}/${assetId}`, { headers: authHeaders() })
     return res.data
   },
+
+  async addPrice(asset_id, price, date) {
+    const payload = {
+      asset_id,
+      price,
+      date
+    }
+    const res = await axios.post(`${API_URL}/add_price`, payload, {headers: authHeaders() })
+    return res.data
+  }
 }

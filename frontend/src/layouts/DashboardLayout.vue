@@ -154,6 +154,17 @@ const deleteTransactions = async (transaction_ids) => {
   }
 }
 
+// Добавление изменения цены актива
+const addPrice = async ({ asset_id, price, date }) => {
+  try {
+    await assetsService.addPrice(asset_id, price, date)
+    loading.value = true
+    await reloadDashboard()
+  } catch (err) {
+    console.error('Ошибка добавления цены:', err)
+  }
+}
+
 // 🔹 Удаление актива
 const removeAsset = async (portfolioAssetId) => {
   if (!confirm("Удалить актив?")) return
@@ -254,6 +265,7 @@ provide('addAsset', addAsset)
 provide('addTransaction', addTransaction)
 provide('editTransaction', editTransaction)
 provide('deleteTransactions', deleteTransactions)
+provide('addPrice', addPrice)
 provide('removeAsset', removeAsset)
 provide('addPortfolio', addPortfolio)
 provide('deletePortfolio', deletePortfolio)

@@ -2,6 +2,7 @@
 import { ref, inject, computed, onMounted, watch } from "vue";
 import AddAssetModal from "../components/modals/AddAssetModal.vue";
 import AddTransactionModal from "../components/modals/AddTransactionModal.vue";
+import AddPriceModal from "../components/modals/AddPriceModal.vue";
 import ImportPortfolioModal from "../components/modals/ImportPortfolioModal.vue";
 import AddPortfolioModal from "../components/modals/AddPortfolioModal.vue";
 import PortfolioTree from '../components/PortfolioTree.vue'
@@ -9,6 +10,7 @@ import PortfolioTree from '../components/PortfolioTree.vue'
 const showAddModal = ref(false);
 const showAddPortfolioModal = ref(false);
 const showAddTransactionModal = ref(false);
+const showAddPriceModal = ref(false);
 const showImportModal = ref(false);
 
 const selectedAsset = ref(null);
@@ -24,6 +26,7 @@ const deletePortfolio = inject("deletePortfolio")
 const clearPortfolio = inject("clearPortfolio");
 const addPortfolio = inject("addPortfolio");
 const addTransaction = inject("addTransaction")
+const addPrice = inject('addPrice');
 const importPortfolio = inject("importPortfolio");
 
 
@@ -154,6 +157,12 @@ const togglePortfolioMenu = (id) => {
       :onSubmit="addTransaction"
       @close="showAddTransactionModal = false"
     />
+    <AddPriceModal
+      v-if="showAddPriceModal"
+      :asset="selectedAsset"
+      :onSubmit="addPrice"
+      @close="showAddPriceModal = false"
+    />
     <ImportPortfolioModal
       v-if="showImportModal"
       @close="showImportModal = false"
@@ -180,7 +189,8 @@ const togglePortfolioMenu = (id) => {
         @removeAsset="removeAsset"
         @clearPortfolio="clearPortfolio"
         @deletePortfolio="deletePortfolio"
-        @selectAsset="(asset) => { selectedAsset = asset; showAddTransactionModal = true }"
+        @addTransaction="(asset) => { selectedAsset = asset; showAddTransactionModal = true }"
+        @addPrice="(asset) => { selectedAsset = asset; showAddPriceModal = true }"
         :updatingPortfolios="updatingPortfolios"
       />
     </div>

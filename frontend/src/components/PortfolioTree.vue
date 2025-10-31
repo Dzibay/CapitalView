@@ -55,7 +55,8 @@ const toggleAssetMenu = (id) => {
 
 const removeAsset = (id) => emit("removeAsset", id);
 const clearPortfolio = (id) => emit("clearPortfolio", id);
-const selectAsset = (asset) => emit("selectAsset", asset);
+const addTransaction = (asset) => emit("addTransaction", asset);
+const addPrice = (asset) => emit('addPrice', asset)
 const deletePortfolio = (id) => emit("deletePortfolio", id);
 
 const handleClickOutside = (event) => {
@@ -137,7 +138,8 @@ onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside))
                   <div class="menu">
                     <button class="menu-btn" @click.stop="toggleAssetMenu(asset.portfolio_asset_id)">⋯</button>
                     <div v-if="activeAssetMenu === asset.portfolio_asset_id" class="menu-dropdown">
-                      <button @click="selectAsset(asset)">💰 Добавить транзакцию</button>
+                      <button @click="addTransaction(asset)">💰 Добавить транзакцию</button>
+                      <button @click="addPrice(asset)">💰 Добавить изменение цены</button>
                       <button class="danger" @click="removeAsset(asset.portfolio_asset_id)">🗑️ Удалить актив</button>
                     </div>
                   </div>
@@ -158,7 +160,8 @@ onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside))
               @removeAsset="removeAsset"
               @deletePortfolio="deletePortfolio"
               @clearPortfolio="clearPortfolio"
-              @selectAsset="selectAsset"
+              @addTransaction="addTransaction"
+              @addPrice="addPrice"
             />
           </div>
         </div>

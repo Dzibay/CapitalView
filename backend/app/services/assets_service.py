@@ -135,9 +135,7 @@ def create_asset(email: str, data: dict):
     # except Exception as e:
     #     print("Ошибка при добавлении актива:", e)
     #     return {"success": False, "error": str(e)}
-
-
-    
+ 
 
 def delete_asset(portfolio_asset_id: int):
     """
@@ -186,3 +184,22 @@ def delete_asset(portfolio_asset_id: int):
     except Exception as e:
         print("Ошибка при удалении актива:", e)
         return {"success": False, "error": str(e)}
+    
+
+def add_asset_price(data):
+    asset_id = data.get('asset_id')
+    price = data.get('price', 0)
+    date = data.get('date')
+
+    price_data = {
+        "asset_id": asset_id,
+        "price": price,
+        "trade_date": date
+    }
+
+    try:
+        res = table_insert("asset_prices", price_data)
+        return {"success": True, "message": "Цена успешно добавлена", "data": res}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    

@@ -17,7 +17,7 @@ defineProps({
       <li v-for="tx in transactions.slice(0, 4)" :key="tx.id" class="transaction-item">
         <div class="tx-info">
           <span class="tx-type">{{ tx.transaction_type }}</span>
-          <span class="tx-asset">{{ tx.asset_name }} · {{ tx.quantity }} шт.</span>
+          <span class="tx-asset">{{ tx.ticker }} · {{ tx.quantity }} шт.</span>
         </div>
         <div class="tx-info-right">
           <span>{{ tx.transaction_date }}</span>

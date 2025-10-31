@@ -13,9 +13,12 @@ const formattedTotalAmount = computed(() => {
 const formattedInvestedAmount = computed(() => {
   return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(props.investedAmount);
 });
+const formattedProfit = computed(() => {
+  return ((props.totalAmount - props.investedAmount) / props.investedAmount * 100).toFixed(2)
+});
 
 const isPositiveChange = computed(() => {
-  return props.monthlyChange >= 0
+  return formattedProfit >= 0
 });
 
 </script>
@@ -41,8 +44,8 @@ const isPositiveChange = computed(() => {
     <div class="capital-value-with-change">
       <div class="capital-values">{{ formattedTotalAmount }}</div>
       <div class="value-change" :class="{ 'positive': isPositiveChange, 'negative': !isPositiveChange }">
-        <span v-if="monthlyChange > 0">+</span>
-        <span>{{ (monthlyChange / totalAmount * 100).toFixed(2) }}% за месяц</span>
+        <span v-if="formattedProfit > 0">+</span>
+        <span>{{ formattedProfit }}% за все время</span>
       </div>
     </div>
 

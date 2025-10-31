@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.services.supabase_service import *
-from app.services.assets_service import delete_asset, create_asset
+from app.services.assets_service import delete_asset, create_asset, add_asset_price
 
 assets_bp = Blueprint("assets", __name__)
 
@@ -19,4 +19,12 @@ def create_asset_route():
 @jwt_required()
 def delete_asset_route(asset_id):
     res = delete_asset(asset_id)
+    return jsonify(res)
+
+
+@assets_bp.route('/add_price', methods=['POST'])
+@jwt_required()
+def add_asset_price_route():
+    data = request.get_json()
+    res = add_asset_price(data)
     return jsonify(res)
