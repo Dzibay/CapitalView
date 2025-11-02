@@ -69,6 +69,44 @@ const handleClickOutside = (event) => {
 onMounted(() => document.addEventListener("click", handleClickOutside));
 onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside));
 
+// 📈 Дивидендная доходность за текущий календарный год (%)
+const getDividendYieldCurrentYear = (asset) => {
+  if (!asset.dividends || !asset.last_price) return 0;
+
+  const currentYear = new Date().getFullYear();
+
+  // Сумма всех дивидендов с датой фиксации за текущий год
+  const totalDividends = asset.dividends
+    .filter(d => new Date(d.record_date).getFullYear() === currentYear)
+    .reduce((sum, d) => sum + (parseFloat(d.value) || 0), 0);
+
+  return (totalDividends / asset.last_price) * 100;
+};
+
+// 📊 Средняя дивидендная доходность за последние 5 лет (%)
+const getDividendYield5Y = (asset) => {
+  if (!asset.dividends || !asset.last_price) return 0;
+
+  // Группируем по году
+  const yearly = {};
+  for (const d of asset.dividends) {
+    if (!d.record_date || !d.value) continue;
+    const year = new Date(d.record_date).getFullYear();
+    yearly[year] = (yearly[year] || 0) + parseFloat(d.value);
+  }
+
+  // Определяем последние 5 календарных лет
+  const currentYear = new Date().getFullYear();
+  const yearsToInclude = Array.from({ length: 5 }, (_, i) => currentYear - i).reverse();
+
+  const validYears = yearsToInclude.filter(y => yearly[y]);
+  if (validYears.length === 0) return 0;
+
+  const avgDividends =
+    validYears.reduce((sum, y) => sum + yearly[y], 0) / validYears.length;
+
+  return (avgDividends / asset.last_price) * 100;
+};
 </script>
 
 <template>
@@ -112,6 +150,8 @@ onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside))
                 <th>Средняя цена</th>
                 <th>Текущая цена</th>
                 <th>Стоимость (₽)</th>
+                <th>Див. доходность (год)</th>
+                <th>Див. доходность (5 лет)</th>
                 <th>За все время</th>
                 <th>За день</th>
                 <th></th>
@@ -128,6 +168,8 @@ onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside))
                 <td>{{ asset.average_price.toFixed(2) }}</td>
                 <td>{{ asset.last_price || '-' }}</td>
                 <td>{{ Math.max(0, (asset.quantity * asset.last_price / asset.leverage) * asset.currency_rate_to_rub).toFixed(2) }}</td>
+                <td>{{ getDividendYieldCurrentYear(asset).toFixed(2) }}%</td>
+                <td>{{ getDividendYield5Y(asset).toFixed(2) }}%</td>
                 <td :class="{ 
                   'positive': asset.last_price - asset.average_price > 0, 
                   'negative': asset.last_price - asset.average_price < 0 
