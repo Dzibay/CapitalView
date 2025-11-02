@@ -68,6 +68,7 @@ const handleClickOutside = (event) => {
 
 onMounted(() => document.addEventListener("click", handleClickOutside));
 onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside));
+
 </script>
 
 <template>
@@ -107,32 +108,39 @@ onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside))
             <thead>
               <tr>
                 <th>Название</th>
-                <th>Тикер</th>
                 <th>Количество</th>
                 <th>Средняя цена</th>
                 <th>Текущая цена</th>
                 <th>Стоимость (₽)</th>
+                <th>За все время</th>
+                <th>За день</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="asset in portfolio.assets" :key="asset.portfolio_asset_id">
                 <td>
-                    {{ asset.name }}
+                    <span>{{ asset.name }}</span><br>
+                    <span class="asset_ticker">{{ asset.ticker }}</span>
                     <span v-if="asset.leverage && asset.leverage > 1" class="leveraged">💹×{{ asset.leverage }}</span>
                 </td>
-                <td>{{ asset.ticker }}</td>
-                <td class="right">{{ asset.quantity }}</td>
-                <td class="right">{{ asset.average_price.toFixed(2) }}</td>
-                <td class="right">{{ asset.last_price || '-' }}</td>
-                <td class="right">
-                    {{
-                        Math.max(
-                        0,
-                        (asset.quantity * asset.last_price / asset.leverage) * asset.currency_rate_to_rub
-                        ).toFixed(2)
-                    }}
+                <td>{{ asset.quantity }}</td>
+                <td>{{ asset.average_price.toFixed(2) }}</td>
+                <td>{{ asset.last_price || '-' }}</td>
+                <td>{{ Math.max(0, (asset.quantity * asset.last_price / asset.leverage) * asset.currency_rate_to_rub).toFixed(2) }}</td>
+                <td :class="{ 
+                  'positive': asset.last_price - asset.average_price > 0, 
+                  'negative': asset.last_price - asset.average_price < 0 
+                  }">
+                  {{ ((asset.last_price - asset.average_price) / asset.average_price * 100).toFixed(2) }}%
                 </td>
+                <td :class="{ 
+                  'positive': asset.daily_change > 0, 
+                  'negative': asset.daily_change < 0 
+                  }">
+                  {{ (asset.daily_change / asset.last_price * 100).toFixed(2) }}%
+                </td>
+                <td></td>
 
                 <td class="center">
                   <div class="menu">
@@ -205,6 +213,7 @@ onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside))
   padding: 8px;
 }
 .asset-table th {
+  text-align: left;
   background: #fafafa;
 }
 .asset-table td.right {
@@ -212,6 +221,12 @@ onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside))
 }
 .asset-table td.center {
   text-align: center;
+}
+.asset-table td.positive {
+  color: var(--positiveColor);
+}
+.asset-table td.negative {
+  color: var(--negativeColor);
 }
 .menu {
   position: relative;
@@ -267,5 +282,10 @@ onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside))
   color: #e67e22;
   font-weight: bold;
   margin-left: 4px;
+}
+
+.asset_ticker {
+  color: grey;
+  font-weight: 300;
 }
 </style>
