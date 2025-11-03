@@ -46,42 +46,12 @@ def get_portfolio_value_history_sync(portfolio_id: int):
     return  rpc("get_portfolio_value_history", {"p_portfolio_id": portfolio_id})
 
 
-async def get_portfolios_with_assets_and_history(user_email: str):
-    """Загружает портфели, их активы и историю стоимости параллельно."""
+def get_user_portfolios_with_assets_and_history(user_id: str):
+    """Загружает все портфели, активы и историю за один запрос."""
     start = time()
-    portfolios = await get_user_portfolios(user_email) or []
-    if not portfolios:
-        return [], [], {}
-    print('  Портфели: ', time() - start)
-
-    start = time()
-    portfolio_ids = [p["id"] for p in portfolios]
-    
-    assets_tasks = [asyncio.create_task(get_portfolio_assets(pid)) for pid in portfolio_ids]
-    histories_tasks = [asyncio.create_task(get_portfolio_value_history(pid)) for pid in portfolio_ids]
-    print('  Создание задач: ', time() - start)
-
-    start = time()
-    assets_results = await asyncio.gather(*assets_tasks, return_exceptions=True)
-    print('  Выполнение задач assets: ', time() - start)
-    start = time()
-    histories_results = await asyncio.gather(*histories_tasks, return_exceptions=True)
-    print('  Выполнение задач histories: ', time() - start)
-
-    assets = []
-    histories = {}
-    for i, p in enumerate(portfolios):
-        # Активы
-        if isinstance(assets_results[i], Exception):
-            p["assets"] = []
-        else:
-            p["assets"] = assets_results[i]
-            assets.extend(assets_results[i])
-
-        # История
-        histories[p["id"]] = histories_results[i] if not isinstance(histories_results[i], Exception) else []
-
-    return portfolios, assets, histories
+    data = rpc("get_all_portfolios_with_assets_and_history", {"p_user_id": user_id})
+    print("📦 Данные получены за", time() - start, "сек")
+    return data or []
 
 def update_portfolio_description(portfolio_id: int, text: str = None, capital_target_name: str = None,
                                  capital_target_value: float = None, capital_target_deadline: str = None,
