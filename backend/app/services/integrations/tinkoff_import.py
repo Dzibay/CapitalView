@@ -55,6 +55,8 @@ def get_tinkoff_portfolio(token, days=365):
             )
             transactions_data = []
             for op in operations.operations:
+                if getattr(op, 'figi', None) == 'TCS00A10B2T8':
+                    print(op)
                 if getattr(op, 'quantity', 0) > 0:
                     price = getattr(op, 'price', None)
                     op_type_str = op.operation_type.name.lower()
@@ -73,7 +75,7 @@ def get_tinkoff_portfolio(token, days=365):
                         "instrument_type": getattr(op, 'instrument_type', None),
                         "date": getattr(op, 'date', None),
                         "price": price.units + price.nano / 1e9 if price else None,
-                        "quantity": getattr(op, 'quantity', None),
+                        "quantity": getattr(op, 'quantity', None) - getattr(op, 'quantity_rest', None),
                         "type": op_type_str,
                         "currency": getattr(price, 'currency', None) if price else None
                     })
@@ -81,12 +83,12 @@ def get_tinkoff_portfolio(token, days=365):
         return result_data
 
 
-data = get_tinkoff_portfolio('t.b7cVknEoyjXW6FG39o4woo12yzoCAKsTwYgT0LqYFvNEH0hC5IGSMtLxVEwGfwXOv048FR5kGmxMeFpEM-GCRQ')
-for acc in data:
-    print(acc)
-    for pos in data[acc]["positions"]:
-        print('  ', pos)
-    print('\n\n')
-    for t in data[acc]["transactions"]:
-        print('  ', t)
+# data = get_tinkoff_portfolio('t.b7cVknEoyjXW6FG39o4woo12yzoCAKsTwYgT0LqYFvNEH0hC5IGSMtLxVEwGfwXOv048FR5kGmxMeFpEM-GCRQ')
+# for acc in data:
+#     print(acc)
+#     for pos in data[acc]["positions"]:
+#         print('  ', pos)
+#     print('\n\n')
+#     for t in data[acc]["transactions"]:
+#         print('  ', t)
     

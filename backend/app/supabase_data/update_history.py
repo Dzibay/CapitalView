@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, time
 from tqdm.asyncio import tqdm_asyncio
 from app.services import supabase_service
 from app.supabase_data.moex_utils import get_price_moex_history, get_price_moex
+from app.services.supabase_service import refresh_materialized_view
 
 sem = asyncio.Semaphore(5)  # максимум 5 одновременных запросов
 
@@ -174,6 +175,9 @@ async def update_today_prices():
                     "trade_date": insert_date
                 })
                 print(f"🟢 {ticker}: добавлено {price:.2f} за {insert_date}")
+    
+    refresh_materialized_view('asset_lastest_prices_full')
+    refresh_materialized_view('asset_daily_prices')
 
     print("✅ Обновление завершено.")
 

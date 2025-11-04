@@ -23,7 +23,6 @@ def table_select(table: str, select="*", filters: dict = None, in_filters: dict 
     
     return q.execute().data
 
-
 def table_insert(table: str, data: dict):
     return supabase.table(table).insert(data).execute().data
 
@@ -50,4 +49,18 @@ def table_delete(table: str, filters: dict = None, neq_filters: dict = None, in_
 
     return q.execute().data
 
+def refresh_materialized_view(view_name: str, concurrently: bool = False):
+    """
+    Обновляет материализованное представление в базе данных Supabase.
+    """
+    from app import supabase
+
+    sql = f"REFRESH MATERIALIZED VIEW {'CONCURRENTLY ' if concurrently else ''}{view_name};"
+    try:
+        supabase.rpc("exec_sql", {"query": sql}).execute()
+        print(f"✅ Материализованное представление {view_name} обновлено")
+        return {"success": True}
+    except Exception as e:
+        print(f"❌ Ошибка при обновлении {view_name}: {e}")
+        return {"success": False, "error": str(e)}
 

@@ -6,9 +6,7 @@ from app.services.supabase_service import *
 from app.services.portfolio_service import (
     get_user_portfolios,
     get_portfolio_assets,
-    get_portfolio_transactions,
     get_portfolio_value_history,
-    import_broker_portfolio,
     clear_portfolio,
     get_user_portfolio_parent,
     update_portfolio_description
@@ -93,13 +91,11 @@ def update_portfolio_description_route(portfolio_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-
 @portfolio_bp.route("/<int:portfolio_id>/history", methods=["GET"])
 @jwt_required()
 def portfolio_history_route(portfolio_id):
     data = asyncio.run(get_portfolio_value_history(portfolio_id))
     return jsonify(data)
-
 
 @portfolio_bp.route("/import_broker", methods=["POST"])
 @jwt_required()
@@ -179,6 +175,9 @@ async def import_broker_route():
                 .execute()
         else:
             supabase.table("user_broker_connections").insert(conn_data).execute()
+
+        # Обновляем вьюхи
+        refresh_materialized_view('portfolio_daily_positions')
 
         print(f"✅ Импорт брокера {broker_id} завершён успешно")
 

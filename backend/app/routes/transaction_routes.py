@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.services.transactions_service import get_transactions
 from app.services.supabase_service import table_select, table_insert, table_delete, table_update, rpc
 from app.services.user_service import get_user_by_email
+from app.services.supabase_service import refresh_materialized_view
 
 transactions_bp = Blueprint("transactions", __name__)
 
@@ -63,9 +64,9 @@ def add_transaction_route():
 
     # --- 4️⃣ Обновляем расчёты по портфельному активу ---
     rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
+    refresh_materialized_view('portfolio_daily_positions')
 
     return jsonify({"success": True, "transaction": res_transaction[0]}), 201
-
 
 @transactions_bp.route("/", methods=["DELETE"])
 @jwt_required()
@@ -98,6 +99,7 @@ def delete_transactions_route():
         print(affected_assets)
         if affected_assets:
             rpc("update_assets_after_tx_delete", {"asset_ids": affected_assets})
+            refresh_materialized_view('portfolio_daily_positions')
 
         return jsonify({
             "success": True,
@@ -107,8 +109,6 @@ def delete_transactions_route():
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-
-    
 
 @transactions_bp.route("/", methods=["PUT"])
 @jwt_required()
@@ -150,6 +150,7 @@ def update_transaction_route():
         # Если есть portfolio_asset_id — пересчитаем актив
         if pa_id:
             rpc("update_portfolio_asset", {"pa_id": pa_id})
+            refresh_materialized_view('portfolio_daily_positions')
 
         return jsonify({"success": True, "updated": res[0]}), 200
 
