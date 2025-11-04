@@ -81,12 +81,12 @@ def get_tinkoff_portfolio(token, days=365):
         return result_data
 
 
-# data = get_tinkoff_portfolio('t.b7cVknEoyjXW6FG39o4woo12yzoCAKsTwYgT0LqYFvNEH0hC5IGSMtLxVEwGfwXOv048FR5kGmxMeFpEM-GCRQ')
-# for acc in data:
-#     print(acc)
-#     for pos in data[acc]["positions"]:
-#         print('  ', pos)
-#     print('\n\n')
-#     for t in data[acc]["transactions"]:
-#         print('  ', t)
+data = get_tinkoff_portfolio('t.b7cVknEoyjXW6FG39o4woo12yzoCAKsTwYgT0LqYFvNEH0hC5IGSMtLxVEwGfwXOv048FR5kGmxMeFpEM-GCRQ')
+for acc in data:
+    print(acc)
+    for pos in data[acc]["positions"]:
+        print('  ', pos)
+    print('\n\n')
+    for t in data[acc]["transactions"]:
+        print('  ', t)
     

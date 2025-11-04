@@ -3,6 +3,7 @@ from app.services.portfolio_service import get_user_portfolios_with_assets_and_h
 from app.services.reference_service import get_reference_data_cached
 from app.services.transactions_service import get_transactions
 from app.services.user_service import get_user_by_email
+from app.services.supabase_service import table_select
 from collections import defaultdict
 from time import time
 
@@ -52,7 +53,6 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     portfolio["history"] = aggregate_and_sort_history_list(combined_history)
 
     return total_value, total_invested, combined_assets, combined_history
-
 
 
 def build_portfolio_hierarchy(portfolios):
@@ -112,6 +112,30 @@ def calculate_monthly_change(history):
         return 0
 
 
+def get_user_portfolio_connections(user_id):
+    """
+    Возвращает dict: { portfolio_id: {'broker_id': ..., 'api_key': ...} }
+    Берём самую свежую запись по last_sync_at для каждого портфеля.
+    """
+    rows = table_select(
+        "user_broker_connections",
+        select="portfolio_id, broker_id, api_key, last_sync_at",
+        filters={"user_id": user_id},
+        order={"column": "last_sync_at", "desc": True},
+        limit=1000
+    ) or []  # table_select из supabase_service.py
+    # rows уже отсортированы по last_sync_at DESC — первое попадание и есть самое свежее
+    by_portfolio = {}
+    for r in rows:
+        pid = r.get("portfolio_id")
+        if pid and pid not in by_portfolio:
+            by_portfolio[pid] = {
+                "broker_id": r.get("broker_id"),
+                "api_key": r.get("api_key"),
+            }
+    return by_portfolio
+
+
 async def get_dashboard_data(user_email: str):
     user = get_user_by_email(user_email)
     if not user:
@@ -123,6 +147,12 @@ async def get_dashboard_data(user_email: str):
     portfolios = get_user_portfolios_with_assets_and_history(user_id) or []
     print(f'SQL RPC: {time() - time1}')
     time1 = time()
+
+    # ⬇️ подмешиваем connection к каждому портфелю
+    connections_by_pid = get_user_portfolio_connections(user_id)  # читает user_broker_connections
+    for p in portfolios:
+        p["connection"] = connections_by_pid.get(p["id"])
+
     # === 1️⃣ Объединяем дочерние портфели и пересчитываем суммы ===
     portfolios = build_portfolio_hierarchy(portfolios)
     print(f'Иерархия: {time() - time1}')
