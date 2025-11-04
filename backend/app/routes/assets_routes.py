@@ -28,5 +28,5 @@ def add_asset_price_route():
     data = request.get_json()
     res = add_asset_price(data)
     refresh_materialized_view('asset_daily_prices')
-    refresh_materialized_view('asset_lastest_prices_full')
+    refresh_materialized_view('asset_latest_prices_full')
     return jsonify(res)

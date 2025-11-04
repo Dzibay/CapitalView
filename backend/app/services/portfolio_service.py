@@ -45,7 +45,6 @@ def get_portfolio_transactions_sync(portfolio_id: int):
 def get_portfolio_value_history_sync(portfolio_id: int):
     return  rpc("get_portfolio_value_history", {"p_portfolio_id": portfolio_id})
 
-
 def get_user_portfolios_with_assets_and_history(user_id: str):
     """Загружает все портфели, активы и историю за один запрос."""
     start = time()

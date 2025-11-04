@@ -176,7 +176,7 @@ async def update_today_prices():
                 })
                 print(f"🟢 {ticker}: добавлено {price:.2f} за {insert_date}")
     
-    refresh_materialized_view('asset_lastest_prices_full')
+    refresh_materialized_view('asset_latest_prices_full')
     refresh_materialized_view('asset_daily_prices')
 
     print("✅ Обновление завершено.")
