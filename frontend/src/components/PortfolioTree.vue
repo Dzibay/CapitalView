@@ -168,8 +168,26 @@ const getDividendYield5Y = (asset) => {
                 <td>{{ asset.average_price.toFixed(2) }}</td>
                 <td>{{ asset.last_price || '-' }}</td>
                 <td>{{ Math.max(0, (asset.quantity * asset.last_price / asset.leverage) * asset.currency_rate_to_rub).toFixed(2) }}</td>
-                <td>{{ getDividendYieldCurrentYear(asset).toFixed(2) }}%</td>
-                <td>{{ getDividendYield5Y(asset).toFixed(2) }}%</td>
+                <td>
+                  <!-- 💰 Див. доходность (год) -->
+                  <span v-if="asset.type.toLowerCase().includes('bond') || asset.type.toLowerCase().includes('облига')">
+                    {{ asset.properties?.coupon_percent ? asset.properties.coupon_percent.toFixed(2) + '%' : '–' }}
+                  </span>
+                  <span v-else>
+                    {{ getDividendYieldCurrentYear(asset).toFixed(2) }}%
+                  </span>
+                </td>
+
+                <td>
+                  <!-- 📆 Див. доходность (5 лет) -->
+                  <span v-if="asset.type.toLowerCase().includes('bond') || asset.type.toLowerCase().includes('облига')">
+                    –
+                  </span>
+                  <span v-else>
+                    {{ getDividendYield5Y(asset).toFixed(2) }}%
+                  </span>
+                </td>
+                
                 <td :class="{ 
                   'positive': asset.last_price - asset.average_price > 0, 
                   'negative': asset.last_price - asset.average_price < 0 

@@ -1,85 +1,182 @@
-import requests
+import asyncio
+import aiohttp
+from app.services.supabase_service import table_select, table_insert, table_update
 from datetime import datetime
-from app.services.supabase_service import table_select, table_insert
 
 MOEX_DIVIDENDS_URL = "https://iss.moex.com/iss/securities/{ticker}/dividends.json"
+MOEX_BONDIZATION_URL = "https://iss.moex.com/iss/securities/{ticker}/bondization.json"
+MOEX_COUPONS_URL = "https://iss.moex.com/iss/securities/{ticker}/coupons.json"
 
-def fetch_dividends_from_moex(ticker: str):
-    """Получает дивиденды по тикеру с MOEX ISS API"""
+
+# ===================================================
+# 📡 ВСПОМОГАТЕЛЬНЫЕ АСИНХРОННЫЕ ФУНКЦИИ
+# ===================================================
+
+async def fetch_json(session, url):
+    """Асинхронный запрос JSON"""
+    try:
+        async with session.get(url, timeout=10) as resp:
+            if resp.status != 200:
+                print(f"⚠️ Ошибка {resp.status}: {url}")
+                return None
+            return await resp.json()
+    except Exception as e:
+        print(f"❌ Ошибка при запросе {url}: {e}")
+        return None
+
+
+# ===================================================
+# 📊 ПОЛУЧЕНИЕ ДАННЫХ С MOEX
+# ===================================================
+
+async def fetch_dividends_from_moex(session, ticker: str):
     url = MOEX_DIVIDENDS_URL.format(ticker=ticker)
-    r = requests.get(url)
-    if r.status_code != 200:
-        print(f"⚠️ Ошибка при запросе {ticker}: {r.status_code}")
+    data = await fetch_json(session, url)
+    if not data or "dividends" not in data or "data" not in data["dividends"]:
         return []
 
-    data = r.json()
-    if "dividends" not in data or "data" not in data["dividends"]:
-        print(f"⚠️ Нет данных по дивидендам для {ticker}")
-        return []
+    cols = data["dividends"]["columns"]
+    payouts = []
+    for row in data["dividends"]["data"]:
+        d = dict(zip(cols, row))
+        payouts.append({
+            "record_date": d.get("registryclosedate"),
+            "payment_date": None,
+            "value": d.get("value"),
+            "currency": d.get("currencyid"),
+            "type": "dividend"
+        })
+    return payouts
 
-    columns = data["dividends"]["columns"]
-    rows = data["dividends"]["data"]
+
+async def fetch_bond_payouts_from_moex(session, ticker: str):
+    url = MOEX_BONDIZATION_URL.format(ticker=ticker)
+    data = await fetch_json(session, url)
+    if not data:
+        return []
 
     results = []
-    for row in rows:
-        record = dict(zip(columns, row))
-        results.append({
-            "record_date": record.get("registryclosedate"),
-            "value": record.get("value"),
-            "currency": record.get("currencyid")
-        })
+
+    # --- Купоны ---
+    if "coupons" in data and "data" in data["coupons"]:
+        cols = data["coupons"]["columns"]
+        for row in data["coupons"]["data"]:
+            rec = dict(zip(cols, row))
+            results.append({
+                "record_date": rec.get("recorddate"),
+                "payment_date": rec.get("coupondate"),
+                "value": rec.get("value"),
+                "currency": rec.get("faceunit"),
+                "type": "coupon"
+            })
+
+    # --- Амортизации ---
+    if "amortizations" in data and "data" in data["amortizations"]:
+        cols = data["amortizations"]["columns"]
+        for row in data["amortizations"]["data"]:
+            rec = dict(zip(cols, row))
+            results.append({
+                "record_date": rec.get("amortdate"),
+                "payment_date": rec.get("amortdate"),
+                "value": rec.get("value"),
+                "currency": rec.get("faceunit"),
+                "type": "amortization"
+            })
+
     return results
 
 
-def update_asset_dividends(asset):
-    """Обновляет дивиденды для конкретного актива"""
+async def fetch_bond_meta_from_coupons(session, ticker: str):
+    url = MOEX_COUPONS_URL.format(ticker=ticker)
+    data = await fetch_json(session, url)
+    if not data or "description" not in data or "data" not in data["description"]:
+        return {}
+
+    desc = data["description"]["data"]
+    meta = {row[0]: row[2] for row in desc if len(row) >= 3}
+
+    return {
+        "coupon_percent": float(meta.get("COUPONPERCENT", 0)) if meta.get("COUPONPERCENT") else None,
+        "coupon_value": float(meta.get("COUPONVALUE", 0)) if meta.get("COUPONVALUE") else None,
+        "coupon_frequency": int(meta.get("COUPONFREQUENCY", 0)) if meta.get("COUPONFREQUENCY") else None,
+        "face_value": float(meta.get("FACEVALUE", 0)) if meta.get("FACEVALUE") else None,
+        "currency": meta.get("FACEUNIT", "RUB"),
+        "mat_date": meta.get("MATDATE"),
+    }
+
+
+# ===================================================
+# 🧠 ОБНОВЛЕНИЕ В БД
+# ===================================================
+
+async def update_asset_payouts(session, asset):
     asset_id = asset["id"]
     ticker = asset["ticker"]
 
-    print(f"\n📈 Проверяем дивиденды для {ticker} (asset_id={asset_id})")
+    # тип актива
+    atype = await asyncio.to_thread(table_select, "asset_types", select="name", filters={"id": asset["asset_type_id"]})
+    type_name = (atype[0]["name"].lower() if atype else "").strip()
 
-    dividends = fetch_dividends_from_moex(ticker)
-    if not dividends:
-        print("  ⚠️ Нет дивидендных данных.")
+    print(f"\n📈 {ticker} ({type_name})")
+
+    # --- Получаем выплаты и метаданные ---
+    if "bond" in type_name or "облига" in type_name:
+        payouts = await fetch_bond_payouts_from_moex(session, ticker)
+        meta = await fetch_bond_meta_from_coupons(session, ticker)
+    else:
+        payouts = await fetch_dividends_from_moex(session, ticker)
+        meta = {}
+
+    if not payouts:
+        print("  ⚠️ Нет выплатных данных.")
         return
 
-    # Существующие выплаты в базе
-    existing = table_select("asset_payouts", filters={"asset_id": asset_id})
-    existing_records = {(str(i["record_date"]), round(float(i["value"] or 0), 2)) for i in existing}
+    # --- Существующие выплаты ---
+    existing = await asyncio.to_thread(table_select, "asset_payouts", filters={"asset_id": asset_id})
+    existing_keys = {(str(i["record_date"]), round(float(i["value"] or 0), 2)) for i in existing}
 
     added = 0
-    for d in dividends:
-        if not d["record_date"] or not d["value"]:
+    for p in payouts:
+        if not p["record_date"] or not p["value"]:
             continue
 
-        key = (str(d["record_date"]), round(float(d["value"]), 2))
-        if key in existing_records:
+        key = (str(p["record_date"]), round(float(p["value"]), 2))
+        if key in existing_keys:
             continue
 
         payout_data = {
             "asset_id": asset_id,
-            "value": d["value"],
-            "record_date": d["record_date"],
-            "declared_date": None,  # MOEX не даёт этих полей
-            "payment_date": None
+            "value": p["value"],
+            "record_date": p["record_date"],
+            "payment_date": p.get("payment_date"),
+            "declared_date": None,
+            "type": p["type"]
         }
 
         try:
-            table_insert("asset_payouts", payout_data)
+            await asyncio.to_thread(table_insert, "asset_payouts", payout_data)
             added += 1
         except Exception as e:
-            print(f"  ❌ Ошибка вставки: {e}")
+            print(f"  ❌ Ошибка вставки {ticker}: {e}")
 
-    if added:
-        print(f"  ✅ Добавлено {added} новых выплат.")
-    else:
-        print("  ℹ️ Новых выплат нет.")
+    print(f"  ✅ Добавлено {added} выплат." if added else "  ℹ️ Новых выплат нет.")
+
+    # --- Обновляем свойства облигации ---
+    if meta and ("bond" in type_name or "облига" in type_name):
+        props = asset.get("properties") or {}
+        props.update(meta)
+        await asyncio.to_thread(table_update, "assets", {"properties": props}, {"id": asset_id})
+        print("  💾 Обновлены свойства облигации")
 
 
-def update_all_moex_assets():
-    """Обновляет дивиденды по всем активам, где properties.source = 'moex'"""
-    print("🚀 Обновляем дивиденды для активов MOEX...")
-    assets = table_select("assets")
+# ===================================================
+# 🚀 ОБРАБОТКА ВСЕХ АКТИВОВ
+# ===================================================
+
+async def update_all_moex_assets():
+    print("🚀 Обновляем выплаты для активов MOEX...")
+
+    assets = await asyncio.to_thread(table_select, "assets")
     moex_assets = [
         a for a in assets
         if a.get("properties") and a["properties"].get("source") == "moex"
@@ -89,14 +186,12 @@ def update_all_moex_assets():
         print("⚠️ Нет активов с source='moex'.")
         return
 
-    for asset in moex_assets:
-        try:
-            update_asset_dividends(asset)
-        except Exception as e:
-            print(f"❌ Ошибка при обработке {asset['ticker']}: {e}")
+    async with aiohttp.ClientSession() as session:
+        tasks = [update_asset_payouts(session, asset) for asset in moex_assets]
+        await asyncio.gather(*tasks)
 
     print("\n✅ Обновление завершено.")
 
 
 if __name__ == "__main__":
-    update_all_moex_assets()
+    asyncio.run(update_all_moex_assets())
