@@ -56,6 +56,7 @@ def create_asset(email: str, data: dict):
                 "trade_date": date,
             }
             table_insert("asset_prices", price_data)
+            refresh_materialized_view('asset_latest_prices_full')
     else:
         # --- Если системный актив, берём name и ticker из таблицы assets ---
         asset_info = table_select("assets", select="name, ticker", filters={"id": asset_id})
@@ -199,6 +200,7 @@ def add_asset_price(data):
 
     try:
         res = table_insert("asset_prices", price_data)
+        refresh_materialized_view('asset_latest_prices_full')
         return {"success": True, "message": "Цена успешно добавлена", "data": res}
     except Exception as e:
         return {"success": False, "error": str(e)}
