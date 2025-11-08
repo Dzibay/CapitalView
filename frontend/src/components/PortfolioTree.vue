@@ -187,7 +187,7 @@ const getDividendYield5Y = (asset) => {
                     {{ getDividendYield5Y(asset).toFixed(2) }}%
                   </span>
                 </td>
-                
+                 
                 <td :class="{ 
                   'positive': asset.last_price - asset.average_price > 0, 
                   'negative': asset.last_price - asset.average_price < 0 

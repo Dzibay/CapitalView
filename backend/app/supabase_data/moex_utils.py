@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+from datetime import date, timedelta
 
 
 # 🔹 MOEX async
@@ -60,7 +61,6 @@ async def get_price_moex(session, ticker):
 
 
 async def get_price_moex_history(session, ticker, days=365):
-    from datetime import date, timedelta
     end = date.today()
     start = end - timedelta(days=days)
     base_url = "https://iss.moex.com/iss/engines/stock/markets"
@@ -91,6 +91,5 @@ async def get_price_moex_history(session, ticker, days=365):
                 await asyncio.sleep(1)
 
     return []
-
 
 
