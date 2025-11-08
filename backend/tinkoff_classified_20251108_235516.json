@@ -10,7 +10,7 @@
         "instrument_type": "share",
         "currency": "rub",
         "lot": 1,
-        "current_price": 126.3,
+        "current_price": 126.4,
         "average_price": 133.57,
         "quantity": 500.0
       },
@@ -34,7 +34,7 @@
         "instrument_type": "share",
         "currency": "rub",
         "lot": 1,
-        "current_price": 2672.0,
+        "current_price": 2678.5,
         "average_price": 2885.7,
         "quantity": 37.0
       },
@@ -46,7 +46,7 @@
         "instrument_type": "share",
         "currency": "rub",
         "lot": 1,
-        "current_price": 1299.1,
+        "current_price": 1301.6,
         "average_price": 1174.5,
         "quantity": 51.0
       },
@@ -58,7 +58,7 @@
         "instrument_type": "share",
         "currency": "rub",
         "lot": 10,
-        "current_price": 340.88,
+        "current_price": 341.23,
         "average_price": 382.99,
         "quantity": 100.0
       },
@@ -70,7 +70,7 @@
         "instrument_type": "share",
         "currency": "rub",
         "lot": 10,
-        "current_price": 162.13,
+        "current_price": 162.47,
         "average_price": 179.23,
         "quantity": 200.0
       },
@@ -82,7 +82,7 @@
         "instrument_type": "share",
         "currency": "rub",
         "lot": 10,
-        "current_price": 255.15,
+        "current_price": 256.45,
         "average_price": 236.85,
         "quantity": 100.0
       },
@@ -130,7 +130,7 @@
         "instrument_type": "share",
         "currency": "rub",
         "lot": 1,
-        "current_price": 530.8,
+        "current_price": 530.5,
         "average_price": 666.3,
         "quantity": 50.0
       }

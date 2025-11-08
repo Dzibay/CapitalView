@@ -163,56 +163,45 @@ async def clear_portfolio(portfolio_id: int, delete_self: bool = False):
 # --- пул потоков для фоновых операций ---
 executor = ThreadPoolExecutor(max_workers=10)
 
-async def table_insert_async(table: str, data: dict | list):
-    """Асинхронная вставка через ThreadPoolExecutor"""
+
+async def table_insert_bulk_async(table: str, rows: list[dict], batch_size: int = 1000):
+    """Асинхронная пакетная вставка с разбивкой по batch_size."""
+    if not rows:
+        return []
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        executor, lambda: supabase.table(table).insert(data).execute().data
-    )
-
-async def table_delete_async(table: str, filters: dict):
-    """Асинхронное удаление записей через ThreadPoolExecutor"""
-    loop = asyncio.get_event_loop()
-
-    def _delete():
-        query = supabase.table(table)
-        delete_query = query.delete()
-        for k, v in filters.items():
-            delete_query = delete_query.eq(k, v)
-        return delete_query.execute().data
-
-    return await loop.run_in_executor(executor, _delete)
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i:i + batch_size]
+        await loop.run_in_executor(executor, lambda: supabase.table(table).insert(batch).execute())
+    return True
 
 
-# --- основная функция ---
 async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_data: dict):
     """
-    Асинхронная безопасная синхронизация портфелей, транзакций и операций.
-    Не дублирует покупки/продажи (cash_operations создаются триггером).
-    Удаляет устаревшие транзакции и операции.
+    Оптимизированная синхронизация портфелей, транзакций и операций.
+    • Не создаёт новые активы (если актив не найден — пропускает).
+    • Использует bulk-вставки для ускорения.
+    • Связь операций с транзакциями создаётся триггером.
     """
     user = get_user_by_email(email)
     user_id = user["id"]
 
-    # === справочники типов ===
+    # === Справочники типов ===
     asset_types = table_select("asset_types")
     asset_type_map = {at["name"].lower(): at["id"] for at in asset_types}
     op_types = table_select("operations_type", select="id, name")
     op_type_map = {o["name"].lower(): o["id"] for o in op_types}
 
+    # === Кеш активов и валют ===
+    all_assets = table_select("assets", select="id, ticker")
+    ticker_to_asset = {a["ticker"].upper(): a["id"] for a in all_assets if a.get("ticker")}
+    currencies = {a["ticker"].upper(): a["id"] for a in all_assets if len(a["ticker"]) <= 5}
+
     total_new_tx = 0
     total_new_ops = 0
-    summary = {"added": [], "removed": [], "operations_added": [], "operations_removed": []}
+    summary = {"added_tx": 0, "added_ops": 0, "removed_tx": 0, "removed_ops": 0, "skipped_assets": []}
 
-    # === цикл по портфелям брокера ===
     for broker_portfolio_name, pdata in broker_data.items():
         print(f"📦 Синхронизируем портфель: {broker_portfolio_name}")
-
-        new_tx = 0
-        new_ops = 0
-        affected_pa_ids = set()
-        broker_keys_tx = set()
-        broker_keys_ops = set()
 
         # --- 1️⃣ ищем или создаём портфель ---
         existing = table_select(
@@ -222,69 +211,21 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
         if existing:
             child_portfolio_id = existing[0]["id"]
         else:
-            res = await table_insert_async("portfolios", {
-                "user_id": user_id,
-                "name": broker_portfolio_name,
-                "parent_portfolio_id": parent_portfolio_id,
-                "description": json.dumps({"source": "broker_import"})
-            })
-            child_portfolio_id = res[0]["id"]
+            print(f"⚠️ Портфель {broker_portfolio_name} не найден и не создаётся (skip).")
+            continue
 
-        # --- 2️⃣ проверяем активы ---
-        pa_rows = table_select(
-            "portfolio_assets",
-            select="id, asset_id, quantity, average_price",
-            filters={"portfolio_id": child_portfolio_id}
-        )
-        asset_ids = [r["asset_id"] for r in pa_rows]
-        asset_rows = table_select("assets", select="id, ticker", in_filters={"id": asset_ids})
-        db_by_ticker = {
-            r["ticker"]: next(a for a in pa_rows if a["asset_id"] == r["id"])
-            for r in asset_rows
-        }
-
+        # --- 2️⃣ сопоставления активов ---
         broker_positions = pdata.get("positions", [])
-        for pos in broker_positions:
-            ticker = pos.get("ticker")
-            if not ticker:
-                continue
-
-            asset = table_select("assets", "id", {"ticker": ticker})
-            asset_id = asset[0]["id"] if asset else None
-            if not asset_id:
-                new_asset = {
-                    "asset_type_id": asset_type_map.get((pos.get("instrument_type") or "share").lower(), 1),
-                    "user_id": user_id,
-                    "name": pos.get("name", ticker),
-                    "ticker": ticker,
-                    "properties": {},
-                }
-                res = await table_insert_async("assets", new_asset)
-                asset_id = res[0]["id"]
-                await table_insert_async("portfolio_assets", {
-                    "portfolio_id": child_portfolio_id,
-                    "asset_id": asset_id,
-                })
-                summary["added"].append(ticker)
-
-        # --- 3️⃣ подготавливаем сопоставления ---
-        broker_by_ticker = {}
-        figi_to_ticker = {}
-        for p in broker_positions:
-            ticker = p.get("ticker") or p.get("name") or p.get("figi")
-            if not ticker:
-                continue
-            broker_by_ticker[ticker] = p
-            figi_to_ticker[p.get("figi")] = ticker
+        figi_to_ticker = {p.get("figi"): (p.get("ticker") or "").upper() for p in broker_positions if p.get("figi")}
 
         broker_tx = pdata.get("transactions", [])
         if not broker_tx:
             continue
 
-        # --- portfolio_asset_id по тикеру ---
+        # --- 3️⃣ portfolio_asset_id для текущего портфеля ---
         p_assets = table_select("portfolio_assets", "id, asset_id", {"portfolio_id": child_portfolio_id})
         asset_rows = table_select("assets", select="id, ticker", in_filters={"id": [p["asset_id"] for p in p_assets]})
-        ticker_to_pa = {r["ticker"]: p["id"] for p in p_assets for r in asset_rows if p["asset_id"] == r["id"]}
+        ticker_to_pa = {r["ticker"].upper(): p["id"] for p in p_assets for r in asset_rows if p["asset_id"] == r["id"]}
 
         # --- 4️⃣ загружаем текущие транзакции и операции ---
         db_tx = table_select(
@@ -295,8 +236,9 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
         db_ops = table_select(
             "cash_operations",
             select="id, type, amount, date, portfolio_id",
-            filters={"user_id": user_id, "portfolio_id": child_portfolio_id}
+            filters={"portfolio_id": child_portfolio_id}
         )
+
         db_index_tx = {
             (t["portfolio_asset_id"], float(t["price"]), float(t["quantity"]), normalize_tx_date_day(t["transaction_date"])): t
             for t in db_tx
@@ -306,17 +248,24 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
             for o in db_ops
         }
 
+        new_tx_bulk = []
+        new_ops_bulk = []
+        affected_pa_ids = set()
+        broker_keys_tx = set()
+        broker_keys_ops = set()
+
         # --- 5️⃣ обрабатываем все операции брокера ---
         for tx in broker_tx:
             ttype = (tx.get("classified_type") or tx.get("type") or "").capitalize()
             tx_date = normalize_tx_date_day(tx["date"])
             figi = tx.get("figi")
             payment = float(tx.get("payment") or 0)
+            ticker = figi_to_ticker.get(figi, "").upper()
 
             # 🟢 Покупка/продажа
             if ttype in ("Buy", "Sell"):
-                ticker = figi_to_ticker.get(figi)
-                if not ticker:
+                if ticker not in ticker_to_asset:
+                    summary["skipped_assets"].append(ticker)
                     continue
                 pa_id = ticker_to_pa.get(ticker)
                 if not pa_id:
@@ -326,62 +275,67 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                 if key in db_index_tx:
                     continue
 
-                tx_data = {
+                new_tx_bulk.append({
                     "portfolio_asset_id": pa_id,
                     "transaction_type": 1 if ttype == "Buy" else 2,
                     "price": tx["price"],
                     "quantity": tx["quantity"],
                     "transaction_date": tx_date,
                     "user_id": user_id
-                }
-                await table_insert_async("transactions", tx_data)
-                new_tx += 1
+                })
                 affected_pa_ids.add(pa_id)
                 continue
 
-            # 💰 Прочие операции (дивиденды, купоны, комиссии, налоги)
+            # 💰 Денежные операции
             op_type_id = op_type_map.get(ttype.lower(), op_type_map.get("other"))
             if abs(payment) < 1e-6:
                 continue
 
-            key = (tx_date, payment, op_type_id)
+            key = (tx_date, round(payment, 2), op_type_id)
             broker_keys_ops.add(key)
             if key in db_index_ops:
                 continue
 
-            currency_code = tx.get("currency", "RUB")
-            currency = table_select("assets", "id", {"ticker": currency_code})
-            currency_id = currency[0]["id"] if currency else 47
+            # 💰 Валюта и актив
+            currency_id = currencies.get((tx.get("currency") or "RUB").upper(), 47)
+            asset_id = ticker_to_asset.get(ticker)
+            if ticker and not asset_id:
+                summary["skipped_assets"].append(ticker)
+                continue
 
-            cash_data = {
+            new_ops_bulk.append({
                 "user_id": user_id,
                 "portfolio_id": child_portfolio_id,
                 "type": op_type_id,
                 "amount": payment,
                 "currency": currency_id,
                 "date": tx_date,
-                "transaction_id": None,
-                "asset_payout_id": None
-            }
-            await table_insert_async("cash_operations", cash_data)
-            new_ops += 1
-            summary["operations_added"].append(cash_data)
+                "asset_id": asset_id,
+                "transaction_id": None
+            })
 
-        # --- 6️⃣ удаляем устаревшие транзакции ---
+        # --- 6️⃣ bulk-вставки ---
+        if new_tx_bulk:
+            print(f"📥 Вставляем {len(new_tx_bulk)} транзакций...")
+            await table_insert_bulk_async("transactions", new_tx_bulk)
+            total_new_tx += len(new_tx_bulk)
+
+        if new_ops_bulk:
+            print(f"📥 Вставляем {len(new_ops_bulk)} операций...")
+            await table_insert_bulk_async("cash_operations", new_ops_bulk)
+            total_new_ops += len(new_ops_bulk)
+
+        # --- 7️⃣ удаление устаревших ---
         db_keys_tx = set(db_index_tx.keys())
+        db_keys_ops = set(db_index_ops.keys())
         for key in db_keys_tx - broker_keys_tx:
             tx = db_index_tx[key]
-            print(f"🗑 Удаляем транзакцию: {tx}")
-            await table_delete_async("transactions", {"id": tx["id"]})
-            summary["removed"].append(tx["id"])
-
-        # --- 7️⃣ удаляем устаревшие операции ---
-        db_keys_ops = set(db_index_ops.keys())
+            await asyncio.to_thread(table_delete, "transactions", {"id": tx["id"]})
+            summary["removed_tx"] += 1
         for key in db_keys_ops - broker_keys_ops:
             op = db_index_ops[key]
-            print(f"🗑 Удаляем операцию: {op}")
-            await table_delete_async("cash_operations", {"id": op["id"]})
-            summary["operations_removed"].append(op["id"])
+            await asyncio.to_thread(table_delete, "cash_operations", {"id": op["id"]})
+            summary["removed_ops"] += 1
 
         # --- 8️⃣ пересчёт активов ---
         for pa_id in affected_pa_ids:
@@ -390,10 +344,10 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
             except Exception as e:
                 print(f"⚠️ Ошибка пересчёта актива {pa_id}: {e}")
 
-        total_new_tx += new_tx
-        total_new_ops += new_ops
-
     print(f"✅ Импорт завершён. Новых транзакций: {total_new_tx}, операций: {total_new_ops}")
+    if summary["skipped_assets"]:
+        print(f"⚠️ Пропущено {len(summary['skipped_assets'])} активов: {set(summary['skipped_assets'])}")
     return {"success": True, "summary": summary}
+
 
 
