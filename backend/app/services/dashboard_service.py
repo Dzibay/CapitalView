@@ -161,7 +161,7 @@ async def get_dashboard_data(user_email: str):
     reference_data = get_reference_data_cached()
     print(f'Reference data: {time() - time1}')
     time1 = time()
-    transactions = get_transactions(user_id) or []
+    transactions = get_transactions(user_id, limit=1000) or []
     print(f'Транзакции: {time() - time1}')
 
     time1 = time()

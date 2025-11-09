@@ -6,6 +6,7 @@ import { fetchDashboardData } from '../services/dashboardService.js'
 import assetsService from "../services/assetsService";
 import portfolioService from '../services/portfolioService'
 import transactionsService from '../services/transactionsService.js';
+import analyticsService from '../services/analyticsService.js';
 
 import AppSidebar from '../components/AppSidebar.vue'
 import AppHeader from '../components/AppHeader.vue'
@@ -43,7 +44,7 @@ const preloadTransactions = async () => {
   }
 }
 
-// 🔹 Добавление/обновление актива
+// 🔹 Активы
 const addAsset = async (assetData) => {
   try {
     const res = await assetsService.addAsset(assetData)
@@ -87,7 +88,7 @@ const addAsset = async (assetData) => {
   }
 }
 
-// 🔹 Добавление портфеля
+// 🔹 Портфели
 const addPortfolio = async (portfolioData) => {
   try {
     const res = await portfolioService.addPortfolio(portfolioData)
@@ -99,8 +100,6 @@ const addPortfolio = async (portfolioData) => {
     console.error('Ошибка создания портфеля:', err)
   }
 }
-
-// 🔹 Очистка портфеля
 const deletePortfolio = async ( portfolioId ) => {
   try {
     const res = await portfolioService.deletePortfolio(portfolioId)
@@ -111,8 +110,6 @@ const deletePortfolio = async ( portfolioId ) => {
     console.error('Ошибка удаления портфеля:', err)
   }
 }
-
-// 🔹 Очистка портфеля
 const clearPortfolio = async ( portfolioId ) => {
   try {
     loading.value = true
@@ -153,6 +150,35 @@ const deleteTransactions = async (transaction_ids) => {
     console.error('Ошибка удаления транзакций:', err)
   }
 }
+
+const analyticsLoaded = ref(false)
+const loadAnalytics = async () => {
+  if (analyticsLoaded.value) return
+
+  try {
+    const res = await analyticsService.getAnalytics()
+    console.log("📊 Аналитика получена:", res)
+
+    // ✅ Безопасно достаём массив из res.analytics
+    const analyticsArray = Array.isArray(res?.analytics) ? res.analytics : []
+
+    if (!dashboardData.value?.data) {
+      dashboardData.value = { data: {} }
+    }
+
+    dashboardData.value.data.analytics = [
+      ...(dashboardData.value.data.analytics || []),
+      ...analyticsArray
+    ]
+
+    analyticsLoaded.value = true
+    console.log(`✅ Аналитика успешно загружена (${analyticsArray.length} портфелей)`)
+
+  } catch (err) {
+    console.error("❌ Ошибка загрузки аналитики:", err)
+  }
+}
+
 
 // Добавление изменения цены актива
 const addPrice = async ({ asset_id, price, date }) => {
@@ -273,6 +299,7 @@ provide('clearPortfolio', clearPortfolio)
 provide('importPortfolio', importPortfolio)
 provide('updatePortfolioGoal', updatePortfolioGoal)
 provide("preloadTransactions", preloadTransactions)
+provide('loadAnalytics', loadAnalytics)
 
 const isSidebarCollapsed = ref(false)
 

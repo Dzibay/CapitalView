@@ -6,6 +6,7 @@ import Register from '../views/Register.vue';
 import Dashboard from '../views/Dashboard.vue';
 import Assets from '../views/Assets.vue'
 import Transactions from '../views/Transactions.vue';
+import Analitics from '../views/Analitics.vue';
 
 const routes = [
   { path: '/', component: Home },
@@ -14,6 +15,7 @@ const routes = [
     component: DashboardLayout,
     children: [
       { path: '/dashboard', component: Dashboard },
+      { path: '/analitics', component: Analitics },
       { path: '/assets', component: Assets },
       { path: '/transactions', component: Transactions}
     ]
