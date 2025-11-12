@@ -80,10 +80,10 @@ async def get_price_moex_history(session, ticker, days=365):
                     data = await resp.json()
                     candles = data.get('candles', {}).get('data')
                     if candles:
-                        # 🟢 Для акций берём цену закрытия (row[0]),
+                        # 🟢 Для акций берём цену закрытия (row[1]),
                         # а для облигаций — нормализуем (price_percent / facevalue) → реальная цена в рублях
                         if market == "shares":
-                            return [(row[6], row[0]) for row in candles if row[0] is not None]
+                            return [(row[6], row[1]) for row in candles if row[1] is not None]
                         elif market == "bonds":
                             return [(row[6], row[4] / row[5]) for row in candles if row[4] and row[5]]
             except Exception as e:
