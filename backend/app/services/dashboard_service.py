@@ -21,30 +21,52 @@ def aggregate_and_sort_history_list(history_list):
 def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     portfolio = portfolio_map[portfolio_id]
 
+    # Берём активы текущего портфеля
     combined_assets = list(portfolio.get("assets") or [])
     combined_history = list(portfolio.get("history") or [])
-
-    total_value = 0
-    total_invested = 0
-    for a in combined_assets:
-        qty = float(a.get("quantity") or 0)
-        price = float(a.get("last_price") or 0)
-        avg = float(a.get("average_price") or 0)
-        leverage = float(a.get("leverage") or 1)
-        currency_rate = float(a.get("currency_rate_to_rub") or 1)
-
-        # 💰 Учитываем валюту и плечо
-        total_value += qty * price * currency_rate / leverage
-        total_invested += qty * avg * currency_rate / leverage
 
     # 🔹 Добавляем данные дочерних портфелей
     children = [p for p in portfolio_map.values() if p.get("parent_portfolio_id") == portfolio_id]
     for child in children:
-        child_value, child_invested, child_assets, child_history = sum_portfolio_totals_bottom_up(child["id"], portfolio_map)
-        total_value += child_value
-        total_invested += child_invested
-        combined_assets.extend(child_assets)
+        _, _, child_assets, child_history = sum_portfolio_totals_bottom_up(child["id"], portfolio_map)
         combined_history.extend(child_history)
+
+        # 🧩 Объединяем активы без дублирования
+        existing = {a["asset_id"]: a for a in combined_assets}
+        for ca in child_assets:
+            aid = ca["asset_id"]
+            if aid in existing:
+                old = existing[aid]
+                q1, q2 = float(old["quantity"] or 0), float(ca["quantity"] or 0)
+                if q2 > 0:
+                    new_qty = q1 + q2
+                    new_avg_price = (
+                        (q1 * float(old.get("average_price") or 0)) +
+                        (q2 * float(ca.get("average_price") or 0))
+                    ) / new_qty if new_qty else 0
+                    old["quantity"] = new_qty
+                    old["average_price"] = new_avg_price
+                if ca.get("last_price") and not old.get("last_price"):
+                    old["last_price"] = ca["last_price"]
+            else:
+                combined_assets.append(ca)
+
+    # 🔹 Теперь считаем стоимость только по объединённым активам (ОДИН раз)
+    total_value = sum(
+        float(a.get("quantity") or 0)
+        * float(a.get("last_price") or 0)
+        * float(a.get("currency_rate_to_rub") or 1)
+        / float(a.get("leverage") or 1)
+        for a in combined_assets
+    )
+
+    total_invested = sum(
+        float(a.get("quantity") or 0)
+        * float(a.get("average_price") or 0)
+        * float(a.get("currency_rate_to_rub") or 1)
+        / float(a.get("leverage") or 1)
+        for a in combined_assets
+    )
 
     portfolio["total_value"] = round(total_value, 2)
     portfolio["total_invested"] = round(total_invested, 2)
@@ -53,6 +75,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     portfolio["history"] = aggregate_and_sort_history_list(combined_history)
 
     return total_value, total_invested, combined_assets, combined_history
+
 
 
 def build_portfolio_hierarchy(portfolios):

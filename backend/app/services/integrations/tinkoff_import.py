@@ -122,11 +122,11 @@ def get_tinkoff_portfolio(token, days=365):
             }
 
     # === 3️⃣ Сохраняем в файл ===
-    filename = f"tinkoff_classified_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(result_data, f, indent=2, ensure_ascii=False)
+    # filename = f"tinkoff_classified_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    # with open(filename, "w", encoding="utf-8") as f:
+    #     json.dump(result_data, f, indent=2, ensure_ascii=False)
 
-    print(f"✅ Данные успешно сохранены в файл: {filename}")
+    # print(f"✅ Данные успешно сохранены в файл: {filename}")
     return result_data
 
 
