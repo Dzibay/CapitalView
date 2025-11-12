@@ -89,9 +89,24 @@ const calculateGrowth = (data) => {
 
 // --- Функция округления вверх к "красивой" величине ---
 function getNiceMax(value) {
-  if (value === 0) return 1000
-  const magnitude = Math.pow(10, Math.floor(Math.log10(value)))
-  return Math.ceil(value / magnitude) * magnitude
+  if (value <= 0) return 1000
+
+  // добавляем лёгкий запас (чтобы метка не совпадала с точкой)
+  const padded = value * 1.1
+
+  let step
+  if (padded < 100_000) step = 10_000
+  else if (padded < 1_000_000) step = 50_000
+  else if (padded < 5_000_000) step = 100_000
+  else if (padded < 10_000_000) step = 250_000
+  else if (padded < 50_000_000) step = 500_000
+  else step = 1_000_000
+
+  // 🔹 округляем вниз
+  const rounded = Math.floor(padded / step) * step
+
+  // если вдруг округлилось ниже самого значения — добавим ещё один шаг
+  return rounded < value ? rounded + step : rounded
 }
 
 // --- Функция округления вниз к "красивой" величине ---
