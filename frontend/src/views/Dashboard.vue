@@ -8,6 +8,7 @@ import GoalProgressWidget from '../components/widgets/GoalProgressWidget.vue'
 import PortfolioChartWidget from '../components/widgets/PortfolioChartWidget.vue'
 import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWidget.vue'
 import TopAssetsWidget from '../components/widgets/TopAssetsWidget.vue'
+import TopMoversWidget from '../components/widgets/TopMoversWidget.vue'
 
 const user = inject('user')
 const dashboardData = inject('dashboardData')
@@ -130,6 +131,7 @@ const goalData = computed(() => {
     currency: desc.capital_target_currency || 'RUB'
   }
 })
+
 </script>
 
 <template>
@@ -174,6 +176,17 @@ const goalData = computed(() => {
         :onSaveGoal="updatePortfolioGoal"
       />
       <PortfolioChartWidget :chartData="parsedDashboard.portfolioChart" />
+
+      <TopMoversWidget
+        title="Топ роста за день"
+        :assets="selectedPortfolio.combined_assets"
+        direction="up"
+      />
+      <TopMoversWidget
+        title="Топ падений за день"
+        :assets="selectedPortfolio.combined_assets"
+        direction="down"
+      />
     </div>
   </div>
 

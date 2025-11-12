@@ -46,38 +46,39 @@ const topAssets = computed(() =>
 
 <style scoped>
 .widget {
-    grid-row: span 2;
-    grid-column: span 1;
-    background-color: #fff; 
-    border-radius: 12px; 
-    padding: 1.5rem; 
-    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  grid-row: span 2;
+  grid-column: span 1;
+  background-color: #fff; 
+  border-radius: 12px; 
+  padding: 1.5rem; 
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
 }
 .assets-list { 
-    list-style: none;
+  list-style: none;
 }
 .asset-item { 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center; 
-    padding: 0.75rem 0; 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  padding: 0.75rem 0; 
 }
 .asset-item:not(:last-child) { 
-    border-bottom: 1px solid #e5e7eb; 
+  border-bottom: 1px solid #e5e7eb; 
 }
-.asset-name { display: block; 
-    font-weight: 500; 
-    color: #1f2937; 
+.asset-name { 
+  display: block; 
+  font-weight: 500; 
+  color: #1f2937; 
 }
 .asset-ticker { 
-    font-size: 0.875rem; 
-    color: #6b7280; 
+  font-size: 0.875rem; 
+  color: #6b7280; 
 }
 .asset-value { 
-    text-align: right; 
+  text-align: right; 
 }
 .value { 
-    display: block; 
-    font-weight: 400; 
+  display: block; 
+  font-weight: 400; 
 }
 </style>

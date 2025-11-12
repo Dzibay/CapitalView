@@ -55,7 +55,10 @@ h2, p {
   font-weight: 400;
 }
 .value-change.positive {
-  color: #1CBD88;
+  color: var(--positiveColor);
+}
+.value-change.negative {
+  color: var(--negativeColor);
 }
 
 .widget-title {
