@@ -77,7 +77,6 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     return total_value, total_invested, combined_assets, combined_history
 
 
-
 def build_portfolio_hierarchy(portfolios):
     """
     Запускает рекурсивное суммирование для всех портфелей.
@@ -172,9 +171,11 @@ async def get_dashboard_data(user_email: str):
     time1 = time()
 
     # ⬇️ подмешиваем connection к каждому портфелю
+    time1 = time()
     connections_by_pid = get_user_portfolio_connections(user_id)  # читает user_broker_connections
     for p in portfolios:
         p["connection"] = connections_by_pid.get(p["id"])
+    print(f'Соединения: {time() - time1}')
 
     # === 1️⃣ Объединяем дочерние портфели и пересчитываем суммы ===
     portfolios = build_portfolio_hierarchy(portfolios)
@@ -183,6 +184,7 @@ async def get_dashboard_data(user_email: str):
     time1 = time()
     reference_data = get_reference_data_cached()
     print(f'Reference data: {time() - time1}')
+    
     time1 = time()
     transactions = get_transactions(user_id, limit=1000) or []
     print(f'Транзакции: {time() - time1}')

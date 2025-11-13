@@ -3,21 +3,12 @@ import { computed } from 'vue';
 
 const props = defineProps({
   totalAmount: { type: Number, required: true },
-  investedAmount: { type: Number, required: true },
-});
-
-const formattedTotalAmount = computed(() => {
-  return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(props.totalAmount);
-});
-const formattedInvestedAmount = computed(() => {
-  return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(props.investedAmount);
-});
-const formattedProfit = computed(() => {
-  return ((props.totalAmount - props.investedAmount) / props.investedAmount * 100).toFixed(2)
+  totalProfit: { type: Number, required: true },
+  monthlyChange: { type: Number, required: true },
 });
 
 const isPositiveChange = computed(() => {
-  return formattedProfit >= 0
+  return props.totalProfit >= 0
 });
 
 </script>
@@ -36,20 +27,18 @@ const isPositiveChange = computed(() => {
         </svg>
       </div>
 
-      <h2 class="widget-title">Общий капитал</h2>
+      <h2 class="widget-title">Прибыль</h2>
       
     </div>
 
     <div class="capital-value-with-change">
-      <div class="capital-values">{{ formattedTotalAmount }}</div>
+      <div class="capital-values">{{ props.totalProfit }}</div>
       <div class="value-change" :class="{ 'positive': isPositiveChange, 'negative': !isPositiveChange }">
-        <span v-if="formattedProfit > 0">+</span>
-        <span>{{ formattedProfit }}% за все время</span>
+        <span v-if="isPositiveChange">+</span>
+        <span>{{ props.totalProfit / props.totalAmount }}% за все время</span>
       </div>
     </div>
-
-    <p>Инвестировано: {{ formattedInvestedAmount }}</p>
-
+    <p>За месяц: {{ props.monthlyChange }}</p>
   </div>
 </template>
 

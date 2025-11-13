@@ -9,6 +9,7 @@ import PortfolioChartWidget from '../components/widgets/PortfolioChartWidget.vue
 import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWidget.vue'
 import TopAssetsWidget from '../components/widgets/TopAssetsWidget.vue'
 import TopMoversWidget from '../components/widgets/TopMoversWidget.vue'
+import PortfolioProfitWidget from '../components/widgets/PortfolioProfitWidget.vue'
 
 const user = inject('user')
 const dashboardData = inject('dashboardData')
@@ -164,19 +165,19 @@ const goalData = computed(() => {
 
     <div class="widgets-grid">
       <TotalCapitalWidget 
-        :total-amount="parsedDashboard.totalAmount" 
-        :monthly-change="parsedDashboard.monthlyChange" 
+        :total-amount="parsedDashboard.totalAmount"
         :invested-amount="parsedDashboard.investedAmount" 
       />
-      <TopAssetsWidget :assets="parsedDashboard.assets" />
-      <RecentTransactionsWidget :transactions="parsedDashboard.transactions" />
-      <AssetAllocationWidget :assetAllocation="parsedDashboard.assetAllocation" />
+      <PortfolioProfitWidget 
+        :total-amount="parsedDashboard.totalAmount" 
+        :total-profit="0" 
+        :monthly-change="0" 
+      />
       <GoalProgressWidget 
         :goal-data="goalData"
         :onSaveGoal="updatePortfolioGoal"
       />
-      <PortfolioChartWidget :chartData="parsedDashboard.portfolioChart" />
-
+      <AssetAllocationWidget :assetAllocation="parsedDashboard.assetAllocation" />
       <TopMoversWidget
         title="Топ роста за день"
         :assets="selectedPortfolio.combined_assets"
@@ -187,6 +188,11 @@ const goalData = computed(() => {
         :assets="selectedPortfolio.combined_assets"
         direction="down"
       />
+      <RecentTransactionsWidget :transactions="parsedDashboard.transactions" />
+
+      <PortfolioChartWidget :chartData="parsedDashboard.portfolioChart" />
+      <TopAssetsWidget :assets="parsedDashboard.assets" />
+      
     </div>
   </div>
 
