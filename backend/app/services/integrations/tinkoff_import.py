@@ -106,7 +106,7 @@ def get_tinkoff_portfolio(token, days=365):
                     "instrument_type": getattr(op, "instrument_type", None),
                     "date": getattr(op, "date", None).isoformat() if getattr(op, "date", None) else None,
                     "price": price.units + price.nano / 1e9 if price else None,
-                    "quantity": getattr(op, "quantity", None),
+                    "quantity": getattr(op, "quantity", None) - getattr(op, 'quantity_rest', None),
                     "currency": getattr(op, "currency", None),
                     "payment": payment,
                     "state": getattr(op, "state", None).name if getattr(op, "state", None) else None,

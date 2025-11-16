@@ -43,8 +43,9 @@ const isPositiveChange = computed(() => {
     <div class="capital-value-with-change">
       <div class="capital-values">{{ formattedTotalAmount }}</div>
       <div class="value-change" :class="{ 'positive': isPositiveChange, 'negative': !isPositiveChange }">
-        <span v-if="formattedProfit > 0">+</span>
-        <span>{{ formattedProfit }}% за все время</span>
+        <span class="value-change" :class="formattedProfit >= 0 ? 'positive' : 'negative'">
+          {{ formattedProfit >= 0 ? '+' : '' }}{{ formattedProfit }}% за все время
+        </span>
       </div>
     </div>
 

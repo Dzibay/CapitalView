@@ -170,7 +170,7 @@ const goalData = computed(() => {
       />
       <PortfolioProfitWidget 
         :total-amount="parsedDashboard.totalAmount" 
-        :total-profit="0" 
+        :total-profit="selectedPortfolio.analytics.total_profit" 
         :monthly-change="0" 
       />
       <GoalProgressWidget 

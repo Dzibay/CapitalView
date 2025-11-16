@@ -32,10 +32,10 @@ const isPositiveChange = computed(() => {
     </div>
 
     <div class="capital-value-with-change">
-      <div class="capital-values">{{ props.totalProfit }}</div>
+      <div class="capital-values">{{ props.totalProfit.toFixed(2) }} ₽</div>
       <div class="value-change" :class="{ 'positive': isPositiveChange, 'negative': !isPositiveChange }">
         <span v-if="isPositiveChange">+</span>
-        <span>{{ props.totalProfit / props.totalAmount }}% за все время</span>
+        <span>{{ (props.totalProfit / props.totalAmount * 100).toFixed(2) }}% за все время</span>
       </div>
     </div>
     <p>За месяц: {{ props.monthlyChange }}</p>
