@@ -21,17 +21,42 @@ def aggregate_and_sort_history_list(history_list):
 def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     portfolio = portfolio_map[portfolio_id]
 
-    # Берём активы текущего портфеля
+    # 1️⃣ Активы + история
     combined_assets = list(portfolio.get("assets") or [])
     combined_history = list(portfolio.get("history") or [])
 
-    # 🔹 Добавляем данные дочерних портфелей
-    children = [p for p in portfolio_map.values() if p.get("parent_portfolio_id") == portfolio_id]
+    # 2️⃣ Аналитика текущего портфеля (если есть)
+    analytics = portfolio.get("analytics") or {}
+    combined_analytics = {
+        "realized_pl": float(analytics.get("realized_pl", 0)),
+        "unrealized_pl": float(analytics.get("unrealized_pl", 0)),
+        "dividends": float(analytics.get("dividends", 0)),
+        "coupons": float(analytics.get("coupons", 0)),
+        "commissions": float(analytics.get("commissions", 0)),
+        "taxes": float(analytics.get("taxes", 0)),
+        "inflow": float((analytics.get("cash_flow") or {}).get("inflow", 0)),
+        "outflow": float((analytics.get("cash_flow") or {}).get("outflow", 0)),
+    }
+
+    # 3️⃣ Рекурсивно добавляем данные дочерних портфелей
+    children = [
+        p for p in portfolio_map.values()
+        if p.get("parent_portfolio_id") == portfolio_id
+    ]
+
     for child in children:
-        _, _, child_assets, child_history = sum_portfolio_totals_bottom_up(child["id"], portfolio_map)
+        (
+            child_value,
+            child_invested,
+            child_assets,
+            child_history,
+            child_analytics
+        ) = sum_portfolio_totals_bottom_up(child["id"], portfolio_map)
+
+        # История
         combined_history.extend(child_history)
 
-        # 🧩 Объединяем активы без дублирования
+        # Активы — объединение
         existing = {a["asset_id"]: a for a in combined_assets}
         for ca in child_assets:
             aid = ca["asset_id"]
@@ -51,7 +76,17 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
             else:
                 combined_assets.append(ca)
 
-    # 🔹 Теперь считаем стоимость только по объединённым активам (ОДИН раз)
+        # 4️⃣ Аналитика — суммирование
+        combined_analytics["realized_pl"] += child_analytics.get("realized_pl", 0)
+        combined_analytics["unrealized_pl"] += child_analytics.get("unrealized_pl", 0)
+        combined_analytics["dividends"] += child_analytics.get("dividends", 0)
+        combined_analytics["coupons"] += child_analytics.get("coupons", 0)
+        combined_analytics["commissions"] += child_analytics.get("commissions", 0)
+        combined_analytics["taxes"] += child_analytics.get("taxes", 0)
+        combined_analytics["inflow"] += child_analytics.get("inflow", 0)
+        combined_analytics["outflow"] += child_analytics.get("outflow", 0)
+
+    # 5️⃣ После объединения активов — пересчёт общей стоимости
     total_value = sum(
         float(a.get("quantity") or 0)
         * float(a.get("last_price") or 0)
@@ -68,13 +103,47 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
         for a in combined_assets
     )
 
+    # 6️⃣ Пересчёт итоговой прибыли
+    total_profit = (
+        combined_analytics["realized_pl"] +
+        combined_analytics["unrealized_pl"] +
+        combined_analytics["dividends"] +
+        combined_analytics["coupons"] -
+        combined_analytics["commissions"] -
+        combined_analytics["taxes"]
+    )
+
+    return_percent = (
+        total_profit / total_invested
+        if total_invested > 0 else 0
+    )
+
+    # 7️⃣ Сохраняем результат в текущем портфеле
     portfolio["total_value"] = round(total_value, 2)
     portfolio["total_invested"] = round(total_invested, 2)
     portfolio["combined_assets"] = combined_assets
-    portfolio["asset_allocation"] = calculate_asset_allocation(combined_assets)
     portfolio["history"] = aggregate_and_sort_history_list(combined_history)
+    portfolio["asset_allocation"] = calculate_asset_allocation(combined_assets)
 
-    return total_value, total_invested, combined_assets, combined_history
+    portfolio["analytics"] = {
+        "total_value": total_value,
+        "total_invested": total_invested,
+        "realized_pl": combined_analytics["realized_pl"],
+        "unrealized_pl": combined_analytics["unrealized_pl"],
+        "dividends": combined_analytics["dividends"],
+        "coupons": combined_analytics["coupons"],
+        "commissions": combined_analytics["commissions"],
+        "taxes": combined_analytics["taxes"],
+        "total_profit": total_profit,
+        "return_percent": return_percent,
+        "cash_flow": {
+            "inflow": combined_analytics["inflow"],
+            "outflow": combined_analytics["outflow"],
+        }
+    }
+
+    return total_value, total_invested, combined_assets, combined_history, combined_analytics
+
 
 
 def build_portfolio_hierarchy(portfolios):
