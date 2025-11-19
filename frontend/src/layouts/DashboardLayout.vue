@@ -220,8 +220,6 @@ const importPortfolio = async ({ broker_id, token, portfolioId, portfolio_name }
   try {
     const res = await portfolioService.importPortfolio(broker_id, token, portfolioId, portfolio_name)
     if (!res.success) throw new Error(res.error || 'Ошибка импорта портфеля')
-    loading.value = true
-    await reloadDashboard()
   } catch (err) {
     console.error('Ошибка импорта портфеля:', err)
   }

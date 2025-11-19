@@ -3,7 +3,7 @@ from app import supabase
 def rpc(fn_name: str, params: dict):
     return supabase.rpc(fn_name, params).execute().data
 
-def table_select(table: str, select="*", filters: dict = None, in_filters: dict = None, order=None, limit=None, offset=None):
+def table_select(table: str, select="*", filters: dict = None, in_filters: dict = None, order=None, limit=10000, offset=None):
     q = supabase.table(table).select(select)
     
     if filters:

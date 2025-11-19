@@ -108,8 +108,8 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
         combined_analytics["realized_pl"] +
         combined_analytics["unrealized_pl"] +
         combined_analytics["dividends"] +
-        combined_analytics["coupons"] -
-        combined_analytics["commissions"] -
+        combined_analytics["coupons"] +
+        combined_analytics["commissions"] +
         combined_analytics["taxes"]
     )
 
@@ -143,7 +143,6 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     }
 
     return total_value, total_invested, combined_assets, combined_history, combined_analytics
-
 
 
 def build_portfolio_hierarchy(portfolios):
