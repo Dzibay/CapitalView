@@ -2,6 +2,7 @@ import asyncio
 import aiohttp
 from app.services.supabase_service import table_select, table_insert, table_update
 from datetime import datetime
+from tqdm.asyncio import tqdm_asyncio
 
 MOEX_DIVIDENDS_URL = "https://iss.moex.com/iss/securities/{ticker}/dividends.json"
 MOEX_BONDIZATION_URL = "https://iss.moex.com/iss/securities/{ticker}/bondization.json"
@@ -104,7 +105,6 @@ async def fetch_bond_meta_from_coupons(session, ticker: str):
         "mat_date": meta.get("MATDATE"),
     }
 
-
 # ===================================================
 # 🧠 ОБНОВЛЕНИЕ В БД
 # ===================================================
@@ -113,11 +113,8 @@ async def update_asset_payouts(session, asset):
     asset_id = asset["id"]
     ticker = asset["ticker"]
 
-    # тип актива
     atype = await asyncio.to_thread(table_select, "asset_types", select="name", filters={"id": asset["asset_type_id"]})
     type_name = (atype[0]["name"].lower() if atype else "").strip()
-
-    print(f"\n📈 {ticker} ({type_name})")
 
     # --- Получаем выплаты и метаданные ---
     if "bond" in type_name or "облига" in type_name:
@@ -128,14 +125,11 @@ async def update_asset_payouts(session, asset):
         meta = {}
 
     if not payouts:
-        print("  ⚠️ Нет выплатных данных.")
         return
 
-    # --- Существующие выплаты ---
     existing = await asyncio.to_thread(table_select, "asset_payouts", filters={"asset_id": asset_id})
     existing_keys = {(str(i["record_date"]), round(float(i["value"] or 0), 2)) for i in existing}
 
-    added = 0
     for p in payouts:
         if not p["record_date"] or not p["value"]:
             continue
@@ -155,18 +149,15 @@ async def update_asset_payouts(session, asset):
 
         try:
             await asyncio.to_thread(table_insert, "asset_payouts", payout_data)
-            added += 1
-        except Exception as e:
-            print(f"  ❌ Ошибка вставки {ticker}: {e}")
-
-    print(f"  ✅ Добавлено {added} выплат." if added else "  ℹ️ Новых выплат нет.")
+        except:
+            pass
 
     # --- Обновляем свойства облигации ---
     if meta and ("bond" in type_name or "облига" in type_name):
         props = asset.get("properties") or {}
         props.update(meta)
         await asyncio.to_thread(table_update, "assets", {"properties": props}, {"id": asset_id})
-        print("  💾 Обновлены свойства облигации")
+
 
 
 # ===================================================
@@ -174,8 +165,7 @@ async def update_asset_payouts(session, asset):
 # ===================================================
 
 async def update_all_moex_assets():
-    print("🚀 Обновляем выплаты для активов MOEX...")
-
+    # Загружаем активы
     assets = await asyncio.to_thread(table_select, "assets")
     moex_assets = [
         a for a in assets
@@ -183,14 +173,15 @@ async def update_all_moex_assets():
     ]
 
     if not moex_assets:
-        print("⚠️ Нет активов с source='moex'.")
         return
 
-    async with aiohttp.ClientSession() as session:
-        tasks = [update_asset_payouts(session, asset) for asset in moex_assets]
-        await asyncio.gather(*tasks)
+    # Запускаем запросы в виде корутин
+    tasks = [update_asset_payouts(session=None, asset=a) for a in moex_assets]
 
-    print("\n✅ Обновление завершено.")
+    # tqdm_asyncio.gather — полноценный асинхронный прогресс-бар
+    async with aiohttp.ClientSession() as session:
+        tasks = [update_asset_payouts(session, a) for a in moex_assets]
+        await tqdm_asyncio.gather(*tasks, desc="MOEX обновление", total=len(tasks))
 
 
 if __name__ == "__main__":
