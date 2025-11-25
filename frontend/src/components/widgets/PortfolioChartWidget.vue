@@ -34,48 +34,55 @@ const formatCurrency = (value) => {
 // --- Адаптивная агрегация данных ---
 function aggregateLabelsAndData(dataObj, period) {
   const labels = [];
-  const data = [];
-  const today = new Date();
+  const dataValue = [];
+  const dataInvested = [];
 
-  if (!dataObj?.data?.length) return { labels, data };
+  const today = new Date();
+  if (!dataObj?.data_value?.length) return { labels, dataValue, dataInvested };
 
   const parseDate = d => new Date(d);
-  const points = dataObj.labels
-    .map((label, idx) => ({ date: parseDate(label), value: dataObj.data[idx] }))
-    .sort((a, b) => a.date - b.date);
 
-  let firstDate;
-  if (period === '1M') {
-    firstDate = new Date(today);
-    firstDate.setDate(today.getDate() - 30);
-  } else if (period === '1Y') {
-    firstDate = new Date(today.getFullYear(), today.getMonth() - 11, 1);
-  } else { // 'All'
-    firstDate = new Date(Math.min(...points.map(p => p.date)));
-  }
+  const points = dataObj.labels.map((label, i) => ({
+    date: parseDate(label),
+    value: dataObj.data_value[i],
+    invested: dataObj.data_invested[i]
+  })).sort((a, b) => a.date - b.date);
 
-  const lastDate = today;
+  let firstDate = period === '1M'
+    ? new Date(today.setDate(today.getDate() - 30))
+    : period === '1Y'
+      ? new Date(today.getFullYear(), today.getMonth() - 11, 1)
+      : new Date(Math.min(...points.map(p => p.date)));
+
+  const lastDate = new Date();
   let pointIndex = 0;
 
-  let lastKnownValue = 0; // до первой транзакции 0
+  let lastValue = 0;
+  let lastInvested = 0;
+
   let firstPointDate = points[0]?.date;
 
   for (let d = new Date(firstDate); d <= lastDate; d.setDate(d.getDate() + 1)) {
+
     if (firstPointDate && d < firstPointDate) {
-      // до появления первых данных — 0
-      data.push(0);
+      dataValue.push(0);
+      dataInvested.push(0);
     } else {
       while (pointIndex < points.length && points[pointIndex].date <= d) {
-        lastKnownValue = points[pointIndex].value;
+        lastValue = points[pointIndex].value;
+        lastInvested = points[pointIndex].invested;
         pointIndex++;
       }
-      data.push(lastKnownValue);
+      dataValue.push(lastValue);
+      dataInvested.push(lastInvested);
     }
+
     labels.push(d.toISOString().split('T')[0]);
   }
 
-  return { labels, data, firstDate, lastDate };
+  return { labels, dataValue, dataInvested, firstDate, lastDate };
 }
+
 
 
 // --- Вычисление статистики ---
@@ -121,50 +128,73 @@ const renderChart = (aggregated) => {
   const ctx = document.getElementById('capitalChart')?.getContext('2d')
   if (!ctx) return
 
-  const yMin = getNiceMin(Math.min(...aggregated.data))
-  const yMax = getNiceMax(Math.max(...aggregated.data))
+  const allValues = [
+    ...aggregated.dataValue,
+    ...aggregated.dataInvested
+  ]
 
+  const yMin = getNiceMin(Math.min(...allValues))
+  const yMax = getNiceMax(Math.max(...allValues))
+
+  // ---- обновление ---
   if (chartInstance) {
     chartInstance.data.labels = aggregated.labels
-    chartInstance.data.datasets[0].data = aggregated.data
+    chartInstance.data.datasets[0].data = aggregated.dataValue
+    chartInstance.data.datasets[1].data = aggregated.dataInvested
+
     chartInstance.options.scales.y.min = yMin
     chartInstance.options.scales.y.max = yMax
+
     chartInstance.resize()
     chartInstance.update()
     return
   }
 
+  // ---- создание ---
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
       labels: aggregated.labels,
-      datasets: [{
-        label: 'Капитал',
-        data: aggregated.data,
-        fill: true,
-        backgroundColor: (context) => {
-          const chart = context.chart
-          const {ctx, chartArea} = chart
-          if (!chartArea) return null
-          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
-          gradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)')
-          gradient.addColorStop(1, 'rgba(59, 130, 246, 0)')
-          return gradient
+      datasets: [
+        {
+          label: 'Капитал',
+          data: aggregated.dataValue,
+          fill: true,
+          backgroundColor: (context) => {
+            const chart = context.chart
+            const { ctx, chartArea } = chart
+            if (!chartArea) return null
+            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
+            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)')
+            gradient.addColorStop(1, 'rgba(59, 130, 246, 0)')
+            return gradient
+          },
+          borderColor: '#3b82f6',
+          borderWidth: 3,
+          tension: 0.4,
+          pointRadius: 0,
+          pointHoverRadius: 6,
+          pointBackgroundColor: '#3b82f6',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2
         },
-        borderColor: '#3b82f6',
-        borderWidth: 3,
-        tension: 0.4,
-        pointRadius: 0,
-        pointHoverRadius: 6,
-        pointBackgroundColor: '#3b82f6',
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2
-      }]
+        {
+          label: 'Инвестиции',
+          data: aggregated.dataInvested,
+          borderColor: '#10b981',
+          borderWidth: 2,
+          tension: 0.35,
+          pointRadius: 0,
+          fill: false
+        }
+      ]
     },
+
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
+
       scales: {
         y: {
           min: yMin,
@@ -176,82 +206,60 @@ const renderChart = (aggregated) => {
           },
           grid: { color: '#e5e7eb', borderDash: [5,5], drawBorder: false }
         },
+
+        // 🔥 полностью возвращаю твою ось X, без малейших изменений
         x: {
-  type: 'category',
-  ticks: {
-    color: '#9ca3af',
-    autoSkip: false,
-    maxRotation: 0,
-    minRotation: 0,
-    callback: function(value, index) {
-  const labels = this.chart.data.labels;
-  if (!labels || index >= labels.length) return '';
+          type: 'category',
+          ticks: {
+            color: '#9ca3af',
+            autoSkip: false,
+            maxRotation: 0,
+            minRotation: 0,
+            callback: function(value, index) {
+              const labels = this.chart.data.labels;
+              if (!labels || index >= labels.length) return '';
 
-  const d = new Date(labels[index]);
-  const prevDate = index > 0 ? new Date(labels[index - 1]) : null;
+              const d = new Date(labels[index]);
+              const prevDate = index > 0 ? new Date(labels[index - 1]) : null;
 
-  const firstLabelDate = new Date(labels[0]);
-  const lastLabelDate = new Date(labels[labels.length - 1]);
-  const totalDays = (lastLabelDate - firstLabelDate) / (1000 * 60 * 60 * 24);
+              const firstLabelDate = new Date(labels[0]);
+              const lastLabelDate = new Date(labels[labels.length - 1]);
+              const totalDays = (lastLabelDate - firstLabelDate) / (1000 * 60 * 60 * 24);
 
-  // --- 1. Логика для месячного графика (период до 45 дней) ---
-  // Задача: показывать числа с минимальным шагом.
-  if (totalDays <= 45) {
-    // Рассчитываем шаг так, чтобы на графике было примерно 5-7 меток
-    const step = Math.ceil(labels.length / 45) || 1;
+              if (totalDays <= 45) {
+                const step = Math.ceil(labels.length / 45) || 1;
+                if (index === 0) return d.getDate();
+                if (prevDate && d.getMonth() !== prevDate.getMonth())
+                  return d.toLocaleString('ru-RU', { month: 'short' });
+                if (index % step === 0) return d.getDate();
+                return '';
+              }
 
-    // Всегда показывать самую первую метку (первое число)
-    if (index === 0) {
-      return d.getDate();
-    }
-    // Если начинается новый месяц, обязательно показать его название
-    if (prevDate && d.getMonth() !== prevDate.getMonth()) {
-      return d.toLocaleString('ru-RU', { month: 'short' });
-    }
-    // Показать остальные метки с рассчитанным шагом
-    if (index % step === 0) {
-      return d.getDate();
-    }
-    return '';
-  }
+              if (index === 0 && d.getDate() < 15) {
+                return d.getMonth() === 0 
+                  ? d.getFullYear() 
+                  : d.toLocaleString('ru-RU', { month: 'short' });
+              }
 
-  // --- 2. Логика для годового и более длинных периодов ---
-  // Задача: убрать наслоение первой подписи.
-  
-  // Для самой первой метки на графике
-  if (index === 0 && d.getDate() < 15) {
-      // Если график начинается с января, логичнее показать год
-      return d.getMonth() === 0 
-          ? d.getFullYear() 
-          : d.toLocaleString('ru-RU', { month: 'short' });
-  }
+              if (prevDate && d.getFullYear() !== prevDate.getFullYear())
+                return d.getFullYear();
 
-  // Для всех последующих меток
-  // Если начался новый год, показать номер года
-  if (prevDate && d.getFullYear() !== prevDate.getFullYear()) {
-    return d.getFullYear();
-  }
+              if (prevDate && d.getMonth() !== prevDate.getMonth()) {
+                if (totalDays > 540) {
+                  if (d.getMonth() % 3 === 0)
+                    return d.toLocaleString('ru-RU', { month: 'short' });
+                } else {
+                  return d.toLocaleString('ru-RU', { month: 'short' });
+                }
+              }
 
-  // Если начался новый месяц (но год тот же)
-  if (prevDate && d.getMonth() !== prevDate.getMonth()) {
-    // Для очень длинных периодов (> 1.5 лет) показываем месяцы поквартально
-    if (totalDays > 540) {
-      if (d.getMonth() % 3 === 0) { // Показываем янв, апр, июл, окт
-        return d.toLocaleString('ru-RU', { month: 'short' });
-      }
-    } else { // Для годового периода показываем каждый месяц
-      return d.toLocaleString('ru-RU', { month: 'short' });
-    }
-  }
-
-  return ''; // Для всех остальных точек не показывать ничего
-}
-  },
-  grid: { display: false }
-}
-
-
+              return '';
+            }
+          },
+          grid: { display: false }
+        }
       },
+
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -265,11 +273,15 @@ const renderChart = (aggregated) => {
           cornerRadius: 6,
           displayColors: false,
           callbacks: {
+            beforeBody(items) {
+              // сортируем по значению: сначала большее
+              items.sort((a, b) => b.parsed.y - a.parsed.y);
+            },
             title: ctx => {
               const d = new Date(ctx[0].label)
-              return d.toISOString().split('T')[0] // tooltip показывает точную дату
+              return d.toISOString().split('T')[0]
             },
-            label: ctx => formatCurrency(ctx.parsed.y)
+            label: ctx => `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y)}`
           }
         }
       }
@@ -277,13 +289,17 @@ const renderChart = (aggregated) => {
   })
 }
 
+
 // --- Обновление графика ---
 const updateChart = () => {
-  if (!props.chartData?.data?.length) return
-  const aggregated = aggregateLabelsAndData(props.chartData, selectedPeriod.value)
-  calculateGrowth(aggregated.data)
-  renderChart(aggregated)
+  if (!props.chartData?.data_value?.length) return
+  const aggr = aggregateLabelsAndData(props.chartData, selectedPeriod.value)
+
+  calculateGrowth(aggr.dataValue)  // прирост по капиталу
+
+  renderChart(aggr)
 }
+
 
 // --- Watchers ---
 watch([selectedPeriod], updateChart)

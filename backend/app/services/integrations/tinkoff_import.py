@@ -158,9 +158,9 @@ def get_tinkoff_portfolio(token, days=365):
 # for acc in data:
 #     if acc == 'Акции':
 #         print(acc)
-        # for pos in data[acc]["positions"]:
-        #     print('  ', pos)
-        # print('\n\n')
-        # for t in data[acc]["transactions"]:
-        #     print('  ', t)
+#         for pos in data[acc]["positions"]:
+#             print('  ', pos)
+#         print('\n\n')
+#         for t in data[acc]["transactions"]:
+#             print('  ', t)
     

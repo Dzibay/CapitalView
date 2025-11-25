@@ -238,7 +238,6 @@ const getDividendYield5Y = (asset) => {
 .portfolio-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
 }
 
 .portfolio-card {

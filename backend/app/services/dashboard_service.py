@@ -8,14 +8,22 @@ from collections import defaultdict
 from time import time
 
 def aggregate_and_sort_history_list(history_list):
-    """Агрегирует историю по датам и сортирует"""
-    combined = defaultdict(float)
+    """Агрегирует историю по датам: стоимость + инвестиции, и сортирует"""
+    combined = defaultdict(lambda: {"value": 0.0, "invested": 0.0})
+
     for h in history_list or []:
         date = h.get("date") or h.get("report_date")
-        value = float(h.get("value") or h.get("total_value") or 0)
-        if date:
-            combined[date] += value
-    return [{"date": d, "value": round(v, 2)} for d, v in sorted(combined.items())]
+        if not date:
+            continue
+
+        combined[date]["value"] += int(h.get("value") or 0)
+        combined[date]["invested"] += int(h.get("invested") or 0)
+
+    return [
+        {"date": d, "value": round(v["value"], 2), "invested": round(v["invested"], 2)}
+        for d, v in sorted(combined.items())
+    ]
+
 
 
 def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
@@ -271,7 +279,8 @@ async def get_dashboard_data(user_email: str):
 
         p['history'] = {
             'labels': [h['date'] for h in sorted_hist],
-            'data': [h['value'] for h in sorted_hist]
+            'data_value': [h['value'] for h in sorted_hist],
+            'data_invested': [h.get('invested', 0) for h in sorted_hist]
         }
         p['monthly_change'] = calculate_monthly_change(sorted_hist)
         p['asset_allocation'] = calculate_asset_allocation(p.get('combined_assets') or p.get('assets', []))

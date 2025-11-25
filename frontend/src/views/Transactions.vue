@@ -68,6 +68,15 @@ const normalizeType = (type) => {
   return 'other'
 }
 
+// Функция для получения даты в формате YYYY-MM-DD по локальному времени пользователя
+const getLocalYMD = (dateObj) => {
+  if (!dateObj) return ''
+  const year = dateObj.getFullYear()
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0') // Месяцы 0-11
+  const day = String(dateObj.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 // --- ПРЕСЕТЫ ПЕРИОДОВ ---
 const setPeriodPreset = (preset) => {
   periodPreset.value = preset
@@ -97,8 +106,8 @@ const setPeriodPreset = (preset) => {
   }
 
   if (start) {
-    startDate.value = start.toISOString().slice(0, 10)
-    endDate.value = now.toISOString().slice(0, 10)
+    startDate.value = getLocalYMD(start)
+    endDate.value = getLocalYMD(new Date())
   }
 }
 
@@ -171,6 +180,10 @@ const applyFilter = () => {
   } else {
     if (startDate.value) start = new Date(startDate.value)
     if (endDate.value) end = new Date(endDate.value)
+  }
+
+  if (end) {
+    end.setHours(23, 59, 59, 999)
   }
 
   filteredTransactions.value = transactions.value.filter(tx => {
