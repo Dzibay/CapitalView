@@ -159,7 +159,6 @@ async def update_asset_payouts(session, asset):
         await asyncio.to_thread(table_update, "assets", {"properties": props}, {"id": asset_id})
 
 
-
 # ===================================================
 # 🚀 ОБРАБОТКА ВСЕХ АКТИВОВ
 # ===================================================

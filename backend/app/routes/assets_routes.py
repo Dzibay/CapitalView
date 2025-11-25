@@ -13,6 +13,7 @@ def create_asset_route():
     print(data)
     res = create_asset(email, data)
     refresh_materialized_view('portfolio_daily_positions')
+    refresh_materialized_view('portfolio_daily_values')
     return jsonify(res)
     
 @assets_bp.route('/<int:asset_id>', methods=['DELETE'])
@@ -20,6 +21,7 @@ def create_asset_route():
 def delete_asset_route(asset_id):
     res = delete_asset(asset_id)
     refresh_materialized_view('portfolio_daily_positions')
+    refresh_materialized_view('portfolio_daily_values')
     return jsonify(res)
 
 @assets_bp.route('/add_price', methods=['POST'])
@@ -27,6 +29,6 @@ def delete_asset_route(asset_id):
 def add_asset_price_route():
     data = request.get_json()
     res = add_asset_price(data)
-    refresh_materialized_view('asset_daily_prices')
+    refresh_materialized_view('portfolio_daily_values')
     refresh_materialized_view('asset_latest_prices_full')
     return jsonify(res)

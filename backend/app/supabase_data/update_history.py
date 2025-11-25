@@ -98,7 +98,7 @@ async def update_history_prices():
     
     # обновляем materialized views
     await db_refresh_view("asset_latest_prices_full")
-    await db_refresh_view("asset_daily_prices")
+    await db_refresh_view("portfolio_daily_values")
 
     print(f"✅ История обновлена. Активов с данными: {ok_count}/{len(assets)}")
     return ok_count
@@ -195,7 +195,7 @@ async def update_today_prices():
 
     # обновляем materialized views
     await db_refresh_view("asset_latest_prices_full")
-    await db_refresh_view("asset_daily_prices")
+    await db_refresh_view("portfolio_daily_values")
 
     print("✅ Сегодняшние цены обновлены.")
 

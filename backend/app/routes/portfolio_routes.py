@@ -178,6 +178,7 @@ async def import_broker_route():
 
         # Обновляем вьюхи
         refresh_materialized_view('portfolio_daily_positions')
+        refresh_materialized_view('portfolio_daily_values')
 
         print(f"✅ Импорт брокера {broker_id} завершён успешно")
 

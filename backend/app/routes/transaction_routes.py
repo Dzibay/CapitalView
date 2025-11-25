@@ -65,6 +65,7 @@ def add_transaction_route():
     # --- 4️⃣ Обновляем расчёты по портфельному активу ---
     rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
     refresh_materialized_view('portfolio_daily_positions')
+    refresh_materialized_view('portfolio_daily_values')
 
     return jsonify({"success": True, "transaction": res_transaction[0]}), 201
 
@@ -100,6 +101,7 @@ def delete_transactions_route():
         if affected_assets:
             rpc("update_assets_after_tx_delete", {"asset_ids": affected_assets})
             refresh_materialized_view('portfolio_daily_positions')
+            refresh_materialized_view('portfolio_daily_values')
 
         return jsonify({
             "success": True,
@@ -151,6 +153,7 @@ def update_transaction_route():
         if pa_id:
             rpc("update_portfolio_asset", {"pa_id": pa_id})
             refresh_materialized_view('portfolio_daily_positions')
+            refresh_materialized_view('portfolio_daily_values')
 
         return jsonify({"success": True, "updated": res[0]}), 200
 
