@@ -10,16 +10,18 @@ from app.services import supabase_service
 from app.supabase_data.moex_utils import get_price_moex_history, get_price_moex
 from app.services.supabase_service import refresh_materialized_view
 
-# Параллелизм для API MOEX
-MAX_PARALLEL = 15
+# -----------------------------
+# ПАРАЛЛЕЛИЗМ
+# -----------------------------
+MAX_PARALLEL = 30  # безопасно для MOEX
 sem = asyncio.Semaphore(MAX_PARALLEL)
 
 MSK_TZ = pytz.timezone("Europe/Moscow")
 
 
-# =====================================================
-# 🔹 UTILS: async wrappers для Supabase (sync API)
-# =====================================================
+# -----------------------------
+# ASYNC WRAPPERS
+# -----------------------------
 async def db_select(*args, **kwargs):
     return await asyncio.to_thread(supabase_service.table_select, *args, **kwargs)
 
@@ -36,20 +38,40 @@ async def db_refresh_view(name: str):
     return await asyncio.to_thread(refresh_materialized_view, name)
 
 
-# =====================================================
-# 🔹 Часто используемое
-# =====================================================
+# ======================================================
+# 🔹 Часто используемые утилиты
+# ======================================================
 def is_moex_trading_time():
     now = datetime.now(MSK_TZ).time()
     return time(10, 0) <= now <= time(19, 0)
 
 
-# =====================================================
+# ======================================================
+# 🔹 Быстрый prefetch последней цены всех активов
+# ======================================================
+async def fetch_all_last_prices():
+    rows = await db_select(
+        "asset_prices",
+        "asset_id, price, trade_date",
+        order={"column": "trade_date", "desc": True},
+        limit=500000  # много, но быстро
+    )
+    
+    last_map = {}
+    for r in rows:
+        aid = r["asset_id"]
+        if aid not in last_map:
+            last_map[aid] = r
+
+    return last_map
+
+
+# ======================================================
 # 🔹 Обновление полной истории актива
-# =====================================================
+# ======================================================
 async def update_asset_history(session, asset):
     asset_id = asset["id"]
-    ticker   = asset["ticker"].upper()
+    ticker   = asset["ticker"].upper().strip()
 
     async with sem:
         prices = await get_price_moex_history(session, ticker)
@@ -60,7 +82,7 @@ async def update_asset_history(session, asset):
     # Удаляем старые цены
     await db_delete("asset_prices", {"asset_id": asset_id})
 
-    # Пакетная вставка (ускоряет в 10-20 раз)
+    # Вставка пачками
     batch = []
     tasks = []
 
@@ -82,32 +104,37 @@ async def update_asset_history(session, asset):
     return True
 
 
+# ======================================================
+# 🔹 Обновление истории по всем активам
+# ======================================================
 async def update_history_prices():
     print("📈 Обновление полной истории активов...")
 
-    # Только активы, у которых есть тикер
     assets = await db_select("assets", "id, ticker")
     assets = [a for a in assets if a.get("ticker")]
 
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=MAX_PARALLEL)) as session:
-        tasks = [update_asset_history(session, a) for a in assets]
+    async with aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(limit=MAX_PARALLEL)
+    ) as session:
 
+        tasks = [update_asset_history(session, a) for a in assets]
         results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="История")
 
-    ok_count = sum(1 for r in results if r)
-    
-    # обновляем materialized views
+    ok = sum(1 for r in results if r)
+
+    # Обновление материализованных view разом
     await db_refresh_view("asset_latest_prices_full")
     await db_refresh_view("portfolio_daily_values")
 
-    print(f"✅ История обновлена. Активов с данными: {ok_count}/{len(assets)}")
-    return ok_count
+    print(f"✅ История обновлена. Активов: {ok}/{len(assets)}")
+    return ok
 
 
-# =====================================================
-# 🔹 Обновление текущих цен
-# =====================================================
-async def process_today_price(session, asset, today, trading, type_map, now_msk):
+# ======================================================
+# 🔹 Обработка текущей цены
+# ======================================================
+async def process_today_price(session, asset, today, trading, type_map, last_map, now_msk):
+
     asset_id = asset["id"]
     ticker   = (asset.get("ticker") or "").upper().strip()
     props    = asset.get("properties") or {}
@@ -120,16 +147,10 @@ async def process_today_price(session, asset, today, trading, type_map, now_msk)
     if not ticker:
         return None
 
-    # последняя цена из БД
-    last = await db_select(
-        "asset_prices", "price, trade_date",
-        filters={"asset_id": asset_id},
-        order={"column": "trade_date", "desc": True},
-        limit=1
-    )
-
-    prev_price = last[0]["price"] if last else None
-    prev_date  = last[0]["trade_date"][:10] if last else None
+    # берем предварительно загруженную последнюю цену
+    last = last_map.get(asset_id)
+    prev_price = last["price"] if last else None
+    prev_date  = last["trade_date"][:10] if last else None
 
     async with sem:
         price = await get_price_moex(session, ticker)
@@ -141,7 +162,7 @@ async def process_today_price(session, asset, today, trading, type_map, now_msk)
     if prev_price and abs(price - prev_price) / prev_price > 0.1:
         return (ticker, "скачок")
 
-    # определяем дату для записи
+    # выбираем дату для вставки
     insert_date = today if trading else None
 
     if not trading:
@@ -155,24 +176,17 @@ async def process_today_price(session, asset, today, trading, type_map, now_msk)
         else:
             insert_date = today
 
-    # проверяем, есть ли запись
-    existing = await db_select(
-        "asset_prices", "id",
-        filters={"asset_id": asset_id, "trade_date": insert_date}
-    )
-
-    if existing:
-        await db_update("asset_prices", {"price": price}, {"id": existing[0]["id"]})
-        return (ticker, f"обновлено {price:.2f}")
-
-    await db_insert("asset_prices", {
+    return {
         "asset_id": asset_id,
         "price": price,
-        "trade_date": insert_date
-    })
-    return (ticker, f"добавлено {price:.2f}")
+        "trade_date": insert_date,
+        "ticker": ticker
+    }
 
 
+# ======================================================
+# 🔹 Обновление сегодняшних цен
+# ======================================================
 async def update_today_prices():
     now = datetime.now(MSK_TZ)
     today = now.date().isoformat()
@@ -184,25 +198,57 @@ async def update_today_prices():
     types  = await db_select("asset_types", "id, is_custom")
     type_map = {t["id"]: t["is_custom"] for t in types}
 
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=MAX_PARALLEL)) as session:
+    # 🎯 быстрый prefetch последних цен
+    last_map = await fetch_all_last_prices()
+
+    updates_batch = []
+
+    async with aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(limit=MAX_PARALLEL)
+    ) as session:
 
         tasks = [
-            process_today_price(session, a, today, trading, type_map, now)
+            process_today_price(session, a, today, trading, type_map, last_map, now)
             for a in assets
         ]
 
         results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Сегодня")
 
-    # обновляем materialized views
+    # фильтруем None и ошибки
+    for r in results:
+        if isinstance(r, dict):
+            updates_batch.append(r)
+
+    # пачечная вставка
+    if updates_batch:
+        # группируем по 200
+        pack = []
+        tasks = []
+        for row in updates_batch:
+            pack.append({
+                "asset_id": row["asset_id"],
+                "price": row["price"],
+                "trade_date": row["trade_date"]
+            })
+            if len(pack) == 200:
+                tasks.append(db_insert("asset_prices", pack.copy()))
+                pack.clear()
+
+        if pack:
+            tasks.append(db_insert("asset_prices", pack))
+
+        await asyncio.gather(*tasks)
+
+    # обновление view
     await db_refresh_view("asset_latest_prices_full")
     await db_refresh_view("portfolio_daily_values")
 
     print("✅ Сегодняшние цены обновлены.")
 
 
-# =====================================================
-# 🔹 Основной цикл
-# =====================================================
+# ======================================================
+# 🔹 Главный цикл
+# ======================================================
 async def main():
     await update_history_prices()
 

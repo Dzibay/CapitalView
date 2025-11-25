@@ -48,7 +48,6 @@ async def get_price_moex(session, ticker):
             if market == "bonds" or "bond" in sec_group:
                 if face_value and face_value > 0:
                     last_price = (last_price / 100) * float(face_value)
-                    print(f"💰 {ticker}: пересчитана цена облигации {last_price:.2f} руб.")
 
             return last_price
 
