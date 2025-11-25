@@ -128,96 +128,194 @@ const togglePortfolioMenu = (id) => {
 </script>
 
 <template>
-  <div class="dashboard">
-    <!-- Верхняя панель -->
-    <div class="toolbar">
-      <button class="btn" @click="showAddModal = true">➕ Добавить актив</button>
-      <button class="btn" @click="showAddPortfolioModal = true">📁 Создать портфель</button>
-      <button class="btn" @click="showImportModal = true">📥 Импорт портфеля</button>
-      <button class="btn" @click="refreshPortfolios">🔄 Обновить портфели</button>
-    </div>
+  <div class="dashboard-container">
+    <div class="content-wrapper">
+      
+      <div class="action-bar">
+        <h1 class="page-title">Мои Активы</h1>
+        <div class="buttons-group">
+          <button class="btn btn-primary" @click="showAddModal = true">
+            <span class="icon">➕</span> Актив
+          </button>
+          <button class="btn btn-secondary" @click="showAddPortfolioModal = true">
+            <span class="icon">📁</span> Портфель
+          </button>
+          <div class="divider-vertical"></div>
+          <button class="btn btn-outline" @click="showImportModal = true">
+            📥 Импорт
+          </button>
+          <button class="btn btn-ghost" @click="refreshPortfolios" title="Обновить портфели">
+            🔄
+          </button>
+        </div>
+      </div>
 
-    <!-- Модалки -->
-    <AddAssetModal
-      v-if="showAddModal"
-      @close="showAddModal = false"
-      :onSave="addAsset"
-      :referenceData="parsedDashboard.reference"
-      :portfolios="parsedDashboard.portfolios"
-    />
-    <AddPortfolioModal
-      v-if="showAddPortfolioModal"
-      @close="showAddPortfolioModal = false"
-      :onSave="addPortfolio"
-      :portfolios="parsedDashboard.portfolios"
-    />
-    <AddTransactionModal
-      v-if="showAddTransactionModal"
-      :asset="selectedAsset"
-      :onSubmit="addTransaction"
-      @close="showAddTransactionModal = false"
-    />
-    <AddPriceModal
-      v-if="showAddPriceModal"
-      :asset="selectedAsset"
-      :onSubmit="addPrice"
-      @close="showAddPriceModal = false"
-    />
-    <ImportPortfolioModal
-      v-if="showImportModal"
-      @close="showImportModal = false"
-      :onImport="importPortfolio"
-      :portfolios="parsedDashboard.portfolios"
-    />
+      <AddAssetModal v-if="showAddModal" @close="showAddModal = false" :onSave="addAsset" :referenceData="parsedDashboard.reference" :portfolios="parsedDashboard.portfolios"/>
+      <AddPortfolioModal v-if="showAddPortfolioModal" @close="showAddPortfolioModal = false" :onSave="addPortfolio" :portfolios="parsedDashboard.portfolios"/>
+      <AddTransactionModal v-if="showAddTransactionModal" :asset="selectedAsset" :onSubmit="addTransaction" @close="showAddTransactionModal = false"/>
+      <AddPriceModal v-if="showAddPriceModal" :asset="selectedAsset" :onSubmit="addPrice" @close="showAddPriceModal = false"/>
+      <ImportPortfolioModal v-if="showImportModal" @close="showImportModal = false" :onImport="importPortfolio" :portfolios="parsedDashboard.portfolios"/>
 
-    <!-- Загрузка -->
-    <div v-if="loading" class="status">Загрузка...</div>
-    <div v-else-if="parsedDashboard.portfolios.length === 0" class="status">
-      У вас пока нет портфелей
-    </div>
+      <div v-if="loading" class="status-block">
+        <div class="loader"></div>
+        <span>Загрузка данных...</span>
+      </div>
+      
+      <div v-else-if="parsedDashboard.portfolios.length === 0" class="empty-placeholder">
+        <div class="empty-icon">📂</div>
+        <h3>У вас пока нет портфелей</h3>
+        <p>Создайте первый портфель, чтобы начать отслеживать активы</p>
+        <button class="btn btn-primary" @click="showAddPortfolioModal = true">Создать портфель</button>
+      </div>
 
-    <!-- Основной список -->
-    <div v-else>
-      <PortfolioTree
-        :portfolios="parsedDashboard.portfolioTree"
-        :expandedPortfolios="expandedPortfolios"
-        :activePortfolioMenu="activePortfolioMenu"
-        :activeAssetMenu="activeAssetMenu"
-        @togglePortfolio="togglePortfolio"
-        @toggleAssetMenu="toggleAssetMenu"
-        @togglePortfolioMenu="togglePortfolioMenu"
-        @removeAsset="removeAsset"
-        @clearPortfolio="clearPortfolio"
-        @deletePortfolio="deletePortfolio"
-        @addTransaction="(asset) => { selectedAsset = asset; showAddTransactionModal = true }"
-        @addPrice="(asset) => { selectedAsset = asset; showAddPriceModal = true }"
-        :updatingPortfolios="updatingPortfolios"
-      />
+      <div v-else class="tree-wrapper">
+        <PortfolioTree
+          :portfolios="parsedDashboard.portfolioTree"
+          :expandedPortfolios="expandedPortfolios"
+          :activePortfolioMenu="activePortfolioMenu"
+          :activeAssetMenu="activeAssetMenu"
+          @togglePortfolio="togglePortfolio"
+          @toggleAssetMenu="toggleAssetMenu"
+          @togglePortfolioMenu="togglePortfolioMenu"
+          @removeAsset="removeAsset"
+          @clearPortfolio="clearPortfolio"
+          @deletePortfolio="deletePortfolio"
+          @addTransaction="(asset) => { selectedAsset = asset; showAddTransactionModal = true }"
+          @addPrice="(asset) => { selectedAsset = asset; showAddPriceModal = true }"
+          :updatingPortfolios="updatingPortfolios"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.dashboard {
-  padding: 20px;
-  font-family: Arial, sans-serif;
-  color: #222;
-}
-.toolbar {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-.btn {
-  background: #7c858c;
-  color: white;
-  border: none;
-  padding: 8px 14px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.btn:hover {
-  background: #005ea3;
+/* Base Layout */
+.dashboard-container {
+  min-height: 100vh;
+  padding: 32px 20px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1f2937;
 }
 
+.content-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Action Bar */
+.action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  background: transparent;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.buttons-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  padding: 6px;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.divider-vertical {
+  width: 1px;
+  height: 24px;
+  background: #e5e7eb;
+  margin: 0 4px;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background-color: #2563eb;
+  color: white;
+}
+.btn-primary:hover {
+  background-color: #1d4ed8;
+}
+
+.btn-secondary {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+.btn-secondary:hover {
+  background-color: #e5e7eb;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+.btn-outline:hover {
+  border-color: #9ca3af;
+  background: #f9fafb;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: #6b7280;
+  padding: 0 10px;
+}
+.btn-ghost:hover {
+  background: #f3f4f6;
+  color: #2563eb;
+}
+
+.icon {
+  font-size: 14px;
+}
+
+/* Empty State & Status */
+.status-block {
+  text-align: center;
+  padding: 40px;
+  color: #6b7280;
+}
+
+.empty-placeholder {
+  text-align: center;
+  padding: 60px 20px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e5e7eb;
+}
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+.empty-placeholder h3 {
+  margin: 0 0 8px;
+  color: #374151;
+}
+.empty-placeholder p {
+  color: #6b7280;
+  margin-bottom: 24px;
+}
 </style>

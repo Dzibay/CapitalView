@@ -16,6 +16,8 @@ const emit = defineEmits([
   "clearPortfolio",
   "deletePortfolio",
   "selectAsset",
+  "addTransaction", // Добавлено для проксирования
+  "addPrice"        // Добавлено для проксирования
 ]);
 
 const activeAssetMenu = ref(null);
@@ -60,7 +62,7 @@ const addPrice = (asset) => emit('addPrice', asset)
 const deletePortfolio = (id) => emit("deletePortfolio", id);
 
 const handleClickOutside = (event) => {
-  if (!event.target.closest(".menu")) {
+  if (!event.target.closest(".menu-container")) {
     activeAssetMenu.value = null;
     emit("togglePortfolioMenu", null);
   }
@@ -72,151 +74,144 @@ onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside))
 // 📈 Дивидендная доходность за текущий календарный год (%)
 const getDividendYieldCurrentYear = (asset) => {
   if (!asset.dividends || !asset.last_price) return 0;
-
   const currentYear = new Date().getFullYear();
-
-  // Сумма всех дивидендов с датой фиксации за текущий год
   const totalDividends = asset.dividends
     .filter(d => new Date(d.record_date).getFullYear() === currentYear)
     .reduce((sum, d) => sum + (parseFloat(d.value) || 0), 0);
-
   return (totalDividends / asset.last_price) * 100;
 };
 
 // 📊 Средняя дивидендная доходность за последние 5 лет (%)
 const getDividendYield5Y = (asset) => {
   if (!asset.dividends || !asset.last_price) return 0;
-
-  // Группируем по году
   const yearly = {};
   for (const d of asset.dividends) {
     if (!d.record_date || !d.value) continue;
     const year = new Date(d.record_date).getFullYear();
     yearly[year] = (yearly[year] || 0) + parseFloat(d.value);
   }
-
-  // Определяем последние 5 календарных лет
   const currentYear = new Date().getFullYear();
   const yearsToInclude = Array.from({ length: 5 }, (_, i) => currentYear - i).reverse();
-
   const validYears = yearsToInclude.filter(y => yearly[y]);
   if (validYears.length === 0) return 0;
-
   const avgDividends =
     validYears.reduce((sum, y) => sum + yearly[y], 0) / validYears.length;
-
   return (avgDividends / asset.last_price) * 100;
 };
 </script>
 
 <template>
-  <div class="portfolio-tree">
+  <div class="portfolio-list">
     <div
       v-for="portfolio in sortedPortfolios"
       :key="portfolio.id"
-      class="portfolio"
+      class="portfolio-card"
+      :class="{ 'is-child': portfolio.parent_portfolio_id }"
     >
-      <!-- Заголовок портфеля -->
-      <div class="portfolio-header">
-        <div class="portfolio-title" @click="togglePortfolio(portfolio.id)">
-          <span>{{ expandedPortfolios.includes(portfolio.id) ? '▼' : '▶' }}</span>
-          <span class="name">{{ portfolio.name }}</span>
-          <span v-if="portfolio.total_value > 0"> (стоимость: {{ portfolio.total_value.toFixed(2) }} ₽)</span>
+      <div class="portfolio-header" @click="togglePortfolio(portfolio.id)">
+        <div class="portfolio-info">
+          <div class="toggle-icon" :class="{ rotated: expandedPortfolios.includes(portfolio.id) }">
+            ▶
+          </div>
+          <div class="title-wrapper">
+            <span class="portfolio-name">{{ portfolio.name }}</span>
+            <span v-if="portfolio.total_value > 0" class="portfolio-value">
+              {{ portfolio.total_value.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽
+            </span>
+          </div>
           <span v-if="updatingPortfolios && unref(updatingPortfolios).has(portfolio.id)" class="spinner">⏳</span>
-
         </div>
 
-        <div class="menu">
-          <button class="menu-btn" @click.stop="togglePortfolioMenu(portfolio.id)">⋯</button>
-          <div v-if="activePortfolioMenu === portfolio.id" class="menu-dropdown">
-            <button @click="clearPortfolio(portfolio.id)">🧹 Очистить</button>
-            <button @click="deletePortfolio(portfolio.id)" class="danger">🗑️ Удалить</button>
-          </div>
+        <div class="menu-container">
+          <button class="menu-btn icon-btn" @click.stop="togglePortfolioMenu(portfolio.id)">⋯</button>
+          <transition name="scale">
+            <div v-if="activePortfolioMenu === portfolio.id" class="menu-dropdown">
+              <button @click="clearPortfolio(portfolio.id)" class="menu-item">
+                <span class="icon">🧹</span> Очистить
+              </button>
+              <button @click="deletePortfolio(portfolio.id)" class="menu-item danger">
+                <span class="icon">🗑️</span> Удалить
+              </button>
+            </div>
+          </transition>
         </div>
       </div>
 
-      <!-- Активы -->
-      <transition name="fade">
+      <transition name="slide-fade">
         <div v-if="expandedPortfolios.includes(portfolio.id)" class="portfolio-body">
-          <p v-if="!portfolio.assets || portfolio.assets.length === 0" class="empty">
-            Активов нет
-          </p>
+          <div v-if="!portfolio.assets?.length && !portfolio.children?.length" class="empty-state">
+            В этом портфеле пока нет активов
+          </div>
 
-          <table v-else class="asset-table">
-            <thead>
-              <tr>
-                <th>Название</th>
-                <th>Количество</th>
-                <th>Средняя цена</th>
-                <th>Текущая цена</th>
-                <th>Стоимость (₽)</th>
-                <th>Див. доходность (год)</th>
-                <th>Див. доходность (5 лет)</th>
-                <th>За все время</th>
-                <th>За день</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="asset in portfolio.assets" :key="asset.portfolio_asset_id">
-                <td>
-                    <span>{{ asset.name }}</span><br>
-                    <span class="asset_ticker">{{ asset.ticker }}</span>
-                    <span v-if="asset.leverage && asset.leverage > 1" class="leveraged">💹×{{ asset.leverage }}</span>
-                </td>
-                <td>{{ asset.quantity }}</td>
-                <td>{{ asset.average_price.toFixed(2) }}</td>
-                <td>{{ asset.last_price || '-' }}</td>
-                <td>{{ Math.max(0, (asset.quantity * asset.last_price / asset.leverage) * asset.currency_rate_to_rub).toFixed(2) }}</td>
-                <td>
-                  <!-- 💰 Див. доходность (год) -->
-                  <span v-if="asset.type.toLowerCase().includes('bond') || asset.type.toLowerCase().includes('облига')">
-                    {{ asset.properties?.coupon_percent ? asset.properties.coupon_percent.toFixed(2) + '%' : '–' }}
-                  </span>
-                  <span v-else>
-                    {{ getDividendYieldCurrentYear(asset).toFixed(2) }}%
-                  </span>
-                </td>
-
-                <td>
-                  <!-- 📆 Див. доходность (5 лет) -->
-                  <span v-if="asset.type.toLowerCase().includes('bond') || asset.type.toLowerCase().includes('облига')">
-                    –
-                  </span>
-                  <span v-else>
-                    {{ getDividendYield5Y(asset).toFixed(2) }}%
-                  </span>
-                </td>
-                 
-                <td :class="{ 
-                  'positive': asset.last_price - asset.average_price > 0, 
-                  'negative': asset.last_price - asset.average_price < 0 
-                  }">
-                  {{ ((asset.last_price - asset.average_price) / asset.average_price * 100).toFixed(2) }}%
-                </td>
-                <td :class="{ 
-                  'positive': asset.daily_change > 0, 
-                  'negative': asset.daily_change < 0 
-                  }">
-                  {{ (asset.daily_change / asset.last_price * 100).toFixed(2) }}%
-                </td>
-                <td></td>
-
-                <td class="center">
-                  <div class="menu">
-                    <button class="menu-btn" @click.stop="toggleAssetMenu(asset.portfolio_asset_id)">⋯</button>
-                    <div v-if="activeAssetMenu === asset.portfolio_asset_id" class="menu-dropdown">
-                      <button @click="addTransaction(asset)">💰 Добавить транзакцию</button>
-                      <button @click="addPrice(asset)">💰 Добавить изменение цены</button>
-                      <button class="danger" @click="removeAsset(asset.portfolio_asset_id)">🗑️ Удалить актив</button>
+          <div v-if="portfolio.assets && portfolio.assets.length > 0" class="table-responsive">
+            <table class="asset-table">
+              <thead>
+                <tr>
+                  <th class="col-name">Актив</th>
+                  <th class="col-right">Кол-во</th>
+                  <th class="col-right">Ср. цена</th>
+                  <th class="col-right">Цена</th>
+                  <th class="col-right">Стоимость</th>
+                  <th class="col-right">Див (год)</th>
+                  <th class="col-right">Див (5л)</th>
+                  <th class="col-right">P&L (Всё)</th>
+                  <th class="col-right">P&L (День)</th>
+                  <th class="col-actions"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="asset in portfolio.assets" :key="asset.portfolio_asset_id">
+                  <td class="cell-name">
+                    <div class="asset-main">
+                      <span class="asset-name">{{ asset.name }}</span>
+                      <div class="asset-meta">
+                        <span class="asset-ticker">{{ asset.ticker }}</span>
+                        <span v-if="asset.leverage && asset.leverage > 1" class="badge-leverage">×{{ asset.leverage }}</span>
+                      </div>
                     </div>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                  </td>
+                  <td class="col-right">{{ asset.quantity }}</td>
+                  <td class="col-right num-font">{{ asset.average_price.toFixed(2) }}</td>
+                  <td class="col-right num-font">{{ asset.last_price || '-' }}</td>
+                  <td class="col-right num-font bold">
+                    {{ Math.max(0, (asset.quantity * asset.last_price / asset.leverage) * asset.currency_rate_to_rub).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽
+                  </td>
+                  <td class="col-right num-font">
+                    <span v-if="asset.type.toLowerCase().includes('bond') || asset.type.toLowerCase().includes('облига')">
+                      {{ asset.properties?.coupon_percent ? asset.properties.coupon_percent.toFixed(2) + '%' : '–' }}
+                    </span>
+                    <span v-else>
+                      {{ getDividendYieldCurrentYear(asset).toFixed(2) }}%
+                    </span>
+                  </td>
+                  <td class="col-right num-font">
+                    <span v-if="asset.type.toLowerCase().includes('bond') || asset.type.toLowerCase().includes('облига')"> – </span>
+                    <span v-else> {{ getDividendYield5Y(asset).toFixed(2) }}% </span>
+                  </td>
+                  <td class="col-right num-font" :class="asset.last_price - asset.average_price >= 0 ? 'text-green' : 'text-red'">
+                     {{ ((asset.last_price - asset.average_price) / asset.average_price * 100).toFixed(2) }}%
+                  </td>
+                  <td class="col-right num-font" :class="asset.daily_change >= 0 ? 'text-green' : 'text-red'">
+                    {{ (asset.daily_change / asset.last_price * 100).toFixed(2) }}%
+                  </td>
+                  <td class="col-actions center">
+                    <div class="menu-container">
+                      <button class="menu-btn icon-btn" @click.stop="toggleAssetMenu(asset.portfolio_asset_id)">⋮</button>
+                      <transition name="scale">
+                        <div v-if="activeAssetMenu === asset.portfolio_asset_id" class="menu-dropdown asset-menu">
+                          <button @click="addTransaction(asset)" class="menu-item">💰 Добавить транзакцию</button>
+                          <button @click="addPrice(asset)" class="menu-item">📈 Изменить цену</button>
+                          <div class="divider"></div>
+                          <button class="menu-item danger" @click="removeAsset(asset.portfolio_asset_id)">🗑️ Удалить</button>
+                        </div>
+                      </transition>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-          <!-- Вложенные портфели -->
           <div v-if="portfolio.children && portfolio.children.length" class="child-portfolios">
             <PortfolioTree
               :portfolios="portfolio.children"
@@ -238,114 +233,271 @@ const getDividendYield5Y = (asset) => {
   </div>
 </template>
 
-
 <style scoped>
-.portfolio {
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  margin-bottom: 12px;
-  background: #fff;
+/* --- General Variables & Layout --- */
+.portfolio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
+
+.portfolio-card {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid #eef0f2;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+.portfolio-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+/* Child portfolios have less shadow and are indented */
+.portfolio-card.is-child {
+  margin-top: 16px;
+  box-shadow: none;
+  border: 1px solid #e2e8f0;
+  background: #fcfcfc;
+}
+
+/* --- Header --- */
 .portfolio-header {
   display: flex;
   justify-content: space-between;
-  padding: 10px 14px;
-  background: #f7f7f7;
   align-items: center;
+  padding: 14px 20px;
+  background: #fff;
   cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
 }
-.portfolio-title {
+.portfolio-card.is-child > .portfolio-header {
+  background: #fcfcfc;
+}
+.portfolio-header:hover {
+  background: #f8fafc;
+}
+
+.portfolio-info {
   display: flex;
-  gap: 6px;
-  font-weight: bold;
+  align-items: center;
+  gap: 12px;
 }
+
+.toggle-icon {
+  font-size: 10px;
+  color: #94a3b8;
+  transition: transform 0.2s ease;
+}
+.toggle-icon.rotated {
+  transform: rotate(90deg);
+}
+
+.title-wrapper {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.portfolio-name {
+  font-weight: 600;
+  font-size: 16px;
+  color: #1e293b;
+}
+
+.portfolio-value {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* --- Body --- */
 .portfolio-body {
-  padding: 10px 14px;
+  border-top: 1px solid #eef0f2;
 }
+
+.empty-state {
+  padding: 24px;
+  text-align: center;
+  color: #94a3b8;
+  font-style: italic;
+  font-size: 14px;
+}
+
+/* --- Table Styles --- */
+.table-responsive {
+  overflow-x: auto;
+}
+
 .asset-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13px;
+  color: #334155;
 }
-.asset-table th,
-.asset-table td {
-  border-bottom: 1px solid #ddd;
-  padding: 8px;
-}
+
 .asset-table th {
-  text-align: left;
-  background: #fafafa;
+  font-weight: 600;
+  color: #64748b;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
 }
-.asset-table td.right {
-  text-align: right;
+
+.asset-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
 }
-.asset-table td.center {
-  text-align: center;
+
+.asset-table tr:last-child td {
+  border-bottom: none;
 }
-.asset-table td.positive {
-  color: var(--positiveColor);
+
+.asset-table tr:hover td {
+  background: #fbfbfc;
 }
-.asset-table td.negative {
-  color: var(--negativeColor);
+
+/* Column Alignments */
+.col-right { text-align: right; }
+.col-actions { width: 40px; }
+.col-name { min-width: 150px; text-align: left;}
+
+/* Font Tweaks */
+.num-font {
+  font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: -0.3px;
 }
-.menu {
+.bold { font-weight: 600; }
+
+/* Colors */
+.text-green { color: #10b981; }
+.text-red { color: #ef4444; }
+
+/* Asset Cell Specifics */
+.cell-name {
+  /* Keep name cell clean */
+}
+.asset-main {
+  display: flex;
+  flex-direction: column;
+}
+.asset-name {
+  font-weight: 500;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+.asset-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.asset-ticker {
+  font-size: 11px;
+  color: #94a3b8;
+  background: #f1f5f9;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.badge-leverage {
+  font-size: 10px;
+  background: #fff7ed;
+  color: #ea580c;
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid #ffedd5;
+  font-weight: bold;
+}
+
+/* --- Menu & Dropdowns --- */
+.menu-container {
   position: relative;
-  display: inline-block;
 }
 .menu-btn {
-  background: none;
+  background: transparent;
   border: none;
   font-size: 18px;
+  color: #94a3b8;
   cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  line-height: 1;
 }
+.menu-btn:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
 .menu-dropdown {
   position: absolute;
   right: 0;
-  top: 24px;
+  top: 100%;
+  margin-top: 4px;
   background: white;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-  min-width: 160px;
-  z-index: 10;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  min-width: 180px;
+  z-index: 50;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
 }
-.menu-dropdown button {
-  display: block;
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   border: none;
   background: none;
   padding: 8px 12px;
+  font-size: 13px;
+  color: #334155;
   cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s;
 }
-.menu-dropdown button:hover {
-  background: #f2f2f2;
+.menu-item:hover {
+  background: #f1f5f9;
 }
-.menu-dropdown .danger {
-  color: #c00;
+.menu-item.danger {
+  color: #ef4444;
 }
+.menu-item.danger:hover {
+  background: #fef2f2;
+}
+
+.divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 4px 0;
+}
+
+/* --- Child Portfolios Wrapper --- */
 .child-portfolios {
-  margin-left: 20px;
-  border-left: 2px solid #ddd;
-  padding-left: 10px;
+  padding: 0 16px 16px 24px; /* Indent child portfolios */
+  background: #ffffff;
 }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.25s ease;
+
+/* --- Transitions --- */
+.slide-fade-enter-active, .slide-fade-leave-active {
+  transition: all 0.3s ease-out;
 }
-.fade-enter-from,
-.fade-leave-to {
+.slide-fade-enter-from, .slide-fade-leave-to {
+  transform: translateY(-10px);
   opacity: 0;
 }
 
-.leveraged {
-  color: #e67e22;
-  font-weight: bold;
-  margin-left: 4px;
+.scale-enter-active, .scale-leave-active {
+  transition: all 0.1s ease;
 }
-
-.asset_ticker {
-  color: grey;
-  font-weight: 300;
+.scale-enter-from, .scale-leave-to {
+  transform: scale(0.95);
+  opacity: 0;
 }
 </style>
