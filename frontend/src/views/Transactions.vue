@@ -321,617 +321,478 @@ const summary = computed(() => {
 
 <template>
   <div class="transactions-page">
-    <h1 class="page-title">История транзакций</h1>
-
-    <!-- ФИЛЬТРЫ -->
-    <div class="filters">
-      <div class="filters-left">
-        <select v-model="selectedPortfolio">
-          <option value="">Все портфели</option>
-          <option v-for="p in portfolios" :key="p.id" :value="p.name">
-            {{ p.name }}
-          </option>
-        </select>
-
-        <!-- Тип операции -->
-        <select v-model="selectedType">
-          <option value="">Все типы</option>
-          <option v-for="t in txTypes" :key="t" :value="t">
-            {{ t }}
-          </option>
-        </select>
-
-        <!-- Поиск по активам -->
-        <div class="asset-search-wrapper">
-          <div class="search-input-group">
-            <input
-              type="text"
-              v-model="assetSearch"
-              placeholder="Поиск актива..."
-              class="asset-search-input"
-            />
-            <button
-              v-if="assetSearch"
-              @click="assetSearch = ''; selectedAsset = ''; applyFilter()"
-              class="clear-search-btn"
-              title="Очистить поиск"
-            >
-              &times;
-            </button>
-          </div>
-
-          <ul
-            v-if="assetSearch && selectedAsset !== assetSearch"
-            class="asset-dropdown"
-          >
-            <li
-              v-for="a in filteredAssetsList"
-              :key="a"
-              @click="selectAssetFilter(a)"
-              class="asset-option"
-            >
-              <div class="asset-option-main">
-                <span v-html="highlightMatch(a)" />
-              </div>
-              <div v-if="getAssetMeta(a)" class="asset-option-meta">
-                <span class="ticker">
-                  {{ getAssetMeta(a).ticker }}
-                </span>
-                <span class="price" v-if="getAssetMeta(a).last_price">
-                  · {{ getAssetMeta(a).last_price }} {{ getAssetMeta(a).currency_ticker || '' }}
-                </span>
-              </div>
-            </li>
-
-            <li v-if="filteredAssetsList.length === 0" class="asset-empty">
-              Ничего не найдено
-            </li>
-
-            <li v-if="recentAssets.length" class="recent-label">
-              Недавние:
-            </li>
-            <li
-              v-for="ra in recentAssets"
-              :key="'recent-' + ra"
-              class="asset-recent-chip"
-              @click="selectAssetFilter(ra)"
-            >
-              {{ ra }}
-            </li>
-          </ul>
-        </div>
-
-        <!-- Быстрые периоды -->
-        <div class="quick-periods">
-          <button
-            type="button"
-            class="chip"
-            :class="{ active: periodPreset === 'today' }"
-            @click="setPeriodPreset('today'); periodPreset = 'today'"
-          >
-            Сегодня
-          </button>
-          <button
-            type="button"
-            class="chip"
-            :class="{ active: periodPreset === 'week' }"
-            @click="setPeriodPreset('week'); periodPreset = 'week'"
-          >
-            Неделя
-          </button>
-          <button
-            type="button"
-            class="chip"
-            :class="{ active: periodPreset === 'month' }"
-            @click="setPeriodPreset('month'); periodPreset = 'month'"
-          >
-            Месяц
-          </button>
-          <button
-            type="button"
-            class="chip"
-            :class="{ active: periodPreset === 'year' }"
-            @click="setPeriodPreset('year'); periodPreset = 'year'"
-          >
-            Год
-          </button>
-          <button
-            type="button"
-            class="chip"
-            :class="{ active: periodPreset === 'all' }"
-            @click="setPeriodPreset('all'); periodPreset = 'all'"
-          >
-            Всё время
-          </button>
-          <button
-            type="button"
-            class="chip"
-            :class="{ active: periodPreset === 'custom' }"
-            @click="periodPreset = 'custom'"
-          >
-            Свой период
-          </button>
-        </div>
-
-        <!-- Ручной выбор дат только для custom -->
-        <div v-if="periodPreset === 'custom'" class="custom-dates">
-          <input type="date" v-model="startDate" />
-          <input type="date" v-model="endDate" />
-        </div>
-      </div>
-
-      <!-- Глобальный поиск -->
-      <div class="filters-right">
-        <button @click="resetFilters" class="reset-filter-btn">
-          Сбросить 🔄
+    <div class="header-row">
+      <h1 class="page-title">История транзакций</h1>
+      <div v-if="selectedTxIds.length > 0" class="bulk-actions">
+        <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
+        <button @click="deleteSelected" class="btn btn-danger-soft">
+          Удалить выбранные
         </button>
       </div>
     </div>
 
-    <!-- ПАНЕЛЬ ДЕЙСТВИЙ -->
-    <div class="actions-bar">
-      <button
-        @click="deleteSelected"
-        :disabled="selectedTxIds.length === 0"
-        class="delete-selected-btn"
-      >
-        Удалить выбранные ({{ selectedTxIds.length }})
-      </button>
-    </div>
-
-    <!-- ТАБЛИЦА -->
-    <table class="transactions-table">
-      <thead>
-        <tr>
-          <th>
-            <input type="checkbox" v-model="allSelected" @change="toggleAll" />
-          </th>
-          <th>Дата</th>
-          <th>Тип</th>
-          <th>Актив</th>
-          <th>Портфель</th>
-          <th>Количество</th>
-          <th>Цена</th>
-          <th>Стоимость</th>
-          <th>Действия</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="tx in filteredTransactions"
-          :key="tx.transaction_id"
-          :class="['tx-row', 'tx-type-' + normalizeType(tx.transaction_type)]"
-        >
-          <td>
+    <div class="card">
+      
+      <div class="toolbar">
+        <div class="filters-top">
+          <div class="input-wrapper asset-search-wrapper">
+            <span class="input-icon">🔍</span>
             <input
-              type="checkbox"
-              :value="tx.transaction_id"
-              v-model="selectedTxIds"
+              type="text"
+              v-model="assetSearch"
+              placeholder="Поиск актива"
+              class="form-input"
             />
-          </td>
-          <td>{{ formatDate(tx.transaction_date) }}</td>
-          <td>
-            <span :class="['tx-badge', 'tx-' + normalizeType(tx.transaction_type)]">
-              {{ tx.transaction_type }}
-            </span>
-          </td>
-          <td>{{ tx.asset_name }}</td>
-          <td>{{ tx.portfolio_name }}</td>
-          <td>{{ tx.quantity }}</td>
-          <td>{{ tx.price.toLocaleString() }}</td>
-          <td>{{ (tx.quantity * tx.price).toFixed(2) }}</td>
+            <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
+            
+            <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
+              <li v-for="a in filteredAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
+                <span v-html="highlightMatch(a)" />
+                <span v-if="getAssetMeta(a)" class="meta-ticker">{{ getAssetMeta(a).ticker }}</span>
+              </li>
+              <li v-if="filteredAssetsList.length === 0" class="asset-empty">Ничего не найдено</li>
+            </ul>
+          </div>
 
-          <td class="tx-actions">
-            <div class="actions-dropdown" @click.stop="tx.showMenu = !tx.showMenu">
-              ⋮
-            </div>
+          <div class="select-group">
+            <select v-model="selectedPortfolio" class="form-select">
+              <option value="">Все портфели</option>
+              <option v-for="p in portfolios" :key="p.id" :value="p.name">{{ p.name }}</option>
+            </select>
+            <select v-model="selectedType" class="form-select">
+              <option value="">Все типы</option>
+              <option v-for="t in txTypes" :key="t" :value="t">{{ t }}</option>
+            </select>
+          </div>
+          
+          <button @click="resetFilters" class="btn btn-ghost reset-btn" title="Сбросить фильтры">
+             ↺
+          </button>
+        </div>
 
-            <div v-if="tx.showMenu" class="dropdown-menu" @click.stop>
-              <button @click="openEditModal(tx)">✏️ Редактировать</button>
-              <button @click="deleteOne(tx.transaction_id)">🗑 Удалить</button>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p v-if="filteredTransactions.length === 0" class="empty-state">
-      Нет транзакций по заданным фильтрам.
-    </p>
-
-    <!-- SUMMARY -->
-    <div v-else class="summary-card">
-      <div class="summary-total">
-        Итого за период: <span>{{ summary.total.toLocaleString() }}</span>
-      </div>
-      <div class="summary-types">
-        <div
-          v-for="(item, key) in summary.byType"
-          :key="key"
-          class="summary-type-item"
-        >
-          <span class="label">{{ item.label }}</span>
-          <span class="value">{{ item.value.toLocaleString() }}</span>
+        <div class="filters-bottom">
+           <div class="chips-group">
+            <button v-for="p in ['today', 'week', 'month', 'year', 'all']" 
+                    :key="p" 
+                    class="chip" 
+                    :class="{ active: periodPreset === p }"
+                    @click="setPeriodPreset(p); periodPreset = p">
+              {{ {today:'Сегодня', week:'Неделя', month:'Месяц', year:'Год', all:'Всё время'}[p] }}
+            </button>
+            <button class="chip" :class="{ active: periodPreset === 'custom' }" @click="periodPreset = 'custom'">
+              Период...
+            </button>
+          </div>
+          
+           <div v-if="periodPreset === 'custom'" class="date-range">
+            <input type="date" v-model="startDate" class="form-input date-input" />
+            <span class="separator">—</span>
+            <input type="date" v-model="endDate" class="form-input date-input" />
+          </div>
         </div>
       </div>
+
+      <div class="table-container">
+        <table class="transactions-table">
+          <thead>
+            <tr>
+              <th class="w-checkbox">
+                <input type="checkbox" v-model="allSelected" @change="toggleAll" class="custom-checkbox" />
+              </th>
+              <th>Дата</th>
+              <th>Тип</th>
+              <th>Актив</th>
+              <th>Портфель</th>
+              <th class="text-right">Кол-во</th>
+              <th class="text-right">Цена</th>
+              <th class="text-right">Сумма</th>
+              <th class="w-actions"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="tx in filteredTransactions" :key="tx.transaction_id" class="tx-row">
+              <td class="w-checkbox">
+                <input type="checkbox" :value="tx.transaction_id" v-model="selectedTxIds" class="custom-checkbox" />
+              </td>
+              <td class="td-date">{{ formatDate(tx.transaction_date) }}</td>
+              <td>
+                <span :class="['badge', 'badge-' + normalizeType(tx.transaction_type)]">
+                  {{ tx.transaction_type }}
+                </span>
+              </td>
+              <td class="font-medium">{{ tx.asset_name }}</td>
+              <td class="text-secondary">{{ tx.portfolio_name }}</td>
+              <td class="text-right num-font">{{ tx.quantity }}</td>
+              <td class="text-right num-font">{{ tx.price.toLocaleString() }}</td>
+              <td class="text-right num-font font-semibold">
+                {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}
+              </td>
+              <td class="w-actions">
+                 <div class="menu-container" tabindex="0">
+                    <button class="icon-btn">⋯</button>
+                    <div class="dropdown-menu">
+                       <button @click="openEditModal(tx)">✏️ Редактировать</button>
+                       <button @click="deleteOne(tx.transaction_id)" class="text-danger">🗑 Удалить</button>
+                    </div>
+                 </div>
+              </td>
+            </tr>
+            <tr v-if="filteredTransactions.length === 0">
+              <td colspan="9" class="empty-cell">
+                <div class="empty-state">
+                  <span class="empty-icon">🔍</span>
+                  <p>Транзакции не найдены</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <div v-if="filteredTransactions.length > 0" class="card-footer">
+         <div class="summary-block">
+            <span class="summary-label">Оборот за период:</span>
+            <span class="summary-value">{{ summary.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}</span>
+         </div>
+      </div>
     </div>
 
-    <EditTransactionModal
-      :visible="showEditModal"
-      :transaction="currentTransaction"
-      @close="showEditModal = false"
-      @save="handleSaveEdit"
-    />
+    <EditTransactionModal :visible="showEditModal" :transaction="currentTransaction" @close="showEditModal = false" @save="handleSaveEdit" />
   </div>
 </template>
 
 <style scoped>
+/* --- Layout & Typography --- */
 .transactions-page {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 32px 20px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1f2937;
+}
+
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
 }
 
 .page-title {
-  font-size: 1.8rem;
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0;
+  color: #111827;
+}
+
+/* --- Bulk Actions --- */
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fef2f2;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #fee2e2;
+}
+.selected-count {
+  font-size: 13px;
   font-weight: 600;
+  color: #b91c1c;
+}
+.btn-danger-soft {
+  background: #fff;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-danger-soft:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+/* --- Card & Structure --- */
+.card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  border: 1px solid #e5e7eb;
+  overflow: visible; /* allows dropdowns to overflow */
+}
+
+/* --- Toolbar --- */
+.toolbar {
+  padding: 20px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.filters-top {
+  display: flex;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
-/* Фильтры */
-.filters {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: #fff;
-  padding: 10px 0 12px;
+.filters-bottom {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid #eee;
-  margin-bottom: 16px;
-}
-
-.filters-left {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   align-items: center;
 }
 
-select,
-input[type="date"] {
-  padding: 6px 10px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
-}
-
-.asset-search-wrapper {
+/* Inputs */
+.input-wrapper {
   position: relative;
+  flex: 1;
+  max-width: 300px;
 }
-
-/* поле + кнопка очистки */
-.search-input-group {
-  display: flex;
-  align-items: center;
-  position: relative;
-}
-
-.asset-search-input {
-  padding: 6px 30px 6px 10px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  width: 180px;
-}
-
-.clear-search-btn {
+.input-icon {
   position: absolute;
-  right: 1px;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  font-size: 14px;
+}
+.form-input, .form-select {
+  width: 100%;
+  padding: 8px 12px 8px 32px; /* padding left for icon */
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.form-select {
+  padding-left: 12px;
+  cursor: pointer;
+  background-color: #fff;
+}
+.form-input:focus, .form-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
+}
+
+.select-group {
+  display: flex;
+  gap: 12px;
+}
+
+.reset-btn {
+  font-size: 18px;
+  padding: 0 10px;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.reset-btn:hover { background: #f3f4f6; color: #1f2937; }
+.clear-btn {
+  position: absolute;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
   border: none;
-  color: #999;
-  cursor: pointer;
   font-size: 18px;
-  padding: 0 8px;
-  line-height: 1;
-  height: 100%;
-  border-radius: 0 6px 6px 0;
-  transition: color 0.2s;
+  color: #9ca3af;
+  cursor: pointer;
 }
 
-.clear-search-btn:hover {
-  color: #333;
+/* Chips */
+.chips-group {
+  display: flex;
+  gap: 8px;
+}
+.chip {
+  background: #f3f4f6;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  color: #4b5563;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.chip:hover { background: #e5e7eb; }
+.chip.active {
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 500;
+  box-shadow: 0 0 0 1px #bfdbfe;
 }
 
-/* дроп с активами */
+/* Date Range */
+.date-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.date-input {
+  padding-left: 12px;
+  width: auto;
+}
+.separator { color: #9ca3af; }
+
+/* --- Table --- */
+.table-container {
+  overflow-x: auto;
+}
+.transactions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.transactions-table th {
+  text-align: left;
+  padding: 12px 16px;
+  background: #f9fafb;
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  border-bottom: 1px solid #e5e7eb;
+}
+.transactions-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: middle;
+}
+.transactions-table tr:last-child td { border-bottom: none; }
+.transactions-table tr:hover { background: #f9fafb; }
+
+/* Column Specifics */
+.w-checkbox { width: 40px; text-align: center; }
+.w-actions { width: 40px; }
+.text-right { text-align: right; }
+.font-medium { font-weight: 500; color: #111827; }
+.font-semibold { font-weight: 600; color: #111827; }
+.text-secondary { color: #6b7280; font-size: 13px; }
+.td-date { color: #374151; white-space: nowrap; }
+.num-font { font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace; font-size: 13px; letter-spacing: -0.5px; }
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.badge-buy { background: #dcfce7; color: #166534; }
+.badge-sell { background: #fee2e2; color: #991b1b; }
+.badge-dividend { background: #dbeafe; color: #1e40af; }
+.badge-coupon { background: #f3e8ff; color: #6b21a8; }
+.badge-other, .badge-commission, .badge-tax { background: #f3f4f6; color: #4b5563; }
+.badge-deposit { background: #ccfbf1; color: #0f766e; }
+.badge-withdraw { background: #ffedd5; color: #9a3412; }
+
+/* Actions Dropdown */
+.menu-container {
+  position: relative;
+  outline: none;
+}
+.menu-container:focus .dropdown-menu { display: block; }
+.icon-btn {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+}
+.icon-btn:hover { color: #374151; }
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  min-width: 140px;
+  z-index: 50;
+  overflow: hidden;
+}
+.dropdown-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  color: #374151;
+}
+.dropdown-menu button:hover { background: #f3f4f6; }
+.text-danger { color: #ef4444 !important; }
+
+/* Asset Dropdown (Search) */
 .asset-dropdown {
   position: absolute;
   top: 100%;
   left: 0;
-  width: 260px;
+  width: 100%;
   background: white;
-  border: 1px solid #ccc;
-  border-top: none;
-  border-radius: 0 0 6px 6px;
-  max-height: 260px;
-  overflow-y: auto;
-  z-index: 20;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-top: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   list-style: none;
   padding: 0;
-  margin-top: 0;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
+  max-height: 250px;
+  overflow-y: auto;
+  z-index: 50;
 }
-
 .asset-option {
-  padding: 6px 10px;
+  padding: 8px 12px;
   cursor: pointer;
-}
-
-.asset-option:hover {
-  background: #f4f4f4;
-}
-
-.asset-option-main mark {
-  background: #ffeb3b;
-  padding: 0 1px;
-}
-
-.asset-option-meta {
-  font-size: 12px;
-  color: #777;
-}
-
-.asset-option-meta .ticker {
-  font-weight: 500;
-}
-
-.asset-option-meta .price {
-  margin-left: 4px;
-}
-
-.asset-empty {
-  padding: 8px 10px;
-  color: #999;
-}
-
-.recent-label {
-  padding: 6px 10px 4px;
-  font-size: 11px;
-  text-transform: uppercase;
-  color: #999;
-}
-
-.asset-recent-chip {
-  display: inline-block;
-  margin: 0 4px 6px;
-  padding: 4px 8px;
-  font-size: 12px;
-  border-radius: 999px;
-  border: 1px solid #ddd;
-  cursor: pointer;
-  background: #fafafa;
-}
-
-.asset-recent-chip:hover {
-  background: #f0f0f0;
-}
-
-/* быстрые периоды */
-.quick-periods {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.chip {
-  border: 1px solid #ddd;
-  border-radius: 999px;
-  padding: 4px 10px;
-  background: #fafafa;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.chip.active {
-  background: #007bff;
-  color: #fff;
-  border-color: #007bff;
-}
-
-.custom-dates {
-  display: flex;
-  gap: 6px;
-}
-
-/* панель действий */
-.actions-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
 }
-
-.delete-selected-btn,
-.export-btn {
-  padding: 8px 15px;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  font-weight: 500;
-  transition: background-color 0.2s;
-}
-
-.delete-selected-btn {
-  background-color: #dc3545;
-  color: white;
-}
-
-.delete-selected-btn:disabled {
-  background-color: #e9ecef;
-  color: #6c757d;
-  cursor: not-allowed;
-}
-
-.export-btn {
-  background-color: #17a2b8;
-  color: white;
-}
-
-.export-btn:disabled {
-  background-color: #e9ecef;
-  color: #6c757d;
-  cursor: not-allowed;
-}
-
-/* сброс фильтров */
-.reset-filter-btn {
-  padding: 6px 10px;
-  background-color: #f0ad4e;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: background-color 0.2s;
-}
-
-.reset-filter-btn:hover {
-  background-color: #ec971f;
-}
-
-/* таблица */
-.transactions-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.transactions-table th,
-.transactions-table td {
-  border-bottom: 1px solid #eee;
-  padding: 8px 10px;
-  text-align: left;
-  font-size: 14px;
-}
-
-.transactions-table th {
-  background-color: #f5f7fa;
-  font-weight: 600;
-}
-
-/* строки по типу */
-.tx-row.tx-type-buy {
-  background: #e8f5e9;
-}
-
-.tx-row.tx-type-sell {
-  background: #ffebee;
-}
-
-.tx-row.tx-type-dividend,
-.tx-row.tx-type-coupon {
-  background: #e3f2fd;
-}
-
-.tx-row.tx-type-commission,
-.tx-row.tx-type-tax {
-  background: #f9f9f9;
-}
-
-/* действия в строке */
-.row-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.tx-row:hover .row-actions {
-  opacity: 1;
-}
-
-.row-btn {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 2px 4px;
+.asset-option:hover { background: #f9fafb; }
+.meta-ticker {
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 11px;
+  padding: 1px 4px;
   border-radius: 4px;
 }
+.asset-empty { padding: 12px; text-align: center; color: #9ca3af; font-size: 13px; }
 
-.row-btn.edit:hover {
-  background: #e3f2fd;
+/* Footer Summary */
+.card-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #e5e7eb;
+  background: #fafafa;
+  border-radius: 0 0 12px 12px;
 }
-
-.row-btn.delete:hover {
-  background: #ffebee;
-}
-
-/* пустое состояние */
-.empty-state {
-  text-align: center;
-  margin-top: 20px;
-  color: #888;
-}
-
-/* summary */
-.summary-card {
-  margin-top: 16px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: #f8f9fa;
-  border: 1px solid #e2e3e5;
-}
-
-.summary-total {
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.summary-total span {
-  font-weight: 700;
-}
-
-.summary-types {
+.summary-block {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: baseline;
 }
+.summary-label { color: #6b7280; font-size: 14px; }
+.summary-value { font-size: 18px; font-weight: 700; color: #111827; }
 
-.summary-type-item {
-  background: #fff;
-  border-radius: 999px;
-  padding: 4px 10px;
-  border: 1px solid #ddd;
-  font-size: 12px;
+/* Empty State */
+.empty-cell { text-align: center; padding: 40px; }
+.empty-state { color: #9ca3af; }
+.empty-icon { font-size: 32px; display: block; margin-bottom: 8px; opacity: 0.5; }
+
+/* Custom Checkbox */
+.custom-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #2563eb;
 }
-
-.summary-type-item .label {
-  margin-right: 6px;
-  color: #555;
-}
-
-.summary-type-item .value {
-  font-weight: 600;
-}
-
-.tx-badge {
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #fff;
-}
-
-.tx-buy       { background: #2ecc71; } /* зеленый */
-.tx-sell      { background: #e74c3c; } /* красный */
-.tx-dividend  { background: #3498db; }
-.tx-coupon    { background: #9b59b6; }
-.tx-commission{ background: #7f8c8d; }
-.tx-tax       { background: #95a5a6; }
-.tx-deposit   { background: #1abc9c; }
-.tx-withdraw  { background: #e67e22; }
-.tx-other     { background: #bdc3c7; }
-
 </style>
