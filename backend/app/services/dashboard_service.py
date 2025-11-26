@@ -16,8 +16,8 @@ def aggregate_and_sort_history_list(history_list):
         if not date:
             continue
 
-        combined[date]["value"] += int(h.get("value") or 0)
-        combined[date]["invested"] += int(h.get("invested") or 0)
+        combined[date]["value"] += float(h.get("value") or 0)
+        combined[date]["invested"] += float(h.get("invested") or 0)
 
     return [
         {"date": d, "value": round(v["value"], 2), "invested": round(v["invested"], 2)}
