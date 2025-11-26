@@ -10,66 +10,21 @@ import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWi
 import TopAssetsWidget from '../components/widgets/TopAssetsWidget.vue'
 import TopMoversWidget from '../components/widgets/TopMoversWidget.vue'
 import PortfolioProfitWidget from '../components/widgets/PortfolioProfitWidget.vue'
+import PortfolioSelector from '../components/PortfolioSelector.vue'
 
 const user = inject('user')
 const dashboardData = inject('dashboardData')
 const updatePortfolioGoal = inject('updatePortfolioGoal')
 const loading = inject('loading')
 
-// Состояние выбранного портфеля
-const selectedPortfolioId = ref(null)
-
-// Автоматически выбираем первый портфель при загрузке
-watch(dashboardData, () => {
-  if (dashboardData.value?.data?.portfolios?.length) {
-    selectedPortfolioId.value = dashboardData.value.data.portfolios[0].id
-  }
-}, { immediate: true })
+const selectedPortfolioId = inject('globalSelectedPortfolioId')
+const setPortfolioId = inject('setPortfolioId')
 
 const portfolios = computed(() => dashboardData.value?.data?.portfolios ?? [])
 
 const selectedPortfolio = computed(() => {
   return portfolios.value.find(p => p.id === selectedPortfolioId.value) || null
 })
-
-// Обработчики для управления фокусом
-const clickCount = ref(0)
-const clickBlocked = ref(false)
-const portfolioSelect = ref(null)
-
-const handleSelectChange = () => {
-
-  // Сбрасываем счётчик
-  clickCount.value = 0
-  clickBlocked.value = true // Блокируем клики на короткое время
-
-  // Убираем фокус
-  if (portfolioSelect.value) {
-    portfolioSelect.value.blur()
-  }
-
-  // Разблокируем клики через 200 мс
-  setTimeout(() => {
-    clickBlocked.value = false
-  }, 200)
-}
-
-const handleSelectBlur = () => {
-  clickCount.value = 0
-}
-
-const handleSelectClick = () => {
-  if (clickBlocked.value) {
-    return
-  }
-  clickCount.value++
-
-  // Если второй клик — убираем фокус и сбрасываем счётчик
-  if (clickCount.value >= 2) {
-    portfolioSelect.value.blur()
-    clickCount.value = 0
-  }
-}
 
 // Функция для сбора всех id выбранного портфеля и его дочерних
 function collectPortfolioIds(portfolio, allPortfolios) {
@@ -136,32 +91,19 @@ const goalData = computed(() => {
 </script>
 
 <template>
-  <div v-if="!loading">
+  <div v-if="!loading && parsedDashboard">
     <div class="title" style="display: flex; align-items: center; justify-content: space-between;">
       <div>
         <h1>С возвращением, {{ user?.name }}</h1>
         <h2>Главная</h2>
       </div>
-      <!-- Селектор портфеля -->
-      <div class="portfolio-selector">
-        <select 
-          v-model="selectedPortfolioId" 
-          class="portfolio-select"
-          ref="portfolioSelect"
-          @click="handleSelectClick"
-          @change="handleSelectChange"
-          @blur="handleSelectBlur"
-        >
-          <option v-for="p in portfolios" :key="p.id" :value="p.id">
-            {{ p.name }}
-          </option>
-        </select>
-        <div class="select-arrow">▼</div>
-      </div>
-
+      
+      <PortfolioSelector 
+        :portfolios="portfolios"
+        :modelValue="selectedPortfolioId"
+        @update:modelValue="setPortfolioId"
+      />
     </div>
-
-    
 
     <div class="widgets-grid">
       <TotalCapitalWidget 
@@ -170,7 +112,7 @@ const goalData = computed(() => {
       />
       <PortfolioProfitWidget 
         :total-amount="parsedDashboard.totalAmount" 
-        :total-profit="selectedPortfolio.analytics.total_profit" 
+        :total-profit="selectedPortfolio.analytics?.total_profit || 0" 
         :monthly-change="0" 
       />
       <GoalProgressWidget 
@@ -180,19 +122,18 @@ const goalData = computed(() => {
       <AssetAllocationWidget :assetAllocation="parsedDashboard.assetAllocation" />
       <TopMoversWidget
         title="Топ роста за день"
-        :assets="selectedPortfolio.combined_assets"
+        :assets="selectedPortfolio.combined_assets || []"
         direction="up"
       />
       <TopMoversWidget
         title="Топ падений за день"
-        :assets="selectedPortfolio.combined_assets"
+        :assets="selectedPortfolio.combined_assets || []"
         direction="down"
       />
       <RecentTransactionsWidget :transactions="parsedDashboard.transactions" />
 
       <PortfolioChartWidget :chartData="parsedDashboard.portfolioChart" />
       <TopAssetsWidget :assets="parsedDashboard.assets" />
-      
     </div>
   </div>
 

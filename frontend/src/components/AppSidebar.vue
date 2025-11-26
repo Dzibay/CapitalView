@@ -63,6 +63,7 @@ const menuItems = ref([
   { name: 'Дашборд', link: '/dashboard', icon: icons.dashboard, active: true, submenuOpen: false },
   { name: 'Аналитика', link: '/analitics', icon: icons.category, active: false, submenuOpen: false, submenu: [ { name: 'UI Face', href: '#' }, { name: 'Pigments', href: '#' }, { name: 'Box Icons', href: '#' } ] },
   { name: 'Активы', link: '/assets', icon: icons.posts, active: false, submenuOpen: false },
+  { name: 'Дивиденды', link: '/dividends', icon: icons.posts, active: false, submenuOpen: false },
   // { name: 'Отчеты', icon: icons.analytics, active: false, submenuOpen: false },
   // { name: 'Вложения', icon: icons.chart, active: false, submenuOpen: false },
   { name: 'Операции', link: '/transactions', icon: icons.plugins, active: false, submenuOpen: false, submenu: [ { name: 'UI Face', href: '#' }, { name: 'Pigments', href: '#' }, { name: 'Box Icons', href: '#' } ] },

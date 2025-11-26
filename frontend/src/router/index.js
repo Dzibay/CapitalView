@@ -6,6 +6,7 @@ import Dashboard from '../views/Dashboard.vue';
 import Assets from '../views/Assets.vue'
 import Transactions from '../views/Transactions.vue';
 import Analitics from '../views/Analitics.vue';
+import Dividends from '../views/Dividends.vue';
 
 const routes = [
   { path: '/', component: Home },
@@ -17,7 +18,8 @@ const routes = [
       { path: '/dashboard', component: Dashboard },
       { path: '/analitics', component: Analitics },
       { path: '/assets', component: Assets },
-      { path: '/transactions', component: Transactions}
+      { path: '/transactions', component: Transactions},
+      { path: '/dividends', component: Dividends}
     ]
   }
 ]

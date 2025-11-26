@@ -3,6 +3,7 @@ import aiohttp
 from app.services.supabase_service import table_select, table_insert, table_update
 from datetime import datetime
 from tqdm.asyncio import tqdm_asyncio
+from datetime import date, datetime
 
 MOEX_DIVIDENDS_URL = "https://iss.moex.com/iss/securities/{ticker}/dividends.json"
 MOEX_BONDIZATION_URL = "https://iss.moex.com/iss/securities/{ticker}/bondization.json"
@@ -25,7 +26,21 @@ async def fetch_json(session, url):
         print(f"❌ Ошибка при запросе {url}: {e}")
         return None
 
-
+def normalize_date(d):
+    """Превращает строку или datetime в объект date для корректного сравнения"""
+    if not d:
+        return None
+    if isinstance(d, date) and not isinstance(d, datetime):
+        return d
+    if isinstance(d, datetime):
+        return d.date()
+    if isinstance(d, str):
+        try:
+            # Отрезаем время, если оно есть (2023-01-01T00:00:00 -> 2023-01-01)
+            return datetime.fromisoformat(d.split('T')[0]).date()
+        except ValueError:
+            return None
+    return None
 # ===================================================
 # 📊 ПОЛУЧЕНИЕ ДАННЫХ С MOEX
 # ===================================================
@@ -127,29 +142,52 @@ async def update_asset_payouts(session, asset):
     if not payouts:
         return
 
+    # --- Получаем существующие записи ---
     existing = await asyncio.to_thread(table_select, "asset_payouts", filters={"asset_id": asset_id})
-    existing_keys = {(str(i["record_date"]), round(float(i["value"] or 0), 2)) for i in existing}
+    
+    # Формируем множество ключей: (Дата, Сумма, Тип)
+    # Используем normalize_date для надежности
+    existing_keys = set()
+    for i in existing:
+        d = normalize_date(i.get("record_date"))
+        val = round(float(i.get("value") or 0), 2)
+        p_type = i.get("type")
+        if d:
+            existing_keys.add((d, val, p_type))
 
+    # --- Фильтрация и вставка ---
     for p in payouts:
         if not p["record_date"] or not p["value"]:
             continue
 
-        key = (str(p["record_date"]), round(float(p["value"]), 2))
+        p_date = normalize_date(p["record_date"])
+        if not p_date: 
+            continue
+            
+        p_val = round(float(p["value"]), 2)
+        p_type = p["type"]
+
+        # Ключ для проверки
+        key = (p_date, p_val, p_type)
+
         if key in existing_keys:
             continue
 
         payout_data = {
             "asset_id": asset_id,
             "value": p["value"],
-            "record_date": p["record_date"],
+            "record_date": p_date.isoformat(), # Сохраняем в строгом формате YYYY-MM-DD
             "payment_date": p.get("payment_date"),
             "declared_date": None,
-            "type": p["type"]
+            "type": p_type
         }
 
         try:
+            # Благодаря SQL constraint, даже если проверка выше пропустит дубль,
+            # база данных выбросит исключение, которое мы ловим здесь.
             await asyncio.to_thread(table_insert, "asset_payouts", payout_data)
-        except:
+        except Exception as e:
+            # print(f"Дубликат или ошибка вставки для {ticker}: {e}")
             pass
 
     # --- Обновляем свойства облигации ---
@@ -173,9 +211,6 @@ async def update_all_moex_assets():
 
     if not moex_assets:
         return
-
-    # Запускаем запросы в виде корутин
-    tasks = [update_asset_payouts(session=None, asset=a) for a in moex_assets]
 
     # tqdm_asyncio.gather — полноценный асинхронный прогресс-бар
     async with aiohttp.ClientSession() as session:

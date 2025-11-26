@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, provide } from 'vue'
+import { ref, onMounted, provide, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { authService } from '../services/authService.js'
 import { fetchDashboardData } from '../services/dashboardService.js'
@@ -280,6 +280,31 @@ onMounted(async () => {
   }
 })
 
+
+// === Управление выбранным портфелем ===
+// 1. Пытаемся считать из localStorage сохраненный ID
+const storedPortfolioId = localStorage.getItem('selectedPortfolioId')
+const globalSelectedPortfolioId = ref(storedPortfolioId ? Number(storedPortfolioId) : null)
+
+// 2. Функция для обновления выбора
+const setPortfolioId = (id) => {
+  globalSelectedPortfolioId.value = id
+  localStorage.setItem('selectedPortfolioId', id)
+}
+
+// 3. Следим за данными: если выбранного портфеля нет (или он удален), выбираем первый доступный
+watch(() => dashboardData.value, (newData) => {
+  const portfolios = newData?.data?.portfolios || []
+  if (portfolios.length > 0) {
+    // Если ничего не выбрано ИЛИ выбранный ID не найден в списке (например, был удален)
+    const exists = portfolios.find(p => p.id === globalSelectedPortfolioId.value)
+    if (!globalSelectedPortfolioId.value || !exists) {
+      setPortfolioId(portfolios[0].id)
+    }
+  }
+}, { immediate: true })
+
+
 // 👇 передаём всё дочерним страницам
 provide('user', user)
 provide('dashboardData', dashboardData)
@@ -299,8 +324,11 @@ provide('updatePortfolioGoal', updatePortfolioGoal)
 provide("preloadTransactions", preloadTransactions)
 provide('loadAnalytics', loadAnalytics)
 
-const isSidebarCollapsed = ref(false)
+provide('globalSelectedPortfolioId', globalSelectedPortfolioId)
+provide('setPortfolioId', setPortfolioId)
 
+
+const isSidebarCollapsed = ref(false)
 function toggleSidebar() {
   isSidebarCollapsed.value = !isSidebarCollapsed.value
 }
