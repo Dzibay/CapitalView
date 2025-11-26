@@ -13,6 +13,7 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh" \
 "cm9sZSIsImlhdCI6MTc1OTM1Njg3NywiZXhwIjoyMDc0OTMyODc3fQ.bHnjP5uD5wLIk" \
 "iRaaX60MdaCdEW5EK82ayWxYqxf0CY"
 
+
 supabase: SupabaseClient = create_client(SUPABASE_URL, SUPABASE_KEY)
 bcrypt = Bcrypt()
 

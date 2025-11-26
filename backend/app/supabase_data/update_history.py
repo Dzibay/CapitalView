@@ -8,7 +8,6 @@ from tqdm.asyncio import tqdm_asyncio
 
 from app.services import supabase_service
 from app.supabase_data.moex_utils import get_price_moex_history, get_price_moex
-from app.services.supabase_service import refresh_materialized_view
 
 # -----------------------------
 # ПАРАЛЛЕЛИЗМ
@@ -28,6 +27,9 @@ async def db_select(*args, **kwargs):
 async def db_insert(*args, **kwargs):
     return await asyncio.to_thread(supabase_service.table_insert, *args, **kwargs)
 
+async def db_upsert(*args, **kwargs):
+    return await asyncio.to_thread(supabase_service.table_upsert, *args, **kwargs)
+
 async def db_update(*args, **kwargs):
     return await asyncio.to_thread(supabase_service.table_update, *args, **kwargs)
 
@@ -35,7 +37,10 @@ async def db_delete(*args, **kwargs):
     return await asyncio.to_thread(supabase_service.table_delete, *args, **kwargs)
 
 async def db_refresh_view(name: str):
-    return await asyncio.to_thread(refresh_materialized_view, name)
+    return await asyncio.to_thread(supabase_service.refresh_materialized_view, name)
+
+async def db_rpc(*args, **kwargs):
+    return await asyncio.to_thread(supabase_service.rpc, *args, **kwargs)
 
 
 # ======================================================
@@ -124,7 +129,7 @@ async def update_history_prices():
 
     # Обновление материализованных view разом
     await db_refresh_view("asset_latest_prices_full")
-    await db_refresh_view("portfolio_daily_values")
+    await db_rpc('trigger_refresh_async', {})
 
     print(f"✅ История обновлена. Активов: {ok}/{len(assets)}")
     return ok
@@ -215,15 +220,14 @@ async def update_today_prices():
         results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Сегодня")
 
     # фильтруем None и ошибки
-    for r in results:
-        if isinstance(r, dict):
-            updates_batch.append(r)
+    updates_batch = [r for r in results if isinstance(r, dict)]
+    # получаем список изменившихся активов
+    updated_ids = list({row["asset_id"] for row in updates_batch})
 
     # пачечная вставка
     if updates_batch:
-        # группируем по 200
         pack = []
-        tasks = []
+
         for row in updates_batch:
             pack.append({
                 "asset_id": row["asset_id"],
@@ -231,17 +235,20 @@ async def update_today_prices():
                 "trade_date": row["trade_date"]
             })
             if len(pack) == 200:
-                tasks.append(db_insert("asset_prices", pack.copy()))
+                # 👇 ВАЖНО: вставляем последовательно
+                await db_rpc("upsert_asset_prices", {"p_prices": pack})
                 pack.clear()
 
         if pack:
-            tasks.append(db_insert("asset_prices", pack))
-
-        await asyncio.gather(*tasks)
+            await db_rpc("upsert_asset_prices", {"p_prices": pack})
 
     # обновление view
     await db_refresh_view("asset_latest_prices_full")
-    await db_refresh_view("portfolio_daily_values")
+    # получаем всех владельцев изменившихся активов
+    owners = await db_rpc("get_users_by_assets", {"asset_ids": updated_ids})
+    for row in owners:
+        await db_rpc("refresh_daily_data_for_user", {"p_user_id": row["user_id"]})
+
 
     print("✅ Сегодняшние цены обновлены.")
 

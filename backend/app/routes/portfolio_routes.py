@@ -176,9 +176,8 @@ async def import_broker_route():
         else:
             supabase.table("user_broker_connections").insert(conn_data).execute()
 
-        # Обновляем вьюхи
-        refresh_materialized_view('portfolio_daily_positions')
-        refresh_materialized_view('portfolio_daily_values')
+        # Обновляем данные
+        rpc('refresh_daily_data_for_user', {'p_user_id': user_id})
 
         print(f"✅ Импорт брокера {broker_id} завершён успешно")
 
