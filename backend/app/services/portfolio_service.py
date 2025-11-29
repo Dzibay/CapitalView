@@ -1,7 +1,6 @@
 import asyncio
 from app.services.supabase_service import rpc, table_select, table_insert, table_update, table_delete
 from app.services.user_service import get_user_by_email
-from app import supabase
 from concurrent.futures import ThreadPoolExecutor
 from time import time
 import json
@@ -113,37 +112,52 @@ async def clear_portfolio(portfolio_id: int, delete_self: bool = False):
         asset_ids = [pa["asset_id"] for pa in portfolio_assets] if portfolio_assets else []
 
         # --- Удаляем все транзакции для этих portfolio_asset_id ---
-        for pa in portfolio_assets or []:
-            await asyncio.to_thread(table_delete, "transactions", {"portfolio_asset_id": pa["id"]})
-
-        # --- Удаляем связи portfolio_assets ---
-        await asyncio.to_thread(table_delete, "portfolio_assets", {"portfolio_id": portfolio_id})
+        if portfolio_assets:
+            pa_ids = [pa["id"] for pa in portfolio_assets]
+            await asyncio.to_thread(table_delete, "transactions", in_filters={"portfolio_asset_id": pa_ids})
 
         # --- Теперь можно удалить кастомные активы, если они больше нигде не используются ---
-        for asset_id in asset_ids:
-            asset_info = await asyncio.to_thread(
-                table_select, "assets", select="asset_type_id", filters={"id": asset_id}
+        if asset_ids:
+            # Батч-запрос для получения информации об активах
+            assets_info = await asyncio.to_thread(
+                table_select, "assets", select="id, asset_type_id", in_filters={"id": asset_ids}
             )
-            if not asset_info:
-                continue
+            
+            if assets_info:
+                # Получаем уникальные типы активов
+                asset_type_ids = list(set(a["asset_type_id"] for a in assets_info if a.get("asset_type_id")))
+                
+                # Батч-запрос для проверки кастомных типов
+                asset_types = await asyncio.to_thread(
+                    table_select, "asset_types", select="id, is_custom", in_filters={"id": asset_type_ids}
+                ) if asset_type_ids else []
+                
+                custom_type_ids = {at["id"] for at in asset_types if at.get("is_custom")}
+                
+                # Находим кастомные активы
+                custom_asset_ids = [
+                    a["id"] for a in assets_info 
+                    if a.get("asset_type_id") in custom_type_ids
+                ]
+                
+                if custom_asset_ids:
+                    # Проверяем использование кастомных активов в других портфелях (батч)
+                    from app.services.supabase_service import table_select_with_neq
+                    used_elsewhere = await asyncio.to_thread(
+                        table_select_with_neq, "portfolio_assets",
+                        select="asset_id",
+                        in_filters={"asset_id": custom_asset_ids},
+                        neq_filters={"portfolio_id": portfolio_id}
+                    )
+                    used_asset_ids = {pa["asset_id"] for pa in used_elsewhere if pa.get("asset_id")}
+                    
+                    # Удаляем только те, что не используются в других портфелях
+                    unused_asset_ids = [aid for aid in custom_asset_ids if aid not in used_asset_ids]
+                    if unused_asset_ids:
+                        await asyncio.to_thread(table_delete, "asset_prices", in_filters={"asset_id": unused_asset_ids})
+                        await asyncio.to_thread(table_delete, "assets", in_filters={"id": unused_asset_ids})
 
-            asset_type_id = asset_info[0]["asset_type_id"]
-            asset_type = await asyncio.to_thread(
-                table_select, "asset_types", select="is_custom", filters={"id": asset_type_id}
-            )
-
-            if asset_type and asset_type[0].get("is_custom"):
-                used_elsewhere = supabase.table("portfolio_assets") \
-                    .select("id") \
-                    .neq("portfolio_id", portfolio_id) \
-                    .eq("asset_id", asset_id) \
-                    .execute()
-
-                if not used_elsewhere.data:
-                    await asyncio.to_thread(table_delete, "asset_prices", {"asset_id": asset_id})
-                    await asyncio.to_thread(table_delete, "assets", {"id": asset_id})
-
-        # 5️⃣ Удаляем связи portfolio_assets
+        # --- Удаляем связи portfolio_assets ---
         await asyncio.to_thread(table_delete, "portfolio_assets", {"portfolio_id": portfolio_id})
 
         # 6️⃣ Удаляем сам портфель (только если delete_self=True)

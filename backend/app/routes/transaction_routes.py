@@ -63,7 +63,7 @@ def add_transaction_route():
 
     # --- 4️⃣ Обновляем расчёты по портфельному активу ---
     rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
-    rpc('efresh_daily_data_for_user', {'p_user_id': user_id})
+    rpc('refresh_daily_data_for_user', {'p_user_id': user_id})
 
     return jsonify({"success": True, "transaction": res_transaction[0]}), 201
 
@@ -72,7 +72,7 @@ def add_transaction_route():
 def delete_transactions_route():
     """Удаление нескольких транзакций и обновление связанных активов."""
     email = get_jwt_identity()
-    user_id = get_user_by_email(email)
+    user_id = get_user_by_email(email)["id"]
     payload = request.get_json()
     ids = payload.get("ids", [])
     print(ids)
@@ -116,7 +116,7 @@ def delete_transactions_route():
 def update_transaction_route():
     """Обновление данных транзакции по ID."""
     email = get_jwt_identity()
-    user_id = get_user_by_email(email)
+    user_id = get_user_by_email(email)["id"]
     payload = request.get_json()
     print(payload)
     

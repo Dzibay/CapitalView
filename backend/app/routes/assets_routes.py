@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.services.supabase_service import *
+from app.services.supabase_service import rpc
 from app.services.user_service import get_user_by_email
 from app.services.assets_service import delete_asset, create_asset, add_asset_price
 

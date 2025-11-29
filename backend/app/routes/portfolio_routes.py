@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 import asyncio
-from app.services.supabase_service import *
+from app.services.supabase_service import table_select, table_insert, rpc
 from app.services.portfolio_service import (
     get_user_portfolios,
     get_portfolio_assets,
@@ -133,10 +133,10 @@ async def import_broker_route():
                 "name": portfolio_name or f"Портфель {broker_id}",
                 "description": f"Импорт из брокера {broker_id} — {datetime.utcnow().isoformat()}",
             }
-            res = supabase.table("portfolios").insert(new_portfolio).execute()
-            if not res.data:
+            res = table_insert("portfolios", new_portfolio)
+            if not res:
                 return jsonify({"success": False, "error": "Ошибка при создании портфеля"}), 500
-            portfolio_id = res.data[0]["id"]
+            portfolio_id = res[0]["id"]
             print(f"✅ Создан новый родительский портфель id={portfolio_id}")
         else:
             print(f"🔁 Синхронизация существующего портфеля id={portfolio_id}")
@@ -155,26 +155,8 @@ async def import_broker_route():
         result = await import_broker_portfolio(user_email, portfolio_id, broker_data)
 
         # === 5️⃣ Обновляем user_broker_connections ===
-        conn_data = {
-            "user_id": user_id,
-            "broker_id": broker_id,
-            "portfolio_id": portfolio_id,
-            "api_key": token,
-            "last_sync_at": datetime.utcnow().isoformat(),
-        }
-
-        existing_conn = table_select(
-            "user_broker_connections",
-            "*",
-            {"user_id": user_id, "broker_id": broker_id, "portfolio_id": portfolio_id}
-        )
-        if existing_conn:
-            supabase.table("user_broker_connections") \
-                .update(conn_data) \
-                .eq("id", existing_conn[0]["id"]) \
-                .execute()
-        else:
-            supabase.table("user_broker_connections").insert(conn_data).execute()
+        from app.services.broker_connections_service import upsert_broker_connection
+        upsert_broker_connection(user_id, broker_id, portfolio_id, token)
 
         # Обновляем данные
         rpc('refresh_daily_data_for_user', {'p_user_id': user_id})

@@ -49,6 +49,27 @@ def table_delete(table: str, filters: dict = None, neq_filters: dict = None, in_
 
     return q.execute().data
 
+def table_select_with_neq(table: str, select: str = "*", filters: dict = None, neq_filters: dict = None, in_filters: dict = None):
+    """
+    Выполняет SELECT с поддержкой neq (not equal) фильтров.
+    Используется для проверки использования активов в других портфелях.
+    """
+    q = supabase.table(table).select(select)
+    
+    if filters:
+        for k, v in filters.items():
+            q = q.eq(k, v)
+    
+    if neq_filters:
+        for k, v in neq_filters.items():
+            q = q.neq(k, v)
+    
+    if in_filters:
+        for k, v in in_filters.items():
+            q = q.in_(k, v)
+    
+    return q.execute().data
+
 def refresh_materialized_view(view_name: str, concurrently: bool = False):
     """
     Обновляет материализованное представление в базе данных Supabase.

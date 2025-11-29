@@ -1,4 +1,6 @@
-from app.services.supabase_service import *
+from app.services.supabase_service import (
+    table_select, table_insert, table_delete, rpc, refresh_materialized_view
+)
 from app.services.user_service import get_user_by_email
 from datetime import datetime
 

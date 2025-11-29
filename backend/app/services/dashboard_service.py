@@ -1,15 +1,12 @@
 from collections import defaultdict
+from time import time
 from app.services.portfolio_service import get_user_portfolios_with_assets_and_history
 from app.services.reference_service import get_reference_data_cached
 from app.services.transactions_service import get_transactions
 from app.services.user_service import get_user_by_email
-from app.services.supabase_service import table_select
-from collections import defaultdict
-from time import time
+from app.services.broker_connections_service import get_user_portfolio_connections
 
 def aggregate_and_sort_history_list(history_list):
-    for i in history_list:
-        print(i)
     """Агрегирует историю по датам: стоимость + инвестиции, и сортирует"""
     combined = defaultdict(lambda: {"value": 0.0, "invested": 0.0, "payouts": 0.0, "pnl": 0.0})
 
@@ -212,30 +209,6 @@ def calculate_monthly_change(history):
         return history[0]['value']
     else:
         return 0
-
-
-def get_user_portfolio_connections(user_id):
-    """
-    Возвращает dict: { portfolio_id: {'broker_id': ..., 'api_key': ...} }
-    Берём самую свежую запись по last_sync_at для каждого портфеля.
-    """
-    rows = table_select(
-        "user_broker_connections",
-        select="portfolio_id, broker_id, api_key, last_sync_at",
-        filters={"user_id": user_id},
-        order={"column": "last_sync_at", "desc": True},
-        limit=1000
-    ) or []  # table_select из supabase_service.py
-    # rows уже отсортированы по last_sync_at DESC — первое попадание и есть самое свежее
-    by_portfolio = {}
-    for r in rows:
-        pid = r.get("portfolio_id")
-        if pid and pid not in by_portfolio:
-            by_portfolio[pid] = {
-                "broker_id": r.get("broker_id"),
-                "api_key": r.get("api_key"),
-            }
-    return by_portfolio
 
 
 async def get_dashboard_data(user_email: str):
