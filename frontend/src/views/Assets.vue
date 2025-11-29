@@ -1,17 +1,14 @@
 <script setup>
-import { ref, inject, computed, onMounted, watch } from "vue";
+import { ref, inject, computed } from "vue";
 import AddAssetModal from "../components/modals/AddAssetModal.vue";
 import AddTransactionModal from "../components/modals/AddTransactionModal.vue";
 import AddPriceModal from "../components/modals/AddPriceModal.vue";
 import ImportPortfolioModal from "../components/modals/ImportPortfolioModal.vue";
 import AddPortfolioModal from "../components/modals/AddPortfolioModal.vue";
-import PortfolioTree from '../components/PortfolioTree.vue'
-
-const showAddModal = ref(false);
-const showAddPortfolioModal = ref(false);
-const showAddTransactionModal = ref(false);
-const showAddPriceModal = ref(false);
-const showImportModal = ref(false);
+import PortfolioTree from '../components/PortfolioTree.vue';
+import { useExpandedState } from '../composables/useExpandedState';
+import { useModals } from '../composables/useModal';
+import { usePortfolio } from '../composables/usePortfolio';
 
 const selectedAsset = ref(null);
 const activeAssetMenu = ref(null);
@@ -19,58 +16,39 @@ const activePortfolioMenu = ref(null);
 
 const loading = inject("loading");
 const dashboardData = inject("dashboardData");
-const reloadDashboard = inject('reloadDashboard')
+const reloadDashboard = inject('reloadDashboard');
 const addAsset = inject("addAsset");
 const removeAsset = inject("removeAsset");
-const deletePortfolio = inject("deletePortfolio")
+const deletePortfolio = inject("deletePortfolio");
 const clearPortfolio = inject("clearPortfolio");
 const addPortfolio = inject("addPortfolio");
-const addTransaction = inject("addTransaction")
+const addTransaction = inject("addTransaction");
 const addPrice = inject('addPrice');
 const importPortfolio = inject("importPortfolio");
 
+// Используем композабл для управления раскрытыми портфелями
+const { expanded: expandedPortfolios, toggle: togglePortfolio } = useExpandedState('expandedPortfolios');
 
-// === localStorage для раскрытых портфелей ===
-const STORAGE_KEY = 'expandedPortfolios';
-const expandedPortfolios = ref([]);
-onMounted(() => {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) expandedPortfolios.value = JSON.parse(saved);
-});
-
-// Автоматическое сохранение при изменении
-watch(expandedPortfolios, (val) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(val));
-}, { deep: true });
+// Используем композабл для управления модалками
+const { modals, open: openModal, close: closeModal } = useModals([
+  'addAsset',
+  'addPortfolio',
+  'addTransaction',
+  'addPrice',
+  'import'
+]);
 
 
-/* === 1️⃣ Построение иерархического дерева портфелей === */
-function buildPortfolioTree(portfolios) {
-  const map = {};
-  const roots = [];
+// Используем композабл для работы с портфелями
+const { portfolios: portfolioList, buildPortfolioTree } = usePortfolio(dashboardData, null);
 
-  portfolios.forEach((p) => {
-    map[p.id] = { ...p, children: [] };
-  });
-
-  portfolios.forEach((p) => {
-    if (p.parent_portfolio_id && map[p.parent_portfolio_id]) {
-      map[p.parent_portfolio_id].children.push(map[p.id]);
-    } else {
-      roots.push(map[p.id]);
-    }
-  });
-
-  return roots;
-}
-
-/* === 2️⃣ Парсинг данных === */
+/* === Парсинг данных === */
 const parsedDashboard = computed(() => {
   const data = dashboardData.value?.data;
   if (!data) return { portfolios: [], reference: [] };
 
   const portfolios = data.portfolios ?? [];
-  const portfolioTree = buildPortfolioTree(data.portfolios ?? []);
+  const portfolioTree = buildPortfolioTree(portfolios);
   return {
     portfolios,
     portfolioTree,
@@ -102,19 +80,11 @@ const refreshPortfolios = async () => {
 });
 
   // Ждем завершения всех промисов
-  console.log(updatingPortfolios.value)
   await Promise.all(importPromises);
-
   await reloadDashboard();
-  console.log("Обновление портфелей завершено");
 };
 
-/* === 3️⃣ Поведение меню и раскрытия === */
-const togglePortfolio = (id) => {
-  if (expandedPortfolios.value.includes(id))
-    expandedPortfolios.value = expandedPortfolios.value.filter((i) => i !== id);
-  else expandedPortfolios.value.push(id);
-};
+// togglePortfolio уже определен в useExpandedState
 
 const toggleAssetMenu = (id) => {
   activeAssetMenu.value = activeAssetMenu.value === id ? null : id;
@@ -134,14 +104,14 @@ const togglePortfolioMenu = (id) => {
       <div class="action-bar">
         <h1 class="page-title">Мои Активы</h1>
         <div class="buttons-group">
-          <button class="btn btn-primary" @click="showAddModal = true">
+          <button class="btn btn-primary" @click="openModal('addAsset')">
             <span class="icon">➕</span> Актив
           </button>
-          <button class="btn btn-secondary" @click="showAddPortfolioModal = true">
+          <button class="btn btn-secondary" @click="openModal('addPortfolio')">
             <span class="icon">📁</span> Портфель
           </button>
           <div class="divider-vertical"></div>
-          <button class="btn btn-outline" @click="showImportModal = true">
+          <button class="btn btn-outline" @click="openModal('import')">
             📥 Импорт
           </button>
           <button class="btn btn-ghost" @click="refreshPortfolios" title="Обновить портфели">
@@ -150,11 +120,11 @@ const togglePortfolioMenu = (id) => {
         </div>
       </div>
 
-      <AddAssetModal v-if="showAddModal" @close="showAddModal = false" :onSave="addAsset" :referenceData="parsedDashboard.reference" :portfolios="parsedDashboard.portfolios"/>
-      <AddPortfolioModal v-if="showAddPortfolioModal" @close="showAddPortfolioModal = false" :onSave="addPortfolio" :portfolios="parsedDashboard.portfolios"/>
-      <AddTransactionModal v-if="showAddTransactionModal" :asset="selectedAsset" :onSubmit="addTransaction" @close="showAddTransactionModal = false"/>
-      <AddPriceModal v-if="showAddPriceModal" :asset="selectedAsset" :onSubmit="addPrice" @close="showAddPriceModal = false"/>
-      <ImportPortfolioModal v-if="showImportModal" @close="showImportModal = false" :onImport="importPortfolio" :portfolios="parsedDashboard.portfolios"/>
+      <AddAssetModal v-if="modals.addAsset" @close="closeModal('addAsset')" :onSave="addAsset" :referenceData="parsedDashboard.reference" :portfolios="parsedDashboard.portfolios"/>
+      <AddPortfolioModal v-if="modals.addPortfolio" @close="closeModal('addPortfolio')" :onSave="addPortfolio" :portfolios="parsedDashboard.portfolios"/>
+      <AddTransactionModal v-if="modals.addTransaction" :asset="selectedAsset" :onSubmit="addTransaction" @close="closeModal('addTransaction')"/>
+      <AddPriceModal v-if="modals.addPrice" :asset="selectedAsset" :onSubmit="addPrice" @close="closeModal('addPrice')"/>
+      <ImportPortfolioModal v-if="modals.import" @close="closeModal('import')" :onImport="importPortfolio" :portfolios="parsedDashboard.portfolios"/>
 
       <div v-if="loading" class="status-block">
         <div class="loader"></div>
@@ -165,7 +135,7 @@ const togglePortfolioMenu = (id) => {
         <div class="empty-icon">📂</div>
         <h3>У вас пока нет портфелей</h3>
         <p>Создайте первый портфель, чтобы начать отслеживать активы</p>
-        <button class="btn btn-primary" @click="showAddPortfolioModal = true">Создать портфель</button>
+        <button class="btn btn-primary" @click="openModal('addPortfolio')">Создать портфель</button>
       </div>
 
       <div v-else class="tree-wrapper">
@@ -180,8 +150,8 @@ const togglePortfolioMenu = (id) => {
           @removeAsset="removeAsset"
           @clearPortfolio="clearPortfolio"
           @deletePortfolio="deletePortfolio"
-          @addTransaction="(asset) => { selectedAsset = asset; showAddTransactionModal = true }"
-          @addPrice="(asset) => { selectedAsset = asset; showAddPriceModal = true }"
+          @addTransaction="(asset) => { selectedAsset = asset; openModal('addTransaction') }"
+          @addPrice="(asset) => { selectedAsset = asset; openModal('addPrice') }"
           :updatingPortfolios="updatingPortfolios"
         />
       </div>

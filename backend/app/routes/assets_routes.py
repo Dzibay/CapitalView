@@ -13,7 +13,7 @@ def create_asset_route():
     data = request.get_json()
     res = create_asset(email, data)
 
-    user_id = get_user_by_email(email)
+    user_id = get_user_by_email(email)["id"]
     rpc('refresh_daily_data_for_user', {'p_user_id': user_id})
     return jsonify(res)
     
@@ -23,7 +23,7 @@ def delete_asset_route(asset_id):
     email = get_jwt_identity()
     res = delete_asset(asset_id)
 
-    user_id = get_user_by_email(email)
+    user_id = get_user_by_email(email)["id"]
     rpc('refresh_daily_data_for_user', {'p_user_id': user_id})
     return jsonify(res)
 
@@ -33,7 +33,8 @@ def add_asset_price_route():
     email = get_jwt_identity()
     data = request.get_json()
     res = add_asset_price(data)
+    print(res)
 
-    user_id = get_user_by_email(email)
+    user_id = get_user_by_email(email)["id"]
     rpc('refresh_daily_data_for_user', {'p_user_id': user_id})
     return jsonify(res)

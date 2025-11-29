@@ -9,6 +9,7 @@ dashboard_bp = Blueprint("dashboard", __name__)
 @dashboard_bp.route("/", methods=["GET"])
 @jwt_required()
 async def dashboard():
+    print('Запрос на дашборд получен')
     email = get_jwt_identity()
     start = time.time()
     data = await get_dashboard_data(email)

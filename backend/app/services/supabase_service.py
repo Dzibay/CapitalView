@@ -3,7 +3,7 @@ from app import supabase
 def rpc(fn_name: str, params: dict):
     return supabase.rpc(fn_name, params).execute().data
 
-def table_select(table: str, select="*", filters: dict = None, in_filters: dict = None, order=None, limit=10000, offset=None):
+def table_select(table: str, select="*", filters: dict = None, in_filters: dict = None, neq_filters: dict = None, order=None, limit=10000, offset=None):
     q = supabase.table(table).select(select)
     
     if filters:
@@ -12,8 +12,12 @@ def table_select(table: str, select="*", filters: dict = None, in_filters: dict 
     
     if in_filters:
         for k, v in in_filters.items():
-            q = q.in_(k, v)  # <- здесь можно передавать список
+            q = q.in_(k, v)
     
+    if neq_filters:
+        for k, v in neq_filters.items():
+            q = q.neq(k, v)
+
     if order:
         q = q.order(order['column'], desc=order.get('desc', False))
     
@@ -23,7 +27,7 @@ def table_select(table: str, select="*", filters: dict = None, in_filters: dict 
     
     return q.execute().data
 
-def table_insert(table: str, data: dict):
+def table_insert(table: str, data):
     return supabase.table(table).insert(data).execute().data
 
 def table_update(table: str, data: dict, filters: dict):

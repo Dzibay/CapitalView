@@ -80,113 +80,190 @@ async def get_user_portfolio_parent(user_email: str):
             return portfolio
     return None
 
-async def clear_portfolio(portfolio_id: int, delete_self: bool = False):
+async def clear_portfolio(user_id: int, portfolio_id: int, delete_self: bool = False, is_child: bool = False):
     """
-    Очищает портфель и все его дочерние:
-    - удаляет транзакции, активы, связи брокеров;
-    - удаляет дочерние портфели;
-    - если delete_self=True — удаляет и сам портфель.
+    Полностью очищает портфель в строгом правильном порядке:
+
+        1. Удаляет дочерние портфели (последовательно!)
+        2. Удаляет cash_operations
+        3. Удаляет user_broker_connections
+        4. Получает portfolio_assets
+        5. Удаляет ВСЕ transactions для portfolio_assets
+        6. Удаляет portfolio_assets
+        7. Удаляет кастомные assets (если больше нигде не используются)
+        8. Удаляет сам портфель (если delete_self=True)
+
+    **Порядок гарантирует отсутствие FK ошибок.**
     """
-    print(f"🧹 Очищаем портфель {portfolio_id} и его дочерние портфели")
+
+    print(f"🧹 Очищаем портфель {portfolio_id}")
 
     try:
-        # 1️⃣ Находим дочерние портфели
+        # ─────────────────────────────────────
+        # 1. Удаляем дочерние портфели (строго ПОСЛЕДОВАТЕЛЬНО)
+        # ─────────────────────────────────────
         child_portfolios = await asyncio.to_thread(
-            table_select, "portfolios", select="id", filters={"parent_portfolio_id": portfolio_id}
+            table_select,
+            "portfolios",
+            select="id",
+            filters={"parent_portfolio_id": portfolio_id}
         )
 
-        # 2️⃣ Рекурсивно очищаем и УДАЛЯЕМ дочерние портфели
-        if child_portfolios:
-            await asyncio.gather(*[
-                clear_portfolio(child["id"], delete_self=True) for child in child_portfolios
-            ])
+        for child in child_portfolios:
+            await clear_portfolio(user_id, child["id"], delete_self=True, is_child=True)
 
-        # 3️⃣ Удаляем связи брокера
-        await asyncio.to_thread(table_delete, "user_broker_connections", {"portfolio_id": portfolio_id})
+        # ─────────────────────────────────────
+        # 2. Удаляем cash_operations
+        # ─────────────────────────────────────
+        await asyncio.to_thread(
+            table_delete,
+            "cash_operations",
+            {"portfolio_id": portfolio_id}
+        )
 
-        # 4️⃣ Получаем активы текущего портфеля
+        # ─────────────────────────────────────
+        # 3. Удаляем broker connections
+        # ─────────────────────────────────────
+        await asyncio.to_thread(
+            table_delete,
+            "user_broker_connections",
+            {"portfolio_id": portfolio_id}
+        )
+
+        # ─────────────────────────────────────
+        # 4. Получаем все portfolio_assets
+        # ─────────────────────────────────────
         portfolio_assets = await asyncio.to_thread(
-            table_select, "portfolio_assets", select="id, asset_id", filters={"portfolio_id": portfolio_id}
+            table_select,
+            "portfolio_assets",
+            select="id, asset_id",
+            filters={"portfolio_id": portfolio_id}
         )
 
-        asset_ids = [pa["asset_id"] for pa in portfolio_assets] if portfolio_assets else []
+        pa_ids = [pa["id"] for pa in portfolio_assets]
+        asset_ids = [pa["asset_id"] for pa in portfolio_assets]
 
-        # --- Удаляем все транзакции для этих portfolio_asset_id ---
-        if portfolio_assets:
-            pa_ids = [pa["id"] for pa in portfolio_assets]
-            await asyncio.to_thread(table_delete, "transactions", in_filters={"portfolio_asset_id": pa_ids})
-
-        # --- Теперь можно удалить кастомные активы, если они больше нигде не используются ---
-        if asset_ids:
-            # Батч-запрос для получения информации об активах
-            assets_info = await asyncio.to_thread(
-                table_select, "assets", select="id, asset_type_id", in_filters={"id": asset_ids}
+        # ─────────────────────────────────────
+        # 5. Удаляем transactions ДЛЯ portfolio_asset_id
+        # ─────────────────────────────────────
+        if pa_ids:
+            await asyncio.to_thread(
+                table_delete,
+                "transactions",
+                None,
+                in_filters={"portfolio_asset_id": pa_ids}
             )
-            
-            if assets_info:
-                # Получаем уникальные типы активов
-                asset_type_ids = list(set(a["asset_type_id"] for a in assets_info if a.get("asset_type_id")))
-                
-                # Батч-запрос для проверки кастомных типов
-                asset_types = await asyncio.to_thread(
-                    table_select, "asset_types", select="id, is_custom", in_filters={"id": asset_type_ids}
-                ) if asset_type_ids else []
-                
-                custom_type_ids = {at["id"] for at in asset_types if at.get("is_custom")}
-                
-                # Находим кастомные активы
-                custom_asset_ids = [
-                    a["id"] for a in assets_info 
-                    if a.get("asset_type_id") in custom_type_ids
-                ]
-                
-                if custom_asset_ids:
-                    # Проверяем использование кастомных активов в других портфелях (батч)
-                    from app.services.supabase_service import table_select_with_neq
-                    used_elsewhere = await asyncio.to_thread(
-                        table_select_with_neq, "portfolio_assets",
-                        select="asset_id",
-                        in_filters={"asset_id": custom_asset_ids},
-                        neq_filters={"portfolio_id": portfolio_id}
+
+        # ─────────────────────────────────────
+        # 6. Удаляем portfolio_assets
+        # ─────────────────────────────────────
+        if pa_ids:
+            await asyncio.to_thread(
+                table_delete,
+                "portfolio_assets",
+                {"portfolio_id": portfolio_id}
+            )
+
+        # ─────────────────────────────────────
+        # 7. Удаляем кастомные assets, если они больше нигде не используются
+        # ─────────────────────────────────────
+        if asset_ids:
+            # Получаем asset_type_id
+            assets_info = await asyncio.to_thread(
+                table_select,
+                "assets",
+                select="id, asset_type_id",
+                in_filters={"id": asset_ids}
+            )
+
+            custom_asset_ids = []
+            for asset in assets_info:
+                # Проверяем тип
+                atype = await asyncio.to_thread(
+                    table_select,
+                    "asset_types",
+                    select="id, is_custom",
+                    filters={"id": asset["asset_type_id"]}
+                )
+
+                if atype and atype[0]["is_custom"]:
+                    custom_asset_ids.append(asset["id"])
+
+            # Проверяем, используются ли кастомные активы в других портфелях
+            if custom_asset_ids:
+                used_elsewhere = await asyncio.to_thread(
+                    table_select,
+                    "portfolio_assets",
+                    select="asset_id",
+                    in_filters={"asset_id": custom_asset_ids},
+                    neq_filters={"portfolio_id": portfolio_id}
+                )
+
+                used_ids = {row["asset_id"] for row in used_elsewhere}
+
+                # Активы, которые можно удалить
+                unused = [aid for aid in custom_asset_ids if aid not in used_ids]
+
+                if unused:
+                    # Удаляем asset_prices
+                    await asyncio.to_thread(
+                        table_delete,
+                        "asset_prices",
+                        None,
+                        in_filters={"asset_id": unused}
                     )
-                    used_asset_ids = {pa["asset_id"] for pa in used_elsewhere if pa.get("asset_id")}
-                    
-                    # Удаляем только те, что не используются в других портфелях
-                    unused_asset_ids = [aid for aid in custom_asset_ids if aid not in used_asset_ids]
-                    if unused_asset_ids:
-                        await asyncio.to_thread(table_delete, "asset_prices", in_filters={"asset_id": unused_asset_ids})
-                        await asyncio.to_thread(table_delete, "assets", in_filters={"id": unused_asset_ids})
+                    # Удаляем сами assets
+                    await asyncio.to_thread(
+                        table_delete,
+                        "assets",
+                        in_filters={"id": unused}
+                    )
 
-        # --- Удаляем связи portfolio_assets ---
-        await asyncio.to_thread(table_delete, "portfolio_assets", {"portfolio_id": portfolio_id})
-
-        # 6️⃣ Удаляем сам портфель (только если delete_self=True)
+        # ─────────────────────────────────────
+        # 8. Удаляем сам портфель
+        # ─────────────────────────────────────
         if delete_self:
-            await asyncio.to_thread(table_delete, "portfolios", {"id": portfolio_id})
-            print(f"🗑️ Удалён дочерний портфель {portfolio_id}")
+            await asyncio.to_thread(
+                table_delete,
+                "portfolios",
+                {"id": portfolio_id}
+            )
+            print(f"🗑️ Удалён портфель {portfolio_id}")
         else:
-            print(f"✅ Главный портфель {portfolio_id} очищен, но не удалён")
+            print(f"✅ Портфель {portfolio_id} очищен")
 
-        return {"success": True, "message": f"Портфель {portfolio_id} очищен"}
+        if not is_child:
+            try:
+                rpc('refresh_daily_data_for_user', {'p_user_id': user_id})
+            except:
+                pass
+
+        return {"success": True}
 
     except Exception as e:
         print(f"❌ Ошибка при очистке портфеля {portfolio_id}: {e}")
         return {"success": False, "error": str(e)}
 
 
+
 # --- пул потоков для фоновых операций ---
 executor = ThreadPoolExecutor(max_workers=10)
 
 
-async def table_insert_bulk_async(table: str, rows: list[dict], batch_size: int = 1000):
-    """Асинхронная пакетная вставка с разбивкой по batch_size."""
+async def table_insert_bulk_async(table: str, rows: list[dict]):
     if not rows:
-        return []
+        return True
+
     loop = asyncio.get_event_loop()
-    for i in range(0, len(rows), batch_size):
-        batch = rows[i:i + batch_size]
-        await loop.run_in_executor(executor, lambda: supabase.table(table).insert(batch).execute())
+
+    # Один большой запрос
+    await loop.run_in_executor(
+        executor,
+        lambda: table_insert(table, rows)
+    )
+
     return True
+
 
 
 async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_data: dict):
@@ -212,10 +289,6 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
         for a in all_assets
         if a["properties"] and a["properties"].get("isin")
     }
-    print(len(all_assets), len(isin_to_asset))
-    for a in all_assets:
-        if not(a["properties"] and a["properties"].get("isin")):
-            print(a)
 
     for portfolio_name, pdata in broker_data.items():
 
@@ -236,7 +309,6 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                 "description": {"source": "tinkoff"}
             })
 
-            # insert может вернуть []
             if inserted:
                 portfolio_id = inserted[0]["id"]
             else:
@@ -248,33 +320,34 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                 if not pf:
                     raise Exception(f"Не удалось создать портфель '{portfolio_name}'!")
                 portfolio_id = pf[0]["id"]
+            pa_map = {}
         else:
             portfolio_id = existing[0]["id"]
 
-        # ========================
-        # 2. Удаляем ВСЕ транзакции / операции в портфеле
-        # ========================
+            # ========================
+            # 2. Удаляем ВСЕ транзакции / операции в портфеле
+            # ========================
 
-        print(f"🧹 Очищаем транзакции портфеля '{portfolio_name}' (id={portfolio_id})")
+            print(f"🧹 Очищаем транзакции портфеля '{portfolio_name}' (id={portfolio_id})")
 
-        # Получаем все portfolio_asset_id этого портфеля
-        pa_rows = table_select(
-            "portfolio_assets",
-            select="id, asset_id",
-            filters={"portfolio_id": portfolio_id}
-        )
-        pa_map = {row["asset_id"]: row["id"] for row in pa_rows}
+            # Получаем все portfolio_asset_id этого портфеля
+            pa_rows = table_select(
+                "portfolio_assets",
+                select="id, asset_id",
+                filters={"portfolio_id": portfolio_id}
+            )
+            pa_map = {row["asset_id"]: row["id"] for row in pa_rows}
 
-        pa_ids = [row["id"] for row in pa_rows]
+            pa_ids = [row["id"] for row in pa_rows]
 
-        if pa_ids:
-            # Удаляем ВСЕ транзакции
-            table_delete("transactions", in_filters={"portfolio_asset_id": pa_ids})
+            if pa_ids:
+                # Удаляем ВСЕ транзакции
+                table_delete("transactions", in_filters={"portfolio_asset_id": pa_ids})
 
-        # Удаляем ВСЕ денежные операции
-        table_delete("cash_operations", filters={"portfolio_id": portfolio_id})
+            # Удаляем ВСЕ денежные операции
+            table_delete("cash_operations", filters={"portfolio_id": portfolio_id})
 
-        print("   ✔ Транзакции очищены")
+            print("   ✔ Транзакции очищены")
 
         # ========================
         # 3. Вставляем все транзакции брокера

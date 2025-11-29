@@ -63,7 +63,10 @@ def add_transaction_route():
 
     # --- 4️⃣ Обновляем расчёты по портфельному активу ---
     rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
-    rpc('refresh_daily_data_for_user', {'p_user_id': user_id})
+    try:
+        rpc('refresh_daily_data_for_user', {'p_user_id': user_id})
+    except:
+        pass
 
     return jsonify({"success": True, "transaction": res_transaction[0]}), 201
 

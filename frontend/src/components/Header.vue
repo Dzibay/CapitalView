@@ -6,18 +6,25 @@ import { useRouter } from 'vue-router';
 const user = ref(null);
 const router = useRouter();
 
+const logout = () => {
+  authService.logout();
+  user.value = null;
+  router.push('/login');
+};
+
 onMounted(async () => {
   try {
     const u = await authService.checkToken();
-    if (u) {
-      user.value = u
+    if (u && u.user) {
+      user.value = u.user;
+    } else {
+      user.value = null;
     }
-    else {user.value = null}
+  } catch {
+    // Токен не найден или недействителен
+    user.value = null;
   }
-  catch {
-    console.log("Нет токена")
-  }
-})
+});
 
 
 
@@ -32,7 +39,6 @@ onMounted(async () => {
     
     <div v-if="!user" class="menu">
       <router-link to="/login">Вход</router-link>
-      <router-link to="/register">Регистрация</router-link>
     </div>
     <div v-else class="menu">
       <router-link to="/dashboard">Профиль</router-link>

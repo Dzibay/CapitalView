@@ -15,12 +15,19 @@ const message = ref('');
 const loading = ref(false);
 
 // Проверка токена при загрузке (только если мы в режиме входа)
+// Теперь это обрабатывается в router guard, но оставляем для совместимости
 onMounted(async () => {
-  try {
-    const user = await authService.checkToken();
-    if (user) router.push('/dashboard');
-  } catch {
-    authService.logout();
+  const token = localStorage.getItem('access_token');
+  if (token) {
+    try {
+      const user = await authService.checkToken();
+      if (user && user.user) {
+        router.push('/dashboard');
+      }
+    } catch {
+      // Токен недействителен, остаемся на странице логина
+      authService.logout();
+    }
   }
 });
 
@@ -40,20 +47,46 @@ const handleSubmit = async () => {
   try {
     if (isLoginMode.value) {
       // === Логика ВХОДА ===
+      // authService.login уже сохраняет токен автоматически
       const res = await authService.login(email.value, password.value);
-      localStorage.setItem('access_token', res.data.access_token);
-      router.push('/dashboard');
+      
+      // Дополнительная проверка, что токен действительно сохранен
+      const savedToken = localStorage.getItem('access_token');
+      if (!savedToken) {
+        throw new Error('Не удалось сохранить токен авторизации');
+      }
+      
+      // Небольшая задержка для гарантии сохранения токена перед навигацией
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // Получаем путь для редиректа из query параметров или используем dashboard
+      const redirectPath = router.currentRoute.value.query.redirect || '/dashboard';
+      
+      // Используем replace вместо push, чтобы избежать возврата на страницу логина через back
+      await router.replace(redirectPath);
     } else {
       // === Логика РЕГИСТРАЦИИ ===
       await authService.register(email.value, password.value);
       // Сразу логиним после успешной регистрации
       const res = await authService.login(email.value, password.value);
-      localStorage.setItem('access_token', res.data.access_token);
-      router.push('/dashboard');
+      
+      // Дополнительная проверка, что токен действительно сохранен
+      const savedToken = localStorage.getItem('access_token');
+      if (!savedToken) {
+        throw new Error('Не удалось сохранить токен авторизации');
+      }
+      
+      // Небольшая задержка для гарантии сохранения токена перед навигацией
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      const redirectPath = router.currentRoute.value.query.redirect || '/dashboard';
+      await router.replace(redirectPath);
     }
   } catch (err) {
     const defaultMsg = isLoginMode.value ? 'Ошибка входа' : 'Ошибка регистрации';
-    message.value = err.response?.data?.msg || defaultMsg;
+    message.value = err.response?.data?.msg || err.message || defaultMsg;
+    // Очищаем токен при ошибке (authService.login уже очистит, но для надежности)
+    authService.logout();
   } finally {
     loading.value = false;
   }

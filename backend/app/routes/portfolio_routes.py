@@ -48,15 +48,19 @@ def add_portfolio_route():
 @portfolio_bp.route("/<int:portfolio_id>/delete", methods=["DELETE"])
 @jwt_required()
 def delete_portfolio_route(portfolio_id):
+    email = get_jwt_identity()
+    user_id = get_user_by_email(email)["id"]
     print('Запрос удаления портфеля', portfolio_id)
-    data = asyncio.run(clear_portfolio(portfolio_id, True))
+    data = asyncio.run(clear_portfolio(user_id, portfolio_id, True))
     return jsonify(data)
 
 @portfolio_bp.route("/<int:portfolio_id>/clear", methods=["POST"])
 @jwt_required()
 def portfolio_clear_route(portfolio_id):
+    email = get_jwt_identity()
+    user_id = get_user_by_email(email)["id"]
     print('Запрос очистки портфеля', portfolio_id)
-    data = asyncio.run(clear_portfolio(portfolio_id))
+    data = asyncio.run(clear_portfolio(user_id, portfolio_id))
     return jsonify(data)
 
 @portfolio_bp.route("/<int:portfolio_id>/assets", methods=["GET"])
@@ -159,7 +163,12 @@ async def import_broker_route():
         upsert_broker_connection(user_id, broker_id, portfolio_id, token)
 
         # Обновляем данные
-        rpc('refresh_daily_data_for_user', {'p_user_id': user_id})
+        try:
+            print("Обновляем ежедневные данные по портфелям пользователя...")
+            rpc('refresh_daily_data_for_user', {'p_user_id': user_id})
+            print("✅ Ежедневные данные обновлены")
+        except:
+            pass
 
         print(f"✅ Импорт брокера {broker_id} завершён успешно")
 

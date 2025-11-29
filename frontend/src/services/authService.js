@@ -1,33 +1,44 @@
-import axios from 'axios';
-
-const API_URL = 'http://localhost:5000/api/auth';
+import apiClient from '../utils/apiClient';
+import { API_ENDPOINTS } from '../config/api';
 
 export const authService = {
     async register(email, password) {
-        return axios.post(`${API_URL}/register`, { email, password });
+        return apiClient.post(API_ENDPOINTS.AUTH.REGISTER, { email, password });
     },
 
     async login(email, password) {
-        return axios.post(`${API_URL}/login`, { email, password });
+        try {
+            const res = await apiClient.post(API_ENDPOINTS.AUTH.LOGIN, { email, password });
+            // Сохраняем токен после успешного логина
+            if (res.data && res.data.access_token) {
+                localStorage.setItem('access_token', res.data.access_token);
+                // Проверяем, что токен действительно сохранился
+                const savedToken = localStorage.getItem('access_token');
+                if (!savedToken) {
+                    throw new Error('Не удалось сохранить токен');
+                }
+            } else {
+                throw new Error('Токен не получен от сервера');
+            }
+            return res;
+        } catch (error) {
+            // Убеждаемся, что токен не сохраняется при ошибке
+            localStorage.removeItem('access_token');
+            throw error;
+        }
     },
 
     async checkToken() {
-        console.log("Привет, это debug");
         const token = localStorage.getItem('access_token');
         if (!token) return null;
 
         try {
-            const res = await axios.get(`${API_URL}/check-token`, {
-            headers: { Authorization: `Bearer ${token}` },
-            });
-            console.log("Токен успешный");
-            return res.data; // если всё ок, возвращаем пользователя
+            const res = await apiClient.get(API_ENDPOINTS.AUTH.CHECK_TOKEN);
+            return res.data;
         } catch (err) {
-            console.log("Токен не успешный");
-            console.error("Token check error:", err.response ? err.response.data : err.message);
-            // можно удалить недействительный токен
+            // Токен недействителен, очищаем
             localStorage.removeItem('access_token');
-            return null; // возвращаем null, чтобы фронт знал, что токен недействителен
+            return null;
         }
     },
 

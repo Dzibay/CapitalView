@@ -1,18 +1,19 @@
-import axios from "axios";
+import apiClient from '../utils/apiClient';
+import { API_ENDPOINTS } from '../config/api';
 
-function authHeaders() {
-  const token = localStorage.getItem('access_token')
-  return { Authorization: `Bearer ${token}` }
-}
-const API_URL = 'http://localhost:5000/api/dashboard';
-
-/* === Основная функция === */
-export async function fetchDashboardData(user) {
+export async function fetchDashboardData() {
   try {
-    const res = await axios.get(`${API_URL}/`, { headers: authHeaders() });
+    const res = await apiClient.get(API_ENDPOINTS.DASHBOARD.BASE);
     return res;
   } catch (error) {
-    console.error(error);
-    return { totalCapital: 0 };
+    // Более детальная обработка ошибок
+    if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+      const errorMessage = 'Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000';
+      console.error('Network Error:', errorMessage);
+      console.error('Request URL:', error.config?.baseURL + error.config?.url);
+      throw new Error(errorMessage);
+    }
+    console.error('Error fetching dashboard data:', error);
+    throw error;
   }
 }

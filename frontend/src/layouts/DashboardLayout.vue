@@ -19,9 +19,15 @@ const router = useRouter()
 // 🔹 Универсальная перезагрузка Dashboard
 const reloadDashboard = async () => {
   try {
+    loading.value = true
     dashboardData.value = await fetchDashboardData()
+    console.log(dashboardData.value)
   } catch (err) {
     console.error('Ошибка получения данных Dashboard:', err)
+    // Показываем пользователю понятное сообщение об ошибке
+    if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
+      console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
+    }
   } finally {
     loading.value = false
   }
@@ -80,7 +86,6 @@ const addAsset = async (assetData) => {
         console.warn("Портфель не найден для добавления актива")
       }
 
-      console.log("Актив обновлён/добавлен локально:", newAsset)
       reloadDashboard().catch(err => console.error('Ошибка фоновой перезагрузки:', err))
     }
   } catch (err) {
@@ -157,7 +162,6 @@ const loadAnalytics = async () => {
 
   try {
     const res = await analyticsService.getAnalytics()
-    console.log("📊 Аналитика получена:", res)
 
     // ✅ Безопасно достаём массив из res.analytics
     const analyticsArray = Array.isArray(res?.analytics) ? res.analytics : []
@@ -172,7 +176,6 @@ const loadAnalytics = async () => {
     ]
 
     analyticsLoaded.value = true
-    console.log(`✅ Аналитика успешно загружена (${analyticsArray.length} портфелей)`)
 
   } catch (err) {
     console.error("❌ Ошибка загрузки аналитики:", err)
@@ -206,8 +209,6 @@ const removeAsset = async (portfolioAssetId) => {
         )
       }
     })
-    console.log("Актив удалён локально:", portfolioAssetId)
-
     await reloadDashboard()
     
   } catch (err) {
@@ -252,7 +253,6 @@ const updatePortfolioGoal = async ({ portfolioId, title, targetAmount }) => {
       capital_target_currency: updated.capital_target_currency
     });
 
-    console.log('Цель обновлена для портфеля:', targetPortfolio);
   } catch (err) {
     console.error('Ошибка обновления цели портфеля:', err);
   }
@@ -260,23 +260,31 @@ const updatePortfolioGoal = async ({ portfolioId, title, targetAmount }) => {
 
 
 // 🔹 Инициализация при загрузке
+// Router guard уже проверил токен, поэтому здесь просто загружаем данные пользователя
 onMounted(async () => {
   try {
-    const u = await authService.checkToken()
-    if (!u) {
-      router.push('/login')
-      return
+    // Получаем данные пользователя из токена (router guard уже проверил валидность)
+    const u = await authService.checkToken();
+    if (u && u.user) {
+      user.value = u.user;
+    } else {
+      // Если по какой-то причине пользователь не найден, перенаправляем на логин
+      authService.logout();
+      router.push('/login');
+      return;
     }
-    user.value = u.user
-    loading.value = true
-    await reloadDashboard()
-    console.log('✅ Dashboard данные загружены', dashboardData.value)
+    
+    loading.value = true;
+    await reloadDashboard();
   } catch (err) {
-    console.error('Ошибка при авторизации:', err)
-    authService.logout()
-    router.push('/login')
+    console.error('Ошибка при загрузке данных:', err);
+    // При ошибке сети не перенаправляем на логин, просто показываем ошибку
+    if (err.code !== 'ERR_NETWORK') {
+      authService.logout();
+      router.push('/login');
+    }
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 })
 

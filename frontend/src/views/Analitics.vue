@@ -28,7 +28,6 @@ watch(
   (newPortfolios) => {
     if (newPortfolios?.length && !selectedPortfolioId.value) {
       selectedPortfolioId.value = newPortfolios[0].id
-      console.log('✅ Выбран первый портфель:', selectedPortfolioId.value)
     }
   },
   { immediate: true }
@@ -58,7 +57,6 @@ async function safeLoadAnalytics() {
     () => dashboardData.value?.data?.analytics,
     async (newAnalytics) => {
         if (Array.isArray(newAnalytics) && newAnalytics.length > 0) {
-        console.log("✅ Аналитика появилась, строим графики")
         await updateSelectedAnalytics()
         }
     },
@@ -159,7 +157,6 @@ async function updateSelectedAnalytics() {
   selectedPortfolioAnalytics.value =
     allAnalytics.find(a => a.portfolio_id === selectedPortfolioId.value) || null
 
-  console.log('🔁 Обновление аналитики для портфеля:', selectedPortfolioId.value)
 
   if (!selectedPortfolioAnalytics.value) {
     console.warn('⚠️ Аналитика не найдена для портфеля', selectedPortfolioId.value)
