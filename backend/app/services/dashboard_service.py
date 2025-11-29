@@ -8,8 +8,10 @@ from collections import defaultdict
 from time import time
 
 def aggregate_and_sort_history_list(history_list):
+    for i in history_list:
+        print(i)
     """Агрегирует историю по датам: стоимость + инвестиции, и сортирует"""
-    combined = defaultdict(lambda: {"value": 0.0, "invested": 0.0})
+    combined = defaultdict(lambda: {"value": 0.0, "invested": 0.0, "payouts": 0.0, "pnl": 0.0})
 
     for h in history_list or []:
         date = h.get("date") or h.get("report_date")
@@ -18,9 +20,11 @@ def aggregate_and_sort_history_list(history_list):
 
         combined[date]["value"] += float(h.get("value") or 0)
         combined[date]["invested"] += float(h.get("invested") or 0)
+        combined[date]["payouts"] += float(h.get("payouts") or 0)
+        combined[date]["pnl"] += float(h.get("pnl") or 0)
 
     return [
-        {"date": d, "value": round(v["value"], 2), "invested": round(v["invested"], 2)}
+        {"date": d, "value": round(v["value"], 2), "invested": round(v["invested"], 2), "payouts": round(v["payouts"], 2), "pnl": round(v["pnl"], 2)}
         for d, v in sorted(combined.items())
     ]
 
@@ -280,7 +284,9 @@ async def get_dashboard_data(user_email: str):
         p['history'] = {
             'labels': [h['date'] for h in sorted_hist],
             'data_value': [h['value'] for h in sorted_hist],
-            'data_invested': [h.get('invested', 0) for h in sorted_hist]
+            'data_invested': [h['invested'] for h in sorted_hist],
+            'data_payouts': [h['payouts'] for h in sorted_hist],
+            'data_pnl': [h['pnl'] for h in sorted_hist]
         }
         p['monthly_change'] = calculate_monthly_change(sorted_hist)
         p['asset_allocation'] = calculate_asset_allocation(p.get('combined_assets') or p.get('assets', []))

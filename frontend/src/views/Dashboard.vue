@@ -11,6 +11,7 @@ import TopAssetsWidget from '../components/widgets/TopAssetsWidget.vue'
 import TopMoversWidget from '../components/widgets/TopMoversWidget.vue'
 import PortfolioProfitWidget from '../components/widgets/PortfolioProfitWidget.vue'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
+import PortfolioProfitChartWidget from '../components/widgets/PortfolioProfitChartWidget.vue'
 
 const user = inject('user')
 const dashboardData = inject('dashboardData')
@@ -134,6 +135,7 @@ const goalData = computed(() => {
 
       <PortfolioChartWidget :chartData="parsedDashboard.portfolioChart" />
       <TopAssetsWidget :assets="parsedDashboard.assets" />
+      <PortfolioProfitChartWidget :chartData="parsedDashboard.portfolioChart" />
     </div>
   </div>
 
