@@ -21,12 +21,16 @@ const reloadDashboard = async () => {
   try {
     loading.value = true
     dashboardData.value = await fetchDashboardData()
-    console.log(dashboardData.value)
+    if (import.meta.env.DEV) {
+      console.log(dashboardData.value)
+    }
   } catch (err) {
-    console.error('Ошибка получения данных Dashboard:', err)
-    // Показываем пользователю понятное сообщение об ошибке
-    if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
-      console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
+    if (import.meta.env.DEV) {
+      console.error('Ошибка получения данных Dashboard:', err)
+      // Показываем пользователю понятное сообщение об ошибке
+      if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
+        console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
+      }
     }
   } finally {
     loading.value = false
@@ -46,7 +50,9 @@ const preloadTransactions = async () => {
     ]
     transactionsLoaded.value = true
   } catch (err) {
-    console.error("Ошибка фоновой загрузки транзакций:", err)
+    if (import.meta.env.DEV) {
+      console.error("Ошибка фоновой загрузки транзакций:", err)
+    }
   }
 }
 
@@ -83,13 +89,21 @@ const addAsset = async (assetData) => {
           })
         }
       } else {
-        console.warn("Портфель не найден для добавления актива")
+        if (import.meta.env.DEV) {
+          console.warn("Портфель не найден для добавления актива")
+        }
       }
 
-      reloadDashboard().catch(err => console.error('Ошибка фоновой перезагрузки:', err))
+      reloadDashboard().catch(err => {
+        if (import.meta.env.DEV) {
+          console.error('Ошибка фоновой перезагрузки:', err)
+        }
+      })
     }
   } catch (err) {
-    console.error('Ошибка добавления актива:', err)
+    if (import.meta.env.DEV) {
+      console.error('Ошибка добавления актива:', err)
+    }
   }
 }
 
@@ -102,7 +116,9 @@ const addPortfolio = async (portfolioData) => {
       dashboardData.value.data.portfolios.push(res.portfolio)
     }
   } catch (err) {
-    console.error('Ошибка создания портфеля:', err)
+    if (import.meta.env.DEV) {
+      console.error('Ошибка создания портфеля:', err)
+    }
   }
 }
 const deletePortfolio = async ( portfolioId ) => {
@@ -112,7 +128,9 @@ const deletePortfolio = async ( portfolioId ) => {
     dashboardData.value.data.portfolios = dashboardData.value.data.portfolios.filter(p => p.id !== portfolioId)
 
   } catch (err) {
-    console.error('Ошибка удаления портфеля:', err)
+    if (import.meta.env.DEV) {
+      console.error('Ошибка удаления портфеля:', err)
+    }
   }
 }
 const clearPortfolio = async ( portfolioId ) => {
@@ -120,10 +138,13 @@ const clearPortfolio = async ( portfolioId ) => {
     loading.value = true
     const res = await portfolioService.clearPortfolio(portfolioId)
     if (!res.success) throw new Error(res.error || 'Ошибка очистки портфеля')
-    loading.value = true
     await reloadDashboard()
   } catch (err) {
-    console.error('Ошибка очистки портфеля:', err)
+    if (import.meta.env.DEV) {
+      console.error('Ошибка очистки портфеля:', err)
+    }
+  } finally {
+    loading.value = false
   }
 }
 
@@ -134,7 +155,11 @@ const addTransaction = async ({ asset_id, portfolio_asset_id, transaction_type, 
     loading.value = true
     await reloadDashboard()
   } catch (err) {
-    console.error('Ошибка добавления транзакции:', err)
+    if (import.meta.env.DEV) {
+      console.error('Ошибка добавления транзакции:', err)
+    }
+  } finally {
+    loading.value = false
   }
 }
 const editTransaction = async (updated_transaction) => {
@@ -143,7 +168,11 @@ const editTransaction = async (updated_transaction) => {
     loading.value = true
     await reloadDashboard()
   } catch (err) {
-    console.error('Ошибка редактирования транзакции:', err)
+    if (import.meta.env.DEV) {
+      console.error('Ошибка редактирования транзакции:', err)
+    }
+  } finally {
+    loading.value = false
   }
 }
 const deleteTransactions = async (transaction_ids) => {
@@ -152,7 +181,11 @@ const deleteTransactions = async (transaction_ids) => {
     loading.value = true
     await reloadDashboard()
   } catch (err) {
-    console.error('Ошибка удаления транзакций:', err)
+    if (import.meta.env.DEV) {
+      console.error('Ошибка удаления транзакций:', err)
+    }
+  } finally {
+    loading.value = false
   }
 }
 
@@ -178,7 +211,9 @@ const loadAnalytics = async () => {
     analyticsLoaded.value = true
 
   } catch (err) {
-    console.error("❌ Ошибка загрузки аналитики:", err)
+    if (import.meta.env.DEV) {
+      console.error("❌ Ошибка загрузки аналитики:", err)
+    }
   }
 }
 
@@ -190,7 +225,11 @@ const addPrice = async ({ asset_id, price, date }) => {
     loading.value = true
     await reloadDashboard()
   } catch (err) {
-    console.error('Ошибка добавления цены:', err)
+    if (import.meta.env.DEV) {
+      console.error('Ошибка добавления цены:', err)
+    }
+  } finally {
+    loading.value = false
   }
 }
 
@@ -212,7 +251,9 @@ const removeAsset = async (portfolioAssetId) => {
     await reloadDashboard()
     
   } catch (err) {
-    console.error('Ошибка удаления актива:', err)
+    if (import.meta.env.DEV) {
+      console.error('Ошибка удаления актива:', err)
+    }
   }
 }
 
@@ -222,7 +263,9 @@ const importPortfolio = async ({ broker_id, token, portfolioId, portfolio_name }
     const res = await portfolioService.importPortfolio(broker_id, token, portfolioId, portfolio_name)
     if (!res.success) throw new Error(res.error || 'Ошибка импорта портфеля')
   } catch (err) {
-    console.error('Ошибка импорта портфеля:', err)
+    if (import.meta.env.DEV) {
+      console.error('Ошибка импорта портфеля:', err)
+    }
   }
 }
 
@@ -241,7 +284,9 @@ const updatePortfolioGoal = async ({ portfolioId, title, targetAmount }) => {
     // Ищем нужный портфель по id
     const targetPortfolio = portfolios.find(p => p.id === portfolioId);
     if (!targetPortfolio) {
-      console.warn(`Портфель с id=${portfolioId} не найден`);
+      if (import.meta.env.DEV) {
+        console.warn(`Портфель с id=${portfolioId} не найден`);
+      }
       return;
     }
 
@@ -254,7 +299,9 @@ const updatePortfolioGoal = async ({ portfolioId, title, targetAmount }) => {
     });
 
   } catch (err) {
-    console.error('Ошибка обновления цели портфеля:', err);
+    if (import.meta.env.DEV) {
+      console.error('Ошибка обновления цели портфеля:', err);
+    }
   }
 }
 
@@ -277,7 +324,9 @@ onMounted(async () => {
     loading.value = true;
     await reloadDashboard();
   } catch (err) {
-    console.error('Ошибка при загрузке данных:', err);
+    if (import.meta.env.DEV) {
+      console.error('Ошибка при загрузке данных:', err);
+    }
     // При ошибке сети не перенаправляем на логин, просто показываем ошибку
     if (err.code !== 'ERR_NETWORK') {
       authService.logout();

@@ -74,7 +74,7 @@ const testimonials = [
   <div class="landing-page">
     <header class="landing-header">
       <div class="container header-content">
-        <div class="logo">Invest<span class="highlight">Flow</span></div>
+        <div class="logo">Capital<span class="highlight">View</span></div>
         <nav>
           <a href="#features">Возможности</a>
           <a href="#pricing">Тарифы</a>
@@ -206,8 +206,8 @@ const testimonials = [
       <div class="container">
         <div class="footer-content">
           <div class="footer-col">
-            <div class="logo">Invest<span class="highlight">Flow</span></div>
-            <p class="copyright">© 2024 Все права защищены</p>
+            <div class="logo">Capital<span class="highlight">View</span></div>
+            <p class="copyright">© 2025 Все права защищены</p>
           </div>
           <div class="footer-links">
             <a href="#">Политика конфиденциальности</a>

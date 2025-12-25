@@ -14,18 +14,38 @@ const referenceData = computed(() => dashboardData.value?.data?.referenceData ||
 const referenceAssets = computed(() => referenceData.value.assets || [])
 
 // --- списки для фильтров ---
-const assets = computed(() => [...new Set(transactions.value.map(t => t.asset_name))])
+// Оптимизировано: кэшируем уникальные значения
+const assets = computed(() => {
+  const tx = transactions.value
+  if (!tx.length) return []
+  const assetSet = new Set()
+  for (const t of tx) {
+    if (t.asset_name) assetSet.add(t.asset_name)
+  }
+  return Array.from(assetSet)
+})
 
-const portfolios = computed(() => [
-  ...new Map(
-    transactions.value.map(t => [
-      t.portfolio_id,
-      { id: t.portfolio_id, name: t.portfolio_name }
-    ])
-  ).values()
-])
+const portfolios = computed(() => {
+  const tx = transactions.value
+  if (!tx.length) return []
+  const portfolioMap = new Map()
+  for (const t of tx) {
+    if (t.portfolio_id && !portfolioMap.has(t.portfolio_id)) {
+      portfolioMap.set(t.portfolio_id, { id: t.portfolio_id, name: t.portfolio_name })
+    }
+  }
+  return Array.from(portfolioMap.values())
+})
 
-const txTypes = computed(() => [...new Set(transactions.value.map(t => t.transaction_type))])
+const txTypes = computed(() => {
+  const tx = transactions.value
+  if (!tx.length) return []
+  const typeSet = new Set()
+  for (const t of tx) {
+    if (t.transaction_type) typeSet.add(t.transaction_type)
+  }
+  return Array.from(typeSet)
+})
 
 // --- ФИЛЬТРЫ ---
 const selectedAsset = ref('')
@@ -165,11 +185,13 @@ watch(assetSearch, (newVal) => {
 })
 
 // --- ГЛАВНЫЙ ФИЛЬТР ---
+// Оптимизировано: ранний выход из проверок для лучшей производительности
 const applyFilter = () => {
   const assetFilter = selectedAsset.value
   const portfolioFilter = selectedPortfolio.value
   const typeFilter = selectedType.value
   const term = globalSearch.value.trim().toLowerCase()
+  const hasTerm = term.length > 0
 
   let start = null
   let end = null
@@ -186,36 +208,29 @@ const applyFilter = () => {
     end.setHours(23, 59, 59, 999)
   }
 
-  filteredTransactions.value = transactions.value.filter(tx => {
-    // актив
-    const matchAsset = assetFilter ? tx.asset_name === assetFilter : true
+  // Предвычисляем форматированные строки для глобального поиска только если нужно
+  const txList = transactions.value
+  filteredTransactions.value = txList.filter(tx => {
+    // Быстрые проверки с ранним выходом
+    if (assetFilter && tx.asset_name !== assetFilter) return false
+    if (portfolioFilter && tx.portfolio_name !== portfolioFilter) return false
+    if (typeFilter && tx.transaction_type !== typeFilter) return false
 
-    // портфель
-    const matchPortfolio = portfolioFilter ? tx.portfolio_name === portfolioFilter : true
-
-    // тип
-    const matchType = typeFilter ? tx.transaction_type === typeFilter : true
-
-    // период
-    const txDate = new Date(tx.transaction_date)
-    const matchStart = start ? txDate >= start : true
-    const matchEnd = end ? txDate <= end : true
-
-    // глобальный поиск
-    let matchGlobal = true
-    if (term) {
-      const haystack = [
-        tx.asset_name,
-        tx.portfolio_name,
-        tx.transaction_type,
-        tx.quantity,
-        tx.price,
-        formatDate(tx.transaction_date)
-      ].join(' ').toLowerCase()
-      matchGlobal = haystack.includes(term)
+    // Период (только если заданы даты)
+    if (start || end) {
+      const txDate = new Date(tx.transaction_date)
+      if (start && txDate < start) return false
+      if (end && txDate > end) return false
     }
 
-    return matchAsset && matchPortfolio && matchType && matchStart && matchEnd && matchGlobal
+    // Глобальный поиск (только если задан)
+    if (hasTerm) {
+      // Оптимизированная проверка без создания массива и join
+      const searchableText = `${tx.asset_name || ''} ${tx.portfolio_name || ''} ${tx.transaction_type || ''} ${tx.quantity || ''} ${tx.price || ''} ${formatDate(tx.transaction_date)}`.toLowerCase()
+      if (!searchableText.includes(term)) return false
+    }
+
+    return true
   })
 
   selectedTxIds.value = []
@@ -680,7 +695,7 @@ const summary = computed(() => {
 /* Column Specifics */
 .w-checkbox { width: 40px; text-align: center; }
 .w-actions { width: 40px; }
-.text-right { text-align: right; }
+.text-right { text-align: right !important; }
 .font-medium { font-weight: 500; color: #111827; }
 .font-semibold { font-weight: 600; color: #111827; }
 .text-secondary { color: #6b7280; font-size: 13px; }

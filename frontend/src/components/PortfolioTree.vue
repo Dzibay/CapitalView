@@ -23,25 +23,43 @@ const emit = defineEmits([
 const activeAssetMenu = ref(null);
 
 // 📊 === Функция сортировки активов по стоимости ===
+// Вынесена вычисление стоимости для мемоизации
+const calculateAssetValue = (asset) => {
+  return (asset.quantity * (asset.last_price || 0) / (asset.leverage || 1)) * (asset.currency_rate_to_rub || 1);
+};
+
 const sortAssets = (assets) => {
-  if (!assets) return [];
-  return [...assets].sort((a, b) => {
-    const valA = (a.quantity * (a.last_price || 0) / (a.leverage || 1)) * (a.currency_rate_to_rub || 1);
-    const valB = (b.quantity * (b.last_price || 0) / (b.leverage || 1)) * (b.currency_rate_to_rub || 1);
-    return valB - valA; // по убыванию
-  });
+  if (!assets || assets.length === 0) return [];
+  // Создаем массив с предвычисленными значениями для оптимизации сортировки
+  const assetsWithValue = assets.map(asset => ({
+    asset,
+    value: calculateAssetValue(asset)
+  }));
+  
+  assetsWithValue.sort((a, b) => b.value - a.value); // по убыванию
+  
+  return assetsWithValue.map(item => item.asset);
 };
 
 // 📦 === Рекурсивная сортировка портфелей по total_value ===
+// Оптимизировано: минимизированы копии объектов
 const sortPortfolios = (portfolios) => {
-  if (!portfolios) return [];
-  return [...portfolios]
-    .map((p) => ({
-      ...p,
-      assets: sortAssets(p.assets),
-      children: sortPortfolios(p.children || []),
-    }))
-    .sort((a, b) => (b.total_value || 0) - (a.total_value || 0));
+  if (!portfolios || portfolios.length === 0) return [];
+  
+  // Сортируем активы только если они есть
+  const processedPortfolios = portfolios.map((p) => {
+    const processed = { ...p };
+    if (p.assets && p.assets.length > 0) {
+      processed.assets = sortAssets(p.assets);
+    }
+    if (p.children && p.children.length > 0) {
+      processed.children = sortPortfolios(p.children);
+    }
+    return processed;
+  });
+  
+  processedPortfolios.sort((a, b) => (b.total_value || 0) - (a.total_value || 0));
+  return processedPortfolios;
 };
 
 // === Вычисляемая коллекция для рендера ===

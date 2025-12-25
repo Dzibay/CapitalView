@@ -14,27 +14,55 @@ export function usePortfolio(dashboardData, selectedPortfolioId) {
 
   /**
    * Собирает все ID портфеля и его дочерних портфелей
+   * Оптимизировано: используем Map для O(1) поиска дочерних портфелей
    */
-  function collectPortfolioIds(portfolio, allPortfolios) {
-    let ids = [portfolio.id];
-    const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id);
-
+  function collectPortfolioIds(portfolio, portfolioMap) {
+    const ids = [portfolio.id];
+    
+    // Получаем дочерние портфели из Map (O(1) вместо O(n))
+    const children = portfolioMap.get(portfolio.id) || [];
+    
     for (const child of children) {
-      ids = ids.concat(collectPortfolioIds(child, allPortfolios));
+      ids.push(...collectPortfolioIds(child, portfolioMap));
     }
 
     return ids;
   }
+  
+  /**
+   * Создает Map для быстрого поиска дочерних портфелей
+   * Возвращает Map<parentId, childPortfolios[]>
+   */
+  function buildPortfolioChildrenMap(portfolios) {
+    const childrenMap = new Map();
+    
+    // Инициализируем все портфели как имеющие пустой массив детей
+    for (const p of portfolios) {
+      childrenMap.set(p.id, []);
+    }
+    
+    // Заполняем children для каждого родителя
+    for (const p of portfolios) {
+      if (p.parent_portfolio_id && childrenMap.has(p.parent_portfolio_id)) {
+        childrenMap.get(p.parent_portfolio_id).push(p);
+      }
+    }
+    
+    return childrenMap;
+  }
 
   /**
    * Собирает все активы портфеля и его дочерних портфелей
+   * Оптимизировано: используем Map для O(1) поиска дочерних портфелей
    */
-  function collectAssets(portfolio, allPortfolios) {
-    let assets = [...(portfolio.assets || [])];
-    const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id);
-
+  function collectAssets(portfolio, portfolioMap) {
+    const assets = [...(portfolio.assets || [])];
+    
+    // Получаем дочерние портфели из Map (O(1) вместо O(n))
+    const children = portfolioMap.get(portfolio.id) || [];
+    
     for (const child of children) {
-      assets = assets.concat(collectAssets(child, allPortfolios));
+      assets.push(...collectAssets(child, portfolioMap));
     }
 
     return assets;
@@ -64,17 +92,24 @@ export function usePortfolio(dashboardData, selectedPortfolioId) {
 
   /**
    * Получает данные выбранного портфеля с учетом дочерних
+   * Оптимизировано: используем Set для O(1) поиска вместо O(n) includes
    */
   const parsedPortfolioData = computed(() => {
     if (!selectedPortfolio.value) return null;
 
     const allPortfolios = portfolios.value;
-    const portfolioIds = collectPortfolioIds(selectedPortfolio.value, allPortfolios);
-    const assets = collectAssets(selectedPortfolio.value, allPortfolios);
+    
+    // Создаем Map дочерних портфелей один раз
+    const portfolioMap = buildPortfolioChildrenMap(allPortfolios);
+    
+    const portfolioIds = collectPortfolioIds(selectedPortfolio.value, portfolioMap);
+    const assets = collectAssets(selectedPortfolio.value, portfolioMap);
 
+    // Используем Set для быстрого поиска O(1) вместо O(n) includes
+    const portfolioIdSet = new Set(portfolioIds);
     const data = dashboardData.value?.data;
     const transactions = (data?.transactions ?? []).filter(
-      t => portfolioIds.includes(t.portfolio_id)
+      t => portfolioIdSet.has(t.portfolio_id)
     );
 
     return {
@@ -102,4 +137,6 @@ export function usePortfolio(dashboardData, selectedPortfolioId) {
     buildPortfolioTree,
   };
 }
+
+
 

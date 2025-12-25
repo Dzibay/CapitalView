@@ -40,7 +40,15 @@ function aggregateData(dataObj, period) {
   if (!dataObj?.labels?.length) return { labels: [], datasets: [] }
 
   const today = new Date()
-  const parseDate = d => new Date(d)
+  
+  // Вспомогательная функция для нормализации даты до начала дня
+  const normalizeDate = (date) => {
+    const d = new Date(date)
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+  
+  const parseDate = (d) => normalizeDate(new Date(d))
 
   const points = dataObj.labels.map((label, index) => ({
     date: parseDate(label),
@@ -49,30 +57,39 @@ function aggregateData(dataObj, period) {
 
   const firstPoint = points[0]?.date
 
-  let firstDate =
-    period === '1M'
-      ? new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30)
-      : period === '1Y'
-        ? new Date(today.getFullYear(), today.getMonth() - 11, 1)
-        : firstPoint
-
-  const lastDate = today
+  let firstDate
+  if (period === '1M') {
+    firstDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30)
+  } else if (period === '1Y') {
+    firstDate = new Date(today.getFullYear(), today.getMonth() - 11, 1)
+  } else {
+    firstDate = firstPoint ? new Date(firstPoint) : new Date(today)
+  }
+  
+  // Нормализуем даты до начала дня
+  firstDate = normalizeDate(firstDate)
+  const lastDate = normalizeDate(today) // Последний день - сегодня (включительно)
+  
   const labels = []
   const datasetBuffers = dataObj.datasets.map(() => [])
   let idx = 0
   let lastValues = new Array(dataObj.datasets.length).fill(0)
 
+  // Итерируемся по дням, включая последний день
   for (let d = new Date(firstDate); d <= lastDate; d.setDate(d.getDate() + 1)) {
-    if (d < firstPoint) {
+    const currentDay = normalizeDate(d)
+    
+    if (currentDay < firstPoint) {
       datasetBuffers.forEach((arr) => arr.push(0))
     } else {
-      while (idx < points.length && points[idx].date <= d) {
+      // Обновляем lastValues до последней точки, которая <= текущего дня
+      while (idx < points.length && points[idx].date <= currentDay) {
         lastValues = points[idx].values
         idx++
       }
       datasetBuffers.forEach((arr, i) => arr.push(lastValues[i]))
     }
-    labels.push(d.toISOString().split("T")[0])
+    labels.push(currentDay.toISOString().split("T")[0])
   }
 
   return { labels, datasets: datasetBuffers }
