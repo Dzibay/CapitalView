@@ -15,13 +15,19 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
+
 supabase: SupabaseClient = create_client(SUPABASE_URL, SUPABASE_KEY)
 bcrypt = Bcrypt()
 
     
 def create_app():
     app = Flask(__name__)
-    app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
+    jwt_secret = os.getenv("JWT_SECRET_KEY")
+    if not jwt_secret:
+        raise ValueError("JWT_SECRET_KEY must be set in environment variables")
+    app.config["JWT_SECRET_KEY"] = jwt_secret
     CORS(app, origins=["http://localhost:5173"], supports_credentials=True, resources={r"/*": {"origins": "*"}}, methods=["GET", "POST", "DELETE", "OPTIONS", "PUT"])
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
     jwt = JWTManager(app)

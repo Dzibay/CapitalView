@@ -133,7 +133,7 @@ async def import_moex_assets_async():
             process_group(session, url, type_name, existing_assets, type_map)
             for url, type_name in [v for v in MOEX_ENDPOINTS.values()]
         ]
-
+ 
         results = await asyncio.gather(*tasks)
 
     total_inserted = sum(r[0] for r in results)

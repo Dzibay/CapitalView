@@ -1,0 +1,5 @@
+
+BEGIN
+    RETURN QUERY
+    SELECT * FROM assets;
+END;
