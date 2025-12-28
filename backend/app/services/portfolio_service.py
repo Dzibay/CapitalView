@@ -45,6 +45,7 @@ def get_portfolio_transactions_sync(portfolio_id: int):
 def get_portfolio_value_history_sync(portfolio_id: int):
     return  rpc("get_portfolio_value_history", {"p_portfolio_id": portfolio_id})
 
+
 def get_user_portfolios_with_assets_and_history(user_id: str):
     """Загружает все портфели, активы и историю за один запрос."""
     start = time()
@@ -150,6 +151,14 @@ async def clear_portfolio(user_id: int, portfolio_id: int, delete_self: bool = F
             await asyncio.to_thread(
                 table_delete,
                 "transactions",
+                None,
+                in_filters={"portfolio_asset_id": pa_ids}
+            )
+
+        if pa_ids:
+            await asyncio.to_thread(
+                table_delete,
+                "fifo_lots",
                 None,
                 in_filters={"portfolio_asset_id": pa_ids}
             )
@@ -263,8 +272,6 @@ async def table_insert_bulk_async(table: str, rows: list[dict]):
     )
 
     return True
-
-
 
 async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_data: dict):
     """
@@ -425,6 +432,18 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
         # ========================
         for pa_id in affected_pa:
             rpc("update_portfolio_asset", {"pa_id": pa_id})
+
+        
+        # ==========================
+        # Обновление данных портфеля
+        # ==========================
+        print("Обновление данных портфеля:")
+        rpc("rebuild_fifo_for_portfolio", {"p_portfolio_id": portfolio_id})
+        print('Fifo данные обновлены')
+        rpc("update_portfolio_positions_from_date", {"p_portfolio_id": portfolio_id})
+        print('Positions данные обновлены')
+        rpc("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id})
+        print('Values данные обновлены')
 
         print(f"🎯 Готово: {len(new_tx)} транзакций, {len(new_ops)} денежн. операций")
 

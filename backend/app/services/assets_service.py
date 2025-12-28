@@ -3,6 +3,8 @@ from app.services.supabase_service import (
 )
 from app.services.user_service import get_user_by_email
 from datetime import datetime
+from app.services.transactions_service import create_transaction
+
 
 
 def create_asset(email: str, data: dict):
@@ -95,16 +97,15 @@ def create_asset(email: str, data: dict):
             new_avg_price = price
 
         # --- Добавляем транзакцию покупки ---
-        tx_data = {
-            "portfolio_asset_id": portfolio_asset_id,
-            "user_id": user_id,
-            "transaction_type": 1,
-            "price": price,
-            "quantity": quantity,
-            "transaction_date": date,
-        }
-        table_insert("transactions", tx_data)
-        rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
+        create_transaction(
+            user_id=user_id,
+            portfolio_asset_id=portfolio_asset_id,
+            asset_id=asset_id,
+            transaction_type=1,  # BUY
+            quantity=quantity,
+            price=price,
+            transaction_date=date,
+        )
 
         # --- Берём последнюю цену актива ---
         last_price_resp = table_select(
@@ -157,24 +158,19 @@ def delete_asset(portfolio_asset_id: int):
 
         asset_id = pa_resp[0]["asset_id"]
 
-        # 2️⃣ Получаем тип актива
-        asset_resp = table_select("assets", select="asset_type_id", filters={"id": asset_id})
+        # 2️⃣ Получаем данные актива
+        asset_meta = rpc("get_portfolio_asset_meta", {"p_portfolio_asset_id": portfolio_asset_id})
 
-        if not asset_resp:
+        if not asset_meta:
             return {"success": False, "error": "Актив не найден"}
-
-        asset_type_id = asset_resp[0]["asset_type_id"]
-
-        # 3️⃣ Проверяем, кастомный ли актив
-        type_resp = table_select("asset_types", select="is_custom", filters={"id": asset_type_id})
-
-        if not type_resp:
-            return {"success": False, "error": "Тип актива не найден"}
-
-        is_custom = type_resp[0]["is_custom"]
+        
+        portfolio_id = asset_meta[0]["portfolio_id"]
+        is_custom = asset_meta[0]["is_custom"]
 
         # 4️⃣ Удаляем все транзакции
         table_delete("transactions", {"portfolio_asset_id": portfolio_asset_id})
+
+        table_delete("fifo_lots", {"portfolio_asset_id": portfolio_asset_id})
 
         # 5️⃣ Удаляем саму запись portfolio_assets
         table_delete("portfolio_assets", {"id": portfolio_asset_id})
@@ -183,6 +179,10 @@ def delete_asset(portfolio_asset_id: int):
         if is_custom:
             table_delete("asset_prices", {"asset_id": asset_id})
             table_delete("assets", {"id": asset_id})
+
+        # 7️⃣ Обновляем ежедневные позиции и значения портфеля
+        table_delete("portfolio_daily_positions", {"portfolio_asset_id": portfolio_asset_id})
+        rpc("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id})
 
         return {"success": True, "message": "Актив и связанные записи успешно удалены"}
 

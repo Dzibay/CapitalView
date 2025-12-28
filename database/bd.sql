@@ -1,6 +1,16 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+CREATE TABLE public.accounts (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  portfolio_id bigint,
+  name text,
+  balance real,
+  currency_id bigint,
+  CONSTRAINT accounts_pkey PRIMARY KEY (id),
+  CONSTRAINT accounts_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id),
+  CONSTRAINT accounts_currency_id_fkey FOREIGN KEY (currency_id) REFERENCES public.assets(id)
+);
 CREATE TABLE public.asset_payouts (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   asset_id bigint,
@@ -63,6 +73,15 @@ CREATE TABLE public.cash_operations (
   CONSTRAINT cash_operations_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.transactions(id),
   CONSTRAINT cash_operations_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id)
 );
+CREATE TABLE public.fifo_lots (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  portfolio_asset_id bigint,
+  remaining_qty numeric,
+  price numeric,
+  created_at timestamp without time zone,
+  CONSTRAINT fifo_lots_pkey PRIMARY KEY (id),
+  CONSTRAINT fifo_lots_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES public.portfolio_assets(id)
+);
 CREATE TABLE public.operations_type (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   name text,
@@ -117,6 +136,7 @@ CREATE TABLE public.transactions (
   quantity double precision,
   transaction_date timestamp without time zone DEFAULT CURRENT_TIMESTAMP(0),
   user_id uuid,
+  realized_pnl numeric,
   CONSTRAINT transactions_pkey PRIMARY KEY (id),
   CONSTRAINT transactions_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES public.portfolio_assets(id),
   CONSTRAINT transactions_transaction_type_fkey FOREIGN KEY (transaction_type) REFERENCES public.transactions_type(id),

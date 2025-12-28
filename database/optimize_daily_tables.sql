@@ -67,3 +67,4 @@ ANALYZE portfolio_daily_values;
 --   AND tablename IN ('portfolio_daily_positions', 'portfolio_daily_values')
 -- ORDER BY tablename, indexname;
 
+

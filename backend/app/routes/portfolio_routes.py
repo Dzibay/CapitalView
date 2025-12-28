@@ -162,14 +162,6 @@ async def import_broker_route():
         from app.services.broker_connections_service import upsert_broker_connection
         upsert_broker_connection(user_id, broker_id, portfolio_id, token)
 
-        # Обновляем данные
-        try:
-            print("Обновляем ежедневные данные по портфелям пользователя...")
-            rpc('refresh_daily_data_for_user', {'p_user_id': user_id})
-            print("✅ Ежедневные данные обновлены")
-        except:
-            pass
-
         print(f"✅ Импорт брокера {broker_id} завершён успешно")
 
         return jsonify({
