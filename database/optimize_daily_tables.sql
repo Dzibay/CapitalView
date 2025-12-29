@@ -68,3 +68,4 @@ ANALYZE portfolio_daily_values;
 -- ORDER BY tablename, indexname;
 
 
+

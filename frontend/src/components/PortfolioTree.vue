@@ -1,26 +1,24 @@
 <script setup>
-import { ref, computed, unref, onMounted, onBeforeUnmount } from "vue";
+import { computed, unref } from "vue";
+import { useContextMenu } from '../composables/useContextMenu';
 
 // ✅ сохраняем props в переменную
 const props = defineProps({
   portfolios: Array,
   expandedPortfolios: Array,
-  activePortfolioMenu: Number,
   updatingPortfolios: Object,
 });
 
 const emit = defineEmits([
   "togglePortfolio",
-  "togglePortfolioMenu",
   "removeAsset",
   "clearPortfolio",
   "deletePortfolio",
-  "selectAsset",
-  "addTransaction", // Добавлено для проксирования
-  "addPrice"        // Добавлено для проксирования
+  "addTransaction",
+  "addPrice"
 ]);
 
-const activeAssetMenu = ref(null);
+const { openMenu } = useContextMenu();
 
 // 📊 === Функция сортировки активов по стоимости ===
 // Вынесена вычисление стоимости для мемоизации
@@ -35,9 +33,7 @@ const sortAssets = (assets) => {
     asset,
     value: calculateAssetValue(asset)
   }));
-  
   assetsWithValue.sort((a, b) => b.value - a.value); // по убыванию
-  
   return assetsWithValue.map(item => item.asset);
 };
 
@@ -45,7 +41,6 @@ const sortAssets = (assets) => {
 // Оптимизировано: минимизированы копии объектов
 const sortPortfolios = (portfolios) => {
   if (!portfolios || portfolios.length === 0) return [];
-  
   // Сортируем активы только если они есть
   const processedPortfolios = portfolios.map((p) => {
     const processed = { ...p };
@@ -57,7 +52,6 @@ const sortPortfolios = (portfolios) => {
     }
     return processed;
   });
-  
   processedPortfolios.sort((a, b) => (b.total_value || 0) - (a.total_value || 0));
   return processedPortfolios;
 };
@@ -67,27 +61,6 @@ const sortedPortfolios = computed(() => sortPortfolios(unref(props.portfolios)))
 
 // ==== Остальная логика ====
 const togglePortfolio = (id) => emit("togglePortfolio", id);
-const togglePortfolioMenu = (id) => emit("togglePortfolioMenu", id);
-
-const toggleAssetMenu = (id) => {
-  activeAssetMenu.value = activeAssetMenu.value === id ? null : id;
-};
-
-const removeAsset = (id) => emit("removeAsset", id);
-const clearPortfolio = (id) => emit("clearPortfolio", id);
-const addTransaction = (asset) => emit("addTransaction", asset);
-const addPrice = (asset) => emit('addPrice', asset)
-const deletePortfolio = (id) => emit("deletePortfolio", id);
-
-const handleClickOutside = (event) => {
-  if (!event.target.closest(".menu-container")) {
-    activeAssetMenu.value = null;
-    emit("togglePortfolioMenu", null);
-  }
-};
-
-onMounted(() => document.addEventListener("click", handleClickOutside));
-onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside));
 
 // 📈 Дивидендная доходность за текущий календарный год (%)
 const getDividendYieldCurrentYear = (asset) => {
@@ -112,8 +85,7 @@ const getDividendYield5Y = (asset) => {
   const yearsToInclude = Array.from({ length: 5 }, (_, i) => currentYear - i).reverse();
   const validYears = yearsToInclude.filter(y => yearly[y]);
   if (validYears.length === 0) return 0;
-  const avgDividends =
-    validYears.reduce((sum, y) => sum + yearly[y], 0) / validYears.length;
+  const avgDividends = validYears.reduce((sum, y) => sum + yearly[y], 0) / validYears.length;
   return (avgDividends / asset.last_price) * 100;
 };
 </script>
@@ -139,20 +111,12 @@ const getDividendYield5Y = (asset) => {
           </div>
           <span v-if="updatingPortfolios && unref(updatingPortfolios).has(portfolio.id)" class="spinner">⏳</span>
         </div>
-
-        <div class="menu-container">
-          <button class="menu-btn icon-btn" @click.stop="togglePortfolioMenu(portfolio.id)">⋯</button>
-          <transition name="scale">
-            <div v-if="activePortfolioMenu === portfolio.id" class="menu-dropdown">
-              <button @click="clearPortfolio(portfolio.id)" class="menu-item">
-                <span class="icon">🧹</span> Очистить
-              </button>
-              <button @click="deletePortfolio(portfolio.id)" class="menu-item danger">
-                <span class="icon">🗑️</span> Удалить
-              </button>
-            </div>
-          </transition>
-        </div>
+        <button
+          class="menu-btn icon-btn"
+          @click.stop="openMenu($event, 'portfolio', portfolio.id)"
+        >
+          ⋯
+        </button>
       </div>
 
       <transition name="slide-fade">
@@ -160,7 +124,6 @@ const getDividendYield5Y = (asset) => {
           <div v-if="!portfolio.assets?.length && !portfolio.children?.length" class="empty-state">
             В этом портфеле пока нет активов
           </div>
-
           <div v-if="portfolio.assets && portfolio.assets.length > 0" class="table-responsive">
             <table class="asset-table">
               <thead>
@@ -195,7 +158,7 @@ const getDividendYield5Y = (asset) => {
                     {{ Math.max(0, (asset.quantity * asset.last_price / asset.leverage) * asset.currency_rate_to_rub).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽
                   </td>
                   <td class="col-right num-font">
-                    <span v-if="asset.type.toLowerCase().includes('bond') || asset.type.toLowerCase().includes('облига')">
+                    <span v-if="asset.type && (asset.type.toLowerCase().includes('bond') || asset.type.toLowerCase().includes('облига'))">
                       {{ asset.properties?.coupon_percent ? asset.properties.coupon_percent.toFixed(2) + '%' : '–' }}
                     </span>
                     <span v-else>
@@ -203,46 +166,42 @@ const getDividendYield5Y = (asset) => {
                     </span>
                   </td>
                   <td class="col-right num-font">
-                    <span v-if="asset.type.toLowerCase().includes('bond') || asset.type.toLowerCase().includes('облига')"> – </span>
-                    <span v-else> {{ getDividendYield5Y(asset).toFixed(2) }}% </span>
+                    <span v-if="asset.type && (asset.type.toLowerCase().includes('bond') || asset.type.toLowerCase().includes('облига'))">
+                      –
+                    </span>
+                    <span v-else>
+                      {{ getDividendYield5Y(asset).toFixed(2) }}%
+                    </span>
                   </td>
                   <td class="col-right num-font" :class="asset.last_price - asset.average_price >= 0 ? 'text-green' : 'text-red'">
-                     {{ ((asset.last_price - asset.average_price) / asset.average_price * 100).toFixed(2) }}%
+                    {{ ((asset.last_price - asset.average_price) / asset.average_price * 100).toFixed(2) }}%
                   </td>
                   <td class="col-right num-font" :class="asset.daily_change >= 0 ? 'text-green' : 'text-red'">
                     {{ (asset.daily_change / asset.last_price * 100).toFixed(2) }}%
                   </td>
                   <td class="col-actions center">
-                    <div class="menu-container">
-                      <button class="menu-btn icon-btn" @click.stop="toggleAssetMenu(asset.portfolio_asset_id)">⋮</button>
-                      <transition name="scale">
-                        <div v-if="activeAssetMenu === asset.portfolio_asset_id" class="menu-dropdown asset-menu">
-                          <button @click="addTransaction(asset)" class="menu-item">💰 Добавить транзакцию</button>
-                          <button @click="addPrice(asset)" class="menu-item">📈 Изменить цену</button>
-                          <div class="divider"></div>
-                          <button class="menu-item danger" @click="removeAsset(asset.portfolio_asset_id)">🗑️ Удалить</button>
-                        </div>
-                      </transition>
-                    </div>
+                    <button
+                      class="menu-btn icon-btn"
+                      @click.stop="openMenu($event, 'asset', asset)"
+                    >
+                      ⋮
+                    </button>
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
-
           <div v-if="portfolio.children && portfolio.children.length" class="child-portfolios">
             <PortfolioTree
               :portfolios="portfolio.children"
               :expandedPortfolios="expandedPortfolios"
-              :activePortfolioMenu="activePortfolioMenu"
               :updatingPortfolios="updatingPortfolios"
-              @togglePortfolio="togglePortfolio"
-              @togglePortfolioMenu="togglePortfolioMenu"
-              @removeAsset="removeAsset"
-              @deletePortfolio="deletePortfolio"
-              @clearPortfolio="clearPortfolio"
-              @addTransaction="addTransaction"
-              @addPrice="addPrice"
+              @togglePortfolio="$emit('togglePortfolio', $event)"
+              @removeAsset="$emit('removeAsset', $event)"
+              @deletePortfolio="$emit('deletePortfolio', $event)"
+              @clearPortfolio="$emit('clearPortfolio', $event)"
+              @addTransaction="$emit('addTransaction', $event)"
+              @addPrice="$emit('addPrice', $event)"
             />
           </div>
         </div>
@@ -329,6 +288,10 @@ const getDividendYield5Y = (asset) => {
   font-weight: 500;
 }
 
+.spinner {
+  font-size: 14px;
+}
+
 /* --- Body --- */
 .portfolio-body {
   border-top: 1px solid #eef0f2;
@@ -378,9 +341,19 @@ const getDividendYield5Y = (asset) => {
 }
 
 /* Column Alignments */
-.col-right { text-align: right; }
-.col-actions { width: 40px; }
-.col-name { min-width: 150px; text-align: left;}
+.col-right {
+  text-align: right;
+}
+.col-actions {
+  width: 40px;
+}
+.col-name {
+  min-width: 150px;
+  text-align: left;
+}
+.center {
+  text-align: center;
+}
 
 /* Font Tweaks */
 .num-font {
@@ -388,16 +361,19 @@ const getDividendYield5Y = (asset) => {
   font-size: 12px;
   letter-spacing: -0.3px;
 }
-.bold { font-weight: 600; }
+.bold {
+  font-weight: 600;
+}
 
 /* Colors */
-.text-green { color: #10b981; }
-.text-red { color: #ef4444; }
+.text-green {
+  color: #10b981;
+}
+.text-red {
+  color: #ef4444;
+}
 
 /* Asset Cell Specifics */
-.cell-name {
-  /* Keep name cell clean */
-}
 .asset-main {
   display: flex;
   flex-direction: column;
@@ -429,10 +405,7 @@ const getDividendYield5Y = (asset) => {
   font-weight: bold;
 }
 
-/* --- Menu & Dropdowns --- */
-.menu-container {
-  position: relative;
-}
+/* --- Menu Button --- */
 .menu-btn {
   background: transparent;
   border: none;
@@ -447,52 +420,8 @@ const getDividendYield5Y = (asset) => {
   background: #f1f5f9;
   color: #475569;
 }
-
-.menu-dropdown {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  margin-top: 4px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-  min-width: 180px;
-  z-index: 50;
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-}
-
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: none;
-  padding: 8px 12px;
-  font-size: 13px;
-  color: #334155;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: background 0.1s;
-}
-.menu-item:hover {
-  background: #f1f5f9;
-}
-.menu-item.danger {
-  color: #ef4444;
-}
-.menu-item.danger:hover {
-  background: #fef2f2;
-}
-
-.divider {
-  height: 1px;
-  background: #e2e8f0;
-  margin: 4px 0;
+.icon-btn {
+  font-size: 18px;
 }
 
 /* --- Child Portfolios Wrapper --- */
@@ -502,19 +431,13 @@ const getDividendYield5Y = (asset) => {
 }
 
 /* --- Transitions --- */
-.slide-fade-enter-active, .slide-fade-leave-active {
+.slide-fade-enter-active,
+.slide-fade-leave-active {
   transition: all 0.3s ease-out;
 }
-.slide-fade-enter-from, .slide-fade-leave-to {
+.slide-fade-enter-from,
+.slide-fade-leave-to {
   transform: translateY(-10px);
-  opacity: 0;
-}
-
-.scale-enter-active, .scale-leave-active {
-  transition: all 0.1s ease;
-}
-.scale-enter-from, .scale-leave-to {
-  transform: scale(0.95);
   opacity: 0;
 }
 </style>

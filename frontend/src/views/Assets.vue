@@ -6,13 +6,12 @@ import AddPriceModal from "../components/modals/AddPriceModal.vue";
 import ImportPortfolioModal from "../components/modals/ImportPortfolioModal.vue";
 import AddPortfolioModal from "../components/modals/AddPortfolioModal.vue";
 import PortfolioTree from '../components/PortfolioTree.vue';
+import ContextMenu from '../components/ContextMenu.vue';
 import { useExpandedState } from '../composables/useExpandedState';
 import { useModals } from '../composables/useModal';
 import { usePortfolio } from '../composables/usePortfolio';
 
 const selectedAsset = ref(null);
-const activeAssetMenu = ref(null);
-const activePortfolioMenu = ref(null);
 
 const loading = inject("loading");
 const dashboardData = inject("dashboardData");
@@ -85,16 +84,6 @@ const refreshPortfolios = async () => {
 };
 
 // togglePortfolio уже определен в useExpandedState
-
-const toggleAssetMenu = (id) => {
-  activeAssetMenu.value = activeAssetMenu.value === id ? null : id;
-  activePortfolioMenu.value = null;
-};
-
-const togglePortfolioMenu = (id) => {
-  activePortfolioMenu.value = activePortfolioMenu.value === id ? null : id;
-  activeAssetMenu.value = null;
-};
 </script>
 
 <template>
@@ -142,17 +131,21 @@ const togglePortfolioMenu = (id) => {
         <PortfolioTree
           :portfolios="parsedDashboard.portfolioTree"
           :expandedPortfolios="expandedPortfolios"
-          :activePortfolioMenu="activePortfolioMenu"
-          :activeAssetMenu="activeAssetMenu"
+          :updatingPortfolios="updatingPortfolios"
           @togglePortfolio="togglePortfolio"
-          @toggleAssetMenu="toggleAssetMenu"
-          @togglePortfolioMenu="togglePortfolioMenu"
-          @removeAsset="removeAsset"
           @clearPortfolio="clearPortfolio"
           @deletePortfolio="deletePortfolio"
-          @addTransaction="(asset) => { selectedAsset = asset; openModal('addTransaction') }"
-          @addPrice="(asset) => { selectedAsset = asset; openModal('addPrice') }"
-          :updatingPortfolios="updatingPortfolios"
+          @removeAsset="removeAsset"
+          @addTransaction="addTransaction"
+          @addPrice="addPrice"
+        />
+
+        <ContextMenu
+          @clearPortfolio="clearPortfolio"
+          @deletePortfolio="deletePortfolio"
+          @removeAsset="removeAsset"
+          @addTransaction="addTransaction"
+          @addPrice="addPrice"
         />
       </div>
     </div>
