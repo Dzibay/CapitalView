@@ -7,7 +7,6 @@ from app.services.portfolio_service import (
     get_user_portfolios,
     get_portfolio_assets,
     get_portfolio_value_history,
-    clear_portfolio,
     get_user_portfolio_parent,
     update_portfolio_description
 )
@@ -48,20 +47,16 @@ def add_portfolio_route():
 @portfolio_bp.route("/<int:portfolio_id>/delete", methods=["DELETE"])
 @jwt_required()
 def delete_portfolio_route(portfolio_id):
-    email = get_jwt_identity()
-    user_id = get_user_by_email(email)["id"]
     print('Запрос удаления портфеля', portfolio_id)
-    data = asyncio.run(clear_portfolio(user_id, portfolio_id, True))
-    return jsonify(data)
+    rpc("clear_portfolio_full", {"p_portfolio_id": portfolio_id, "p_delete_self": True})
+    return jsonify({"success": True}), 200
 
 @portfolio_bp.route("/<int:portfolio_id>/clear", methods=["POST"])
 @jwt_required()
 def portfolio_clear_route(portfolio_id):
-    email = get_jwt_identity()
-    user_id = get_user_by_email(email)["id"]
     print('Запрос очистки портфеля', portfolio_id)
-    data = asyncio.run(clear_portfolio(user_id, portfolio_id))
-    return jsonify(data)
+    rpc("clear_portfolio_full", {"p_portfolio_id": portfolio_id})
+    return jsonify({"success": True}), 200
 
 @portfolio_bp.route("/<int:portfolio_id>/assets", methods=["GET"])
 @jwt_required()
