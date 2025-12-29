@@ -84,6 +84,17 @@ const refreshPortfolios = async () => {
 };
 
 // togglePortfolio уже определен в useExpandedState
+
+// Обработчики для контекстного меню
+const handleAddTransaction = (asset) => {
+  selectedAsset.value = asset;
+  openModal('addTransaction');
+};
+
+const handleAddPrice = (asset) => {
+  selectedAsset.value = asset;
+  openModal('addPrice');
+};
 </script>
 
 <template>
@@ -144,8 +155,8 @@ const refreshPortfolios = async () => {
           @clearPortfolio="clearPortfolio"
           @deletePortfolio="deletePortfolio"
           @removeAsset="removeAsset"
-          @addTransaction="addTransaction"
-          @addPrice="addPrice"
+          @addTransaction="handleAddTransaction"
+          @addPrice="handleAddPrice"
         />
       </div>
     </div>

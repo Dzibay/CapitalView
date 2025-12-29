@@ -82,24 +82,24 @@ onBeforeUnmount(() => {
     >
       <!-- Портфель -->
       <template v-if="menu.type === 'portfolio'">
-        <button class="item" @click="$emit('clearPortfolio', menu.payload)">
+        <button class="item" @click="closeMenu(); $emit('clearPortfolio', menu.payload)">
           🧹 Очистить
         </button>
-        <button class="item danger" @click="$emit('deletePortfolio', menu.payload)">
+        <button class="item danger" @click="closeMenu(); $emit('deletePortfolio', menu.payload)">
           🗑️ Удалить
         </button>
       </template>
 
       <!-- Актив -->
       <template v-if="menu.type === 'asset'">
-        <button class="item" @click="$emit('addTransaction', menu.payload)">
+        <button class="item" @click="closeMenu(); $emit('addTransaction', menu.payload)">
           💰 Добавить транзакцию
         </button>
-        <button class="item" @click="$emit('addPrice', menu.payload)">
+        <button class="item" @click="closeMenu(); $emit('addPrice', menu.payload)">
           📈 Изменить цену
         </button>
         <div class="divider"></div>
-        <button class="item danger" @click="$emit('removeAsset', menu.payload.portfolio_asset_id)">
+        <button class="item danger" @click="closeMenu(); $emit('removeAsset', menu.payload.portfolio_asset_id)">
           🗑️ Удалить
         </button>
       </template>
@@ -119,8 +119,7 @@ onBeforeUnmount(() => {
   padding: 4px;
   animation: contextMenuFadeIn 0.15s ease-out;
   max-width: calc(100vw - 16px);
-  max-height: calc(100vh - 16px);
-  overflow-y: auto;
+  /* Убираем скролл - меню автоматически позиционируется через adjustPosition */
 }
 
 @keyframes contextMenuFadeIn {
