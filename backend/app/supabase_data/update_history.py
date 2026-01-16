@@ -129,7 +129,7 @@ async def update_history_prices():
 
     # Обновление материализованных view разом
     await db_refresh_view("asset_latest_prices_full")
-    await db_rpc('trigger_refresh_async', {})
+    await db_rpc('refresh_all_portfolio_daily_data', {})
 
     print(f"✅ История обновлена. Активов: {ok}/{len(assets)}")
     return ok
@@ -245,9 +245,6 @@ async def update_today_prices():
     # обновление view
     await db_refresh_view("asset_latest_prices_full")
     # получаем всех владельцев изменившихся активов
-    owners = await db_rpc("get_users_by_assets", {"asset_ids": updated_ids})
-    for row in owners:
-        await db_rpc("refresh_daily_data_for_user", {"p_user_id": row["user_id"]})
 
 
     print("✅ Сегодняшние цены обновлены.")
