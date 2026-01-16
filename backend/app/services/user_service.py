@@ -1,4 +1,4 @@
-from app import bcrypt
+from app.extensions import bcrypt
 from app.services.supabase_service import table_select, table_insert
 
 def get_user_by_email(email: str):

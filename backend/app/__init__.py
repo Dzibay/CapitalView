@@ -1,40 +1,51 @@
+"""
+Главный модуль приложения Flask.
+Инициализирует приложение и регистрирует все компоненты.
+"""
 from flask import Flask
-from flask_jwt_extended import JWTManager
-from flask_bcrypt import Bcrypt
-from flask_cors import CORS
-from supabase import create_client, Client as SupabaseClient
-import os
-from datetime import timedelta
-from dotenv import load_dotenv
-
-# Загружаем переменные окружения из .env файла
-load_dotenv()
-
-# Получаем ключ Supabase из переменных окружения
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+from flasgger import Swagger
+from app.config import config
+from app.extensions import init_extensions
+from app.middleware.error_handler import register_error_handlers
+from app.middleware.logging_config import setup_logging
+from app.swagger_config import SWAGGER_CONFIG, SWAGGER_TEMPLATE
 
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables")
-
-# Создаем клиент Supabase
-supabase: SupabaseClient = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-bcrypt = Bcrypt()
-
+def create_app(config_name="default"):
+    """
+    Фабрика приложения Flask.
     
-def create_app():
+    Args:
+        config_name: Имя конфигурации ('development', 'production', 'default')
+    
+    Returns:
+        Flask приложение
+    """
     app = Flask(__name__)
-    jwt_secret = os.getenv("JWT_SECRET_KEY")
-    if not jwt_secret:
-        raise ValueError("JWT_SECRET_KEY must be set in environment variables")
-    app.config["JWT_SECRET_KEY"] = jwt_secret
-    CORS(app, origins=["http://localhost:5173"], supports_credentials=True, resources={r"/*": {"origins": "*"}}, methods=["GET", "POST", "DELETE", "OPTIONS", "PUT"])
-    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
-    jwt = JWTManager(app)
-    bcrypt.init_app(app)
+    
+    # Загрузка конфигурации
+    app.config.from_object(config.get(config_name, config["default"]))
+    
+    # Инициализация расширений
+    init_extensions(app)
+    
+    # Настройка логирования
+    setup_logging(app)
+    
+    # Регистрация обработчиков ошибок
+    register_error_handlers(app)
+    
+    # Инициализация Swagger документации
+    swagger = Swagger(app, config=SWAGGER_CONFIG, template=SWAGGER_TEMPLATE)
+    
+    # Регистрация blueprints (маршрутов)
+    register_blueprints(app)
+    
+    return app
 
+
+def register_blueprints(app):
+    """Регистрирует все blueprints приложения."""
     from app.routes.auth_routes import auth_bp
     from app.routes.portfolio_routes import portfolio_bp
     from app.routes.dashboard_routes import dashboard_bp
@@ -47,6 +58,4 @@ def create_app():
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
     app.register_blueprint(assets_bp, url_prefix="/api/assets")
     app.register_blueprint(transactions_bp, url_prefix="/api/transactions")
-    app.register_blueprint(analytics_bp, url_prefix='/api/analitics')
-
-    return app
+    app.register_blueprint(analytics_bp, url_prefix="/api/analitics")

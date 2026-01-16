@@ -1,4 +1,4 @@
-from app import supabase
+from app.extensions import supabase
 
 def rpc(fn_name: str, params: dict):
     return supabase.rpc(fn_name, params).execute().data
@@ -78,7 +78,7 @@ def refresh_materialized_view(view_name: str, concurrently: bool = False):
     """
     Обновляет материализованное представление в базе данных Supabase.
     """
-    from app import supabase
+    from app.extensions import supabase
 
     sql = f"REFRESH MATERIALIZED VIEW {'CONCURRENTLY ' if concurrently else ''}{view_name};"
     try:
