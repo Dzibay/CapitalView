@@ -1,6 +1,5 @@
 <script setup>
-import { inject, computed } from 'vue'
-import { usePortfolio } from '../composables/usePortfolio'
+import { inject, computed, ref, watch } from 'vue'
 
 // Виджеты
 import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
@@ -22,30 +21,64 @@ const loading = inject('loading')
 const selectedPortfolioId = inject('globalSelectedPortfolioId')
 const setPortfolioId = inject('setPortfolioId')
 
-// Используем композабл для работы с портфелями
-const { portfolios, selectedPortfolio, parsedPortfolioData } = usePortfolio(
-  dashboardData,
-  selectedPortfolioId
-)
+const portfolios = computed(() => dashboardData.value?.data?.portfolios ?? [])
+
+const selectedPortfolio = computed(() => {
+  return portfolios.value.find(p => p.id === selectedPortfolioId.value) || null
+})
+
+// Функция для сбора всех id выбранного портфеля и его дочерних
+function collectPortfolioIds(portfolio, allPortfolios) {
+  let ids = [portfolio.id];
+  const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id);
+
+  for (const child of children) {
+    ids = ids.concat(collectPortfolioIds(child, allPortfolios));
+  }
+
+  return ids;
+}
+
+// Функция для сбора всех активов выбранного портфеля и его дочерних
+function collectAssets(portfolio, allPortfolios) {
+  let assets = [...(portfolio.assets || [])];
+  const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id);
+
+  for (const child of children) {
+    assets = assets.concat(collectAssets(child, allPortfolios));
+  }
+
+  return assets;
+}
 
 const parsedDashboard = computed(() => {
-  if (!parsedPortfolioData.value) return null;
+  const data = dashboardData.value?.data;
+  if (!data || !selectedPortfolio.value) return null;
+
+  const allPortfolios = portfolios.value;
+
+  const portfolioIds = collectPortfolioIds(selectedPortfolio.value, allPortfolios);
+  const assets = collectAssets(selectedPortfolio.value, allPortfolios);
+
+  // Фильтруем транзакции по всем id портфелей
+  const transactions = (data.transactions ?? []).filter(t => portfolioIds.includes(t.portfolio_id));
 
   return {
-    totalAmount: parsedPortfolioData.value.totalAmount,
-    investedAmount: parsedPortfolioData.value.investedAmount,
-    monthlyChange: parsedPortfolioData.value.monthlyChange,
-    assetAllocation: parsedPortfolioData.value.assetAllocation,
-    portfolioChart: parsedPortfolioData.value.portfolioChart,
-    assets: parsedPortfolioData.value.assets,
-    transactions: parsedPortfolioData.value.transactions
+    totalAmount: Number(selectedPortfolio.value.total_value || 0),
+    investedAmount: Number(selectedPortfolio.value.total_invested || 0),
+    monthlyChange: selectedPortfolio.value.monthly_change || 0,
+    assetAllocation: selectedPortfolio.value.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] },
+    portfolioChart: selectedPortfolio.value.history ?? { labels: [], data: [] },
+    assets,
+    transactions
   };
 });
 
 const goalData = computed(() => {
-  if (!selectedPortfolio.value) return null;
+  const data = dashboardData.value?.data
+  if (!data || !selectedPortfolio.value) return null
 
-  const desc = selectedPortfolio.value.description || {};
+  const desc = selectedPortfolio.value.description || {} // если пустой, используем пустой объект
   return {
     portfolioId: selectedPortfolio.value.id,
     title: desc.capital_target_name || desc.text || 'Цель не задана',
@@ -53,8 +86,8 @@ const goalData = computed(() => {
     currentAmount: selectedPortfolio.value.total_value || 0,
     deadline: desc.capital_target_deadline || null,
     currency: desc.capital_target_currency || 'RUB'
-  };
-});
+  }
+})
 
 </script>
 
