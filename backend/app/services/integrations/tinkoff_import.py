@@ -12,11 +12,11 @@ OPERATION_CLASSIFICATION = {
     "OPERATION_TYPE_OUTPUT": "Withdraw",
     "OPERATION_TYPE_OUT_MULTI": "Withdraw",
 
-    "OPERATION_TYPE_BROKER_FEE": "Comission",
-    "OPERATION_TYPE_SERVICE_FEE": "Comission",
-    "OPERATION_TYPE_MARGIN_FEE": "Comission",
-    "OPERATION_TYPE_TRACK_MFEE": "Comission",
-    "OPERATION_TYPE_TRACK_PFEE": "Comission",
+    "OPERATION_TYPE_BROKER_FEE": "Commission",
+    "OPERATION_TYPE_SERVICE_FEE": "Commission",
+    "OPERATION_TYPE_MARGIN_FEE": "Commission",
+    "OPERATION_TYPE_TRACK_MFEE": "Commission",
+    "OPERATION_TYPE_TRACK_PFEE": "Commission",
 
     "OPERATION_TYPE_DIVIDEND_TAX": "Tax",
     "OPERATION_TYPE_TAX_CORRECTION": "Tax",
@@ -157,10 +157,7 @@ def get_tinkoff_portfolio(token, days=365):
 # data = get_tinkoff_portfolio('t.b7cVknEoyjXW6FG39o4woo12yzoCAKsTwYgT0LqYFvNEH0hC5IGSMtLxVEwGfwXOv048FR5kGmxMeFpEM-GCRQ')
 # for acc in data:
 #     if acc == 'Акции':
-#         print(acc)
-#         for pos in data[acc]["positions"]:
-#             print('  ', pos)
-#         print('\n\n')
 #         for t in data[acc]["transactions"]:
 #             print('  ', t)
+#         print(len(data[acc]["transactions"]))
     

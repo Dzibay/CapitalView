@@ -345,6 +345,7 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
         
         source_portfolio_id = asset_meta[0]["portfolio_id"]
         asset_id = asset_meta[0]["asset_id"]
+        asset_created_at = asset_meta[0]["created_at"]
         
         # Проверяем, что целевой портфель существует и отличается от исходного
         if source_portfolio_id == target_portfolio_id:
@@ -387,20 +388,6 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
             {"id": portfolio_asset_id}
         )
         
-        # 4️⃣ Обновляем portfolio_id во всех транзакциях этого актива
-        table_update(
-            "transactions",
-            {"portfolio_id": target_portfolio_id},
-            {"portfolio_asset_id": portfolio_asset_id}
-        )
-        
-        # 5️⃣ Обновляем portfolio_id в fifo_lots
-        table_update(
-            "fifo_lots",
-            {"portfolio_id": target_portfolio_id},
-            {"portfolio_asset_id": portfolio_asset_id}
-        )
-        
         # 6️⃣ Обновляем portfolio_id в portfolio_daily_positions
         table_update(
             "portfolio_daily_positions",
@@ -409,12 +396,12 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
         )
         
         # 7️⃣ Обновляем графики стоимости для исходного портфеля
-        rpc("update_portfolio_positions_from_date", {"p_portfolio_id": source_portfolio_id})
-        rpc("update_portfolio_values_from_date", {"p_portfolio_id": source_portfolio_id})
+        rpc("update_portfolio_positions_from_date", {"p_portfolio_id": source_portfolio_id, "p_from_date": asset_created_at})
+        rpc("update_portfolio_values_from_date", {"p_portfolio_id": source_portfolio_id, "p_from_date": asset_created_at})
         
         # 8️⃣ Обновляем графики стоимости для целевого портфеля
-        rpc("update_portfolio_positions_from_date", {"p_portfolio_id": target_portfolio_id})
-        rpc("update_portfolio_values_from_date", {"p_portfolio_id": target_portfolio_id})
+        rpc("update_portfolio_positions_from_date", {"p_portfolio_id": target_portfolio_id, "p_from_date": asset_created_at})
+        rpc("update_portfolio_values_from_date", {"p_portfolio_id": target_portfolio_id, "p_from_date": asset_created_at})
         
         # 9️⃣ Пересчитываем данные портфельного актива
         rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
