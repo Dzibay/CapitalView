@@ -3,6 +3,7 @@ import { ref, inject, computed } from "vue";
 import AddAssetModal from "../components/modals/AddAssetModal.vue";
 import AddTransactionModal from "../components/modals/AddTransactionModal.vue";
 import AddPriceModal from "../components/modals/AddPriceModal.vue";
+import MoveAssetModal from "../components/modals/MoveAssetModal.vue";
 import ImportPortfolioModal from "../components/modals/ImportPortfolioModal.vue";
 import AddPortfolioModal from "../components/modals/AddPortfolioModal.vue";
 import PortfolioTree from '../components/PortfolioTree.vue';
@@ -18,6 +19,7 @@ const dashboardData = inject("dashboardData");
 const reloadDashboard = inject('reloadDashboard');
 const addAsset = inject("addAsset");
 const removeAsset = inject("removeAsset");
+const moveAsset = inject("moveAsset");
 const deletePortfolio = inject("deletePortfolio");
 const clearPortfolio = inject("clearPortfolio");
 const addPortfolio = inject("addPortfolio");
@@ -34,6 +36,7 @@ const { modals, open: openModal, close: closeModal } = useModals([
   'addPortfolio',
   'addTransaction',
   'addPrice',
+  'moveAsset',
   'import'
 ]);
 
@@ -95,6 +98,22 @@ const handleAddPrice = (asset) => {
   selectedAsset.value = asset;
   openModal('addPrice');
 };
+
+const handleMoveAsset = (asset) => {
+  // Убеждаемся, что у актива есть portfolio_id
+  // Если его нет, пытаемся найти портфель по portfolio_asset_id
+  if (!asset.portfolio_id && asset.portfolio_asset_id) {
+    // Ищем портфель, содержащий этот актив
+    const portfolio = parsedDashboard.value.portfolios.find(p => 
+      p.assets && p.assets.some(a => a.portfolio_asset_id === asset.portfolio_asset_id)
+    )
+    if (portfolio) {
+      asset.portfolio_id = portfolio.id
+    }
+  }
+  selectedAsset.value = asset;
+  openModal('moveAsset');
+};
 </script>
 
 <template>
@@ -124,6 +143,7 @@ const handleAddPrice = (asset) => {
       <AddPortfolioModal v-if="modals.addPortfolio" @close="closeModal('addPortfolio')" :onSave="addPortfolio" :portfolios="parsedDashboard.portfolios"/>
       <AddTransactionModal v-if="modals.addTransaction" :asset="selectedAsset" :onSubmit="addTransaction" @close="closeModal('addTransaction')"/>
       <AddPriceModal v-if="modals.addPrice" :asset="selectedAsset" :onSubmit="addPrice" @close="closeModal('addPrice')"/>
+      <MoveAssetModal v-if="modals.moveAsset" :asset="selectedAsset" :portfolios="parsedDashboard.portfolios" :onSubmit="moveAsset" @close="closeModal('moveAsset')"/>
       <ImportPortfolioModal v-if="modals.import" @close="closeModal('import')" :onImport="importPortfolio" :portfolios="parsedDashboard.portfolios"/>
 
       <div v-if="loading" class="status-block">
@@ -149,6 +169,7 @@ const handleAddPrice = (asset) => {
           @removeAsset="removeAsset"
           @addTransaction="addTransaction"
           @addPrice="addPrice"
+          @moveAsset="handleMoveAsset"
         />
 
         <ContextMenu
@@ -157,6 +178,7 @@ const handleAddPrice = (asset) => {
           @removeAsset="removeAsset"
           @addTransaction="handleAddTransaction"
           @addPrice="handleAddPrice"
+          @moveAsset="handleMoveAsset"
         />
       </div>
     </div>

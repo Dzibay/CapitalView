@@ -81,6 +81,78 @@ async def get_user_portfolio_parent(user_email: str):
             return portfolio
     return None
 
+
+def get_portfolio_info(portfolio_id: int):
+    """
+    Получает детальную информацию о портфеле.
+    """
+    try:
+        # Получаем основную информацию о портфеле
+        portfolio = table_select(
+            "portfolios",
+            select="*",
+            filters={"id": portfolio_id},
+            limit=1
+        )
+        
+        if not portfolio:
+            return {"success": False, "error": "Портфель не найден"}
+        
+        portfolio_info = portfolio[0]
+        
+        # Получаем активы портфеля
+        assets = get_portfolio_assets_sync(portfolio_id)
+        portfolio_info["assets"] = assets
+        portfolio_info["assets_count"] = len(assets) if assets else 0
+        
+        # Получаем транзакции портфеля
+        transactions = get_portfolio_transactions_sync(portfolio_id)
+        portfolio_info["transactions"] = transactions
+        portfolio_info["transactions_count"] = len(transactions) if transactions else 0
+        
+        # Получаем историю стоимости
+        history = get_portfolio_value_history_sync(portfolio_id)
+        portfolio_info["value_history"] = history if history else []
+        
+        return {"success": True, "portfolio": portfolio_info}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def get_portfolio_summary(portfolio_id: int):
+    """
+    Получает краткую сводку по портфелю (без детальной истории).
+    """
+    try:
+        portfolio = table_select(
+            "portfolios",
+            select="*",
+            filters={"id": portfolio_id},
+            limit=1
+        )
+        
+        if not portfolio:
+            return {"success": False, "error": "Портфель не найден"}
+        
+        portfolio_info = portfolio[0]
+        
+        # Получаем только активы
+        assets = get_portfolio_assets_sync(portfolio_id)
+        portfolio_info["assets"] = assets
+        portfolio_info["assets_count"] = len(assets) if assets else 0
+        
+        # Вычисляем общую стоимость портфеля
+        total_value = 0
+        if assets:
+            for asset in assets:
+                total_value += asset.get("total_value", 0) or 0
+        
+        portfolio_info["total_value"] = total_value
+        
+        return {"success": True, "portfolio": portfolio_info}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 # --- пул потоков для фоновых операций ---
 executor = ThreadPoolExecutor(max_workers=10)
 

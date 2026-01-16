@@ -9,7 +9,10 @@ from app.services.portfolio_service import (
     get_portfolio_assets,
     get_portfolio_value_history,
     get_user_portfolio_parent,
-    update_portfolio_description
+    update_portfolio_description,
+    get_portfolio_info,
+    get_portfolio_summary,
+    get_portfolio_transactions
 )
 from app.services.user_service import get_user_by_email
 from app.models.portfolio_models import (
@@ -337,6 +340,177 @@ def portfolio_history_route(portfolio_id):
             "success": False,
             "error": ErrorMessages.INTERNAL_ERROR
         }), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@portfolio_bp.route("/<int:portfolio_id>", methods=["GET"])
+@jwt_required()
+def get_portfolio_info_route(portfolio_id):
+    """
+    Получение детальной информации о портфеле.
+    ---
+    tags:
+      - Portfolio
+    summary: Информация о портфеле
+    description: Возвращает детальную информацию о портфеле, включая активы, транзакции и историю стоимости
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: portfolio_id
+        type: integer
+        required: true
+        description: ID портфеля
+    responses:
+      200:
+        description: Детальная информация о портфеле
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            portfolio:
+              type: object
+              properties:
+                assets:
+                  type: array
+                assets_count:
+                  type: integer
+                transactions:
+                  type: array
+                transactions_count:
+                  type: integer
+                value_history:
+                  type: array
+      404:
+        description: Портфель не найден
+      401:
+        description: Требуется аутентификация
+      500:
+        description: Внутренняя ошибка сервера
+    """
+    try:
+        result = get_portfolio_info(portfolio_id)
+        
+        if not result.get("success"):
+            status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(result), status_code
+        
+        return jsonify(result), HTTPStatus.OK
+        
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о портфеле {portfolio_id}: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": ErrorMessages.INTERNAL_ERROR
+        }), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@portfolio_bp.route("/<int:portfolio_id>/summary", methods=["GET"])
+@jwt_required()
+def get_portfolio_summary_route(portfolio_id):
+    """
+    Получение краткой сводки по портфелю.
+    ---
+    tags:
+      - Portfolio
+    summary: Краткая сводка портфеля
+    description: Возвращает краткую информацию о портфеле без детальной истории
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: portfolio_id
+        type: integer
+        required: true
+        description: ID портфеля
+    responses:
+      200:
+        description: Краткая сводка портфеля
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            portfolio:
+              type: object
+              properties:
+                assets:
+                  type: array
+                assets_count:
+                  type: integer
+                total_value:
+                  type: number
+      404:
+        description: Портфель не найден
+      401:
+        description: Требуется аутентификация
+      500:
+        description: Внутренняя ошибка сервера
+    """
+    try:
+        result = get_portfolio_summary(portfolio_id)
+        
+        if not result.get("success"):
+            status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(result), status_code
+        
+        return jsonify(result), HTTPStatus.OK
+        
+    except Exception as e:
+        logger.error(f"Ошибка при получении сводки портфеля {portfolio_id}: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": ErrorMessages.INTERNAL_ERROR
+        }), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@portfolio_bp.route("/<int:portfolio_id>/transactions", methods=["GET"])
+@jwt_required()
+def get_portfolio_transactions_route(portfolio_id):
+    """
+    Получение транзакций портфеля.
+    ---
+    tags:
+      - Portfolio
+    summary: Транзакции портфеля
+    description: Возвращает все транзакции указанного портфеля
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: portfolio_id
+        type: integer
+        required: true
+        description: ID портфеля
+    responses:
+      200:
+        description: Список транзакций
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            transactions:
+              type: array
+      401:
+        description: Требуется аутентификация
+      500:
+        description: Внутренняя ошибка сервера
+    """
+    try:
+        data = asyncio.run(get_portfolio_transactions(portfolio_id))
+        return jsonify({
+            "success": True,
+            "transactions": data
+        }), HTTPStatus.OK
+        
+    except Exception as e:
+        logger.error(f"Ошибка при получении транзакций портфеля {portfolio_id}: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": ErrorMessages.INTERNAL_ERROR
+        }), HTTPStatus.INTERNAL_SERVER_ERROR
+
 
 @portfolio_bp.route("/import_broker", methods=["POST"])
 @jwt_required()

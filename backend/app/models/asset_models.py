@@ -39,3 +39,7 @@ class AddAssetPriceRequest(BaseModel):
                 return v
         return v
 
+
+class MoveAssetRequest(BaseModel):
+    """Модель запроса перемещения актива между портфелями."""
+    target_portfolio_id: int = Field(..., ge=1, description="ID целевого портфеля")

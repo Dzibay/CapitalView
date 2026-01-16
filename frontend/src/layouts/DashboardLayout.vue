@@ -148,6 +148,25 @@ const clearPortfolio = async ( portfolioId ) => {
   }
 }
 
+// 🔹 Активы - перемещение
+const moveAsset = async ({ portfolio_asset_id, target_portfolio_id }) => {
+  try {
+    loading.value = true
+    const res = await assetsService.moveAsset(portfolio_asset_id, target_portfolio_id)
+    if (!res.success) throw new Error(res.error || 'Ошибка перемещения актива')
+    
+    // Обновляем данные дашборда после перемещения
+    await reloadDashboard()
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.error('Ошибка перемещения актива:', err)
+    }
+    throw err // Пробрасываем ошибку для обработки в модальном окне
+  } finally {
+    loading.value = false
+  }
+}
+
 // 🔹 Транзакции
 const addTransaction = async ({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date }) => {
   try {
@@ -373,6 +392,7 @@ provide('editTransaction', editTransaction)
 provide('deleteTransactions', deleteTransactions)
 provide('addPrice', addPrice)
 provide('removeAsset', removeAsset)
+provide('moveAsset', moveAsset)
 provide('addPortfolio', addPortfolio)
 provide('deletePortfolio', deletePortfolio)
 provide('clearPortfolio', clearPortfolio)

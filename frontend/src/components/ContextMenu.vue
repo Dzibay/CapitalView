@@ -7,6 +7,7 @@ const emit = defineEmits([
   'deletePortfolio',
   'addTransaction',
   'addPrice',
+  'moveAsset',
   'removeAsset'
 ])
 
@@ -97,6 +98,9 @@ onBeforeUnmount(() => {
         </button>
         <button class="item" @click="closeMenu(); $emit('addPrice', menu.payload)">
           📈 Изменить цену
+        </button>
+        <button class="item" @click="closeMenu(); $emit('moveAsset', menu.payload)">
+          📦 Переместить
         </button>
         <div class="divider"></div>
         <button class="item danger" @click="closeMenu(); $emit('removeAsset', menu.payload.portfolio_asset_id)">

@@ -27,6 +27,7 @@ export const API_ENDPOINTS = {
     ADD: '/assets/add',
     DELETE: (id) => `/assets/${id}`,
     ADD_PRICE: '/assets/add_price',
+    MOVE: (portfolio_asset_id) => `/assets/portfolio/${portfolio_asset_id}/move`,
   },
   TRANSACTIONS: {
     BASE: '/transactions/',

@@ -15,7 +15,8 @@ const emit = defineEmits([
   "clearPortfolio",
   "deletePortfolio",
   "addTransaction",
-  "addPrice"
+  "addPrice",
+  "moveAsset"
 ]);
 
 const { openMenu } = useContextMenu();
@@ -202,6 +203,7 @@ const getDividendYield5Y = (asset) => {
               @clearPortfolio="$emit('clearPortfolio', $event)"
               @addTransaction="$emit('addTransaction', $event)"
               @addPrice="$emit('addPrice', $event)"
+              @moveAsset="$emit('moveAsset', $event)"
             />
           </div>
         </div>

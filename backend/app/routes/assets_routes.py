@@ -1,8 +1,13 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from pydantic import ValidationError
-from app.services.assets_service import delete_asset, create_asset, add_asset_price
-from app.models.asset_models import AddAssetPriceRequest
+from app.services.assets_service import (
+    delete_asset, create_asset, add_asset_price,
+    get_asset_info, get_asset_price_history, get_portfolio_asset_info,
+    move_asset_to_portfolio
+)
+from app.services.user_service import get_user_by_email
+from app.models.asset_models import AddAssetPriceRequest, MoveAssetRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 import logging
 
@@ -223,6 +228,313 @@ def add_asset_price_route():
         }), HTTPStatus.BAD_REQUEST
     except Exception as e:
         logger.error(f"Ошибка при добавлении цены актива: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": ErrorMessages.INTERNAL_ERROR
+        }), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@assets_bp.route('/<int:asset_id>', methods=['GET'])
+@jwt_required()
+def get_asset_info_route(asset_id):
+    """
+    Получение информации об активе.
+    ---
+    tags:
+      - Assets
+    summary: Информация об активе
+    description: Возвращает детальную информацию об активе, включая последнюю цену
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: asset_id
+        type: integer
+        required: true
+        description: ID актива
+    responses:
+      200:
+        description: Информация об активе
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            asset:
+              type: object
+      404:
+        description: Актив не найден
+      401:
+        description: Требуется аутентификация
+      500:
+        description: Внутренняя ошибка сервера
+    """
+    try:
+        result = get_asset_info(asset_id)
+        
+        if not result.get("success"):
+            status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(result), status_code
+        
+        return jsonify(result), HTTPStatus.OK
+        
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации об активе {asset_id}: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": ErrorMessages.INTERNAL_ERROR
+        }), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@assets_bp.route('/<int:asset_id>/prices', methods=['GET'])
+@jwt_required()
+def get_asset_price_history_route(asset_id):
+    """
+    Получение истории цен актива.
+    ---
+    tags:
+      - Assets
+    summary: История цен актива
+    description: Возвращает историю цен актива с возможностью фильтрации по датам
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: asset_id
+        type: integer
+        required: true
+        description: ID актива
+      - in: query
+        name: start_date
+        type: string
+        format: date-time
+        description: Начальная дата периода
+      - in: query
+        name: end_date
+        type: string
+        format: date-time
+        description: Конечная дата периода
+      - in: query
+        name: limit
+        type: integer
+        description: Лимит записей (по умолчанию 1000)
+    responses:
+      200:
+        description: История цен
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            prices:
+              type: array
+              items:
+                type: object
+            count:
+              type: integer
+      401:
+        description: Требуется аутентификация
+      500:
+        description: Внутренняя ошибка сервера
+    """
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        limit = request.args.get("limit", type=int) or 1000
+        
+        result = get_asset_price_history(asset_id, start_date, end_date, limit)
+        
+        if not result.get("success"):
+            return jsonify(result), HTTPStatus.INTERNAL_SERVER_ERROR
+        
+        return jsonify(result), HTTPStatus.OK
+        
+    except Exception as e:
+        logger.error(f"Ошибка при получении истории цен актива {asset_id}: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": ErrorMessages.INTERNAL_ERROR
+        }), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@assets_bp.route('/portfolio/<int:portfolio_asset_id>', methods=['GET'])
+@jwt_required()
+def get_portfolio_asset_info_route(portfolio_asset_id):
+    """
+    Получение информации о портфельном активе.
+    ---
+    tags:
+      - Assets
+    summary: Информация о портфельном активе
+    description: Возвращает детальную информацию о портфельном активе, включая транзакции
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: portfolio_asset_id
+        type: integer
+        required: true
+        description: ID портфельного актива
+    responses:
+      200:
+        description: Информация о портфельном активе
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            portfolio_asset:
+              type: object
+              properties:
+                transactions:
+                  type: array
+                transactions_count:
+                  type: integer
+      404:
+        description: Портфельный актив не найден
+      401:
+        description: Требуется аутентификация
+      500:
+        description: Внутренняя ошибка сервера
+    """
+    try:
+        result = get_portfolio_asset_info(portfolio_asset_id)
+        
+        if not result.get("success"):
+            status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(result), status_code
+        
+        return jsonify(result), HTTPStatus.OK
+        
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о портфельном активе {portfolio_asset_id}: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": ErrorMessages.INTERNAL_ERROR
+        }), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@assets_bp.route('/portfolio/<int:portfolio_asset_id>/move', methods=['POST'])
+@jwt_required()
+def move_asset_route(portfolio_asset_id):
+    """
+    Перемещение актива между портфелями.
+    ---
+    tags:
+      - Assets
+    summary: Переместить актив в другой портфель
+    description: Перемещает актив из текущего портфеля в указанный портфель. Обновляет все связанные данные и графики стоимости портфелей.
+    security:
+      - Bearer: []
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    parameters:
+      - in: path
+        name: portfolio_asset_id
+        type: integer
+        required: true
+        description: ID портфельного актива для перемещения
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - target_portfolio_id
+          properties:
+            target_portfolio_id:
+              type: integer
+              example: 2
+              description: ID целевого портфеля
+    responses:
+      200:
+        description: Актив успешно перемещен
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: Актив успешно перемещен
+            portfolio_asset_id:
+              type: integer
+            source_portfolio_id:
+              type: integer
+            target_portfolio_id:
+              type: integer
+      400:
+        description: Ошибка валидации или актив уже в целевом портфеле
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+      404:
+        description: Портфельный актив или целевой портфель не найден
+      401:
+        description: Требуется аутентификация
+      403:
+        description: Нет доступа к целевому портфелю
+      500:
+        description: Внутренняя ошибка сервера
+    """
+    try:
+        # Валидация входных данных
+        data = MoveAssetRequest(**request.get_json())
+        
+        user_email = get_jwt_identity()
+        user = get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({
+                "success": False,
+                "error": ErrorMessages.USER_NOT_FOUND
+            }), HTTPStatus.NOT_FOUND
+        
+        user_id = user["id"]
+        
+        # Перемещаем актив
+        result = move_asset_to_portfolio(
+            portfolio_asset_id=portfolio_asset_id,
+            target_portfolio_id=data.target_portfolio_id,
+            user_id=user_id
+        )
+        
+        if not result.get("success"):
+            # Определяем код статуса на основе типа ошибки
+            error = result.get("error", "")
+            if "не найден" in error:
+                status_code = HTTPStatus.NOT_FOUND
+            elif "Нет доступа" in error or "доступа" in error:
+                status_code = HTTPStatus.FORBIDDEN
+            elif "уже" in error.lower():
+                status_code = HTTPStatus.BAD_REQUEST
+            else:
+                status_code = HTTPStatus.BAD_REQUEST
+            
+            return jsonify(result), status_code
+        
+        return jsonify({
+            "success": True,
+            "message": "Актив успешно перемещен в другой портфель",
+            **result
+        }), HTTPStatus.OK
+        
+    except ValidationError as e:
+        return jsonify({
+            "success": False,
+            "error": ErrorMessages.VALIDATION_ERROR,
+            "details": e.errors()
+        }), HTTPStatus.BAD_REQUEST
+    except Exception as e:
+        logger.error(f"Ошибка при перемещении актива {portfolio_asset_id}: {e}", exc_info=True)
         return jsonify({
             "success": False,
             "error": ErrorMessages.INTERNAL_ERROR

@@ -16,5 +16,11 @@ export default {
     const payload = { asset_id, price, date };
     const res = await apiClient.post(API_ENDPOINTS.ASSETS.ADD_PRICE, payload);
     return res.data;
+  },
+
+  async moveAsset(portfolio_asset_id, target_portfolio_id) {
+    const payload = { target_portfolio_id };
+    const res = await apiClient.post(API_ENDPOINTS.ASSETS.MOVE(portfolio_asset_id), payload);
+    return res.data;
   }
 };
