@@ -5,6 +5,7 @@ import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import MultiLineChart from '../components/MultiLineChart.vue'
 import ChartControls from '../components/ChartControls.vue'
+import LoadingState from '../components/LoadingState.vue'
 import assetsService from '../services/assetsService'
 
 const route = useRoute()
@@ -499,10 +500,7 @@ watch(() => route.params.id, () => {
 
 <template>
   <div class="asset-detail-page">
-    <div v-if="isLoading || uiStore.loading" class="loading-state">
-      <div class="loader"></div>
-      <span>Загрузка данных об активе...</span>
-    </div>
+    <LoadingState v-if="isLoading || uiStore.loading" message="Загрузка данных об активе..." />
 
     <div v-else-if="assetInfo && portfolioAsset" class="content-wrapper">
       <!-- Заголовок с кнопкой назад -->
@@ -678,7 +676,6 @@ watch(() => route.params.id, () => {
   padding: 32px 20px;
 }
 
-.loading-state,
 .error-state {
   display: flex;
   flex-direction: column;
@@ -686,19 +683,6 @@ watch(() => route.params.id, () => {
   justify-content: center;
   min-height: 60vh;
   gap: 1rem;
-}
-
-.loader {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #e5e7eb;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 .header-row {

@@ -191,9 +191,7 @@ async function updateSelectedAnalytics() {
       </div>
     </div>
 
-    <div v-if="isLoadingAnalytics" class="loading-screen">
-      <p>Загрузка аналитики...</p>
-    </div>
+    <LoadingState v-if="isLoadingAnalytics" message="Загрузка аналитики..." />
 
     <div v-else-if="selectedPortfolioAnalytics" class="widgets-grid">
       <!-- Метрики -->
@@ -245,9 +243,7 @@ async function updateSelectedAnalytics() {
     </div>
   </div>
 
-  <div v-else class="loading-screen">
-    <p>Загрузка данных...</p>
-  </div>
+  <LoadingState v-else />
 </template>
 
 <style scoped>
@@ -291,12 +287,6 @@ async function updateSelectedAnalytics() {
   display: flex;
   flex-direction: column;
   gap: var(--spacing);
-}
-.loading-screen {
-  text-align: center;
-  padding: 50px;
-  color: gray;
-  font-size: 1.2rem;
 }
 .portfolio-selector {
   position: relative;

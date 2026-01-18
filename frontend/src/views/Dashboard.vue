@@ -5,6 +5,9 @@ import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import { usePortfoliosStore } from '../stores/portfolios.store'
 
+// Компоненты
+import LoadingState from '../components/LoadingState.vue'
+
 // Виджеты
 import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
 import AssetAllocationWidget from '../components/widgets/AssetAllocationWidget.vue'
@@ -139,9 +142,7 @@ const goalData = computed(() => {
     </div>
   </div>
 
-  <div v-else class="loading-screen">
-    <p>Загрузка данных...</p>
-  </div>
+  <LoadingState v-else />
 </template>
 
 <style scoped>
@@ -156,13 +157,6 @@ const goalData = computed(() => {
   grid-auto-rows: 150px;
 }
 
-.loading-screen {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  font-size: 1.5rem;
-}
 
 
 .portfolio-selector {

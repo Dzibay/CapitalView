@@ -16,6 +16,7 @@ import ContextMenu from '../components/ContextMenu.vue';
 import { useExpandedState } from '../composables/useExpandedState';
 import { useModals } from '../composables/useModal';
 import { usePortfolio } from '../composables/usePortfolio';
+import LoadingState from '../components/LoadingState.vue';
 
 const selectedAsset = ref(null);
 
@@ -192,10 +193,7 @@ const handleMoveAsset = (asset) => {
       <MoveAssetModal v-if="modals.moveAsset" :asset="selectedAsset" :portfolios="parsedDashboard.portfolios" :onSubmit="moveAsset" @close="closeModal('moveAsset')"/>
       <ImportPortfolioModal v-if="modals.import" @close="closeModal('import')" :onImport="importPortfolio" :portfolios="parsedDashboard.portfolios"/>
 
-      <div v-if="uiStore.loading" class="status-block">
-        <div class="loader"></div>
-        <span>Загрузка данных...</span>
-      </div>
+      <LoadingState v-if="uiStore.loading" />
       
       <div v-else-if="parsedDashboard.portfolios.length === 0" class="empty-placeholder">
         <div class="empty-icon">📂</div>
@@ -333,12 +331,7 @@ const handleMoveAsset = (asset) => {
   font-size: 14px;
 }
 
-/* Empty State & Status */
-.status-block {
-  text-align: center;
-  padding: 40px;
-  color: #6b7280;
-}
+/* Empty State */
 
 .empty-placeholder {
   text-align: center;

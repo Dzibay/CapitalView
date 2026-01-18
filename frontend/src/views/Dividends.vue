@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
+import LoadingState from '../components/LoadingState.vue'
 
 // Используем stores вместо inject
 const dashboardStore = useDashboardStore()
@@ -207,10 +208,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
       />
     </div>
 
-    <div v-if="uiStore.loading" class="loading-state">
-      <div class="loader"></div>
-      <span>Загрузка данных...</span>
-    </div>
+    <LoadingState v-if="uiStore.loading" />
 
     <div v-else>
       <div class="calendar-controls">
@@ -333,14 +331,6 @@ watch(() => uiStore.selectedPortfolioId, () => {
   padding-bottom: 40px;
 }
 
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 60px;
-  color: #6b7280;
-}
 
 /* Header */
 .header-row {
