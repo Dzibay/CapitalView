@@ -1,9 +1,35 @@
-from app.extensions import supabase
+from app.extensions import supabase as _supabase_global, init_extensions
+from app.config import Config
+
+def get_supabase_client():
+    """
+    Получает или создает Supabase клиент.
+    Работает как в контексте Flask приложения, так и в скриптах.
+    """
+    global _supabase_global
+    
+    # Если клиент уже инициализирован, возвращаем его
+    if _supabase_global is not None:
+        return _supabase_global
+    
+    # Иначе инициализируем клиент напрямую из переменных окружения
+    # Это нужно для скриптов из supabase_data, которые запускаются вне Flask
+    try:
+        Config.validate()
+        from supabase import create_client
+        _supabase_global = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
+        return _supabase_global
+    except Exception as e:
+        # Если инициализация из Config не удалась, попробуем через init_extensions
+        init_extensions()
+        return _supabase_global
 
 def rpc(fn_name: str, params: dict):
+    supabase = get_supabase_client()
     return supabase.rpc(fn_name, params).execute().data
 
 def table_select(table: str, select="*", filters: dict = None, in_filters: dict = None, neq_filters: dict = None, order=None, limit=10000, offset=None):
+    supabase = get_supabase_client()
     q = supabase.table(table).select(select)
     
     if filters:
@@ -28,15 +54,34 @@ def table_select(table: str, select="*", filters: dict = None, in_filters: dict 
     return q.execute().data
 
 def table_insert(table: str, data):
+    supabase = get_supabase_client()
     return supabase.table(table).insert(data).execute().data
 
+def table_upsert(table: str, data, filters: dict = None):
+    """
+    Вставляет или обновляет запись в таблице.
+    Если filters указан, выполняет update, иначе upsert.
+    """
+    supabase = get_supabase_client()
+    if filters:
+        # Если указаны фильтры, делаем update
+        q = supabase.table(table).update(data)
+        for k, v in filters.items():
+            q = q.eq(k, v)
+        return q.execute().data
+    else:
+        # Иначе делаем upsert
+        return supabase.table(table).upsert(data).execute().data
+
 def table_update(table: str, data: dict, filters: dict):
+    supabase = get_supabase_client()
     q = supabase.table(table).update(data)
     for k, v in filters.items():
         q = q.eq(k, v)
     return q.execute().data
 
 def table_delete(table: str, filters: dict = None, neq_filters: dict = None, in_filters: dict = None):
+    supabase = get_supabase_client()
     q = supabase.table(table).delete()
 
     if filters:
@@ -58,6 +103,7 @@ def table_select_with_neq(table: str, select: str = "*", filters: dict = None, n
     Выполняет SELECT с поддержкой neq (not equal) фильтров.
     Используется для проверки использования активов в других портфелях.
     """
+    supabase = get_supabase_client()
     q = supabase.table(table).select(select)
     
     if filters:
@@ -78,7 +124,7 @@ def refresh_materialized_view(view_name: str, concurrently: bool = False):
     """
     Обновляет материализованное представление в базе данных Supabase.
     """
-    from app.extensions import supabase
+    supabase = get_supabase_client()
 
     sql = f"REFRESH MATERIALIZED VIEW {'CONCURRENTLY ' if concurrently else ''}{view_name};"
     try:

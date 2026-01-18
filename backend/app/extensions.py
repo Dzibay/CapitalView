@@ -17,22 +17,23 @@ cors = CORS()
 supabase: SupabaseClient = None
 
 
-def init_extensions(app):
+def init_extensions(app=None):
     """Инициализирует все расширения Flask."""
-    # Bcrypt для хеширования паролей
-    bcrypt.init_app(app)
-    
-    # JWT для аутентификации
-    jwt.init_app(app)
-    
-    # CORS для кросс-доменных запросов
-    cors.init_app(
-        app,
-        origins=Config.CORS_ORIGINS,
-        supports_credentials=Config.CORS_SUPPORTS_CREDENTIALS,
-        resources={r"/*": {"origins": "*"}},
-        methods=Config.CORS_METHODS,
-    )
+    if app:
+        # Bcrypt для хеширования паролей
+        bcrypt.init_app(app)
+        
+        # JWT для аутентификации
+        jwt.init_app(app)
+        
+        # CORS для кросс-доменных запросов
+        cors.init_app(
+            app,
+            origins=Config.CORS_ORIGINS,
+            supports_credentials=Config.CORS_SUPPORTS_CREDENTIALS,
+            resources={r"/*": {"origins": "*"}},
+            methods=Config.CORS_METHODS,
+        )
     
     # Supabase клиент
     global supabase
