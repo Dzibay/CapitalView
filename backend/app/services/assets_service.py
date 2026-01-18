@@ -307,6 +307,7 @@ def get_portfolio_asset_info(portfolio_asset_id: int):
             return {"success": False, "error": "Портфельный актив не найден"}
         
         portfolio_asset = asset_meta[0]
+        asset_id = portfolio_asset.get("asset_id")
         
         # Получаем транзакции по этому активу
         transactions = table_select(
@@ -318,6 +319,22 @@ def get_portfolio_asset_info(portfolio_asset_id: int):
         
         portfolio_asset["transactions"] = transactions
         portfolio_asset["transactions_count"] = len(transactions)
+        
+        # Получаем выплаты (дивиденды и купоны) из cash_operations
+        # Тип 3 = дивиденды, тип 4 = купоны
+        payouts = []
+        if asset_id:
+            payout_operations = table_select(
+                "cash_operations",
+                select="*",
+                filters={"asset_id": asset_id},
+                in_filters={"type": [3, 4]},  # 3 = дивиденды, 4 = купоны
+                order={"column": "date", "desc": True}
+            )
+            payouts = payout_operations or []
+        
+        portfolio_asset["payouts"] = payouts
+        portfolio_asset["payouts_count"] = len(payouts)
         
         return {"success": True, "portfolio_asset": portfolio_asset}
     except Exception as e:

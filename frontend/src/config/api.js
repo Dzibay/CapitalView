@@ -28,6 +28,9 @@ export const API_ENDPOINTS = {
     DELETE: (id) => `/assets/${id}`,
     ADD_PRICE: '/assets/add_price',
     MOVE: (portfolio_asset_id) => `/assets/portfolio/${portfolio_asset_id}/move`,
+    GET_INFO: (id) => `/assets/${id}`,
+    GET_PRICES: (id) => `/assets/${id}/prices`,
+    GET_PORTFOLIO_ASSET_INFO: (portfolio_asset_id) => `/assets/portfolio/${portfolio_asset_id}`,
   },
   TRANSACTIONS: {
     BASE: '/transactions/',

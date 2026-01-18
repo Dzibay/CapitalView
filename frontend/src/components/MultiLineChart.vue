@@ -99,24 +99,61 @@ function aggregateData(dataObj, period) {
     ОКРУГЛЕНИЕ ОКНА Y
 -------------------------------------------------------------------------- */
 function getNiceMax(value) {
-  if (value <= 0) return 1000
+  if (value <= 0) {
+    // Для нулевых или отрицательных значений используем небольшой диапазон
+    return 100
+  }
+  
+  // Добавляем 10% к максимальному значению
   const padded = value * 1.1
+  
+  // Определяем порядок величины (логарифм по основанию 10)
+  const order = padded < 1 && padded > 0 
+    ? Math.floor(Math.log10(padded)) 
+    : Math.floor(Math.log10(padded))
+  
+  // Вычисляем базовую величину (степень 10)
+  const magnitude = Math.pow(10, order)
+  
+  // Выбираем "круглый" шаг округления в зависимости от порядка величины
   let step
-  if (padded < 100_000) step = 10_000
-  else if (padded < 1_000_000) step = 50_000
-  else if (padded < 5_000_000) step = 100_000
-  else if (padded < 10_000_000) step = 250_000
-  else if (padded < 50_000_000) step = 500_000
-  else step = 1_000_000
-
-  const rounded = Math.floor(padded / step) * step
-  return rounded < value ? rounded + step : rounded
+  if (order < 0) {
+    // Для значений меньше 1 (0.1, 0.01, 0.001 и т.д.)
+    // Шаг: 0.1, 0.01, 0.001 и т.д. (кратные 5)
+    step = magnitude * 5
+  } else if (order === 0) {
+    // Для единиц (1-9): шаг 5
+    step = 5
+  } else if (order === 1) {
+    // Для десятков (10-99): шаг 10
+    step = 10
+  } else if (order === 2) {
+    // Для сотен (100-999): шаг 50
+    step = 50
+  } else if (order === 3) {
+    // Для тысяч (1000-9999): шаг 500
+    step = 500
+  } else if (order === 4) {
+    // Для десятков тысяч (10000-99999): шаг 5000
+    step = 5000
+  } else if (order === 5) {
+    // Для сотен тысяч (100000-999999): шаг 50000
+    step = 50000
+  } else {
+    // Для миллионов и выше: шаг = 5 * порядок
+    step = magnitude * 5
+  }
+  
+  // Округляем вверх до ближайшего кратного шага
+  const rounded = Math.ceil(padded / step) * step
+  
+  // Убеждаемся, что округленное значение не меньше исходного (с запасом)
+  return rounded < padded ? rounded + step : rounded
 }
 
 function getNiceMin(value) {
-  if (value === 0) return 0
-  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.abs(value))))
-  return Math.floor(value / magnitude) * magnitude
+  // Нижняя граница всегда 0
+  return 0
 }
 
 /* --------------------------------------------------------------------------
@@ -128,8 +165,10 @@ const renderChart = (aggr) => {
   if (!ctx) return
 
   const allValues = aggr.datasets.flat()
-  const yMin = getNiceMin(Math.min(...allValues))
-  const yMax = getNiceMax(Math.max(...allValues))
+  // Нижняя граница всегда 0, верхняя округляется с запасом 10%
+  const yMin = 0
+  const maxValue = allValues.length > 0 ? Math.max(...allValues) : 100
+  const yMax = getNiceMax(maxValue)
 
   const datasets = props.chartData.datasets.map((ds, i) => {
     const base = {

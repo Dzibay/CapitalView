@@ -1,6 +1,9 @@
 <script setup>
 import { computed, unref } from "vue";
+import { useRouter } from 'vue-router';
 import { useContextMenu } from '../composables/useContextMenu';
+
+const router = useRouter();
 
 // ✅ сохраняем props в переменную
 const props = defineProps({
@@ -143,7 +146,7 @@ const getDividendYield5Y = (asset) => {
               </thead>
               <tbody>
                 <tr v-for="asset in portfolio.assets" :key="asset.portfolio_asset_id">
-                  <td class="cell-name">
+                  <td class="cell-name clickable" @click="router.push(`/assets/${asset.portfolio_asset_id}`)">
                     <div class="asset-main">
                       <span class="asset-name">{{ asset.name }}</span>
                       <div class="asset-meta">
@@ -376,6 +379,12 @@ const getDividendYield5Y = (asset) => {
 }
 
 /* Asset Cell Specifics */
+.cell-name.clickable {
+  cursor: pointer;
+}
+.cell-name.clickable:hover {
+  background: #f1f5f9;
+}
 .asset-main {
   display: flex;
   flex-direction: column;

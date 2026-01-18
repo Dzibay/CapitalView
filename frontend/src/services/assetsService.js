@@ -22,5 +22,23 @@ export default {
     const payload = { target_portfolio_id };
     const res = await apiClient.post(API_ENDPOINTS.ASSETS.MOVE(portfolio_asset_id), payload);
     return res.data;
+  },
+
+  async getAssetInfo(asset_id) {
+    const res = await apiClient.get(API_ENDPOINTS.ASSETS.GET_INFO(asset_id));
+    return res.data;
+  },
+
+  async getAssetPriceHistory(asset_id, start_date = null, end_date = null, limit = 1000) {
+    const params = { limit };
+    if (start_date) params.start_date = start_date;
+    if (end_date) params.end_date = end_date;
+    const res = await apiClient.get(API_ENDPOINTS.ASSETS.GET_PRICES(asset_id), { params });
+    return res.data;
+  },
+
+  async getPortfolioAssetInfo(portfolio_asset_id) {
+    const res = await apiClient.get(API_ENDPOINTS.ASSETS.GET_PORTFOLIO_ASSET_INFO(portfolio_asset_id));
+    return res.data;
   }
 };

@@ -4,6 +4,7 @@ import Home from '../views/Home.vue'
 import Login from '../views/Login.vue';
 import Dashboard from '../views/Dashboard.vue';
 import Assets from '../views/Assets.vue'
+import AssetDetail from '../views/AssetDetail.vue';
 import Transactions from '../views/Transactions.vue';
 import Analitics from '../views/Analitics.vue';
 import Dividends from '../views/Dividends.vue';
@@ -24,6 +25,7 @@ const routes = [
       { path: '/dashboard', component: Dashboard },
       { path: '/analitics', component: Analitics },
       { path: '/assets', component: Assets },
+      { path: '/assets/:id', component: AssetDetail, props: true },
       { path: '/transactions', component: Transactions},
       { path: '/dividends', component: Dividends}
     ]

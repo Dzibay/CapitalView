@@ -267,13 +267,13 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
             tx_date = tx["date"]
             isin = tx.get("isin")
             payment = float(tx.get("payment") or 0)
+            asset_id = isin_to_asset[isin] if isin in isin_to_asset else None
+            print(tx["ticker"], tx_type, tx_date, isin, payment, asset_id)
 
             # Покупка / продажа
             if tx_type in ("Buy", "Sell"):
                 if not isin or isin not in isin_to_asset:
                     continue
-
-                asset_id = isin_to_asset[isin]
 
                 # portfolio_asset_id, если нет — создаём
                 pa_id = pa_map.get(asset_id)
@@ -306,7 +306,7 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                 op_type_id = op_type_map.get(tx_type.lower())
                 if not op_type_id:
                     continue
-
+                
                 new_ops.append({
                     "user_id": user_id,
                     "portfolio_id": portfolio_id,
@@ -314,7 +314,7 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                     "amount": payment,
                     "currency": 47,   # рубли
                     "date": tx_date,
-                    "asset_id": None,
+                    "asset_id": asset_id,
                     "transaction_id": None
                 })
 
