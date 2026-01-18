@@ -41,20 +41,76 @@ async def get_user_portfolios_analytics(user_id: str):
                     "totals": defaultdict(float),
                     "operations_breakdown": [],
                     "monthly_flow": [],
+                    "monthly_payouts": [],
+                    "asset_distribution": [],
+                    "payouts_by_asset": [],
+                    "future_payouts": [],
                 }
 
             parent_analytics = analytics_map[parent_id]
             totals = defaultdict(float, parent_analytics.get("totals", {}))
             op_map = defaultdict(float)
             month_map = defaultdict(lambda: {"inflow": 0.0, "outflow": 0.0})
+            monthly_payouts_map = defaultdict(float)
+            asset_distribution_map = defaultdict(lambda: {
+                "asset_id": None,
+                "asset_name": "",
+                "asset_ticker": "",
+                "total_value": 0.0
+            })
+            payouts_by_asset_map = defaultdict(lambda: {
+                "asset_id": None,
+                "asset_name": "",
+                "asset_ticker": "",
+                "total_dividends": 0.0,
+                "total_coupons": 0.0,
+                "total_payouts": 0.0
+            })
+            future_payouts_map = defaultdict(lambda: {"total_amount": 0.0, "payout_count": 0})
 
-            # учитываем текущие breakdown / monthly
+            # учитываем текущие данные родителя
             for op in parent_analytics.get("operations_breakdown") or []:
                 op_map[op["type"]] += op["sum"] or 0
 
             for m in parent_analytics.get("monthly_flow") or []:
                 month_map[m["month"]]["inflow"] += m.get("inflow", 0)
                 month_map[m["month"]]["outflow"] += m.get("outflow", 0)
+
+            for mp in parent_analytics.get("monthly_payouts") or []:
+                monthly_payouts_map[mp["month"]] += mp.get("total_payouts", 0)
+
+            for ad in parent_analytics.get("asset_distribution") or []:
+                asset_key = ad.get("asset_id") or ad.get("asset_ticker") or ad.get("asset_name", "")
+                if asset_key:
+                    if asset_key not in asset_distribution_map:
+                        asset_distribution_map[asset_key] = {
+                            "asset_id": ad.get("asset_id"),
+                            "asset_name": ad.get("asset_name", ""),
+                            "asset_ticker": ad.get("asset_ticker", ""),
+                            "total_value": 0.0
+                        }
+                    asset_distribution_map[asset_key]["total_value"] += ad.get("total_value", 0)
+
+            # Выплаты по активам - сначала учитываем собственные выплаты родителя
+            for pba in parent_analytics.get("payouts_by_asset") or []:
+                asset_key = pba.get("asset_id") or pba.get("asset_ticker", "")
+                if asset_key:
+                    if asset_key not in payouts_by_asset_map:
+                        payouts_by_asset_map[asset_key] = {
+                            "asset_id": pba.get("asset_id"),
+                            "asset_name": pba.get("asset_name", ""),
+                            "asset_ticker": pba.get("asset_ticker", ""),
+                            "total_dividends": 0.0,
+                            "total_coupons": 0.0,
+                            "total_payouts": 0.0
+                        }
+                    payouts_by_asset_map[asset_key]["total_dividends"] += pba.get("total_dividends", 0)
+                    payouts_by_asset_map[asset_key]["total_coupons"] += pba.get("total_coupons", 0)
+                    payouts_by_asset_map[asset_key]["total_payouts"] += pba.get("total_payouts", 0)
+
+            for fp in parent_analytics.get("future_payouts") or []:
+                future_payouts_map[fp["month"]]["total_amount"] += fp.get("total_amount", 0)
+                future_payouts_map[fp["month"]]["payout_count"] += fp.get("payout_count", 0)
 
             # === объединяем детей ===
             for child_id in parent_to_children.get(parent_id, []):
@@ -65,6 +121,9 @@ async def get_user_portfolios_analytics(user_id: str):
 
                 child_totals = child.get("totals") or {}
                 for k, v in child_totals.items():
+                    # Для return_percent нужно пересчитать на основе объединенных данных
+                    if k == "return_percent":
+                        continue  # Пропускаем, пересчитаем позже
                     totals[k] += v or 0
 
                 for op in child.get("operations_breakdown") or []:
@@ -74,6 +133,86 @@ async def get_user_portfolios_analytics(user_id: str):
                     month_map[m["month"]]["inflow"] += m.get("inflow", 0)
                     month_map[m["month"]]["outflow"] += m.get("outflow", 0)
 
+                for mp in child.get("monthly_payouts") or []:
+                    monthly_payouts_map[mp["month"]] += mp.get("total_payouts", 0)
+
+                for ad in child.get("asset_distribution") or []:
+                    asset_key = ad.get("asset_id") or ad.get("asset_ticker") or ad.get("asset_name", "")
+                    if asset_key:
+                        if asset_key not in asset_distribution_map:
+                            asset_distribution_map[asset_key] = {
+                                "asset_id": ad.get("asset_id"),
+                                "asset_name": ad.get("asset_name", ""),
+                                "asset_ticker": ad.get("asset_ticker", ""),
+                                "total_value": 0.0
+                            }
+                        asset_distribution_map[asset_key]["total_value"] += ad.get("total_value", 0)
+
+                # Выплаты по активам - объединяем из дочерних портфелей
+                for pba in child.get("payouts_by_asset") or []:
+                    asset_key = pba.get("asset_id") or pba.get("asset_ticker") or ""
+                    if asset_key:
+                        if asset_key not in payouts_by_asset_map:
+                            payouts_by_asset_map[asset_key] = {
+                                "asset_id": pba.get("asset_id"),
+                                "asset_name": pba.get("asset_name", ""),
+                                "asset_ticker": pba.get("asset_ticker", ""),
+                                "total_dividends": 0.0,
+                                "total_coupons": 0.0,
+                                "total_payouts": 0.0
+                            }
+                        payouts_by_asset_map[asset_key]["total_dividends"] += pba.get("total_dividends", 0)
+                        payouts_by_asset_map[asset_key]["total_coupons"] += pba.get("total_coupons", 0)
+                        payouts_by_asset_map[asset_key]["total_payouts"] += pba.get("total_payouts", 0)
+
+                for fp in child.get("future_payouts") or []:
+                    future_payouts_map[fp["month"]]["total_amount"] += fp.get("total_amount", 0)
+                    future_payouts_map[fp["month"]]["payout_count"] += fp.get("payout_count", 0)
+
+            # Пересчитываем return_percent на основе средней доходности активов
+            # Доходность уже вычислена в SQL на основе средней доходности за 5 лет (акции) или ставки купона (облигации)
+            # Для объединенных портфелей считаем как средневзвешенную по инвестированным суммам
+            total_weighted_return = 0.0
+            total_invested_for_return = 0.0
+            
+            # Добавляем данные родителя (если есть активы в самом портфеле)
+            parent_invested = totals.get("total_invested", 0) or 0
+            parent_return = parent_analytics.get("totals", {}).get("return_percent", 0) or 0
+            if parent_invested > 0 and parent_return > 0:
+                # Вычитаем инвестированную сумму дочерних портфелей, чтобы получить только собственные активы
+                children_invested_sum = sum(
+                    analytics_map.get(child_id, {}).get("totals", {}).get("total_invested", 0) or 0
+                    for child_id in parent_to_children.get(parent_id, [])
+                )
+                own_invested = max(0, parent_invested - children_invested_sum)
+                if own_invested > 0:
+                    total_weighted_return += parent_return * own_invested
+                    total_invested_for_return += own_invested
+            
+            # Собираем данные из дочерних портфелей для расчета средневзвешенной доходности
+            for child_id in parent_to_children.get(parent_id, []):
+                child = analytics_map.get(child_id)
+                if not child:
+                    continue
+                child_totals = child.get("totals") or {}
+                child_invested = child_totals.get("total_invested", 0) or 0
+                child_return = child_totals.get("return_percent", 0) or 0
+                if child_invested > 0 and child_return > 0:
+                    total_weighted_return += child_return * child_invested
+                    total_invested_for_return += child_invested
+            
+            # Пересчитываем средневзвешенную доходность
+            if total_invested_for_return > 0:
+                totals["return_percent"] = total_weighted_return / total_invested_for_return
+            else:
+                totals["return_percent"] = 0
+
+            # Пересчитываем net_cashflow
+            totals["net_cashflow"] = (
+                totals.get("inflow", 0) + totals.get("dividends", 0) + totals.get("coupons", 0)
+                - totals.get("outflow", 0) - totals.get("commissions", 0) - totals.get("taxes", 0)
+            )
+
             # записываем объединённые данные
             analytics_map[parent_id]["totals"] = dict(totals)
             analytics_map[parent_id]["operations_breakdown"] = [
@@ -81,6 +220,23 @@ async def get_user_portfolios_analytics(user_id: str):
             ]
             analytics_map[parent_id]["monthly_flow"] = [
                 {"month": k, **v} for k, v in sorted(month_map.items())
+            ]
+            analytics_map[parent_id]["monthly_payouts"] = [
+                {"month": k, "total_payouts": v} for k, v in sorted(monthly_payouts_map.items())
+            ]
+            analytics_map[parent_id]["asset_distribution"] = sorted(
+                list(asset_distribution_map.values()),
+                key=lambda x: x["total_value"],
+                reverse=True
+            )
+            analytics_map[parent_id]["payouts_by_asset"] = sorted(
+                list(payouts_by_asset_map.values()),
+                key=lambda x: x["total_payouts"],
+                reverse=True
+            )
+            analytics_map[parent_id]["future_payouts"] = [
+                {"month": k, "total_amount": v["total_amount"], "payout_count": v["payout_count"]}
+                for k, v in sorted(future_payouts_map.items())
             ]
 
         # === 5️⃣ Собираем итог ===
