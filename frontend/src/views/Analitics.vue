@@ -1,13 +1,17 @@
 <script setup>
-import { inject, computed, ref, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
+import { useAuthStore } from '../stores/auth.store'
+import { useDashboardStore } from '../stores/dashboard.store'
+import { useUIStore } from '../stores/ui.store'
+import { useTransactionsStore } from '../stores/transactions.store'
 Chart.register(...registerables)
 
-// --- Инжекты из DashboardLayout ---
-const user = inject('user')
-const dashboardData = inject('dashboardData')
-const loading = inject('loading')
-const loadAnalytics = inject('loadAnalytics')
+// Используем stores вместо inject
+const authStore = useAuthStore()
+const dashboardStore = useDashboardStore()
+const uiStore = useUIStore()
+const transactionsStore = useTransactionsStore()
 
 // --- Локальное состояние ---
 const selectedPortfolioId = ref(null)
@@ -20,11 +24,11 @@ const barCanvas = ref(null)
 let pieChart = null
 let barChart = null
 
-const portfolios = computed(() => dashboardData.value?.data?.portfolios ?? [])
+const portfolios = computed(() => dashboardStore.portfolios ?? [])
 
 // --- ⚡ Автовыбор первого портфеля ---
 watch(
-  () => dashboardData.value?.data?.portfolios,
+  () => dashboardStore.portfolios,
   (newPortfolios) => {
     if (newPortfolios?.length && !selectedPortfolioId.value) {
       selectedPortfolioId.value = newPortfolios[0].id
@@ -35,9 +39,9 @@ watch(
 
 // --- 🧩 Автозагрузка аналитики, когда dashboard готов ---
 watch(
-  () => dashboardData.value?.data,
-  async (data) => {
-    if (data && data.portfolios?.length) {
+  () => dashboardStore.portfolios,
+  async (portfolios) => {
+    if (portfolios?.length) {
       await safeLoadAnalytics()
     }
   },
@@ -49,12 +53,12 @@ async function safeLoadAnalytics() {
   if (isLoadingAnalytics.value) return
   try {
     isLoadingAnalytics.value = true
-    await loadAnalytics()
+    await transactionsStore.loadAnalytics()
 
-    // дожидаемся, пока аналитика появится в dashboardData
+    // дожидаемся, пока аналитика появится в dashboardStore
     await nextTick()
     watch(
-    () => dashboardData.value?.data?.analytics,
+    () => dashboardStore.analytics,
     async (newAnalytics) => {
         if (Array.isArray(newAnalytics) && newAnalytics.length > 0) {
         await updateSelectedAnalytics()
@@ -153,7 +157,7 @@ async function drawCharts() {
 
 // --- Обновление выбранной аналитики ---
 async function updateSelectedAnalytics() {
-  const allAnalytics = dashboardData.value?.data?.analytics ?? []
+  const allAnalytics = dashboardStore.analytics ?? []
   selectedPortfolioAnalytics.value =
     allAnalytics.find(a => a.portfolio_id === selectedPortfolioId.value) || null
 
@@ -169,7 +173,7 @@ async function updateSelectedAnalytics() {
 </script>
 
 <template>
-  <div v-if="!loading">
+  <div v-if="!uiStore.loading">
     <div class="title" style="display: flex; align-items: center; justify-content: space-between;">
       <div>
         <h1>Финансовая аналитика</h1>

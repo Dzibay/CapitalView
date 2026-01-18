@@ -1,5 +1,9 @@
 <script setup>
-import { inject, computed, ref, watch } from 'vue'
+import { computed } from 'vue'
+import { useAuthStore } from '../stores/auth.store'
+import { useDashboardStore } from '../stores/dashboard.store'
+import { useUIStore } from '../stores/ui.store'
+import { usePortfoliosStore } from '../stores/portfolios.store'
 
 // Виджеты
 import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
@@ -13,18 +17,15 @@ import PortfolioProfitWidget from '../components/widgets/PortfolioProfitWidget.v
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 import PortfolioProfitChartWidget from '../components/widgets/PortfolioProfitChartWidget.vue'
 
-const user = inject('user')
-const dashboardData = inject('dashboardData')
-const updatePortfolioGoal = inject('updatePortfolioGoal')
-const loading = inject('loading')
+const authStore = useAuthStore()
+const dashboardStore = useDashboardStore()
+const uiStore = useUIStore()
+const portfoliosStore = usePortfoliosStore()
 
-const selectedPortfolioId = inject('globalSelectedPortfolioId')
-const setPortfolioId = inject('setPortfolioId')
-
-const portfolios = computed(() => dashboardData.value?.data?.portfolios ?? [])
+const portfolios = computed(() => dashboardStore.portfolios)
 
 const selectedPortfolio = computed(() => {
-  return portfolios.value.find(p => p.id === selectedPortfolioId.value) || null
+  return portfolios.value.find(p => p.id === uiStore.selectedPortfolioId) || null
 })
 
 // Функция для сбора всех id выбранного портфеля и его дочерних
@@ -52,16 +53,16 @@ function collectAssets(portfolio, allPortfolios) {
 }
 
 const parsedDashboard = computed(() => {
-  const data = dashboardData.value?.data;
-  if (!data || !selectedPortfolio.value) return null;
+  const data = dashboardStore.data
+  if (!data || !selectedPortfolio.value) return null
 
-  const allPortfolios = portfolios.value;
+  const allPortfolios = portfolios.value
 
-  const portfolioIds = collectPortfolioIds(selectedPortfolio.value, allPortfolios);
-  const assets = collectAssets(selectedPortfolio.value, allPortfolios);
+  const portfolioIds = collectPortfolioIds(selectedPortfolio.value, allPortfolios)
+  const assets = collectAssets(selectedPortfolio.value, allPortfolios)
 
   // Фильтруем транзакции по всем id портфелей
-  const transactions = (data.transactions ?? []).filter(t => portfolioIds.includes(t.portfolio_id));
+  const transactions = (dashboardStore.transactions ?? []).filter(t => portfolioIds.includes(t.portfolio_id))
 
   return {
     totalAmount: Number(selectedPortfolio.value.total_value || 0),
@@ -71,12 +72,11 @@ const parsedDashboard = computed(() => {
     portfolioChart: selectedPortfolio.value.history ?? { labels: [], data: [] },
     assets,
     transactions
-  };
-});
+  }
+})
 
 const goalData = computed(() => {
-  const data = dashboardData.value?.data
-  if (!data || !selectedPortfolio.value) return null
+  if (!selectedPortfolio.value) return null
 
   const desc = selectedPortfolio.value.description || {} // если пустой, используем пустой объект
   return {
@@ -92,17 +92,17 @@ const goalData = computed(() => {
 </script>
 
 <template>
-  <div v-if="!loading && parsedDashboard">
+  <div v-if="!uiStore.loading && parsedDashboard">
     <div class="title" style="display: flex; align-items: center; justify-content: space-between;">
       <div>
-        <h1>С возвращением, {{ user?.name }}</h1>
+        <h1>С возвращением, {{ authStore.user?.name }}</h1>
         <h2>Главная</h2>
       </div>
       
       <PortfolioSelector 
         :portfolios="portfolios"
-        :modelValue="selectedPortfolioId"
-        @update:modelValue="setPortfolioId"
+        :modelValue="uiStore.selectedPortfolioId"
+        @update:modelValue="uiStore.setSelectedPortfolioId"
       />
     </div>
 
@@ -118,7 +118,7 @@ const goalData = computed(() => {
       />
       <GoalProgressWidget 
         :goal-data="goalData"
-        :onSaveGoal="updatePortfolioGoal"
+        :onSaveGoal="portfoliosStore.updatePortfolioGoal"
       />
       <AssetAllocationWidget :assetAllocation="parsedDashboard.assetAllocation" />
       <TopMoversWidget

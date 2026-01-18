@@ -1,14 +1,12 @@
 <script setup>
-import { ref, inject, computed, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { useDashboardStore } from '../stores/dashboard.store'
+import { useUIStore } from '../stores/ui.store'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 
-// === INJECTIONS ===
-const dashboardData = inject('dashboardData')
-const loading = inject('loading')
-
-// Глобальное состояние выбора портфеля
-const selectedPortfolioId = inject('globalSelectedPortfolioId')
-const setPortfolioId = inject('setPortfolioId')
+// Используем stores вместо inject
+const dashboardStore = useDashboardStore()
+const uiStore = useUIStore()
 
 // === STATE ===
 const currentDate = ref(new Date()) // Текущий месяц
@@ -20,15 +18,15 @@ const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 // === COMPUTED: ДАННЫЕ ===
 
 // 1. Список портфелей для селектора
-const portfolios = computed(() => dashboardData.value?.data?.portfolios ?? [])
+const portfolios = computed(() => dashboardStore.portfolios ?? [])
 
 // 2. Сбор дивидендов (ОБНОВЛЕННАЯ СТРУКТУРА)
 const allDividends = computed(() => {
-  const dataPortfolios = dashboardData.value?.data?.portfolios
-  if (!dataPortfolios || !selectedPortfolioId.value) return []
+  const dataPortfolios = dashboardStore.portfolios
+  if (!dataPortfolios || !uiStore.selectedPortfolioId) return []
 
   // 1. Находим текущий выбранный портфель
-  const targetPortfolio = dataPortfolios.find(p => p.id === selectedPortfolioId.value)
+  const targetPortfolio = dataPortfolios.find(p => p.id === uiStore.selectedPortfolioId)
 
   // Если портфель не найден или у него нет combined_assets — возвращаем пустоту
   if (!targetPortfolio || !targetPortfolio.combined_assets) return []
@@ -187,7 +185,7 @@ const formatDate = (date) => {
 }
 
 // Сброс выбора дня при переключении портфеля
-watch(selectedPortfolioId, () => {
+watch(() => uiStore.selectedPortfolioId, () => {
   selectedDay.value = null
 })
 </script>
@@ -204,12 +202,12 @@ watch(selectedPortfolioId, () => {
       <PortfolioSelector 
         v-if="portfolios.length > 0"
         :portfolios="portfolios"
-        :modelValue="selectedPortfolioId"
-        @update:modelValue="setPortfolioId"
+        :modelValue="uiStore.selectedPortfolioId"
+        @update:modelValue="uiStore.setSelectedPortfolioId"
       />
     </div>
 
-    <div v-if="loading" class="loading-state">
+    <div v-if="uiStore.loading" class="loading-state">
       <div class="loader"></div>
       <span>Загрузка данных...</span>
     </div>

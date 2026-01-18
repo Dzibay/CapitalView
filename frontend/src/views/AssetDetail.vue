@@ -1,7 +1,8 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { inject } from 'vue'
+import { useDashboardStore } from '../stores/dashboard.store'
+import { useUIStore } from '../stores/ui.store'
 import MultiLineChart from '../components/MultiLineChart.vue'
 import ChartControls from '../components/ChartControls.vue'
 import assetsService from '../services/assetsService'
@@ -9,8 +10,9 @@ import assetsService from '../services/assetsService'
 const route = useRoute()
 const router = useRouter()
 
-const dashboardData = inject('dashboardData')
-const loading = inject('loading')
+// Используем stores вместо inject
+const dashboardStore = useDashboardStore()
+const uiStore = useUIStore()
 
 const portfolioAssetId = computed(() => parseInt(route.params.id))
 const isLoading = ref(false)
@@ -19,8 +21,8 @@ const priceHistory = ref([])
 const selectedPeriod = ref('All')
 const selectedChartType = ref('position') // 'position' | 'quantity' | 'price'
 
-// Получаем информацию о портфеле из dashboardData для расчета вклада
-const portfolios = computed(() => dashboardData.value?.data?.portfolios ?? [])
+// Получаем информацию о портфеле из dashboardStore для расчета вклада
+const portfolios = computed(() => dashboardStore.portfolios ?? [])
 
 // Поиск портфеля и актива в нем
 const portfolioAsset = computed(() => {
@@ -497,7 +499,7 @@ watch(() => route.params.id, () => {
 
 <template>
   <div class="asset-detail-page">
-    <div v-if="isLoading || loading" class="loading-state">
+    <div v-if="isLoading || uiStore.loading" class="loading-state">
       <div class="loader"></div>
       <span>Загрузка данных об активе...</span>
     </div>

@@ -1,5 +1,10 @@
 <script setup>
-import { ref, inject, computed } from "vue";
+import { ref, computed } from "vue";
+import { useDashboardStore } from '../stores/dashboard.store';
+import { useUIStore } from '../stores/ui.store';
+import { useAssetsStore } from '../stores/assets.store';
+import { usePortfoliosStore } from '../stores/portfolios.store';
+import { useTransactionsStore } from '../stores/transactions.store';
 import AddAssetModal from "../components/modals/AddAssetModal.vue";
 import AddTransactionModal from "../components/modals/AddTransactionModal.vue";
 import AddPriceModal from "../components/modals/AddPriceModal.vue";
@@ -14,18 +19,53 @@ import { usePortfolio } from '../composables/usePortfolio';
 
 const selectedAsset = ref(null);
 
-const loading = inject("loading");
-const dashboardData = inject("dashboardData");
-const reloadDashboard = inject('reloadDashboard');
-const addAsset = inject("addAsset");
-const removeAsset = inject("removeAsset");
-const moveAsset = inject("moveAsset");
-const deletePortfolio = inject("deletePortfolio");
-const clearPortfolio = inject("clearPortfolio");
-const addPortfolio = inject("addPortfolio");
-const addTransaction = inject("addTransaction");
-const addPrice = inject('addPrice');
-const importPortfolio = inject("importPortfolio");
+// Используем stores вместо inject
+const dashboardStore = useDashboardStore();
+const uiStore = useUIStore();
+const assetsStore = useAssetsStore();
+const portfoliosStore = usePortfoliosStore();
+const transactionsStore = useTransactionsStore();
+
+// Обертки для совместимости с модальными окнами
+const addAsset = async (assetData) => {
+  await assetsStore.addAsset(assetData);
+};
+
+const removeAsset = async (portfolioAssetId) => {
+  await assetsStore.removeAsset(portfolioAssetId);
+};
+
+const moveAsset = async ({ portfolio_asset_id, target_portfolio_id }) => {
+  await assetsStore.moveAsset({ portfolio_asset_id, target_portfolio_id });
+};
+
+const deletePortfolio = async (portfolioId) => {
+  await portfoliosStore.deletePortfolio(portfolioId);
+};
+
+const clearPortfolio = async (portfolioId) => {
+  await portfoliosStore.clearPortfolio(portfolioId);
+};
+
+const addPortfolio = async (portfolioData) => {
+  await portfoliosStore.addPortfolio(portfolioData);
+};
+
+const addTransaction = async (data) => {
+  await transactionsStore.addTransaction(data);
+};
+
+const addPrice = async (data) => {
+  await assetsStore.addPrice(data);
+};
+
+const importPortfolio = async (data) => {
+  await portfoliosStore.importPortfolio(data);
+};
+
+const reloadDashboard = async () => {
+  await dashboardStore.reloadDashboard();
+};
 
 // Используем композабл для управления раскрытыми портфелями
 const { expanded: expandedPortfolios, toggle: togglePortfolio } = useExpandedState('expandedPortfolios');
@@ -42,19 +82,25 @@ const { modals, open: openModal, close: closeModal } = useModals([
 
 
 // Используем композабл для работы с портфелями
-const { portfolios: portfolioList, buildPortfolioTree } = usePortfolio(dashboardData, null);
+// Передаем computed ref для dashboardData из store
+const dashboardDataComputed = computed(() => ({
+  value: {
+    data: {
+      portfolios: dashboardStore.portfolios,
+      referenceData: dashboardStore.referenceData
+    }
+  }
+}));
+const { portfolios: portfolioList, buildPortfolioTree } = usePortfolio(dashboardDataComputed, null);
 
 /* === Парсинг данных === */
 const parsedDashboard = computed(() => {
-  const data = dashboardData.value?.data;
-  if (!data) return { portfolios: [], reference: [] };
-
-  const portfolios = data.portfolios ?? [];
+  const portfolios = dashboardStore.portfolios ?? [];
   const portfolioTree = buildPortfolioTree(portfolios);
   return {
     portfolios,
     portfolioTree,
-    reference: data.referenceData ?? [],
+    reference: dashboardStore.referenceData ?? [],
   };
 });
 
@@ -62,14 +108,14 @@ const parsedDashboard = computed(() => {
 const updatingPortfolios = ref(new Set());
 
 const refreshPortfolios = async () => {
-  const portfolios = dashboardData.value?.data?.portfolios ?? [];
+  const portfolios = dashboardStore.portfolios ?? [];
   
   // Создаем массив промисов для асинхронных вызовов
   const importPromises = portfolios.map(async (p) => {
-  if (p.connection?.api_key) {
-    updatingPortfolios.value.add(p.id)
-    try {
-      await importPortfolio({
+    if (p.connection?.api_key) {
+      updatingPortfolios.value.add(p.id)
+      try {
+        await importPortfolio({
           broker_id: p.connection.broker_id,
           token: p.connection.api_key,
           portfolioId: p.id,
@@ -78,8 +124,8 @@ const refreshPortfolios = async () => {
       } finally {
         updatingPortfolios.value.delete(p.id)
       }
-  }
-});
+    }
+  });
 
   // Ждем завершения всех промисов
   await Promise.all(importPromises);
@@ -146,7 +192,7 @@ const handleMoveAsset = (asset) => {
       <MoveAssetModal v-if="modals.moveAsset" :asset="selectedAsset" :portfolios="parsedDashboard.portfolios" :onSubmit="moveAsset" @close="closeModal('moveAsset')"/>
       <ImportPortfolioModal v-if="modals.import" @close="closeModal('import')" :onImport="importPortfolio" :portfolios="parsedDashboard.portfolios"/>
 
-      <div v-if="loading" class="status-block">
+      <div v-if="uiStore.loading" class="status-block">
         <div class="loader"></div>
         <span>Загрузка данных...</span>
       </div>

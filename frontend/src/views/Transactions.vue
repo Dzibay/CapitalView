@@ -1,17 +1,27 @@
 <script setup>
-import { inject, ref, computed, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { useDashboardStore } from '../stores/dashboard.store'
+import { useTransactionsStore } from '../stores/transactions.store'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 
-// данные и функции от родителя
-const dashboardData = inject('dashboardData')
-const deleteTransactions = inject('deleteTransactions')
-const editTransaction = inject('editTransaction')
+// Используем stores вместо inject
+const dashboardStore = useDashboardStore()
+const transactionsStore = useTransactionsStore()
 
-const transactions = computed(() => dashboardData.value?.data?.transactions || [])
+const transactions = computed(() => dashboardStore.transactions || [])
 
 // справочник активов (для доп. инфы в подсказках)
-const referenceData = computed(() => dashboardData.value?.data?.referenceData || {})
+const referenceData = computed(() => dashboardStore.referenceData || {})
 const referenceAssets = computed(() => referenceData.value.assets || [])
+
+// Обертки для совместимости
+const deleteTransactions = async (transaction_ids) => {
+  await transactionsStore.deleteTransactions(transaction_ids)
+}
+
+const editTransaction = async (updated_transaction) => {
+  await transactionsStore.editTransaction(updated_transaction)
+}
 
 // --- списки для фильтров ---
 // Оптимизировано: кэшируем уникальные значения
