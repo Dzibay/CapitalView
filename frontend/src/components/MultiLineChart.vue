@@ -127,21 +127,8 @@ function getNiceMax(value) {
   } else if (order === 1) {
     // Для десятков (10-99): шаг 10
     step = 10
-  } else if (order === 2) {
-    // Для сотен (100-999): шаг 50
-    step = 50
-  } else if (order === 3) {
-    // Для тысяч (1000-9999): шаг 500
-    step = 500
-  } else if (order === 4) {
-    // Для десятков тысяч (10000-99999): шаг 5000
-    step = 5000
-  } else if (order === 5) {
-    // Для сотен тысяч (100000-999999): шаг 50000
-    step = 50000
   } else {
-    // Для миллионов и выше: шаг = 5 * порядок
-    step = magnitude * 5
+    step = 5 * 10**(order - 1)
   }
   
   // Округляем вверх до ближайшего кратного шага
@@ -152,8 +139,52 @@ function getNiceMax(value) {
 }
 
 function getNiceMin(value) {
-  // Нижняя граница всегда 0
-  return 0
+  // Если значение >= 0, нижняя граница всегда 0
+  if (value >= 0) {
+    return 0
+  }
+  
+  // Для отрицательных значений вычисляем "nice" минимальное значение
+  // Аналогично getNiceMax, но округляем вниз
+  
+  // Вычитаем 10% от минимального значения для запаса
+  const padded = value * 1.1
+  
+  // Определяем порядок величины (логарифм по основанию 10)
+  // Для отрицательных чисел берем абсолютное значение
+  const absValue = Math.abs(padded)
+  const order = absValue < 1 && absValue > 0 
+    ? Math.floor(Math.log10(absValue)) 
+    : Math.floor(Math.log10(absValue))
+  
+  // Вычисляем базовую величину (степень 10)
+  const magnitude = Math.pow(10, order)
+  
+  // Выбираем "круглый" шаг округления в зависимости от порядка величины
+  let step
+  if (order < 0) {
+    step = magnitude * 5
+  } else if (order === 0) {
+    step = 5
+  } else if (order === 1) {
+    step = 10
+  } else if (order === 2) {
+    step = 50
+  } else if (order === 3) {
+    step = 500
+  } else if (order === 4) {
+    step = 5000
+  } else if (order === 5) {
+    step = 50000
+  } else {
+    step = magnitude * 1.2
+  }
+  
+  // Округляем вниз до ближайшего кратного шага
+  const rounded = Math.floor(padded / step) * step
+  
+  // Убеждаемся, что округленное значение не больше исходного (с запасом)
+  return rounded > padded ? rounded - step : rounded
 }
 
 /* --------------------------------------------------------------------------
@@ -165,9 +196,14 @@ const renderChart = (aggr) => {
   if (!ctx) return
 
   const allValues = aggr.datasets.flat()
-  // Нижняя граница всегда 0, верхняя округляется с запасом 10%
-  const yMin = 0
+  
+  // Находим минимальное и максимальное значения
+  const minValue = allValues.length > 0 ? Math.min(...allValues) : 0
   const maxValue = allValues.length > 0 ? Math.max(...allValues) : 100
+  
+  // Если есть значения ниже нуля, нижняя граница динамически подстраивается
+  // Если все значения выше или равны нулю, нижняя граница = 0
+  const yMin = minValue < 0 ? getNiceMin(minValue) : 0
   const yMax = getNiceMax(maxValue)
 
   const datasets = props.chartData.datasets.map((ds, i) => {
