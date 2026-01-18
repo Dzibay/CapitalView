@@ -308,6 +308,7 @@ def get_portfolio_asset_info(portfolio_asset_id: int):
         
         portfolio_asset = asset_meta[0]
         asset_id = portfolio_asset.get("asset_id")
+        portfolio_id = portfolio_asset.get("portfolio_id")
         
         # Получаем транзакции по этому активу
         transactions = table_select(
@@ -327,7 +328,7 @@ def get_portfolio_asset_info(portfolio_asset_id: int):
             payout_operations = table_select(
                 "cash_operations",
                 select="*",
-                filters={"asset_id": asset_id},
+                filters={"portfolio_id": portfolio_id, "asset_id": asset_id},
                 in_filters={"type": [3, 4]},  # 3 = дивиденды, 4 = купоны
                 order={"column": "date", "desc": True}
             )
