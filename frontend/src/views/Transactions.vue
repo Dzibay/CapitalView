@@ -2,7 +2,9 @@
 import { ref, computed, watch } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useTransactionsStore } from '../stores/transactions.store'
+import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
+import ContextMenu from '../components/ContextMenu.vue'
 
 // Используем stores вместо inject
 const dashboardStore = useDashboardStore()
@@ -83,6 +85,19 @@ const allSelected = ref(false)
 // модальное окно
 const showEditModal = ref(false)
 const currentTransaction = ref(null)
+
+// контекстное меню
+const { openMenu } = useContextMenu()
+
+const handleEditTransaction = (transaction) => {
+  openEditModal(transaction)
+}
+
+const handleDeleteTransaction = (transaction) => {
+  if (transaction && transaction.transaction_id) {
+    deleteOne(transaction.transaction_id)
+  }
+}
 
 // --- ВСПОМОГАТЕЛЬНОЕ: нормализация типа ---
 const normalizeType = (type) => {
@@ -466,13 +481,7 @@ const summary = computed(() => {
                 {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}
               </td>
               <td class="w-actions">
-                 <div class="menu-container" tabindex="0">
-                    <button class="icon-btn">⋯</button>
-                    <div class="dropdown-menu">
-                       <button @click="openEditModal(tx)">✏️ Редактировать</button>
-                       <button @click="deleteOne(tx.transaction_id)" class="text-danger">🗑 Удалить</button>
-                    </div>
-                 </div>
+                 <button class="icon-btn" @click="openMenu($event, 'transaction', tx)">⋯</button>
               </td>
             </tr>
             <tr v-if="filteredTransactions.length === 0">
@@ -496,6 +505,11 @@ const summary = computed(() => {
     </div>
 
     <EditTransactionModal :visible="showEditModal" :transaction="currentTransaction" @close="showEditModal = false" @save="handleSaveEdit" />
+    
+    <ContextMenu
+      @editTransaction="handleEditTransaction"
+      @deleteTransaction="handleDeleteTransaction"
+    />
   </div>
 </template>
 
@@ -729,12 +743,7 @@ const summary = computed(() => {
 .badge-deposit { background: #ccfbf1; color: #0f766e; }
 .badge-withdraw { background: #ffedd5; color: #9a3412; }
 
-/* Actions Dropdown */
-.menu-container {
-  position: relative;
-  outline: none;
-}
-.menu-container:focus .dropdown-menu { display: block; }
+/* Actions Button */
 .icon-btn {
   background: none;
   border: none;
@@ -742,34 +751,18 @@ const summary = computed(() => {
   font-size: 16px;
   cursor: pointer;
   padding: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
 }
-.icon-btn:hover { color: #374151; }
-.dropdown-menu {
-  display: none;
-  position: absolute;
-  right: 0;
-  top: 100%;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-  min-width: 140px;
-  z-index: 50;
-  overflow: hidden;
+.icon-btn:hover { 
+  color: #374151; 
+  background: #f3f4f6;
 }
-.dropdown-menu button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 8px 12px;
-  background: none;
-  border: none;
-  font-size: 13px;
-  cursor: pointer;
-  color: #374151;
-}
-.dropdown-menu button:hover { background: #f3f4f6; }
-.text-danger { color: #ef4444 !important; }
 
 /* Asset Dropdown (Search) */
 .asset-dropdown {

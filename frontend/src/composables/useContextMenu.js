@@ -24,7 +24,14 @@ export function useContextMenu() {
     const viewportHeight = window.innerHeight
     
     // Определяем количество элементов меню
-    const itemCount = type === 'portfolio' ? 2 : 4 // портфель: 2, актив: 4 (включая разделитель)
+    let itemCount = 2
+    if (type === 'portfolio') {
+      itemCount = 2
+    } else if (type === 'asset') {
+      itemCount = 4 // включая разделитель
+    } else if (type === 'transaction') {
+      itemCount = 2
+    }
     const estimatedHeight = itemCount * MENU_ITEM_HEIGHT + MENU_PADDING * 2
     
     let x = rect.right + MENU_OFFSET
