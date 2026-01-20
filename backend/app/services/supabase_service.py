@@ -25,8 +25,24 @@ def get_supabase_client():
         return _supabase_global
 
 def rpc(fn_name: str, params: dict):
+    """
+    Вызывает RPC функцию в Supabase.
+    Теперь все RPC функции возвращают boolean.
+    Возвращает True/False или данные (если функция возвращает данные).
+    """
     supabase = get_supabase_client()
-    return supabase.rpc(fn_name, params).execute().data
+    result = supabase.rpc(fn_name, params).execute().data
+    
+    # Если результат - список с одним элементом (boolean)
+    if isinstance(result, list) and len(result) == 1:
+        return result[0]
+    
+    # Если результат - просто boolean
+    if isinstance(result, bool):
+        return result
+    
+    # Если результат - список с данными или другой тип
+    return result
 
 def table_select(table: str, select="*", filters: dict = None, in_filters: dict = None, neq_filters: dict = None, order=None, limit=10000, offset=None):
     supabase = get_supabase_client()

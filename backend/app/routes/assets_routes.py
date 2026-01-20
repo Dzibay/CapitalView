@@ -122,12 +122,19 @@ def delete_asset_route(asset_id):
     """
     try:
         email = get_jwt_identity()
+        logger.debug(f"Попытка удаления актива (portfolio_asset_id): {asset_id}")
+        
         res = delete_asset(asset_id)
         
         # Проверяем результат из сервиса
         if res.get("success") is False:
+            error_msg = res.get("error", "Неизвестная ошибка")
+            logger.warning(f"Ошибка при удалении актива {asset_id}: {error_msg}")
             status_code = res.get("status_code", HTTPStatus.BAD_REQUEST)
-            return jsonify(res), status_code
+            return jsonify({
+                "success": False,
+                "error": error_msg
+            }), status_code
         
         return jsonify({
             "success": True,
@@ -139,7 +146,7 @@ def delete_asset_route(asset_id):
         logger.error(f"Ошибка при удалении актива {asset_id}: {e}", exc_info=True)
         return jsonify({
             "success": False,
-            "error": ErrorMessages.INTERNAL_ERROR
+            "error": f"Внутренняя ошибка сервера: {str(e)}"
         }), HTTPStatus.INTERNAL_SERVER_ERROR
 
 @assets_bp.route('/add_price', methods=['POST'])
@@ -197,21 +204,47 @@ def add_asset_price_route():
         description: Внутренняя ошибка сервера
     """
     try:
+        # Получаем JSON данные
+        json_data = request.get_json()
+        logger.debug(f"Получены данные для добавления цены: {json_data}")
+        
+        if not json_data:
+            return jsonify({
+                "success": False,
+                "error": ErrorMessages.VALIDATION_ERROR,
+                "details": "Request body is required"
+            }), HTTPStatus.BAD_REQUEST
+        
         # Валидация входных данных
-        data = AddAssetPriceRequest(**request.get_json())
+        try:
+            data = AddAssetPriceRequest(**json_data)
+        except ValidationError as e:
+            logger.warning(f"Ошибка валидации при добавлении цены. Данные: {json_data}, Ошибки: {e.errors()}")
+            return jsonify({
+                "success": False,
+                "error": ErrorMessages.VALIDATION_ERROR,
+                "details": e.errors()
+            }), HTTPStatus.BAD_REQUEST
+        
+        # Преобразуем дату в строку
+        if hasattr(data.date, 'isoformat'):
+            date_str = data.date.isoformat()
+        elif isinstance(data.date, str):
+            date_str = data.date
+        else:
+            date_str = str(data.date)
         
         price_data = {
             "asset_id": data.asset_id,
             "price": data.price,
-            "currency": data.currency,
-            "date": data.date.isoformat() if hasattr(data.date, 'isoformat') else str(data.date),
-            "source": data.source
+            "date": date_str
         }
         
         res = add_asset_price(price_data)
         
         # Проверяем результат из сервиса
         if res.get("success") is False:
+            logger.warning(f"Ошибка при добавлении цены: {res.get('error')}")
             return jsonify(res), HTTPStatus.BAD_REQUEST
         
         return jsonify({
@@ -220,17 +253,12 @@ def add_asset_price_route():
             **res
         }), HTTPStatus.CREATED
         
-    except ValidationError as e:
-        return jsonify({
-            "success": False,
-            "error": ErrorMessages.VALIDATION_ERROR,
-            "details": e.errors()
-        }), HTTPStatus.BAD_REQUEST
     except Exception as e:
         logger.error(f"Ошибка при добавлении цены актива: {e}", exc_info=True)
         return jsonify({
             "success": False,
-            "error": ErrorMessages.INTERNAL_ERROR
+            "error": ErrorMessages.INTERNAL_ERROR,
+            "details": str(e)
         }), HTTPStatus.INTERNAL_SERVER_ERROR
 
 

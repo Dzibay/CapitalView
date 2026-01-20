@@ -39,6 +39,25 @@ def create_asset(email: str, data: dict):
                 name = existing_asset[0]["name"]
                 asset_type_id = existing_asset[0]["asset_type_id"]
                 currency = existing_asset[0]["quote_asset_id"]
+                
+                # Проверяем, есть ли цена на эту дату, если нет - добавляем
+                existing_price = table_select(
+                    "asset_prices",
+                    select="id",
+                    filters={"asset_id": asset_id, "trade_date": date}
+                )
+                if not existing_price:
+                    # Добавляем цену для существующего актива
+                    price_data = {
+                        "asset_id": asset_id,
+                        "price": price,
+                        "trade_date": date,
+                    }
+                    table_insert("asset_prices", price_data)
+                    # Обновляем цену актива
+                    update_result = rpc('update_asset_latest_price', {'p_asset_id': asset_id})
+                    if update_result is False:
+                        print(f"⚠️ Ошибка при обновлении цены актива {asset_id}")
             else:
                 # Создаём кастомный актив
                 new_asset = {
@@ -62,7 +81,9 @@ def create_asset(email: str, data: dict):
                 }
                 table_insert("asset_prices", price_data)
                 # Обновляем только новый актив
-                rpc('update_asset_latest_price', {'p_asset_id': asset_id})
+                update_result = rpc('update_asset_latest_price', {'p_asset_id': asset_id})
+                if update_result is False:
+                    print(f"⚠️ Ошибка при обновлении цены актива {asset_id}")
         else:
             # --- Если системный актив, берём name и ticker из таблицы assets ---
             asset_info = table_select("assets", select="name, ticker", filters={"id": asset_id})
@@ -108,6 +129,26 @@ def create_asset(email: str, data: dict):
             transaction_date=date,
         )
 
+        # --- Обновляем историю портфеля с даты транзакции ---
+        # Преобразуем дату транзакции в формат YYYY-MM-DD
+        if isinstance(date, str):
+            from_date = date[:10] if 'T' in date else date
+        elif hasattr(date, 'date'):
+            from_date = date.date().isoformat()
+        else:
+            from_date = str(date)[:10]
+        
+        # Обновляем историю портфеля начиная с даты транзакции
+        try:
+            update_result = rpc("update_portfolio_values_from_date", {
+                "p_portfolio_id": portfolio_id,
+                "p_from_date": from_date
+            })
+            if update_result is False:
+                print(f"⚠️ Ошибка при обновлении истории портфеля {portfolio_id}")
+        except Exception as e:
+            print(f"⚠️ Ошибка при обновлении истории портфеля: {e}")
+
         # --- Берём последнюю цену актива ---
         last_price_resp = table_select(
             "asset_prices",
@@ -152,50 +193,110 @@ def delete_asset(portfolio_asset_id: int):
       - если актив кастомный, то и запись из assets + asset_prices.
     """
     try:
+        # 1️⃣ Проверяем существование portfolio_asset
         pa_resp = table_select('portfolio_assets', select='asset_id', filters={"id": portfolio_asset_id})
 
         if not pa_resp:
-            return {"success": False, "error": "Запись portfolio_assets не найдена"}
+            return {"success": False, "error": f"Портфельный актив с ID {portfolio_asset_id} не найден"}
 
         asset_id = pa_resp[0]["asset_id"]
 
-        # 2️⃣ Получаем данные актива
-        asset_meta = rpc("get_portfolio_asset_meta", {"p_portfolio_asset_id": portfolio_asset_id})
+        # 2️⃣ Получаем данные актива через RPC
+        try:
+            asset_meta = rpc("get_portfolio_asset_meta", {"p_portfolio_asset_id": portfolio_asset_id})
+        except Exception as rpc_error:
+            print(f"⚠️ Ошибка при вызове get_portfolio_asset_meta: {rpc_error}")
+            return {"success": False, "error": f"Ошибка при получении данных актива: {str(rpc_error)}"}
 
+        # Проверяем результат RPC
         if not asset_meta:
-            return {"success": False, "error": "Актив не найден"}
+            return {"success": False, "error": f"Метаданные актива не найдены для portfolio_asset_id {portfolio_asset_id}"}
         
-        portfolio_id = asset_meta[0]["portfolio_id"]
-        is_custom = asset_meta[0]["is_custom"]
+        # Обрабатываем результат: может быть словарь (если одна запись) или список
+        if isinstance(asset_meta, dict):
+            # Если это словарь, используем его напрямую
+            portfolio_id = asset_meta.get("portfolio_id")
+            is_custom = asset_meta.get("is_custom", False)
+        elif isinstance(asset_meta, list) and len(asset_meta) > 0:
+            # Если это список, берем первый элемент
+            portfolio_id = asset_meta[0].get("portfolio_id")
+            is_custom = asset_meta[0].get("is_custom", False)
+        else:
+            return {"success": False, "error": f"Некорректный формат данных актива: {type(asset_meta)}"}
+        
+        if not portfolio_id:
+            return {"success": False, "error": "Не удалось определить portfolio_id"}
 
-        # 4️⃣ Удаляем все транзакции
-        table_delete("transactions", {"portfolio_asset_id": portfolio_asset_id})
+        # 3️⃣ Удаляем все транзакции
+        try:
+            table_delete("transactions", {"portfolio_asset_id": portfolio_asset_id})
+        except Exception as e:
+            print(f"⚠️ Ошибка при удалении транзакций: {e}")
 
-        table_delete("fifo_lots", {"portfolio_asset_id": portfolio_asset_id})
+        try:
+            table_delete("fifo_lots", {"portfolio_asset_id": portfolio_asset_id})
+        except Exception as e:
+            print(f"⚠️ Ошибка при удалении fifo_lots: {e}")
 
-        # 5️⃣ Удаляем саму запись portfolio_assets
-        table_delete("portfolio_assets", {"id": portfolio_asset_id})
+        # 4️⃣ Удаляем саму запись portfolio_assets
+        try:
+            table_delete("portfolio_assets", {"id": portfolio_asset_id})
+        except Exception as e:
+            print(f"⚠️ Ошибка при удалении portfolio_assets: {e}")
+            return {"success": False, "error": f"Ошибка при удалении portfolio_assets: {str(e)}"}
 
-        # 6️⃣ Если актив кастомный — удаляем и сам актив
+        # 5️⃣ Если актив кастомный — удаляем и сам актив
         if is_custom:
-            table_delete("asset_prices", {"asset_id": asset_id})
-            table_delete("assets", {"id": asset_id})
+            try:
+                table_delete("asset_prices", {"asset_id": asset_id})
+                table_delete("assets", {"id": asset_id})
+            except Exception as e:
+                print(f"⚠️ Ошибка при удалении кастомного актива: {e}")
 
-        # 7️⃣ Обновляем ежедневные позиции и значения портфеля
-        table_delete("portfolio_daily_positions", {"portfolio_asset_id": portfolio_asset_id})
-        rpc("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id})
+        # 6️⃣ Обновляем ежедневные позиции и значения портфеля
+        try:
+            table_delete("portfolio_daily_positions", {"portfolio_asset_id": portfolio_asset_id})
+        except Exception as e:
+            print(f"⚠️ Ошибка при удалении portfolio_daily_positions: {e}")
+        
+        # Обновляем историю портфеля (не критично, если не удастся)
+        try:
+            update_result = rpc("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id})
+            if update_result is False:
+                print(f"⚠️ Ошибка при обновлении истории портфеля {portfolio_id}")
+        except Exception as e:
+            print(f"⚠️ Ошибка при обновлении истории портфеля: {e}")
 
         return {"success": True, "message": "Актив и связанные записи успешно удалены"}
 
     except Exception as e:
-        print("Ошибка при удалении актива:", e)
-        return {"success": False, "error": str(e)}
+        print(f"❌ Ошибка при удалении актива {portfolio_asset_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": f"Ошибка при удалении актива: {str(e)}"}
     
 
 def add_asset_price(data):
+    """
+    Добавляет цену актива и обновляет последнюю цену.
+    
+    Args:
+        data: Словарь с полями:
+            - asset_id: ID актива
+            - price: Цена
+            - date: Дата цены
+    """
     asset_id = data.get('asset_id')
     price = data.get('price', 0)
     date = data.get('date')
+
+    # Валидация обязательных полей
+    if not asset_id:
+        return {"success": False, "error": "asset_id обязателен"}
+    if not price or price <= 0:
+        return {"success": False, "error": "price должен быть больше 0"}
+    if not date:
+        return {"success": False, "error": "date обязателен"}
 
     price_data = {
         "asset_id": asset_id,
@@ -205,10 +306,25 @@ def add_asset_price(data):
 
     try:
         res = table_insert("asset_prices", price_data)
+        
         # Обновляем только один актив
-        rpc('update_asset_latest_price', {'p_asset_id': asset_id})
+        # Если RPC выбросит исключение, это не критично - цена уже добавлена
+        try:
+            update_result = rpc('update_asset_latest_price', {'p_asset_id': asset_id})
+            # Если функция возвращает boolean False, это ошибка
+            if update_result is False:
+                print(f"⚠️ RPC функция вернула False для актива {asset_id}")
+                # Не возвращаем ошибку, так как цена уже добавлена
+        except Exception as rpc_error:
+            # Если RPC выбросил исключение, логируем, но не прерываем выполнение
+            print(f"⚠️ Ошибка при обновлении цены актива {asset_id}: {rpc_error}")
+            # Продолжаем выполнение, так как цена уже добавлена
+        
         return {"success": True, "message": "Цена успешно добавлена", "data": res}
     except Exception as e:
+        print(f"❌ Ошибка при добавлении цены актива: {e}")
+        import traceback
+        traceback.print_exc()
         return {"success": False, "error": str(e)}
 
 
@@ -308,7 +424,14 @@ def get_portfolio_asset_info(portfolio_asset_id: int):
         if not asset_meta:
             return {"success": False, "error": "Портфельный актив не найден"}
         
-        portfolio_asset = asset_meta[0]
+        # Обрабатываем результат: может быть словарь (если одна запись) или список
+        if isinstance(asset_meta, dict):
+            portfolio_asset = asset_meta
+        elif isinstance(asset_meta, list) and len(asset_meta) > 0:
+            portfolio_asset = asset_meta[0]
+        else:
+            return {"success": False, "error": f"Некорректный формат данных актива: {type(asset_meta)}"}
+        
         asset_id = portfolio_asset.get("asset_id")
         portfolio_id = portfolio_asset.get("portfolio_id")
         
@@ -363,9 +486,17 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
         if not asset_meta:
             return {"success": False, "error": "Портфельный актив не найден"}
         
-        source_portfolio_id = asset_meta[0]["portfolio_id"]
-        asset_id = asset_meta[0]["asset_id"]
-        asset_created_at = asset_meta[0]["created_at"]
+        # Обрабатываем результат: может быть словарь (если одна запись) или список
+        if isinstance(asset_meta, dict):
+            meta = asset_meta
+        elif isinstance(asset_meta, list) and len(asset_meta) > 0:
+            meta = asset_meta[0]
+        else:
+            return {"success": False, "error": f"Некорректный формат данных актива: {type(asset_meta)}"}
+        
+        source_portfolio_id = meta.get("portfolio_id")
+        asset_id = meta.get("asset_id")
+        asset_created_at = meta.get("created_at")
         
         # Проверяем, что целевой портфель существует и отличается от исходного
         if source_portfolio_id == target_portfolio_id:
@@ -416,15 +547,27 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
         )
         
         # 7️⃣ Обновляем графики стоимости для исходного портфеля
-        rpc("update_portfolio_positions_from_date", {"p_portfolio_id": source_portfolio_id, "p_from_date": asset_created_at})
-        rpc("update_portfolio_values_from_date", {"p_portfolio_id": source_portfolio_id, "p_from_date": asset_created_at})
+        update_pos_result = rpc("update_portfolio_positions_from_date", {"p_portfolio_id": source_portfolio_id, "p_from_date": asset_created_at})
+        if update_pos_result is False:
+            print(f"⚠️ Ошибка при обновлении позиций портфеля {source_portfolio_id}")
+        
+        update_val_result = rpc("update_portfolio_values_from_date", {"p_portfolio_id": source_portfolio_id, "p_from_date": asset_created_at})
+        if update_val_result is False:
+            print(f"⚠️ Ошибка при обновлении значений портфеля {source_portfolio_id}")
         
         # 8️⃣ Обновляем графики стоимости для целевого портфеля
-        rpc("update_portfolio_positions_from_date", {"p_portfolio_id": target_portfolio_id, "p_from_date": asset_created_at})
-        rpc("update_portfolio_values_from_date", {"p_portfolio_id": target_portfolio_id, "p_from_date": asset_created_at})
+        update_pos_result2 = rpc("update_portfolio_positions_from_date", {"p_portfolio_id": target_portfolio_id, "p_from_date": asset_created_at})
+        if update_pos_result2 is False:
+            print(f"⚠️ Ошибка при обновлении позиций портфеля {target_portfolio_id}")
+        
+        update_val_result2 = rpc("update_portfolio_values_from_date", {"p_portfolio_id": target_portfolio_id, "p_from_date": asset_created_at})
+        if update_val_result2 is False:
+            print(f"⚠️ Ошибка при обновлении значений портфеля {target_portfolio_id}")
         
         # 9️⃣ Пересчитываем данные портфельного актива
-        rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
+        update_pa_result = rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
+        if update_pa_result is False:
+            print(f"⚠️ Ошибка при обновлении portfolio_asset {portfolio_asset_id}")
         
         return {
             "success": True,

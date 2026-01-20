@@ -20,7 +20,7 @@ class AddAssetPriceRequest(BaseModel):
     """Модель запроса добавления цены актива."""
     asset_id: int = Field(..., ge=1, description="ID актива")
     price: float = Field(..., gt=0, description="Цена актива")
-    currency: str = Field(..., description="Валюта цены")
+    currency: Optional[str] = Field(None, description="Валюта цены")
     date: Union[datetime, str] = Field(..., description="Дата цены")
     source: Optional[str] = Field(None, description="Источник цены")
     
