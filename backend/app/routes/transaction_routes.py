@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from pydantic import ValidationError
-from app.services.transactions_service import get_transactions, create_transaction
+from app.services.transactions_service import get_transactions, create_transaction, update_transaction, delete_transaction
 from app.services.user_service import get_user_by_email
 from app.models.transaction_models import CreateTransactionRequest, GetTransactionsQuery
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
@@ -159,14 +159,6 @@ def add_transaction_route():
               type: string
               format: date-time
               example: "2024-01-15T00:00:00Z"
-            commission:
-              type: number
-              example: 0.5
-            currency:
-              type: string
-              example: USD
-            notes:
-              type: string
     responses:
       201:
         description: Транзакция успешно создана
@@ -187,8 +179,20 @@ def add_transaction_route():
         description: Внутренняя ошибка сервера
     """
     try:
+        # Логирование входящих данных для отладки
+        json_data = request.get_json()
+        logger.info(f"Получен запрос на создание транзакции: {json_data}")
+        
         # Валидация входных данных
-        data = CreateTransactionRequest(**request.get_json())
+        try:
+            data = CreateTransactionRequest(**json_data)
+        except ValidationError as ve:
+            logger.warning(f"Ошибка валидации при создании транзакции: {ve.errors()}")
+            return jsonify({
+                "success": False,
+                "error": ErrorMessages.VALIDATION_ERROR,
+                "details": ve.errors()
+            }), HTTPStatus.BAD_REQUEST
         
         user_email = get_jwt_identity()
         user = get_user_by_email(user_email)
@@ -199,17 +203,22 @@ def add_transaction_route():
                 "error": ErrorMessages.USER_NOT_FOUND
             }), HTTPStatus.NOT_FOUND
 
+        # Преобразуем transaction_date в строку, если это datetime
+        transaction_date_str = data.transaction_date
+        if isinstance(transaction_date_str, datetime):
+            transaction_date_str = transaction_date_str.isoformat()
+        elif isinstance(transaction_date_str, str) and 'T' not in transaction_date_str:
+            # Если дата в формате YYYY-MM-DD, добавляем время
+            transaction_date_str = f"{transaction_date_str}T00:00:00"
+        
         tx_id = create_transaction(
             user_id=user["id"],
             portfolio_asset_id=data.portfolio_asset_id,
             asset_id=data.asset_id,
-            transaction_type=data.transaction_type,
+            transaction_type=data.transaction_type,  # Уже преобразовано в int валидатором
             quantity=data.quantity,
             price=data.price,
-            transaction_date=data.transaction_date,
-            commission=getattr(data, 'commission', 0.0),
-            currency=getattr(data, 'currency', 'RUB'),
-            notes=getattr(data, 'notes', None),
+            transaction_date=transaction_date_str,
         )
 
         return jsonify({
@@ -229,5 +238,211 @@ def add_transaction_route():
         return jsonify({
             "success": False,
             "error": ErrorMessages.INTERNAL_ERROR
+        }), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@transactions_bp.route("/", methods=["PUT"])
+@jwt_required()
+def update_transaction_route():
+    """
+    Обновление транзакции.
+    ---
+    tags:
+      - Transactions
+    summary: Обновить транзакцию
+    description: Обновляет существующую транзакцию
+    security:
+      - Bearer: []
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - transaction_id
+            - portfolio_asset_id
+            - asset_id
+            - transaction_type
+            - quantity
+            - price
+            - transaction_date
+          properties:
+            transaction_id:
+              type: integer
+              example: 1
+            portfolio_asset_id:
+              type: integer
+              example: 1
+            asset_id:
+              type: integer
+              example: 1
+            transaction_type:
+              type: integer
+              example: 1
+            quantity:
+              type: number
+              example: 10.5
+            price:
+              type: number
+              example: 150.50
+            transaction_date:
+              type: string
+              format: date-time
+              example: "2024-01-15T00:00:00Z"
+    responses:
+      200:
+        description: Транзакция успешно обновлена
+      400:
+        description: Ошибка валидации
+      401:
+        description: Требуется аутентификация
+      500:
+        description: Внутренняя ошибка сервера
+    """
+    try:
+        json_data = request.get_json()
+        if not json_data:
+            return jsonify({
+                "success": False,
+                "error": ErrorMessages.VALIDATION_ERROR,
+                "details": "Request body is required"
+            }), HTTPStatus.BAD_REQUEST
+        
+        transaction_id = json_data.get("transaction_id")
+        if not transaction_id:
+            return jsonify({
+                "success": False,
+                "error": ErrorMessages.VALIDATION_ERROR,
+                "details": "transaction_id is required"
+            }), HTTPStatus.BAD_REQUEST
+        
+        user_email = get_jwt_identity()
+        user = get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({
+                "success": False,
+                "error": ErrorMessages.USER_NOT_FOUND
+            }), HTTPStatus.NOT_FOUND
+
+        tx_id = update_transaction(
+            transaction_id=transaction_id,
+            user_id=user["id"],
+            portfolio_asset_id=json_data.get("portfolio_asset_id"),
+            asset_id=json_data.get("asset_id"),
+            transaction_type=json_data.get("transaction_type"),
+            quantity=json_data.get("quantity"),
+            price=json_data.get("price"),
+            transaction_date=json_data.get("transaction_date"),
+        )
+
+        return jsonify({
+            "success": True,
+            "message": "Транзакция успешно обновлена",
+            "transaction_id": tx_id
+        }), HTTPStatus.OK
+
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении транзакции: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@transactions_bp.route("/", methods=["DELETE"])
+@jwt_required()
+def delete_transactions_route():
+    """
+    Удаление транзакций.
+    ---
+    tags:
+      - Transactions
+    summary: Удалить транзакции
+    description: Удаляет одну или несколько транзакций
+    security:
+      - Bearer: []
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - ids
+          properties:
+            ids:
+              type: array
+              items:
+                type: integer
+              example: [1, 2, 3]
+    responses:
+      200:
+        description: Транзакции успешно удалены
+      400:
+        description: Ошибка валидации
+      401:
+        description: Требуется аутентификация
+      500:
+        description: Внутренняя ошибка сервера
+    """
+    try:
+        json_data = request.get_json()
+        if not json_data:
+            return jsonify({
+                "success": False,
+                "error": ErrorMessages.VALIDATION_ERROR,
+                "details": "Request body is required"
+            }), HTTPStatus.BAD_REQUEST
+        
+        transaction_ids = json_data.get("ids", [])
+        if not transaction_ids or not isinstance(transaction_ids, list):
+            return jsonify({
+                "success": False,
+                "error": ErrorMessages.VALIDATION_ERROR,
+                "details": "ids must be a non-empty array"
+            }), HTTPStatus.BAD_REQUEST
+        
+        # Удаляем каждую транзакцию
+        # delete_transaction уже обновляет историю портфеля для каждой транзакции
+        deleted_count = 0
+        errors = []
+        
+        for tx_id in transaction_ids:
+            try:
+                delete_transaction(tx_id)
+                deleted_count += 1
+            except Exception as e:
+                errors.append(f"Транзакция {tx_id}: {str(e)}")
+                logger.warning(f"Ошибка при удалении транзакции {tx_id}: {e}")
+        
+        if deleted_count == 0:
+            return jsonify({
+                "success": False,
+                "error": "Не удалось удалить транзакции",
+                "details": errors
+            }), HTTPStatus.BAD_REQUEST
+        
+        return jsonify({
+            "success": True,
+            "message": f"Удалено транзакций: {deleted_count}/{len(transaction_ids)}",
+            "deleted_count": deleted_count,
+            "errors": errors if errors else None
+        }), HTTPStatus.OK
+
+    except Exception as e:
+        logger.error(f"Ошибка при удалении транзакций: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": str(e)
         }), HTTPStatus.INTERNAL_SERVER_ERROR
 

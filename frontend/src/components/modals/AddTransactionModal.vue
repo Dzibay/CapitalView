@@ -31,7 +31,8 @@ const handleSubmit = async () => {
       transaction_type: transactionType.value === 'buy' ? 1 : 2,
       quantity: quantity.value,
       price: price.value,
-      date: date.value
+      transaction_date: date.value,  // Используем transaction_date вместо date
+      date: date.value  // Оставляем для обратной совместимости
     })
     emit('close')
   } catch (e) {

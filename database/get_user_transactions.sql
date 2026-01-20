@@ -3,7 +3,9 @@ BEGIN
     RETURN QUERY
     SELECT 
         t.id AS transaction_id,
+        pa.id AS portfolio_asset_id,
         pa.portfolio_id,
+        a.id AS asset_id,
         p.name AS portfolio_name,
         a.name AS asset_name,
         a.ticker,

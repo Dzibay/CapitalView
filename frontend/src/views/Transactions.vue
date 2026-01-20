@@ -106,7 +106,6 @@ const normalizeType = (type) => {
   if (t.includes('прод') || t.includes('sell')) return 'sell'
   if (t.includes('див') || t.includes('div')) return 'dividend'
   if (t.includes('купон') || t.includes('coupon')) return 'coupon'
-  if (t.includes('комис') || t.includes('commission')) return 'commission'
   if (t.includes('налог') || t.includes('tax')) return 'tax'
   if (t.includes('ввод') || t.includes('депозит') || t.includes('deposit')) return 'deposit'
   if (t.includes('вывод') || t.includes('withdraw')) return 'withdraw'
@@ -335,12 +334,52 @@ const deleteOne = (txId) => {
 
 // модалка
 const openEditModal = (tx) => {
-  currentTransaction.value = { ...tx }
+  // Копируем транзакцию и преобразуем дату в формат YYYY-MM-DD для input[type="date"]
+  const txCopy = { ...tx }
+  if (txCopy.transaction_date) {
+    // Если дата в формате ISO или timestamp, преобразуем в YYYY-MM-DD
+    const date = new Date(txCopy.transaction_date)
+    if (!isNaN(date.getTime())) {
+      txCopy.transaction_date = date.toISOString().split('T')[0]
+    }
+  }
+  currentTransaction.value = txCopy
   showEditModal.value = true
 }
 
 const handleSaveEdit = async (newTx) => {
-  await editTransaction(newTx)
+  // Получаем оригинальную транзакцию для получения недостающих полей
+  const originalTx = transactions.value.find(t => 
+    (t.transaction_id || t.id) === (newTx.transaction_id || newTx.id)
+  )
+  
+  if (!originalTx) {
+    console.error('Оригинальная транзакция не найдена')
+    return
+  }
+  
+  // Преобразуем данные для API
+  const txData = {
+    transaction_id: newTx.transaction_id || newTx.id || originalTx.transaction_id || originalTx.id,
+    portfolio_asset_id: newTx.portfolio_asset_id || originalTx.portfolio_asset_id,
+    asset_id: newTx.asset_id || originalTx.asset_id,
+    transaction_type: typeof newTx.transaction_type === 'string' 
+      ? (newTx.transaction_type === 'Покупка' || newTx.transaction_type.toLowerCase().includes('buy') ? 1 : 2)
+      : (newTx.transaction_type || 1),
+    quantity: parseFloat(newTx.quantity) || 0,
+    price: parseFloat(newTx.price) || 0,
+    transaction_date: newTx.transaction_date || originalTx.transaction_date
+  }
+  
+  // Преобразуем дату в ISO формат, если нужно
+  if (txData.transaction_date && !txData.transaction_date.includes('T')) {
+    const date = new Date(txData.transaction_date)
+    if (!isNaN(date.getTime())) {
+      txData.transaction_date = date.toISOString()
+    }
+  }
+  
+  await editTransaction(txData)
   showEditModal.value = false
 }
 
@@ -739,7 +778,7 @@ const summary = computed(() => {
 .badge-sell { background: #fee2e2; color: #991b1b; }
 .badge-dividend { background: #dbeafe; color: #1e40af; }
 .badge-coupon { background: #f3e8ff; color: #6b21a8; }
-.badge-other, .badge-commission, .badge-tax { background: #f3f4f6; color: #4b5563; }
+.badge-other { background: #f3f4f6; color: #4b5563; }
 .badge-deposit { background: #ccfbf1; color: #0f766e; }
 .badge-withdraw { background: #ffedd5; color: #9a3412; }
 

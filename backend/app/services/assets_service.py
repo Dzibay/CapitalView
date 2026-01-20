@@ -187,10 +187,21 @@ def create_asset(email: str, data: dict):
 
 def delete_asset(portfolio_asset_id: int):
     """
-    Удаляет актив из портфеля:
-      - все транзакции, связанные с этим активом;
-      - саму запись portfolio_assets;
-      - если актив кастомный, то и запись из assets + asset_prices.
+    Удаляет актив из портфеля.
+    
+    Порядок удаления (важно для соблюдения foreign key constraints):
+      1. transactions, fifo_lots (связаны с portfolio_asset_id)
+      2. portfolio_assets
+      3. Если актив кастомный:
+         - asset_prices
+         - asset_latest_prices_full (ВАЖНО: перед удалением assets)
+         - assets
+    
+    ВАЖНО: 
+    - Для системных активов НЕ удаляем asset_latest_prices_full и assets,
+      так как актив остается в системе для других пользователей.
+    - asset_latest_prices_full имеет foreign key на assets(id),
+      поэтому удаляется ПЕРЕД удалением assets.
     """
     try:
         # 1️⃣ Проверяем существование portfolio_asset
@@ -248,12 +259,45 @@ def delete_asset(portfolio_asset_id: int):
         # 5️⃣ Если актив кастомный — удаляем и сам актив
         if is_custom:
             try:
-                table_delete("asset_prices", {"asset_id": asset_id})
-                table_delete("assets", {"id": asset_id})
+                # Удаляем историю цен актива (все записи с этим asset_id)
+                # ВАЖНО: asset_prices имеет foreign key на assets, поэтому удаляем перед assets
+                deleted_prices = table_delete("asset_prices", {"asset_id": asset_id})
+                if deleted_prices:
+                    print(f"✅ Удалено записей из asset_prices для актива {asset_id}: {len(deleted_prices) if isinstance(deleted_prices, list) else 'N/A'}")
+                else:
+                    print(f"ℹ️ Не найдено записей в asset_prices для актива {asset_id}")
+                
+                # Удаляем запись из asset_latest_prices_full (ВАЖНО: перед удалением актива из-за foreign key)
+                # Это нужно делать только для кастомных активов, которые будут удалены
+                try:
+                    deleted_latest = table_delete("asset_latest_prices_full", {"asset_id": asset_id})
+                    if deleted_latest:
+                        print(f"✅ Удалена запись из asset_latest_prices_full для актива {asset_id}")
+                    else:
+                        print(f"ℹ️ Не найдено записи в asset_latest_prices_full для актива {asset_id}")
+                except Exception as e:
+                    print(f"⚠️ Ошибка при удалении из asset_latest_prices_full: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Не прерываем выполнение, но логируем ошибку
+                
+                # Удаляем сам актив (должно быть последним, чтобы не нарушить внешние ключи)
+                # Порядок удаления:
+                # 1. asset_prices (удалено выше)
+                # 2. asset_latest_prices_full (удалено выше)
+                # 3. assets (удаляем сейчас)
+                deleted_asset = table_delete("assets", {"id": asset_id})
+                if deleted_asset:
+                    print(f"✅ Удален кастомный актив {asset_id}")
+                else:
+                    print(f"⚠️ Не удалось удалить актив {asset_id} из таблицы assets")
             except Exception as e:
                 print(f"⚠️ Ошибка при удалении кастомного актива: {e}")
+                import traceback
+                traceback.print_exc()
+                # Не прерываем выполнение, но логируем ошибку
 
-        # 6️⃣ Обновляем ежедневные позиции и значения портфеля
+        # 7️⃣ Обновляем ежедневные позиции и значения портфеля
         try:
             table_delete("portfolio_daily_positions", {"portfolio_asset_id": portfolio_asset_id})
         except Exception as e:

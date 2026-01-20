@@ -10,13 +10,28 @@ class CreateTransactionRequest(BaseModel):
     """Модель запроса создания транзакции."""
     portfolio_asset_id: int = Field(..., ge=1, description="ID портфельного актива")
     asset_id: int = Field(..., ge=1, description="ID актива")
-    transaction_type: str = Field(..., description="Тип транзакции (buy/sell)")
+    transaction_type: int = Field(..., description="Тип транзакции (1 = buy, 2 = sell)")
     quantity: float = Field(..., gt=0, description="Количество")
     price: float = Field(..., gt=0, description="Цена за единицу")
     transaction_date: Union[datetime, str] = Field(..., description="Дата транзакции")
-    commission: Optional[float] = Field(0.0, ge=0, description="Комиссия")
-    currency: Optional[str] = Field("RUB", description="Валюта транзакции")
-    notes: Optional[str] = Field(None, description="Примечания")
+    
+    @field_validator('transaction_type', mode='before')
+    @classmethod
+    def parse_transaction_type(cls, v):
+        """Преобразует тип транзакции в число: buy/1 -> 1, sell/2 -> 2."""
+        if isinstance(v, int):
+            if v in [1, 2]:
+                return v
+            raise ValueError("transaction_type должен быть 1 (buy) или 2 (sell)")
+        if isinstance(v, str):
+            v_lower = v.lower()
+            if v_lower in ['buy', 'покупка', '1']:
+                return 1
+            elif v_lower in ['sell', 'продажа', '2']:
+                return 2
+            else:
+                raise ValueError(f"Некорректный тип транзакции: {v}. Ожидается 'buy'/'sell' или 1/2")
+        raise ValueError(f"transaction_type должен быть строкой или числом, получен: {type(v)}")
     
     @field_validator('transaction_date', mode='before')
     @classmethod

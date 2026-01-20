@@ -1,4 +1,4 @@
-from app.services.supabase_service import table_select, table_insert, rpc
+from app.services.supabase_service import table_select, table_insert, table_delete, table_update, rpc
 
 def get_transactions(user_id, limit=1000):
     params = {
@@ -53,3 +53,209 @@ def create_transaction(
     rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
 
     return tx_id
+
+
+def update_transaction(
+    *,
+    transaction_id: int,
+    user_id: int,
+    portfolio_asset_id: int,
+    asset_id: int,
+    transaction_type: int,
+    quantity: float,
+    price: float,
+    transaction_date: str
+):
+    """
+    Обновляет существующую транзакцию.
+    Удаляет старую транзакцию и создает новую через apply_transaction.
+    """
+    from datetime import datetime
+    
+    # 1️⃣ Получаем информацию о транзакции
+    existing_tx = table_select(
+        "transactions",
+        select="*",
+        filters={"id": transaction_id},
+        limit=1
+    )
+    
+    if not existing_tx:
+        raise Exception(f"Транзакция {transaction_id} не найдена")
+    
+    old_tx = existing_tx[0]
+    old_portfolio_asset_id = old_tx.get("portfolio_asset_id")
+    old_transaction_date = old_tx.get("transaction_date")
+    
+    # Получаем portfolio_id для старого portfolio_asset_id
+    old_portfolio_id = None
+    if old_portfolio_asset_id:
+        old_pa = table_select(
+            "portfolio_assets",
+            select="portfolio_id",
+            filters={"id": old_portfolio_asset_id},
+            limit=1
+        )
+        if old_pa:
+            old_portfolio_id = old_pa[0].get("portfolio_id")
+    
+    # 2️⃣ Удаляем старую транзакцию (это пересчитает FIFO)
+    # Используем RPC для безопасного удаления
+    try:
+        delete_result = rpc("delete_transaction", {"p_transaction_id": transaction_id})
+        if delete_result is False:
+            raise Exception("Ошибка при удалении транзакции")
+    except Exception as e:
+        # Если RPC функции нет, удаляем напрямую
+        table_delete("transactions", {"id": transaction_id})
+        # Пересчитываем portfolio_asset
+        if old_portfolio_asset_id:
+            rpc("update_portfolio_asset", {"pa_id": old_portfolio_asset_id})
+    
+    # 3️⃣ Создаем новую транзакцию с обновленными данными
+    new_tx_id = create_transaction(
+        user_id=user_id,
+        portfolio_asset_id=portfolio_asset_id,
+        asset_id=asset_id,
+        transaction_type=transaction_type,
+        quantity=quantity,
+        price=price,
+        transaction_date=transaction_date
+    )
+    
+    # 4️⃣ Если portfolio_asset_id изменился, обновляем оба
+    if old_portfolio_asset_id != portfolio_asset_id:
+        rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
+    
+    # 5️⃣ Получаем portfolio_id для нового portfolio_asset_id
+    new_portfolio_id = None
+    new_pa = table_select(
+        "portfolio_assets",
+        select="portfolio_id",
+        filters={"id": portfolio_asset_id},
+        limit=1
+    )
+    if new_pa:
+        new_portfolio_id = new_pa[0].get("portfolio_id")
+    
+    # 6️⃣ Обновляем историю портфелей с минимальной датой транзакции
+    # Преобразуем дату транзакции в формат YYYY-MM-DD
+    if isinstance(transaction_date, str):
+        from_date = transaction_date[:10] if 'T' in transaction_date else transaction_date
+    elif hasattr(transaction_date, 'date'):
+        from_date = transaction_date.date().isoformat()
+    else:
+        from_date = str(transaction_date)[:10]
+    
+    # Если есть старая дата, берем минимальную
+    if old_transaction_date:
+        if isinstance(old_transaction_date, str):
+            old_date = old_transaction_date[:10] if 'T' in old_transaction_date else old_transaction_date
+        elif hasattr(old_transaction_date, 'date'):
+            old_date = old_transaction_date.date().isoformat()
+        else:
+            old_date = str(old_transaction_date)[:10]
+        
+        # Берем минимальную дату
+        if old_date < from_date:
+            from_date = old_date
+    
+    # Обновляем старый портфель, если он изменился
+    if old_portfolio_id and old_portfolio_id != new_portfolio_id:
+        try:
+            rpc("update_portfolio_positions_from_date", {
+                "p_portfolio_id": old_portfolio_id,
+                "p_from_date": from_date
+            })
+            rpc("update_portfolio_values_from_date", {
+                "p_portfolio_id": old_portfolio_id,
+                "p_from_date": from_date
+            })
+        except Exception as e:
+            print(f"⚠️ Ошибка при обновлении истории старого портфеля {old_portfolio_id}: {e}")
+    
+    # Обновляем новый портфель
+    if new_portfolio_id:
+        try:
+            rpc("update_portfolio_positions_from_date", {
+                "p_portfolio_id": new_portfolio_id,
+                "p_from_date": from_date
+            })
+            rpc("update_portfolio_values_from_date", {
+                "p_portfolio_id": new_portfolio_id,
+                "p_from_date": from_date
+            })
+        except Exception as e:
+            print(f"⚠️ Ошибка при обновлении истории портфеля {new_portfolio_id}: {e}")
+    
+    return new_tx_id
+
+
+def delete_transaction(transaction_id: int):
+    """
+    Удаляет транзакцию и пересчитывает связанные данные.
+    """
+    from datetime import datetime
+    
+    # 1️⃣ Получаем информацию о транзакции
+    existing_tx = table_select(
+        "transactions",
+        select="portfolio_asset_id, transaction_date",
+        filters={"id": transaction_id},
+        limit=1
+    )
+    
+    if not existing_tx:
+        raise Exception(f"Транзакция {transaction_id} не найдена")
+    
+    portfolio_asset_id = existing_tx[0].get("portfolio_asset_id")
+    transaction_date = existing_tx[0].get("transaction_date")
+    
+    # Получаем portfolio_id
+    portfolio_id = None
+    if portfolio_asset_id:
+        pa = table_select(
+            "portfolio_assets",
+            select="portfolio_id",
+            filters={"id": portfolio_asset_id},
+            limit=1
+        )
+        if pa:
+            portfolio_id = pa[0].get("portfolio_id")
+    
+    # 2️⃣ Удаляем транзакцию
+    try:
+        delete_result = rpc("delete_transaction", {"p_transaction_id": transaction_id})
+        if delete_result is False:
+            raise Exception("Ошибка при удалении транзакции")
+    except Exception as e:
+        # Если RPC функции нет, удаляем напрямую
+        table_delete("transactions", {"id": transaction_id})
+    
+    # 3️⃣ Пересчитываем portfolio_asset
+    if portfolio_asset_id:
+        rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
+    
+    # 4️⃣ Обновляем историю портфеля с даты транзакции
+    if portfolio_id and transaction_date:
+        # Преобразуем дату транзакции в формат YYYY-MM-DD
+        if isinstance(transaction_date, str):
+            from_date = transaction_date[:10] if 'T' in transaction_date else transaction_date
+        elif hasattr(transaction_date, 'date'):
+            from_date = transaction_date.date().isoformat()
+        else:
+            from_date = str(transaction_date)[:10]
+        
+        try:
+            rpc("update_portfolio_positions_from_date", {
+                "p_portfolio_id": portfolio_id,
+                "p_from_date": from_date
+            })
+            rpc("update_portfolio_values_from_date", {
+                "p_portfolio_id": portfolio_id,
+                "p_from_date": from_date
+            })
+        except Exception as e:
+            print(f"⚠️ Ошибка при обновлении истории портфеля {portfolio_id}: {e}")
+    
+    return True

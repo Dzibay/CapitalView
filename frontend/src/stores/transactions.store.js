@@ -6,12 +6,14 @@ import { useUIStore } from './ui.store'
 
 export const useTransactionsStore = defineStore('transactions', {
   actions: {
-    async addTransaction({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date }) {
+    async addTransaction({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date, transaction_date }) {
       const uiStore = useUIStore()
       const dashboardStore = useDashboardStore()
       
       try {
-        await transactionsService.addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, date)
+        // Используем transaction_date если есть, иначе date
+        const txDate = transaction_date || date
+        await transactionsService.addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, txDate)
         uiStore.setLoading(true)
         await dashboardStore.reloadDashboard()
       } catch (err) {

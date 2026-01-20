@@ -174,7 +174,6 @@ def add_asset_price_route():
           required:
             - asset_id
             - price
-            - currency
             - date
           properties:
             asset_id:
@@ -183,9 +182,6 @@ def add_asset_price_route():
             price:
               type: number
               example: 150.50
-            currency:
-              type: string
-              example: USD
             date:
               type: string
               format: date-time
