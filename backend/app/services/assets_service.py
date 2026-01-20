@@ -1,5 +1,5 @@
 from app.services.supabase_service import (
-    table_select, table_insert, table_delete, table_update, rpc, refresh_materialized_view
+    table_select, table_insert, table_delete, table_update, rpc
 )
 from app.services.user_service import get_user_by_email
 from datetime import datetime
@@ -61,7 +61,8 @@ def create_asset(email: str, data: dict):
                     "trade_date": date,
                 }
                 table_insert("asset_prices", price_data)
-                refresh_materialized_view('asset_latest_prices_full')
+                # Обновляем только новый актив
+                rpc('update_asset_latest_price', {'p_asset_id': asset_id})
         else:
             # --- Если системный актив, берём name и ticker из таблицы assets ---
             asset_info = table_select("assets", select="name, ticker", filters={"id": asset_id})
@@ -204,7 +205,8 @@ def add_asset_price(data):
 
     try:
         res = table_insert("asset_prices", price_data)
-        refresh_materialized_view('asset_latest_prices_full')
+        # Обновляем только один актив
+        rpc('update_asset_latest_price', {'p_asset_id': asset_id})
         return {"success": True, "message": "Цена успешно добавлена", "data": res}
     except Exception as e:
         return {"success": False, "error": str(e)}

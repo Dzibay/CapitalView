@@ -127,8 +127,8 @@ async def update_history_prices():
 
     ok = sum(1 for r in results if r)
 
-    # Обновление материализованных view разом
-    await db_refresh_view("asset_latest_prices_full")
+    # Обновление таблицы вместо view (быстрее, т.к. использует оптимизированный запрос)
+    await db_rpc('refresh_asset_latest_prices', {})
     await db_rpc('refresh_all_portfolio_daily_data', {})
 
     print(f"✅ История обновлена. Активов: {ok}/{len(assets)}")
@@ -242,8 +242,11 @@ async def update_today_prices():
         if pack:
             await db_rpc("upsert_asset_prices", {"p_prices": pack})
 
-    # обновление view
-    await db_refresh_view("asset_latest_prices_full")
+    # обновляем только измененные активы (быстрее, чем обновлять все)
+    if updated_ids:
+        await db_rpc('update_asset_latest_prices_batch', {
+            'p_asset_ids': updated_ids
+        })
     # получаем всех владельцев изменившихся активов
 
 
