@@ -4,18 +4,49 @@ from app.services.user_service import get_user_by_email
 from concurrent.futures import ThreadPoolExecutor
 from time import time
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 
 def normalize_tx_date_day(dt):
     """Возвращает только дату (YYYY-MM-DD) без времени."""
     if not dt:
         return None
+    
+    # Если это уже date объект
+    if isinstance(dt, date) and not isinstance(dt, datetime):
+        return dt.strftime("%Y-%m-%d")
+    
+    # Если это datetime объект
+    if isinstance(dt, datetime):
+        if dt.tzinfo:
+            dt = dt.astimezone(timezone.utc)
+        return dt.strftime("%Y-%m-%d")
+    
+    # Если это строка
     if isinstance(dt, str):
-        # Преобразуем ISO-строку к datetime
-        dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
-    if dt.tzinfo:
-        dt = dt.astimezone(timezone.utc)
-    return dt.strftime("%Y-%m-%d")
+        try:
+            # Сначала пробуем стандартный ISO формат
+            dt_obj = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+            if dt_obj.tzinfo:
+                dt_obj = dt_obj.astimezone(timezone.utc)
+            return dt_obj.strftime("%Y-%m-%d")
+        except ValueError:
+            # Если не получилось, извлекаем дату из строки (YYYY-MM-DD)
+            try:
+                # Ищем паттерн даты YYYY-MM-DD в начале строки
+                if 'T' in dt:
+                    date_part = dt.split('T')[0]
+                elif ' ' in dt:
+                    date_part = dt.split(' ')[0]
+                else:
+                    date_part = dt[:10] if len(dt) >= 10 else dt
+                
+                # Проверяем, что это валидная дата
+                dt_obj = datetime.strptime(date_part, "%Y-%m-%d")
+                return dt_obj.strftime("%Y-%m-%d")
+            except (ValueError, AttributeError, IndexError):
+                return None
+    
+    return None
 
 
 # Используем asyncio.to_thread, чтобы выполнять sync вызовы в потоках
@@ -173,11 +204,11 @@ async def table_insert_bulk_async(table: str, rows: list[dict]):
 
 async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_data: dict):
     """
-    Полная перезаливка транзакций портфелей брокера:
-    1) создаём дочерние портфели
-    2) удаляем ВСЕ транзакции и операции в каждом дочернем портфеле
-    3) вставляем ВСЕ транзакции с нуля
-    4) создаём portfolio_asset, если он отсутствует
+    Оптимизированный импорт транзакций портфелей брокера:
+    1) создаём дочерние портфели (если нужно)
+    2) загружаем существующие транзакции и операции
+    3) добавляем только новые транзакции/операции (без дубликатов)
+    4) обновляем историю портфеля только с даты самой старой новой транзакции
     """
 
     user = get_user_by_email(email)
@@ -226,14 +257,16 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                     raise Exception(f"Не удалось создать портфель '{portfolio_name}'!")
                 portfolio_id = pf[0]["id"]
             pa_map = {}
+            existing_tx_keys = set()
+            existing_ops_keys = set()
         else:
             portfolio_id = existing[0]["id"]
 
             # ========================
-            # 2. Удаляем ВСЕ транзакции / операции в портфеле
+            # 2. Загружаем существующие транзакции и операции для проверки дубликатов
             # ========================
 
-            print(f"🧹 Очищаем транзакции портфеля '{portfolio_name}' (id={portfolio_id})")
+            print(f"🔍 Проверяем существующие транзакции портфеля '{portfolio_name}' (id={portfolio_id})")
 
             # Получаем все portfolio_asset_id этого портфеля
             pa_rows = table_select(
@@ -242,25 +275,59 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                 filters={"portfolio_id": portfolio_id}
             )
             pa_map = {row["asset_id"]: row["id"] for row in pa_rows}
-
             pa_ids = [row["id"] for row in pa_rows]
 
+            # Загружаем существующие транзакции
+            existing_tx_keys = set()
             if pa_ids:
-                # Удаляем ВСЕ транзакции
-                table_delete("transactions", in_filters={"portfolio_asset_id": pa_ids})
+                existing_transactions = table_select(
+                    "transactions",
+                    select="portfolio_asset_id,transaction_date,transaction_type,price,quantity",
+                    in_filters={"portfolio_asset_id": pa_ids}
+                )
+                
+                for tx in existing_transactions:
+                    # Нормализуем дату до дня (YYYY-MM-DD)
+                    tx_date = normalize_tx_date_day(tx["transaction_date"])
+                    if not tx_date:
+                        continue
+                    # Округляем price и quantity для сравнения
+                    price = round(float(tx.get("price") or 0), 6)
+                    qty = round(float(tx.get("quantity") or 0), 6)
+                    tx_type = tx.get("transaction_type")
+                    # Ключ уникальности: (portfolio_asset_id, date, type, price, quantity)
+                    existing_tx_keys.add((tx["portfolio_asset_id"], tx_date, tx_type, price, qty))
 
-            # Удаляем ВСЕ денежные операции
-            table_delete("cash_operations", filters={"portfolio_id": portfolio_id})
+            # Загружаем существующие денежные операции
+            existing_ops_keys = set()
+            existing_ops = table_select(
+                "cash_operations",
+                select="portfolio_id,type,date,amount,asset_id",
+                filters={"portfolio_id": portfolio_id}
+            )
+            
+            for op in existing_ops:
+                # Нормализуем дату до дня
+                op_date = normalize_tx_date_day(op["date"])
+                if not op_date:
+                    continue
+                # Округляем amount для сравнения
+                amount = round(float(op.get("amount") or 0), 6)
+                op_type = op.get("type")
+                asset_id = op.get("asset_id")
+                # Ключ уникальности: (portfolio_id, type, date, amount, asset_id)
+                existing_ops_keys.add((op["portfolio_id"], op_type, op_date, amount, asset_id))
 
-            print("   ✔ Транзакции очищены")
+            print(f"   ✔ Найдено существующих: {len(existing_tx_keys)} транзакций, {len(existing_ops_keys)} операций")
 
         # ========================
-        # 3. Вставляем все транзакции брокера
+        # 3. Фильтруем и добавляем только новые транзакции брокера
         # ========================
 
         new_tx = []
         new_ops = []
         affected_pa = set()
+        min_tx_date = None  # Самая старая дата новой транзакции
 
         for tx in pdata["transactions"]:
             tx_type = tx["type"]
@@ -268,7 +335,6 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
             isin = tx.get("isin")
             payment = float(tx.get("payment") or 0)
             asset_id = isin_to_asset[isin] if isin in isin_to_asset else None
-            print(tx["ticker"], tx_type, tx_date, isin, payment, asset_id)
 
             # Покупка / продажа
             if tx_type in ("Buy", "Sell"):
@@ -287,11 +353,31 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                     pa_id = pa_inserted[0]["id"]
                     pa_map[asset_id] = pa_id
 
+                # Нормализуем дату и значения для проверки
+                tx_date_normalized = normalize_tx_date_day(tx_date)
+                if not tx_date_normalized:
+                    continue
+                
+                price = round(float(tx["price"]), 6)
+                qty = round(float(tx["quantity"]), 6)
+                tx_type_id = 1 if tx_type == "Buy" else 2
+                
+                # Проверяем, существует ли уже такая транзакция
+                tx_key = (pa_id, tx_date_normalized, tx_type_id, price, qty)
+                if tx_key in existing_tx_keys:
+                    continue  # Пропускаем дубликат
+
+                # Добавляем в множество существующих, чтобы не дублировать в рамках одного импорта
+                existing_tx_keys.add(tx_key)
                 affected_pa.add(pa_id)
+
+                # Обновляем минимальную дату
+                if min_tx_date is None or tx_date_normalized < min_tx_date:
+                    min_tx_date = tx_date_normalized
 
                 new_tx.append({
                     "portfolio_asset_id": pa_id,
-                    "transaction_type": 1 if tx_type == "Buy" else 2,
+                    "transaction_type": tx_type_id,
                     "price": float(tx["price"]),
                     "quantity": float(tx["quantity"]),
                     "transaction_date": tx_date,
@@ -306,7 +392,22 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                 op_type_id = op_type_map.get(tx_type.lower())
                 if not op_type_id:
                     continue
+
+                # Нормализуем дату и значения для проверки
+                op_date_normalized = normalize_tx_date_day(tx_date)
+                if not op_date_normalized:
+                    continue
                 
+                amount = round(payment, 6)
+                
+                # Проверяем, существует ли уже такая операция
+                op_key = (portfolio_id, op_type_id, op_date_normalized, amount, asset_id)
+                if op_key in existing_ops_keys:
+                    continue  # Пропускаем дубликат
+
+                # Добавляем в множество существующих
+                existing_ops_keys.add(op_key)
+
                 new_ops.append({
                     "user_id": user_id,
                     "portfolio_id": portfolio_id,
@@ -318,32 +419,77 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                     "transaction_id": None
                 })
 
-        # Вставляем
+        # Вставляем только новые записи
         if new_tx:
+            print(f"   ➕ Добавляем {len(new_tx)} новых транзакций...")
             await table_insert_bulk_async("transactions", new_tx)
 
         if new_ops:
+            print(f"   ➕ Добавляем {len(new_ops)} новых денежных операций...")
             await table_insert_bulk_async("cash_operations", new_ops)
 
+        if not new_tx and not new_ops:
+            print("   ℹ️ Новых транзакций и операций не найдено")
+            continue
+
         # ========================
-        # 4. Пересчёт активов
+        # 4. Пересчёт активов (только для затронутых активов)
         # ========================
-        for pa_id in affected_pa:
-            rpc("update_portfolio_asset", {"pa_id": pa_id})
+        if affected_pa:
+            print(f"   🔄 Пересчитываем {len(affected_pa)} активов...")
+            for pa_id in affected_pa:
+                rpc("update_portfolio_asset", {"pa_id": pa_id})
 
         
         # ==========================
-        # Обновление данных портфеля
+        # 5. Обновление истории портфеля только с даты самой старой новой транзакции
         # ==========================
-        print("Обновление данных портфеля:")
-        rpc("rebuild_fifo_for_portfolio", {"p_portfolio_id": portfolio_id})
-        print('Fifo данные обновлены')
-        rpc("update_portfolio_positions_from_date", {"p_portfolio_id": portfolio_id})
-        print('Positions данные обновлены')
-        rpc("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id})
-        print('Values данные обновлены')
+        if min_tx_date:
+            print(f"   📊 Обновляем историю портфеля с даты {min_tx_date}...")
+            
+            # Преобразуем дату в формат для SQL функции (YYYY-MM-DD)
+            if isinstance(min_tx_date, str):
+                from_date_str = min_tx_date[:10] if len(min_tx_date) > 10 else min_tx_date
+            elif hasattr(min_tx_date, 'isoformat'):
+                from_date_str = min_tx_date.isoformat()[:10]
+            else:
+                from_date_str = str(min_tx_date)[:10]
+            
+            # Обновляем FIFO (обычно пересчитывается полностью, но быстрее чем история)
+            try:
+                rpc("rebuild_fifo_for_portfolio", {"p_portfolio_id": portfolio_id})
+                print('   ✔ Fifo данные обновлены')
+            except Exception as e:
+                # Если функция не поддерживает параметр даты, это нормально
+                print(f'   ⚠️ Ошибка обновления FIFO: {e}')
+            
+            # Обновляем позиции с даты самой старой новой транзакции
+            try:
+                rpc("update_portfolio_positions_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": from_date_str})
+                print('   ✔ Positions данные обновлены')
+            except Exception as e:
+                print(f'   ⚠️ Ошибка обновления позиций: {e}')
+            
+            # Обновляем значения с даты самой старой новой транзакции
+            try:
+                rpc("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": from_date_str})
+                print('   ✔ Values данные обновлены')
+            except Exception as e:
+                print(f'   ⚠️ Ошибка обновления значений: {e}')
+        else:
+            # Если нет новых транзакций, но есть новые операции, обновляем с сегодняшней даты
+            if new_ops:
+                today_str = date.today().isoformat()
+                print(f"   📊 Обновляем историю портфеля с сегодняшней даты ({today_str})...")
+                try:
+                    rpc("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": today_str})
+                    print('   ✔ Values данные обновлены')
+                except Exception as e:
+                    print(f'   ⚠️ Ошибка обновления значений: {e}')
+            else:
+                print("   ℹ️ Нет новых данных для обновления истории")
 
-        print(f"🎯 Готово: {len(new_tx)} транзакций, {len(new_ops)} денежн. операций")
+        print(f"🎯 Готово: добавлено {len(new_tx)} транзакций, {len(new_ops)} денежн. операций")
 
     return {"success": True}
 
