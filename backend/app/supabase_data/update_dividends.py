@@ -135,16 +135,28 @@ async def update_forecasts():
     assets = await asyncio.to_thread(table_select, "assets")
     ticker_map = {a["ticker"].upper(): a["id"] for a in assets if a.get("ticker")}
     
-    # 2. Получаем существующие выплаты (чтобы не дублировать)
-    existing_payouts = await asyncio.to_thread(table_select, "asset_payouts")
+    # 2. Получаем существующие выплаты типа "dividend" (оптимизация: только нужные поля)
+    # Загружаем только записи с типом "dividend" для экономии памяти
+    existing_payouts = await asyncio.to_thread(
+        table_select, 
+        "asset_payouts", 
+        select="asset_id,record_date,value,type",
+        filters={"type": "dividend"}
+    )
     
-    # Ключ уникальности: (asset_id, record_date, value)
+    # Ключ уникальности соответствует БД: (asset_id, record_date, value, type)
+    # ВАЖНО: используем только record_date, так как в БД уникальность по record_date
     existing_keys = set()
     for p in existing_payouts:
-        # Используем дату отсечки как основной идентификатор, но если ее нет - payment_date
-        date_key = str(p.get("record_date") or p.get("payment_date"))
-        val = float(p["value"] or 0)
-        existing_keys.add((p["asset_id"], date_key, val))
+        record_date = p.get("record_date")
+        # Пропускаем записи без record_date, так как они не могут быть частью уникального ключа
+        if not record_date:
+            continue
+        # Нормализуем значение для сравнения (округление до 2 знаков)
+        val = round(float(p.get("value") or 0), 2)
+        p_type = p.get("type") or "dividend"
+        # Используем ISO формат даты для ключа (YYYY-MM-DD)
+        existing_keys.add((p["asset_id"], record_date.isoformat() if isinstance(record_date, date) else str(record_date), val, p_type))
 
     all_items = []
 
@@ -190,33 +202,40 @@ async def update_forecasts():
     payouts_to_insert = []
     
     for item in all_items:
-        # Приоритет даты для ключа уникальности: Record -> Payment -> Buy
-        check_date = item["record_date"] or item["payment_date"] or item["last_buy_date"]
-        
-        if not check_date:
+        # ВАЖНО: для уникальности используем только record_date (как в БД)
+        # Если record_date нет, пропускаем запись (не можем создать уникальный ключ)
+        record_date = item.get("record_date")
+        if not record_date:
             continue
 
-        key = (item["asset_id"], check_date.isoformat(), float(item["value"]))
+        # Нормализуем значение для сравнения
+        val = round(float(item.get("value") or 0), 2)
+        p_type = "dividend"
+        
+        # Ключ должен соответствовать уникальному ограничению БД
+        key = (item["asset_id"], record_date.isoformat(), val, p_type)
 
         if key in existing_keys:
             continue
         
+        # Добавляем в множество для предотвращения дубликатов в текущем запуске
         existing_keys.add(key)
 
         new_payout = {
             "asset_id": item["asset_id"],
             "value": item["value"],
-            'dividend_yield': item['dividend_yield'],
-            "last_buy_date": item["last_buy_date"].isoformat() if item["last_buy_date"] else None,
-            "record_date": item["record_date"].isoformat() if item["record_date"] else None,
-            "payment_date": item["payment_date"].isoformat() if item["payment_date"] else None,
-            "type": "dividend"
+            'dividend_yield': item.get('dividend_yield'),
+            "last_buy_date": item["last_buy_date"].isoformat() if item.get("last_buy_date") else None,
+            "record_date": record_date.isoformat(),
+            "payment_date": item["payment_date"].isoformat() if item.get("payment_date") else None,
+            "type": p_type
         }
         
         payouts_to_insert.append(new_payout)
 
-    # 6. Пакетная вставка (Batch Insert)
+    # 6. Пакетная вставка с обработкой дубликатов
     added_count = 0
+    skipped_count = 0
     BATCH_SIZE = 1000  # Размер пачки для вставки
 
     if payouts_to_insert:
@@ -225,16 +244,36 @@ async def update_forecasts():
         # Разбиваем на пакеты
         for i in range(0, len(payouts_to_insert), BATCH_SIZE):
             batch = payouts_to_insert[i : i + BATCH_SIZE]
+            batch_num = i // BATCH_SIZE + 1
+            
             try:
-                # table_insert обычно поддерживает вставку списка словарей
+                # Пытаемся вставить пакет
                 await asyncio.to_thread(table_insert, "asset_payouts", batch)
-                print(f"   ✅ Вставлен пакет {i // BATCH_SIZE + 1} ({len(batch)} записей)")
+                print(f"   ✅ Вставлен пакет {batch_num} ({len(batch)} записей)")
                 added_count += len(batch)
             except Exception as e:
-                print(f"⚠️ Ошибка вставки пакета {i // BATCH_SIZE + 1}: {e}")
+                # Если ошибка дублирования, пробуем вставлять по одной записи
+                error_str = str(e)
+                if "23505" in error_str or "duplicate" in error_str.lower():
+                    print(f"   ⚠️ Обнаружены дубликаты в пакете {batch_num}, вставляем по одной...")
+                    for record in batch:
+                        try:
+                            await asyncio.to_thread(table_insert, "asset_payouts", record)
+                            added_count += 1
+                        except Exception as inner_e:
+                            # Игнорируем дубликаты при индивидуальной вставке
+                            inner_error_str = str(inner_e)
+                            if "23505" not in inner_error_str and "duplicate" not in inner_error_str.lower():
+                                print(f"      ⚠️ Ошибка вставки записи: {inner_e}")
+                            else:
+                                skipped_count += 1
+                else:
+                    print(f"   ❌ Ошибка вставки пакета {batch_num}: {e}")
     else:
         print("📭 Новых записей для вставки не найдено.")
 
+    if skipped_count > 0:
+        print(f"⏭️ Пропущено дубликатов: {skipped_count}")
     print(f"🏁 Готово. Всего добавлено новых записей: {added_count}")
 
 if __name__ == "__main__":
