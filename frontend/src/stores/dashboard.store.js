@@ -109,9 +109,29 @@ export const useDashboardStore = defineStore('dashboard', {
       }
     },
 
-    // Удаление портфеля
+    // Удаление портфеля и всех его дочерних портфелей
     removePortfolio(portfolioId) {
-      this.portfolios = this.portfolios.filter(p => p.id !== portfolioId)
+      // Собираем все ID портфелей для удаления (сам портфель + все дочерние)
+      const idsToRemove = new Set([portfolioId])
+      
+      // Рекурсивно находим все дочерние портфели
+      const findChildren = (parentId) => {
+        this.portfolios.forEach(p => {
+          if (p.parent_portfolio_id === parentId && !idsToRemove.has(p.id)) {
+            idsToRemove.add(p.id)
+            findChildren(p.id) // Рекурсивно ищем детей детей
+          }
+        })
+      }
+      
+      findChildren(portfolioId)
+      
+      // Удаляем все найденные портфели
+      this.portfolios = this.portfolios.filter(p => !idsToRemove.has(p.id))
+      
+      if (import.meta.env.DEV) {
+        console.log(`Удалено портфелей: ${idsToRemove.size} (родитель + дочерние)`)
+      }
     },
 
     // Удаление актива из всех портфелей

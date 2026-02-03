@@ -70,19 +70,32 @@ export function usePortfolio(dashboardData, selectedPortfolioId) {
 
   /**
    * Строит иерархическое дерево портфелей
+   * Скрывает портфели с несуществующими родителями (сироты)
    */
   function buildPortfolioTree(portfoliosList) {
     const map = {};
     const roots = [];
 
+    // Создаем map всех портфелей
     portfoliosList.forEach((p) => {
       map[p.id] = { ...p, children: [] };
     });
 
+    // Строим дерево, скрывая портфели с несуществующими родителями
     portfoliosList.forEach((p) => {
-      if (p.parent_portfolio_id && map[p.parent_portfolio_id]) {
-        map[p.parent_portfolio_id].children.push(map[p.id]);
+      if (p.parent_portfolio_id) {
+        // Проверяем, существует ли родительский портфель
+        if (map[p.parent_portfolio_id]) {
+          map[p.parent_portfolio_id].children.push(map[p.id]);
+        } else {
+          // Родитель не существует - это "сирота", не добавляем в дерево
+          // (портфель останется в массиве, но не будет отображаться)
+          if (import.meta.env.DEV) {
+            console.warn(`Портфель ${p.id} (${p.name}) имеет несуществующего родителя ${p.parent_portfolio_id} - скрыт из дерева`)
+          }
+        }
       } else {
+        // Корневой портфель
         roots.push(map[p.id]);
       }
     });

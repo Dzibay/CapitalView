@@ -28,14 +28,31 @@ export const usePortfoliosStore = defineStore('portfolios', {
         if (!res.success) throw new Error(res.error || 'Ошибка удаления портфеля')
         
         const dashboardStore = useDashboardStore()
-        // Оптимистичное удаление
+        const uiStore = useUIStore()
+        
+        // Собираем все ID портфелей, которые будут удалены (родитель + дочерние)
+        const idsToRemove = new Set([portfolioId])
+        const findChildren = (parentId) => {
+          dashboardStore.portfolios.forEach(p => {
+            if (p.parent_portfolio_id === parentId && !idsToRemove.has(p.id)) {
+              idsToRemove.add(p.id)
+              findChildren(p.id)
+            }
+          })
+        }
+        findChildren(portfolioId)
+        
+        // Оптимистичное удаление (рекурсивно удаляет все дочерние)
         dashboardStore.removePortfolio(portfolioId)
         
-        // Обновляем выбранный портфель, если он был удален
-        const uiStore = useUIStore()
-        if (uiStore.selectedPortfolioId === portfolioId) {
+        // Обновляем выбранный портфель, если он был удален или был дочерним удаленного
+        if (idsToRemove.has(uiStore.selectedPortfolioId)) {
           const portfolios = dashboardStore.portfolios
-          if (portfolios.length > 0) {
+          // Ищем корневой портфель (без parent_portfolio_id)
+          const rootPortfolio = portfolios.find(p => !p.parent_portfolio_id)
+          if (rootPortfolio) {
+            uiStore.setSelectedPortfolioId(rootPortfolio.id)
+          } else if (portfolios.length > 0) {
             uiStore.setSelectedPortfolioId(portfolios[0].id)
           } else {
             uiStore.setSelectedPortfolioId(null)
