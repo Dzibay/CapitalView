@@ -5,6 +5,7 @@ OPERATION_CLASSIFICATION = {
     "OPERATION_TYPE_BUY": "Buy",
     "OPERATION_TYPE_SELL": "Sell",
     "OPERATION_TYPE_DIVIDEND": "Dividend",
+    "OPERATION_TYPE_DIV_EXT": "Dividend",
     "OPERATION_TYPE_COUPON": "Coupon",
 
     "OPERATION_TYPE_INPUT": "Deposit",
@@ -110,10 +111,7 @@ def get_tinkoff_portfolio(token, days=365):
 
                 inst = resolve_instrument(client, figi, instrument_cache)
 
-                classified = OPERATION_CLASSIFICATION.get(
-                    op.operation_type.name,
-                    "Other"
-                )
+                classified = OPERATION_CLASSIFICATION[op.operation_type.name] if op.operation_type.name in OPERATION_CLASSIFICATION else op.operation_type.name
 
                 tx = {
                     "figi": figi,
@@ -156,7 +154,7 @@ def get_tinkoff_portfolio(token, days=365):
 
 # data = get_tinkoff_portfolio('t.b7cVknEoyjXW6FG39o4woo12yzoCAKsTwYgT0LqYFvNEH0hC5IGSMtLxVEwGfwXOv048FR5kGmxMeFpEM-GCRQ')
 # for acc in data:
-#     if acc == 'Акции':
+#     if acc == 'ИИС':
 #         for t in data[acc]["transactions"]:
 #             print('  ', t)
 #         print(len(data[acc]["transactions"]))
