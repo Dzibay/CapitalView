@@ -7,6 +7,12 @@ def get_transactions(user_id, limit=1000):
     }
     return rpc("get_user_transactions", params)
 
+def get_operations(user_id):
+    params = {
+        "p_user_id": user_id
+    }
+    return rpc("get_cash_operations", params)
+
 def create_transaction(
     *,
     user_id: int,
