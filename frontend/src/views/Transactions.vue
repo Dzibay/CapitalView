@@ -74,6 +74,17 @@ const assets = computed(() => {
   return Array.from(assetSet)
 })
 
+// Список активов для операций
+const operationsAssets = computed(() => {
+  const ops = operations.value
+  if (!ops.length) return []
+  const assetSet = new Set()
+  for (const op of ops) {
+    if (op.asset_name) assetSet.add(op.asset_name)
+  }
+  return Array.from(assetSet)
+})
+
 const portfolios = computed(() => {
   const data = viewMode.value === 'transactions' ? transactions.value : operations.value
   if (!data.length) return []
@@ -218,6 +229,15 @@ const filteredAssetsList = computed(() => {
   return base.filter(a => a?.toLowerCase().includes(q))
 })
 
+// Фильтр активов для операций
+const filteredOperationsAssetsList = computed(() => {
+  const base = operationsAssets.value
+  if (!assetSearch.value) return base
+
+  const q = assetSearch.value.toLowerCase()
+  return base.filter(a => a?.toLowerCase().includes(q))
+})
+
 // поиск доп. инфы по активу (для подсказки)
 const getAssetMeta = (name) => {
   if (!name) return null
@@ -312,8 +332,15 @@ const applyFilter = () => {
   if (viewMode.value === 'operations') {
     const opsList = operations.value
     filteredOperations.value = opsList.filter(op => {
+      // Фильтр по портфелю
       if (portfolioFilter && op.portfolio_name !== portfolioFilter) return false
+      
+      // Фильтр по типу операции
       if (typeFilter && op.operation_type !== typeFilter) return false
+      
+      // Фильтр по активу (если указан)
+      if (assetFilter && op.asset_name && op.asset_name !== assetFilter) return false
+      if (assetFilter && !op.asset_name) return false // Если фильтр по активу, но у операции нет актива - исключаем
 
       // Период
       if (start || end) {
@@ -324,7 +351,7 @@ const applyFilter = () => {
 
       // Глобальный поиск
       if (hasTerm) {
-        const searchableText = `${op.asset_name || ''} ${op.portfolio_name || ''} ${op.operation_type || ''} ${op.amount || ''} ${formatDate(op.operation_date)}`.toLowerCase()
+        const searchableText = `${op.asset_name || ''} ${op.portfolio_name || ''} ${op.operation_type || ''} ${op.amount || ''} ${op.currency_ticker || ''} ${formatDate(op.operation_date)}`.toLowerCase()
         if (!searchableText.includes(term)) return false
       }
 
@@ -572,8 +599,28 @@ const summary = computed(() => {
             </select>
             <select v-model="selectedType" class="form-select">
               <option value="">Все типы</option>
-              <option v-for="t in txTypes" :key="t" :value="t">{{ t }}</option>
+              <option v-if="viewMode === 'transactions'" v-for="t in txTypes" :key="t" :value="t">{{ t }}</option>
+              <option v-if="viewMode === 'operations'" v-for="t in operationTypes" :key="t" :value="t">{{ t }}</option>
             </select>
+          </div>
+          
+          <!-- Поиск по активу для операций -->
+          <div v-if="viewMode === 'operations'" class="input-wrapper asset-search-wrapper">
+            <span class="input-icon">🔍</span>
+            <input
+              type="text"
+              v-model="assetSearch"
+              placeholder="Поиск актива"
+              class="form-input"
+            />
+            <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
+            
+            <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
+              <li v-for="a in filteredOperationsAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
+                <span v-html="highlightMatch(a)" />
+              </li>
+              <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">Ничего не найдено</li>
+            </ul>
           </div>
           
           <button @click="resetFilters" class="btn btn-ghost reset-btn" title="Сбросить фильтры">

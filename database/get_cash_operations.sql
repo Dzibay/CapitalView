@@ -25,7 +25,18 @@ BEGIN
         co.id AS cash_operation_id,
         p.id AS portfolio_id,
         p.name AS portfolio_name,
-        ot.name AS operation_type,
+        CASE ot.name
+            WHEN 'Deposit' THEN 'Депозит'
+            WHEN 'Withdraw' THEN 'Вывод'
+            WHEN 'Dividend' THEN 'Дивиденды'
+            WHEN 'Coupon' THEN 'Купоны'
+            WHEN 'Commission' THEN 'Комиссия'
+            WHEN 'Commision' THEN 'Комиссия'
+            WHEN 'Tax' THEN 'Налог'
+            WHEN 'Buy' THEN 'Покупка'
+            WHEN 'Sell' THEN 'Продажа'
+            ELSE ot.name
+        END AS operation_type,
         co.amount::numeric(20,6) AS amount,
         co.currency AS currency_id,
         cur.ticker AS currency_ticker,
