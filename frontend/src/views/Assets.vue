@@ -171,17 +171,20 @@ const handleMoveAsset = (asset) => {
         <h1 class="page-title">Мои Активы</h1>
         <div class="buttons-group">
           <button class="btn btn-primary" @click="openModal('addAsset')">
-            <span class="icon">➕</span> Актив
+            <span class="icon">➕</span>
+            <span>Добавить актив</span>
           </button>
           <button class="btn btn-secondary" @click="openModal('addPortfolio')">
-            <span class="icon">📁</span> Портфель
+            <span class="icon">📁</span>
+            <span>Создать портфель</span>
           </button>
           <div class="divider-vertical"></div>
           <button class="btn btn-outline" @click="openModal('import')">
-            📥 Импорт
+            <span class="icon">📥</span>
+            <span>Импорт</span>
           </button>
           <button class="btn btn-ghost" @click="refreshPortfolios" title="Обновить портфели">
-            🔄
+            <span class="icon">🔄</span>
           </button>
         </div>
       </div>
@@ -199,7 +202,10 @@ const handleMoveAsset = (asset) => {
         <div class="empty-icon">📂</div>
         <h3>У вас пока нет портфелей</h3>
         <p>Создайте первый портфель, чтобы начать отслеживать активы</p>
-        <button class="btn btn-primary" @click="openModal('addPortfolio')">Создать портфель</button>
+        <button class="btn btn-primary empty-btn" @click="openModal('addPortfolio')">
+          <span class="icon">📁</span>
+          <span>Создать портфель</span>
+        </button>
       </div>
 
       <div v-else class="tree-wrapper">
@@ -248,8 +254,24 @@ const handleMoveAsset = (asset) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 32px;
+  padding: 0;
   background: transparent;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .action-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .buttons-group {
+    width: 100%;
+    flex-wrap: wrap;
+  }
 }
 
 .page-title {
@@ -257,78 +279,125 @@ const handleMoveAsset = (asset) => {
   font-weight: 700;
   color: #111827;
   margin: 0;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .buttons-group {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #fff;
-  padding: 6px;
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  background: transparent;
+  padding: 0;
+  flex-wrap: wrap;
 }
 
 .divider-vertical {
   width: 1px;
   height: 24px;
   background: #e5e7eb;
-  margin: 0 4px;
+  margin: 0 2px;
+  flex-shrink: 0;
 }
 
 /* Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  height: 36px;
+  height: 38px;
   padding: 0 16px;
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 10px;
   border: none;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  position: relative;
+  overflow: hidden;
 }
 
 .btn-primary {
-  background-color: #2563eb;
+  background: #2563eb;
   color: white;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
 }
+
 .btn-primary:hover {
-  background-color: #1d4ed8;
+  background: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
 }
 
 .btn-secondary {
-  background-color: #f3f4f6;
+  background: white;
   color: #374151;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
+
 .btn-secondary:hover {
-  background-color: #e5e7eb;
+  background: #f9fafb;
+  border-color: #d1d5db;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.btn-secondary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .btn-outline {
   background: transparent;
-  border: 1px solid #d1d5db;
-  color: #374151;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
 }
+
 .btn-outline:hover {
-  border-color: #9ca3af;
-  background: #f9fafb;
+  border-color: #2563eb;
+  color: #2563eb;
+  background: #f0f9ff;
+  transform: translateY(-1px);
+}
+
+.btn-outline:active {
+  transform: translateY(0);
+  background: #e0f2fe;
 }
 
 .btn-ghost {
   background: transparent;
   color: #6b7280;
-  padding: 0 10px;
+  padding: 0 12px;
+  width: 38px;
+  border-radius: 10px;
 }
+
 .btn-ghost:hover {
-  background: #f3f4f6;
+  background: #f9fafb;
   color: #2563eb;
+  transform: translateY(-1px) rotate(90deg);
+}
+
+.btn-ghost:active {
+  transform: translateY(0) rotate(90deg);
 }
 
 .icon {
-  font-size: 14px;
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Empty State */
@@ -352,5 +421,9 @@ const handleMoveAsset = (asset) => {
 .empty-placeholder p {
   color: #6b7280;
   margin-bottom: 24px;
+}
+
+.empty-btn {
+  margin-top: 8px;
 }
 </style>

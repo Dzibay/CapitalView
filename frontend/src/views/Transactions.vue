@@ -6,6 +6,7 @@ import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/ContextMenu.vue'
 import operationsService from '../services/operationsService'
+import CustomSelect from '../components/CustomSelect.vue'
 
 // Используем stores вместо inject
 const dashboardStore = useDashboardStore()
@@ -18,27 +19,11 @@ const isLoadingOperations = ref(false)
 
 const transactions = computed(() => dashboardStore.transactions || [])
 
-// Обработчик клика вне выпадающих списков
-const handleClickOutside = (event) => {
-  const target = event.target
-  if (!target.closest('.custom-select-wrapper')) {
-    portfolioDropdownOpen.value = false
-    typeDropdownOpen.value = false
-  }
-}
-
 // Загружаем транзакции при открытии страницы, если они еще не загружены
 onMounted(async () => {
   if (!dashboardStore.transactionsLoaded) {
     await transactionsStore.preloadTransactions()
   }
-  
-  // Закрываем выпадающие списки при клике вне их
-  document.addEventListener('click', handleClickOutside)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
 })
 
 // Загрузка операций
@@ -143,9 +128,6 @@ const recentAssets = ref([])
 const selectedPortfolio = ref('')
 const selectedType = ref('') // тип операции
 
-// Состояния для кастомных выпадающих списков
-const portfolioDropdownOpen = ref(false)
-const typeDropdownOpen = ref(false)
 
 const periodPreset = ref('month') // today | week | month | quarter | year | all | custom
 const startDate = ref('')
@@ -415,9 +397,6 @@ watch(operations, () => {
 // следим за изменением режима просмотра
 watch(viewMode, () => {
   applyFilter()
-  // Закрываем выпадающие списки при смене режима
-  portfolioDropdownOpen.value = false
-  typeDropdownOpen.value = false
 })
 
 // фильтры, которые сразу триггерят пересчёт
@@ -709,78 +688,24 @@ const transactionsSummary = computed(() => {
           </div>
 
           <div class="select-group">
-            <div class="custom-select-wrapper">
-              <span class="select-label">Портфель</span>
-              <div class="custom-select" :class="{ 'is-open': portfolioDropdownOpen }" @click="portfolioDropdownOpen = !portfolioDropdownOpen">
-                <span class="custom-select-value" :class="{ 'placeholder': !selectedPortfolio }">
-                  {{ selectedPortfolio || 'Все портфели' }}
-                </span>
-                <span class="custom-select-arrow">▼</span>
-              </div>
-              <div v-if="portfolioDropdownOpen" class="custom-select-dropdown" @click.stop>
-                <div 
-                  class="custom-select-option" 
-                  :class="{ 'is-selected': !selectedPortfolio }"
-                  @click="selectedPortfolio = ''; portfolioDropdownOpen = false; applyFilter()"
-                >
-                  <span>Все портфели</span>
-                  <span v-if="!selectedPortfolio" class="check-icon">✓</span>
-                </div>
-                <div 
-                  v-for="p in portfolios" 
-                  :key="p.id" 
-                  class="custom-select-option"
-                  :class="{ 'is-selected': selectedPortfolio === p.name }"
-                  @click="selectedPortfolio = p.name; portfolioDropdownOpen = false; applyFilter()"
-                >
-                  <span>{{ p.name }}</span>
-                  <span v-if="selectedPortfolio === p.name" class="check-icon">✓</span>
-                </div>
-              </div>
-            </div>
-            <div class="custom-select-wrapper">
-              <span class="select-label">Тип</span>
-              <div class="custom-select" :class="{ 'is-open': typeDropdownOpen }" @click="typeDropdownOpen = !typeDropdownOpen">
-                <span class="custom-select-value" :class="{ 'placeholder': !selectedType }">
-                  {{ selectedType || 'Все типы' }}
-                </span>
-                <span class="custom-select-arrow">▼</span>
-              </div>
-              <div v-if="typeDropdownOpen" class="custom-select-dropdown" @click.stop>
-                <div 
-                  class="custom-select-option" 
-                  :class="{ 'is-selected': !selectedType }"
-                  @click="selectedType = ''; typeDropdownOpen = false; applyFilter()"
-                >
-                  <span>Все типы</span>
-                  <span v-if="!selectedType" class="check-icon">✓</span>
-                </div>
-                <template v-if="viewMode === 'transactions'">
-                  <div 
-                    v-for="t in txTypes" 
-                    :key="t" 
-                    class="custom-select-option"
-                    :class="{ 'is-selected': selectedType === t }"
-                    @click="selectedType = t; typeDropdownOpen = false; applyFilter()"
-                  >
-                    <span>{{ t }}</span>
-                    <span v-if="selectedType === t" class="check-icon">✓</span>
-                  </div>
-                </template>
-                <template v-if="viewMode === 'operations'">
-                  <div 
-                    v-for="t in operationTypes" 
-                    :key="t" 
-                    class="custom-select-option"
-                    :class="{ 'is-selected': selectedType === t }"
-                    @click="selectedType = t; typeDropdownOpen = false; applyFilter()"
-                  >
-                    <span>{{ t }}</span>
-                    <span v-if="selectedType === t" class="check-icon">✓</span>
-                  </div>
-                </template>
-              </div>
-            </div>
+            <CustomSelect
+              v-model="selectedPortfolio"
+              :options="portfolios"
+              label="Портфель"
+              placeholder="Все портфели"
+              empty-option-text="Все портфели"
+              option-label="name"
+              option-value="name"
+              @change="applyFilter"
+            />
+            <CustomSelect
+              v-model="selectedType"
+              :options="viewMode === 'transactions' ? txTypes.map(t => ({ value: t, label: t })) : operationTypes.map(t => ({ value: t, label: t }))"
+              label="Тип"
+              placeholder="Все типы"
+              empty-option-text="Все типы"
+              @change="applyFilter"
+            />
           </div>
           
           <!-- Поиск по активу для операций -->
@@ -1315,177 +1240,6 @@ const transactionsSummary = computed(() => {
   flex: 1;
 }
 
-/* Кастомные выпадающие списки */
-.custom-select-wrapper {
-  position: relative;
-  flex: 1;
-  min-width: 180px;
-}
-
-.select-label {
-  position: absolute;
-  top: -8px;
-  left: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #6b7280;
-  background: #fff;
-  padding: 0 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  z-index: 2;
-  pointer-events: none;
-}
-
-.custom-select {
-  position: relative;
-  width: 100%;
-  padding: 10px 36px 10px 12px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 8px;
-  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 42px;
-  user-select: none;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
-
-.custom-select:hover {
-  border-color: #d1d5db;
-  background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-  transform: translateY(-1px);
-}
-
-.custom-select.is-open {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1), 0 4px 12px rgba(59,130,246,0.15);
-  background: #fff;
-  transform: translateY(0);
-}
-
-.custom-select-value {
-  font-size: 14px;
-  color: #111827;
-  font-weight: 400;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.custom-select-value.placeholder {
-  color: #9ca3af;
-}
-
-.custom-select-arrow {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #6b7280;
-  font-size: 10px;
-  transition: transform 0.2s ease;
-  pointer-events: none;
-}
-
-.custom-select.is-open .custom-select-arrow {
-  transform: translateY(-50%) rotate(180deg);
-  color: #3b82f6;
-}
-
-.custom-select-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  background: #fff;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05);
-  z-index: 100;
-  max-height: 300px;
-  overflow-y: auto;
-  animation: slideDown 0.2s ease;
-}
-
-.custom-select-dropdown::-webkit-scrollbar {
-  width: 6px;
-}
-
-.custom-select-dropdown::-webkit-scrollbar-track {
-  background: #f9fafb;
-  border-radius: 3px;
-}
-
-.custom-select-dropdown::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
-}
-
-.custom-select-dropdown::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
-}
-
-.custom-select-option {
-  padding: 12px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  transition: all 0.15s ease;
-  border-left: 3px solid transparent;
-  font-size: 14px;
-  color: #111827;
-  position: relative;
-}
-
-.custom-select-option:first-child {
-  border-radius: 8px 8px 0 0;
-}
-
-.custom-select-option:last-child {
-  border-radius: 0 0 8px 8px;
-}
-
-.custom-select-option:hover {
-  background: linear-gradient(90deg, #f3f4f6 0%, #f9fafb 100%);
-  border-left-color: #3b82f6;
-  padding-left: 13px;
-  transform: translateX(2px);
-}
-
-.custom-select-option.is-selected {
-  background: linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%);
-  color: #2563eb;
-  font-weight: 600;
-  border-left-color: #3b82f6;
-  box-shadow: inset 0 0 0 1px rgba(59,130,246,0.1);
-}
-
-.custom-select-option.is-selected:hover {
-  background: linear-gradient(90deg, #dbeafe 0%, #bfdbfe 100%);
-}
-
-.check-icon {
-  color: #2563eb;
-  font-weight: 700;
-  font-size: 18px;
-  margin-left: 8px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  background: rgba(37,99,235,0.1);
-  border-radius: 50%;
-  line-height: 1;
-}
 
 .reset-btn {
   font-size: 18px;

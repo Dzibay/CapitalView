@@ -3,58 +3,69 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2>Переместить актив</h2>
-        <button class="close-btn" @click="$emit('close')">×</button>
+        <button class="close-btn" @click="$emit('close')" aria-label="Закрыть">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
 
       <div v-if="loading" class="modal-loading">
-        <div class="loader"></div>
+        <div class="spinner"></div>
         <span>Перемещение актива...</span>
       </div>
 
-      <form v-else @submit.prevent="submitForm">
-        <div class="form-group">
-          <label>Актив:</label>
-          <div class="asset-info">
-            <strong>{{ asset?.name || asset?.ticker || 'Неизвестный актив' }}</strong>
-            <span v-if="asset?.ticker" class="ticker">({{ asset.ticker }})</span>
+      <form v-else @submit.prevent="submitForm" class="form-content">
+        <div class="form-section">
+          <div class="info-card">
+            <span class="info-icon">📈</span>
+            <div>
+              <div class="info-label">Актив</div>
+              <div class="info-value">
+                <strong>{{ asset?.name || asset?.ticker || 'Неизвестный актив' }}</strong>
+                <span v-if="asset?.ticker" class="ticker">({{ asset.ticker }})</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="form-group">
-          <label>Текущий портфель:</label>
-          <div class="portfolio-info">
-            {{ currentPortfolioName || 'Неизвестный портфель' }}
+        <div class="form-section">
+          <div class="section-divider"></div>
+          <div class="info-card">
+            <span class="info-icon">💼</span>
+            <div>
+              <div class="info-label">Текущий портфель</div>
+              <div class="info-value">{{ currentPortfolioName || 'Неизвестный портфель' }}</div>
+            </div>
           </div>
         </div>
 
-        <div class="form-group">
-          <label for="target-portfolio">Целевой портфель: <span class="required">*</span></label>
-          <select
-            id="target-portfolio"
+        <div class="form-section">
+          <div class="section-divider"></div>
+          <CustomSelect
             v-model="form.target_portfolio_id"
-            required
-            :disabled="loading"
-          >
-            <option value="">Выберите портфель</option>
-            <option
-              v-for="portfolio in availablePortfolios"
-              :key="portfolio.id"
-              :value="portfolio.id"
-            >
-              {{ portfolio.name }}
-            </option>
-          </select>
+            :options="availablePortfolios"
+            label="Целевой портфель"
+            placeholder="Выберите портфель"
+            :show-empty-option="false"
+            option-label="name"
+            option-value="id"
+            :min-width="'100%'"
+            :flex="'none'"
+          />
         </div>
 
         <div v-if="error" class="error-message">
           {{ error }}
         </div>
 
-        <div class="modal-actions">
+        <div class="form-actions">
           <button type="button" class="btn btn-secondary" @click="$emit('close')" :disabled="loading">
             Отмена
           </button>
           <button type="submit" class="btn btn-primary" :disabled="loading || !form.target_portfolio_id">
+            <span class="btn-icon">→</span>
             Переместить
           </button>
         </div>
@@ -65,6 +76,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import CustomSelect from '../CustomSelect.vue'
 
 const props = defineProps({
   asset: {
@@ -168,7 +180,9 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  animation: fadeIn 0.2s;
+  backdrop-filter: blur(8px);
+  padding: 16px;
+  animation: fadeIn 0.2s ease;
 }
 
 @keyframes fadeIn {
@@ -182,23 +196,25 @@ onMounted(() => {
 
 .modal-content {
   background: white;
-  border-radius: 12px;
-  padding: 24px;
-  width: 90%;
-  max-width: 500px;
+  border-radius: 20px;
+  padding: 0;
+  width: 100%;
+  max-width: 480px;
   max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  animation: slideUp 0.3s;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @keyframes slideUp {
   from {
-    transform: translateY(20px);
+    transform: scale(0.95) translateY(10px);
     opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: scale(1) translateY(0);
     opacity: 1;
   }
 }
@@ -207,95 +223,155 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 18px 20px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fff;
+  flex-shrink: 0;
 }
 
 .modal-header h2 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
   color: #111827;
+  letter-spacing: -0.01em;
 }
 
 .close-btn {
-  background: none;
+  background: #f3f4f6;
   border: none;
-  font-size: 28px;
-  color: #6b7280;
-  cursor: pointer;
-  padding: 0;
   width: 32px;
   height: 32px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  transition: all 0.2s;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .close-btn:hover {
-  background: #f3f4f6;
-  color: #111827;
+  background: #fee2e2;
+  color: #dc2626;
+  transform: scale(1.05);
 }
 
-.form-group {
+.close-btn:active {
+  transform: scale(0.95);
+}
+
+.close-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.form-content {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.form-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.form-content::-webkit-scrollbar-track {
+  background: #f9fafb;
+}
+
+.form-content::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.form-section {
   margin-bottom: 20px;
 }
 
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 500;
-  color: #374151;
-  font-size: 14px;
+.form-section:last-of-type {
+  margin-bottom: 16px;
 }
 
-.required {
-  color: #ef4444;
+.section-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+  margin: 16px 0;
 }
 
-.asset-info,
-.portfolio-info {
-  padding: 12px;
+.info-card {
+  padding: 12px 16px;
   background: #f9fafb;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid #e5e7eb;
-  font-size: 14px;
-  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.asset-info strong {
+.info-icon {
+  font-size: 20px;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.info-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.info-value {
+  font-size: 14px;
   color: #111827;
+  font-weight: 500;
+}
+
+.info-value strong {
+  color: #111827;
+  font-weight: 600;
 }
 
 .ticker {
   color: #6b7280;
-  margin-left: 8px;
+  margin-left: 6px;
+  font-size: 13px;
+  font-weight: 400;
 }
 
 select {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #d1d5db;
+  border: 1.5px solid #e5e7eb;
   border-radius: 8px;
   font-size: 14px;
-  background: white;
+  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
   color: #111827;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+select:hover {
+  border-color: #d1d5db;
+  background: #fff;
 }
 
 select:focus {
   outline: none;
   border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1), 0 2px 4px rgba(0,0,0,0.05);
+  background: #fff;
 }
 
 select:disabled {
   background: #f3f4f6;
   color: #9ca3af;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .modal-loading {
@@ -303,13 +379,16 @@ select:disabled {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
-  gap: 16px;
+  padding: 60px 20px;
+  gap: 12px;
+  font-weight: 500;
+  font-size: 14px;
+  color: #6b7280;
 }
 
-.loader {
-  width: 40px;
-  height: 40px;
+.spinner {
+  width: 32px;
+  height: 32px;
   border: 3px solid #e5e7eb;
   border-top-color: #3b82f6;
   border-radius: 50%;
@@ -323,46 +402,58 @@ select:disabled {
 }
 
 .error-message {
-  padding: 12px;
+  padding: 10px 14px;
   background: #fef2f2;
   border: 1px solid #fecaca;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #dc2626;
-  font-size: 14px;
-  margin-bottom: 20px;
+  font-size: 13px;
+  margin-bottom: 12px;
 }
 
-.modal-actions {
+.form-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   justify-content: flex-end;
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid #e5e7eb;
+  padding-top: 16px;
+  margin-top: 8px;
+  border-top: 1px solid #f3f4f6;
 }
 
 .btn {
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   border: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: -0.01em;
 }
 
 .btn-primary {
   background: #3b82f6;
   color: white;
+  box-shadow: 0 2px 4px rgba(59,130,246,0.2);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .btn-primary:disabled {
   background: #9ca3af;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .btn-secondary {
@@ -372,11 +463,21 @@ select:disabled {
 
 .btn-secondary:hover:not(:disabled) {
   background: #e5e7eb;
+  transform: translateY(-1px);
+}
+
+.btn-secondary:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .btn-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.btn-icon {
+  font-size: 14px;
+  font-weight: 700;
 }
 </style>
 

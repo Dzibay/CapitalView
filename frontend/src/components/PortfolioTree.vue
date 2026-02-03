@@ -423,16 +423,43 @@ const getDividendYield5Y = (asset) => {
   font-size: 18px;
   color: #94a3b8;
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
+  padding: 6px 8px;
+  border-radius: 8px;
   line-height: 1;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  position: relative;
 }
+
+.menu-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  background: transparent;
+  transition: background 0.2s;
+}
+
 .menu-btn:hover {
-  background: #f1f5f9;
-  color: #475569;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  color: #3b82f6;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(59,130,246,0.15);
 }
+
+.menu-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(59,130,246,0.1);
+}
+
 .icon-btn {
   font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
 }
 
 /* --- Child Portfolios Wrapper --- */
