@@ -11,6 +11,20 @@ CREATE TABLE public.accounts (
   CONSTRAINT accounts_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id),
   CONSTRAINT accounts_currency_id_fkey FOREIGN KEY (currency_id) REFERENCES public.assets(id)
 );
+CREATE TABLE public.asset_latest_prices_full (
+  asset_id bigint NOT NULL,
+  today_price real,
+  today_date date,
+  yesterday_price real,
+  yesterday_date date,
+  curr_price real,
+  curr_date date,
+  prev_price real,
+  prev_date date,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT asset_latest_prices_full_pkey PRIMARY KEY (asset_id),
+  CONSTRAINT asset_latest_prices_full_table_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id)
+);
 CREATE TABLE public.asset_payouts (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   asset_id bigint,
@@ -81,6 +95,29 @@ CREATE TABLE public.fifo_lots (
   created_at timestamp without time zone,
   CONSTRAINT fifo_lots_pkey PRIMARY KEY (id),
   CONSTRAINT fifo_lots_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES public.portfolio_assets(id)
+);
+CREATE TABLE public.import_tasks (
+  id integer NOT NULL DEFAULT nextval('import_tasks_id_seq'::regclass) UNIQUE,
+  user_id uuid NOT NULL,
+  portfolio_id integer,
+  task_type character varying NOT NULL,
+  status character varying NOT NULL DEFAULT 'pending'::character varying CHECK (status::text = ANY (ARRAY['pending'::character varying, 'processing'::character varying, 'completed'::character varying, 'failed'::character varying, 'cancelled'::character varying]::text[])),
+  broker_id character varying,
+  broker_token text,
+  priority integer DEFAULT 0,
+  created_at timestamp without time zone DEFAULT now(),
+  started_at timestamp without time zone,
+  completed_at timestamp without time zone,
+  error_message text,
+  result jsonb,
+  retry_count integer DEFAULT 0,
+  max_retries integer DEFAULT 3,
+  progress integer DEFAULT 0,
+  progress_message text,
+  portfolio_name character varying,
+  CONSTRAINT import_tasks_pkey PRIMARY KEY (id),
+  CONSTRAINT import_tasks_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT import_tasks_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id)
 );
 CREATE TABLE public.operations_type (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,

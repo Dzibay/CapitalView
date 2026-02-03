@@ -267,12 +267,16 @@ def get_portfolio_transactions_route(portfolio_id):
 
 @portfolio_bp.route("/import_broker", methods=["POST"])
 @jwt_required()
-async def import_broker_route():
+def import_broker_route():
+    """
+    Создает задачу импорта портфеля от брокера.
+    Импорт выполняется в фоновом режиме через воркер.
+    """
     try:
         # Валидация входных данных
         data = ImportBrokerRequest(**request.get_json())
         
-        logger.info(f"📥 Запрос универсального импорта портфеля от брокера {data.broker_id}")
+        logger.info(f"📥 Запрос создания задачи импорта портфеля от брокера {data.broker_id}")
         user_email = get_jwt_identity()
 
         # === 1️⃣ Получаем пользователя ===
@@ -285,56 +289,32 @@ async def import_broker_route():
         
         user_id = user["id"]
 
-        # === 2️⃣ Создание или поиск родительского портфеля ===
-        portfolio_id = data.portfolio_id
-        if not portfolio_id:
-            user_root_portfolio = await get_user_portfolio_parent(user_email)
-            new_portfolio = {
-                "user_id": user_id,
-                "parent_portfolio_id": user_root_portfolio["id"],
-                "name": data.portfolio_name or f"Портфель {data.broker_id}",
-                "description": f"Импорт из брокера {data.broker_id} — {datetime.utcnow().isoformat()}",
-            }
-            res = table_insert("portfolios", new_portfolio)
-            if not res:
-                return jsonify({
-                    "success": False,
-                    "error": "Ошибка при создании портфеля"
-                }), HTTPStatus.INTERNAL_SERVER_ERROR
-            portfolio_id = res[0]["id"]
-            logger.info(f"✅ Создан новый родительский портфель id={portfolio_id}")
-        else:
-            logger.info(f"🔁 Синхронизация существующего портфеля id={portfolio_id}")
-
-        # === 3️⃣ Получаем данные от брокера ===
-        logger.info(f"🚀 Импортируем данные брокера: {data.broker_id}")
-
-        from app.constants import BrokerID
-        if data.broker_id == BrokerID.TINKOFF:
-            from app.services.integrations.tinkoff_import import get_tinkoff_portfolio
-            broker_data = get_tinkoff_portfolio(data.token, 365)
-        else:
+        # === 2️⃣ Создаем задачу импорта ===
+        from app.services.task_service import create_import_task
+        
+        task = create_import_task(
+            user_id=user_id,
+            broker_id=data.broker_id,
+            broker_token=data.token,
+            portfolio_id=data.portfolio_id,
+            portfolio_name=data.portfolio_name,
+            priority=0  # Можно добавить приоритет в запрос
+        )
+        
+        if not task:
             return jsonify({
                 "success": False,
-                "error": f"Импорт для брокера {data.broker_id} не реализован"
-            }), HTTPStatus.BAD_REQUEST
-
-        # === 4️⃣ Синхронизация портфелей и активов ===
-        from app.services.portfolio_service import import_broker_portfolio
-        result = await import_broker_portfolio(user_email, portfolio_id, broker_data)
-
-        # === 5️⃣ Обновляем user_broker_connections ===
-        from app.services.broker_connections_service import upsert_broker_connection
-        upsert_broker_connection(user_id, data.broker_id, portfolio_id, data.token)
-
-        logger.info(f"✅ Импорт брокера {data.broker_id} завершён успешно")
+                "error": "Ошибка при создании задачи импорта"
+            }), HTTPStatus.INTERNAL_SERVER_ERROR
+        
+        logger.info(f"✅ Создана задача импорта: task_id={task['id']}, user_id={user_id}")
 
         return jsonify({
             "success": True,
-            "message": SuccessMessages.BROKER_IMPORT_SUCCESS,
-            "portfolio_id": portfolio_id,
-            "import_result": result,
-        }), HTTPStatus.CREATED
+            "message": "Задача импорта создана. Импорт выполняется в фоновом режиме.",
+            "task_id": task["id"],
+            "status": task["status"]
+        }), HTTPStatus.ACCEPTED  # 202 Accepted - запрос принят, но еще не обработан
 
     except ValidationError as e:
         return jsonify({
@@ -343,7 +323,7 @@ async def import_broker_route():
             "details": e.errors()
         }), HTTPStatus.BAD_REQUEST
     except Exception as e:
-        logger.error(f"❌ Ошибка при импорте брокера: {e}", exc_info=True)
+        logger.error(f"❌ Ошибка при создании задачи импорта: {e}", exc_info=True)
         return jsonify({
             "success": False,
             "error": ErrorMessages.INTERNAL_ERROR

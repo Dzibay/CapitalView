@@ -31,12 +31,24 @@ def get_user_portfolio_connections(user_id: str):
     return by_portfolio
 
 
-def upsert_broker_connection(user_id: str, broker_id: int, portfolio_id: int, api_key: str):
+def upsert_broker_connection(user_id, broker_id: int, portfolio_id: int, api_key: str):
+    """
+    Создаёт или обновляет соединение пользователя с брокером для портфеля.
+    
+    Args:
+        user_id: ID пользователя (UUID - str или UUID объект)
+        broker_id: ID брокера
+        portfolio_id: ID портфеля
+        api_key: API ключ брокера
+    """
     """
     Создаёт или обновляет соединение пользователя с брокером для портфеля.
     """
+    # Преобразуем user_id в строку, если это UUID объект
+    user_id_str = str(user_id) if user_id else None
+    
     conn_data = {
-        "user_id": user_id,
+        "user_id": user_id_str,
         "broker_id": broker_id,
         "portfolio_id": portfolio_id,
         "api_key": api_key,
@@ -46,7 +58,7 @@ def upsert_broker_connection(user_id: str, broker_id: int, portfolio_id: int, ap
     existing_conn = table_select(
         "user_broker_connections",
         select="id",
-        filters={"user_id": user_id, "broker_id": broker_id, "portfolio_id": portfolio_id}
+        filters={"user_id": user_id_str, "broker_id": broker_id, "portfolio_id": portfolio_id}
     )
     
     if existing_conn:
