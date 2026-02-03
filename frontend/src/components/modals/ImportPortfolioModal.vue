@@ -4,7 +4,8 @@ import CustomSelect from '../CustomSelect.vue'
 
 const props = defineProps({
   onImport: Function,
-  portfolios: Array
+  portfolios: Array,
+  onTaskCreated: Function // Callback при создании задачи
 })
 const emit = defineEmits(['close'])
 
@@ -24,12 +25,18 @@ const handleImport = async () => {
   error.value = ''
 
   try {
-    await props.onImport({
+    const result = await props.onImport({
       broker_id: 1,
       token: token.value,
       portfolioId: portfolioId.value,
       portfolio_name: portfolioName.value
     })
+    
+    // Если создана задача, вызываем callback
+    if (result.success && result.task_id && props.onTaskCreated) {
+      props.onTaskCreated(result.task_id)
+    }
+    
     emit('close')
   } catch (e) {
     error.value = e.message || 'Ошибка импорта'

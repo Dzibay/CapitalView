@@ -93,6 +93,9 @@ export const usePortfoliosStore = defineStore('portfolios', {
       try {
         const res = await portfolioService.importPortfolio(broker_id, token, portfolioId, portfolio_name)
         if (!res.success) throw new Error(res.error || 'Ошибка импорта портфеля')
+        
+        // Возвращаем результат с task_id для отслеживания статуса
+        // Теперь импорт выполняется асинхронно через систему задач
         return res
       } catch (err) {
         if (import.meta.env.DEV) {

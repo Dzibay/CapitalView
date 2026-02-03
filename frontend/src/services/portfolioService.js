@@ -11,6 +11,7 @@ export default {
     const payload = { broker_id, token, portfolio_id, portfolio_name };
     const res = await apiClient.post(API_ENDPOINTS.PORTFOLIO.IMPORT_BROKER, payload);
     return res.data;
+    // Теперь возвращает { success: true, task_id: 123, status: 'pending' }
   },
 
   async deletePortfolio(portfolio_id) {

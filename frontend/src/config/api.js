@@ -42,6 +42,13 @@ export const API_ENDPOINTS = {
     BASE: '/analitics',
     PORTFOLIOS: '/analitics/portfolios',
   },
+  TASKS: {
+    BASE: '/tasks',
+    GET: (id) => `/tasks/${id}`,
+    STATUS: (id) => `/tasks/${id}/status`,
+    USER: '/tasks/user',
+    CANCEL: (id) => `/tasks/${id}/cancel`,
+  },
 };
 
 

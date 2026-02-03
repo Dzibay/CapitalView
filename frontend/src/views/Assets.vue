@@ -5,11 +5,13 @@ import { useUIStore } from '../stores/ui.store';
 import { useAssetsStore } from '../stores/assets.store';
 import { usePortfoliosStore } from '../stores/portfolios.store';
 import { useTransactionsStore } from '../stores/transactions.store';
+import { useImportTasksStore } from '../stores/importTasks.store';
 import AddAssetModal from "../components/modals/AddAssetModal.vue";
 import AddTransactionModal from "../components/modals/AddTransactionModal.vue";
 import AddPriceModal from "../components/modals/AddPriceModal.vue";
 import MoveAssetModal from "../components/modals/MoveAssetModal.vue";
 import ImportPortfolioModal from "../components/modals/ImportPortfolioModal.vue";
+import ImportStatusModal from "../components/modals/ImportStatusModal.vue";
 import AddPortfolioModal from "../components/modals/AddPortfolioModal.vue";
 import PortfolioTree from '../components/PortfolioTree.vue';
 import ContextMenu from '../components/ContextMenu.vue';
@@ -26,6 +28,7 @@ const uiStore = useUIStore();
 const assetsStore = useAssetsStore();
 const portfoliosStore = usePortfoliosStore();
 const transactionsStore = useTransactionsStore();
+const importTasksStore = useImportTasksStore();
 
 // Обертки для совместимости с модальными окнами
 const addAsset = async (assetData) => {
@@ -60,8 +63,52 @@ const addPrice = async (data) => {
   await assetsStore.addPrice(data);
 };
 
-const importPortfolio = async (data) => {
-  await portfoliosStore.importPortfolio(data);
+const importPortfolio = async (data, showStatusModal = true) => {
+  const result = await portfoliosStore.importPortfolio(data);
+  // Если создана задача, добавляем её в store
+  if (result.success && result.task_id) {
+    importTasksStore.addTask(
+      result.task_id,
+      data.portfolioId,
+      data.portfolio_name
+    );
+    
+    // Если нужно показать модалку статуса, открываем её
+    if (showStatusModal) {
+      currentImportTaskId.value = result.task_id;
+      closeModal('import');
+      openModal('importStatus');
+    }
+  }
+  return result;
+};
+
+// Обработчики для модалки статуса
+const handleImportComplete = async (result) => {
+  // Обновляем данные после успешного импорта
+  await reloadDashboard();
+  // Модалка закроется автоматически через 2 секунды (в компоненте)
+};
+
+const handleImportError = (errorMessage) => {
+  console.error('Ошибка импорта:', errorMessage);
+  // Модалка останется открытой, показывая ошибку
+};
+
+// Открытие модалки для задачи
+const openTaskModal = (taskId) => {
+  currentImportTaskId.value = taskId;
+  importTasksStore.openModal(taskId);
+  openModal('importStatus');
+};
+
+// Закрытие модалки задачи
+const closeTaskModal = () => {
+  if (currentImportTaskId.value) {
+    importTasksStore.closeModal(currentImportTaskId.value);
+  }
+  currentImportTaskId.value = null;
+  closeModal('importStatus');
 };
 
 const reloadDashboard = async () => {
@@ -78,8 +125,12 @@ const { modals, open: openModal, close: closeModal } = useModals([
   'addTransaction',
   'addPrice',
   'moveAsset',
-  'import'
+  'import',
+  'importStatus'
 ]);
+
+// ID текущей задачи импорта
+const currentImportTaskId = ref(null);
 
 
 // Используем композабл для работы с портфелями
@@ -116,12 +167,13 @@ const refreshPortfolios = async () => {
     if (p.connection?.api_key) {
       updatingPortfolios.value.add(p.id)
       try {
+        // При автоматическом обновлении показываем модалку статуса
         await importPortfolio({
           broker_id: p.connection.broker_id,
           token: p.connection.api_key,
           portfolioId: p.id,
           portfolio_name: null
-        });
+        }, true); // showStatusModal = true - показываем модалку
       } finally {
         updatingPortfolios.value.delete(p.id)
       }
@@ -194,7 +246,43 @@ const handleMoveAsset = (asset) => {
       <AddTransactionModal v-if="modals.addTransaction" :asset="selectedAsset" :onSubmit="addTransaction" @close="closeModal('addTransaction')"/>
       <AddPriceModal v-if="modals.addPrice" :asset="selectedAsset" :onSubmit="addPrice" @close="closeModal('addPrice')"/>
       <MoveAssetModal v-if="modals.moveAsset" :asset="selectedAsset" :portfolios="parsedDashboard.portfolios" :onSubmit="moveAsset" @close="closeModal('moveAsset')"/>
-      <ImportPortfolioModal v-if="modals.import" @close="closeModal('import')" :onImport="importPortfolio" :portfolios="parsedDashboard.portfolios"/>
+      <ImportPortfolioModal 
+        v-if="modals.import" 
+        @close="closeModal('import')" 
+        :onImport="importPortfolio" 
+        :portfolios="parsedDashboard.portfolios"
+      />
+      <ImportStatusModal 
+        v-if="modals.importStatus && currentImportTaskId" 
+        :taskId="currentImportTaskId"
+        @close="closeTaskModal"
+        :onComplete="handleImportComplete"
+        :onError="handleImportError"
+      />
+      
+      <!-- Индикатор активных задач импорта -->
+      <div v-if="importTasksStore.getActiveTasks().length > 0" class="active-tasks-indicator">
+        <div class="tasks-badge">
+          <span class="tasks-icon">📥</span>
+          <span class="tasks-count">{{ importTasksStore.getActiveTasks().length }}</span>
+          <span class="tasks-text">активных импортов</span>
+        </div>
+        <div class="tasks-list">
+          <button
+            v-for="taskId in importTasksStore.getActiveTasks()"
+            :key="taskId"
+            class="task-item"
+            @click="openTaskModal(taskId)"
+            :class="{ active: currentImportTaskId === taskId }"
+          >
+            <span class="task-icon">📊</span>
+            <span class="task-info">
+              {{ importTasksStore.getTaskInfo(taskId)?.portfolioName || `Задача #${taskId}` }}
+            </span>
+            <span v-if="!importTasksStore.isModalOpen(taskId)" class="task-status-badge">Скрыто</span>
+          </button>
+        </div>
+      </div>
 
       <LoadingState v-if="uiStore.loading" />
       
@@ -390,6 +478,108 @@ const handleMoveAsset = (asset) => {
 
 .btn-ghost:active {
   transform: translateY(0) rotate(90deg);
+}
+
+/* Индикатор активных задач импорта */
+.active-tasks-indicator {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 12px;
+  min-width: 200px;
+  max-width: 300px;
+  border: 1px solid #e5e7eb;
+}
+
+.tasks-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #eff6ff;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e40af;
+}
+
+.tasks-icon {
+  font-size: 16px;
+}
+
+.tasks-count {
+  background: #3b82f6;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tasks-text {
+  flex: 1;
+}
+
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.task-item:hover {
+  background: #f3f4f6;
+  border-color: #3b82f6;
+  transform: translateX(-2px);
+}
+
+.task-item.active {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1e40af;
+}
+
+.task-icon {
+  font-size: 14px;
+}
+
+.task-info {
+  flex: 1;
+  font-weight: 500;
+  color: #374151;
+}
+
+.task-item.active .task-info {
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.task-status-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: #f3f4f6;
+  color: #6b7280;
+  border-radius: 4px;
+  font-weight: 500;
 }
 
 .icon {
