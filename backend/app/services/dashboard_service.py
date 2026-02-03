@@ -2,7 +2,8 @@ from collections import defaultdict
 from time import time
 from app.services.portfolio_service import get_user_portfolios_with_assets_and_history
 from app.services.reference_service import get_reference_data_cached
-from app.services.transactions_service import get_transactions
+# Транзакции загружаются отдельным запросом в фоне
+# from app.services.transactions_service import get_transactions
 from app.services.user_service import get_user_by_email
 from app.services.broker_connections_service import get_user_portfolio_connections
 
@@ -238,9 +239,8 @@ async def get_dashboard_data(user_email: str):
     reference_data = get_reference_data_cached()
     print(f'Reference data: {time() - time1}')
     
-    time1 = time()
-    transactions = get_transactions(user_id, limit=1000) or []
-    print(f'Транзакции: {time() - time1}')
+    # Транзакции не загружаем при инициализации - они загружаются в фоне отдельным запросом
+    transactions = []
 
     time1 = time()
     # Обрабатываем историю и считаем динамику

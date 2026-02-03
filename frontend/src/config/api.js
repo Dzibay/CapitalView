@@ -35,6 +35,9 @@ export const API_ENDPOINTS = {
   TRANSACTIONS: {
     BASE: '/transactions/',
   },
+  OPERATIONS: {
+    BASE: '/operations/',
+  },
   ANALYTICS: {
     BASE: '/analitics',
     PORTFOLIOS: '/analitics/portfolios',

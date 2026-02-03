@@ -68,8 +68,10 @@ export const useTransactionsStore = defineStore('transactions', {
       if (dashboardStore.transactionsLoaded) return
       
       try {
-        const data = await transactionsService.getTransactions({})
-        dashboardStore.addTransactions(data)
+        const response = await transactionsService.getTransactions({})
+        // API возвращает объект с полем transactions
+        const transactions = response?.transactions || response || []
+        dashboardStore.addTransactions(transactions)
       } catch (err) {
         if (import.meta.env.DEV) {
           console.error("Ошибка фоновой загрузки транзакций:", err)

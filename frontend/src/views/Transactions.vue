@@ -1,16 +1,53 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useTransactionsStore } from '../stores/transactions.store'
 import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/ContextMenu.vue'
+import operationsService from '../services/operationsService'
 
 // Используем stores вместо inject
 const dashboardStore = useDashboardStore()
 const transactionsStore = useTransactionsStore()
 
+// Переключатель между транзакциями и операциями
+const viewMode = ref('transactions') // 'transactions' или 'operations'
+const operations = ref([])
+const isLoadingOperations = ref(false)
+
 const transactions = computed(() => dashboardStore.transactions || [])
+
+// Загружаем транзакции при открытии страницы, если они еще не загружены
+onMounted(async () => {
+  if (!dashboardStore.transactionsLoaded) {
+    await transactionsStore.preloadTransactions()
+  }
+})
+
+// Загрузка операций
+const loadOperations = async () => {
+  if (isLoadingOperations.value || operations.value.length > 0) return
+  
+  try {
+    isLoadingOperations.value = true
+    const response = await operationsService.getOperations({})
+    operations.value = response?.operations || response || []
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.error('Ошибка загрузки операций:', err)
+    }
+  } finally {
+    isLoadingOperations.value = false
+  }
+}
+
+// Загружаем операции при переключении на режим операций
+watch(viewMode, (newMode) => {
+  if (newMode === 'operations' && operations.value.length === 0) {
+    loadOperations()
+  }
+})
 
 // справочник активов (для доп. инфы в подсказках)
 const referenceData = computed(() => dashboardStore.referenceData || {})
@@ -38,12 +75,14 @@ const assets = computed(() => {
 })
 
 const portfolios = computed(() => {
-  const tx = transactions.value
-  if (!tx.length) return []
+  const data = viewMode.value === 'transactions' ? transactions.value : operations.value
+  if (!data.length) return []
   const portfolioMap = new Map()
-  for (const t of tx) {
-    if (t.portfolio_id && !portfolioMap.has(t.portfolio_id)) {
-      portfolioMap.set(t.portfolio_id, { id: t.portfolio_id, name: t.portfolio_name })
+  for (const item of data) {
+    const portfolioId = item.portfolio_id
+    const portfolioName = item.portfolio_name
+    if (portfolioId && !portfolioMap.has(portfolioId)) {
+      portfolioMap.set(portfolioId, { id: portfolioId, name: portfolioName })
     }
   }
   return Array.from(portfolioMap.values())
@@ -55,6 +94,16 @@ const txTypes = computed(() => {
   const typeSet = new Set()
   for (const t of tx) {
     if (t.transaction_type) typeSet.add(t.transaction_type)
+  }
+  return Array.from(typeSet)
+})
+
+const operationTypes = computed(() => {
+  const ops = operations.value
+  if (!ops.length) return []
+  const typeSet = new Set()
+  for (const op of ops) {
+    if (op.operation_type) typeSet.add(op.operation_type)
   }
   return Array.from(typeSet)
 })
@@ -73,8 +122,9 @@ const endDate = ref('')
 
 const globalSearch = ref('')
 
-// отфильтрованные транзакции
+// отфильтрованные транзакции/операции
 const filteredTransactions = ref([])
+const filteredOperations = ref([])
 
 // выделенные транзакции
 const selectedTxIds = ref([])
@@ -107,6 +157,7 @@ const normalizeType = (type) => {
   if (t.includes('див') || t.includes('div')) return 'dividend'
   if (t.includes('купон') || t.includes('coupon')) return 'coupon'
   if (t.includes('налог') || t.includes('tax')) return 'tax'
+  if (t.includes('комисс') || t.includes('commission') || t.includes('commision')) return 'commission'
   if (t.includes('ввод') || t.includes('депозит') || t.includes('deposit')) return 'deposit'
   if (t.includes('вывод') || t.includes('withdraw')) return 'withdraw'
   return 'other'
@@ -257,6 +308,30 @@ const applyFilter = () => {
     return true
   })
 
+  // Фильтрация операций
+  if (viewMode.value === 'operations') {
+    const opsList = operations.value
+    filteredOperations.value = opsList.filter(op => {
+      if (portfolioFilter && op.portfolio_name !== portfolioFilter) return false
+      if (typeFilter && op.operation_type !== typeFilter) return false
+
+      // Период
+      if (start || end) {
+        const opDate = new Date(op.operation_date)
+        if (start && opDate < start) return false
+        if (end && opDate > end) return false
+      }
+
+      // Глобальный поиск
+      if (hasTerm) {
+        const searchableText = `${op.asset_name || ''} ${op.portfolio_name || ''} ${op.operation_type || ''} ${op.amount || ''} ${formatDate(op.operation_date)}`.toLowerCase()
+        if (!searchableText.includes(term)) return false
+      }
+
+      return true
+    })
+  }
+
   selectedTxIds.value = []
   allSelected.value = false
 }
@@ -282,6 +357,18 @@ watch(transactions, () => {
   }
   applyFilter()
 }, { immediate: true })
+
+// следим за обновлением операций
+watch(operations, () => {
+  if (viewMode.value === 'operations') {
+    applyFilter()
+  }
+}, { immediate: true })
+
+// следим за изменением режима просмотра
+watch(viewMode, () => {
+  applyFilter()
+})
 
 // фильтры, которые сразу триггерят пересчёт
 watch(
@@ -390,15 +477,29 @@ const summary = computed(() => {
     byType: {}
   }
 
-  for (const tx of filteredTransactions.value) {
-    const value = Number(tx.quantity || 0) * Number(tx.price || 0)
-    const slug = normalizeType(tx.transaction_type)
+  if (viewMode.value === 'transactions') {
+    for (const tx of filteredTransactions.value) {
+      const value = Number(tx.quantity || 0) * Number(tx.price || 0)
+      const slug = normalizeType(tx.transaction_type)
 
-    res.total += value
-    if (!res.byType[slug]) {
-      res.byType[slug] = { label: tx.transaction_type, value: 0 }
+      res.total += value
+      if (!res.byType[slug]) {
+        res.byType[slug] = { label: tx.transaction_type, value: 0 }
+      }
+      res.byType[slug].value += value
     }
-    res.byType[slug].value += value
+  } else {
+    // Для операций суммируем по типам
+    for (const op of filteredOperations.value) {
+      const value = Number(op.amount || 0)
+      const slug = normalizeType(op.operation_type)
+
+      res.total += Math.abs(value)
+      if (!res.byType[slug]) {
+        res.byType[slug] = { label: op.operation_type, value: 0 }
+      }
+      res.byType[slug].value += Math.abs(value)
+    }
   }
 
   // округляем
@@ -415,11 +516,29 @@ const summary = computed(() => {
   <div class="transactions-page">
     <div class="header-row">
       <h1 class="page-title">История транзакций</h1>
-      <div v-if="selectedTxIds.length > 0" class="bulk-actions">
-        <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
-        <button @click="deleteSelected" class="btn btn-danger-soft">
-          Удалить выбранные
-        </button>
+      <div class="header-actions">
+        <div class="view-mode-switcher">
+          <button 
+            class="btn btn-ghost" 
+            :class="{ active: viewMode === 'transactions' }"
+            @click="viewMode = 'transactions'"
+          >
+            Транзакции
+          </button>
+          <button 
+            class="btn btn-ghost" 
+            :class="{ active: viewMode === 'operations' }"
+            @click="viewMode = 'operations'"
+          >
+            Операции
+          </button>
+        </div>
+        <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
+          <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
+          <button @click="deleteSelected" class="btn btn-danger-soft">
+            Удалить выбранные
+          </button>
+        </div>
       </div>
     </div>
 
@@ -427,7 +546,7 @@ const summary = computed(() => {
       
       <div class="toolbar">
         <div class="filters-top">
-          <div class="input-wrapper asset-search-wrapper">
+          <div v-if="viewMode === 'transactions'" class="input-wrapper asset-search-wrapper">
             <span class="input-icon">🔍</span>
             <input
               type="text"
@@ -485,7 +604,8 @@ const summary = computed(() => {
       </div>
 
       <div class="table-container">
-        <table class="transactions-table">
+        <!-- Таблица транзакций -->
+        <table v-if="viewMode === 'transactions'" class="transactions-table">
           <thead>
             <tr>
               <th class="w-checkbox">
@@ -533,11 +653,50 @@ const summary = computed(() => {
             </tr>
           </tbody>
         </table>
+
+        <!-- Таблица операций -->
+        <table v-else class="transactions-table">
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Тип</th>
+              <th>Актив</th>
+              <th>Портфель</th>
+              <th class="text-right">Сумма</th>
+              <th class="text-right">Валюта</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="op in filteredOperations" :key="op.cash_operation_id" class="tx-row">
+              <td class="td-date">{{ formatDate(op.operation_date) }}</td>
+              <td>
+                <span :class="['badge', 'badge-' + normalizeType(op.operation_type)]">
+                  {{ op.operation_type }}
+                </span>
+              </td>
+              <td class="font-medium">{{ op.asset_name || '—' }}</td>
+              <td class="text-secondary">{{ op.portfolio_name }}</td>
+              <td class="text-right num-font font-semibold" :class="op.amount >= 0 ? 'text-green' : 'text-red'">
+                {{ Math.abs(op.amount).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+              </td>
+              <td class="text-right num-font">{{ op.currency_ticker || 'RUB' }}</td>
+            </tr>
+            <tr v-if="filteredOperations.length === 0">
+              <td colspan="6" class="empty-cell">
+                <div class="empty-state">
+                  <span class="empty-icon">🔍</span>
+                  <p v-if="isLoadingOperations">Загрузка операций...</p>
+                  <p v-else>Операции не найдены</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       
-      <div v-if="filteredTransactions.length > 0" class="card-footer">
+      <div v-if="(viewMode === 'transactions' && filteredTransactions.length > 0) || (viewMode === 'operations' && filteredOperations.length > 0)" class="card-footer">
          <div class="summary-block">
-            <span class="summary-label">Оборот за период:</span>
+            <span class="summary-label">{{ viewMode === 'transactions' ? 'Оборот за период:' : 'Сумма операций за период:' }}</span>
             <span class="summary-value">{{ summary.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}</span>
          </div>
       </div>
@@ -574,6 +733,41 @@ const summary = computed(() => {
   font-weight: 700;
   margin: 0;
   color: #111827;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.view-mode-switcher {
+  display: flex;
+  gap: 4px;
+  background: #f3f4f6;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.view-mode-switcher .btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.view-mode-switcher .btn:hover {
+  color: #374151;
+}
+
+.view-mode-switcher .btn.active {
+  background: white;
+  color: #2563eb;
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 /* --- Bulk Actions --- */
@@ -781,6 +975,10 @@ const summary = computed(() => {
 .badge-other { background: #f3f4f6; color: #4b5563; }
 .badge-deposit { background: #ccfbf1; color: #0f766e; }
 .badge-withdraw { background: #ffedd5; color: #9a3412; }
+.badge-tax { background: #fee2e2; color: #991b1b; }
+.badge-commission { background: #fef3c7; color: #92400e; }
+.badge-tax { background: #fee2e2; color: #991b1b; }
+.badge-commission { background: #fef3c7; color: #92400e; }
 
 /* Actions Button */
 .icon-btn {

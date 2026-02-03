@@ -1,17 +1,65 @@
 from app.services.supabase_service import table_select, table_insert, table_delete, table_update, rpc
 
-def get_transactions(user_id, limit=1000):
+def get_transactions(user_id, portfolio_id=None, asset_name=None, start_date=None, end_date=None, limit=1000):
+    """
+    Получает транзакции пользователя с опциональной фильтрацией.
+    
+    Args:
+        user_id: ID пользователя
+        portfolio_id: Фильтр по ID портфеля (опционально)
+        asset_name: Фильтр по названию актива (опционально)
+        start_date: Начальная дата периода (опционально)
+        end_date: Конечная дата периода (опционально)
+        limit: Лимит записей (по умолчанию 1000)
+    
+    Returns:
+        Список транзакций с примененными фильтрами
+    """
+    # Получаем все транзакции (с увеличенным лимитом для фильтрации)
     params = {
         "p_user_id": user_id,
-        "p_limit": limit
+        "p_limit": limit * 10 if (portfolio_id or asset_name or start_date or end_date) else limit
     }
-    return rpc("get_user_transactions", params)
-
-def get_operations(user_id):
-    params = {
-        "p_user_id": user_id
-    }
-    return rpc("get_cash_operations", params)
+    transactions = rpc("get_user_transactions", params) or []
+    
+    # Применяем фильтры на стороне Python
+    if portfolio_id:
+        transactions = [t for t in transactions if t.get('portfolio_id') == portfolio_id]
+    
+    if asset_name:
+        asset_name_lower = asset_name.lower()
+        transactions = [
+            t for t in transactions 
+            if asset_name_lower in (t.get('asset_name') or '').lower() or 
+               asset_name_lower in (t.get('ticker') or '').lower()
+        ]
+    
+    if start_date:
+        if isinstance(start_date, str):
+            from datetime import datetime
+            try:
+                start_date = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+            except:
+                pass
+        transactions = [
+            t for t in transactions 
+            if t.get('transaction_date') and t['transaction_date'] >= start_date
+        ]
+    
+    if end_date:
+        if isinstance(end_date, str):
+            from datetime import datetime
+            try:
+                end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+            except:
+                pass
+        transactions = [
+            t for t in transactions 
+            if t.get('transaction_date') and t['transaction_date'] <= end_date
+        ]
+    
+    # Применяем финальный лимит
+    return transactions[:limit]
 
 def create_transaction(
     *,

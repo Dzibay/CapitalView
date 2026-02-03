@@ -1,9 +1,10 @@
 <script setup>
-import { onMounted, watch } from 'vue'
+import { onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.store'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
+import { useTransactionsStore } from '../stores/transactions.store'
 
 import AppSidebar from '../components/AppSidebar.vue'
 import AppHeader from '../components/AppHeader.vue'
@@ -14,6 +15,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
+const transactionsStore = useTransactionsStore()
 
 // Инициализация при загрузке
 onMounted(async () => {
@@ -26,11 +28,19 @@ onMounted(async () => {
       return
     }
     
-    // Загружаем данные dashboard
+    // Загружаем данные dashboard (без транзакций)
     await dashboardStore.fetchDashboard()
     
     // Инициализируем выбранный портфель
     uiStore.initSelectedPortfolioId(dashboardStore.portfolios)
+    
+    // Загружаем транзакции в фоне после отображения сайта
+    await nextTick()
+    transactionsStore.preloadTransactions().catch(err => {
+      if (import.meta.env.DEV) {
+        console.error('Ошибка фоновой загрузки транзакций:', err)
+      }
+    })
   } catch (err) {
     if (import.meta.env.DEV) {
       console.error('Ошибка при загрузке данных:', err)

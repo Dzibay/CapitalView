@@ -48,7 +48,8 @@ export const useDashboardStore = defineStore('dashboard', {
         
         if (data?.data) {
           this.portfolios = data.data.portfolios || []
-          this.transactions = data.data.transactions || []
+          // Транзакции не загружаем при инициализации - они загружаются в фоне отдельным запросом
+          // this.transactions = data.data.transactions || []
           this.referenceData = data.data.referenceData || {}
         }
         
@@ -138,10 +139,16 @@ export const useDashboardStore = defineStore('dashboard', {
     // Добавление транзакций
     addTransactions(transactionsArray) {
       if (Array.isArray(transactionsArray)) {
-        this.transactions = [
-          ...(this.transactions || []),
-          ...transactionsArray
-        ]
+        // Если транзакции еще не загружены, заменяем массив
+        // Если уже загружены, добавляем к существующим (для обновления)
+        if (this.transactionsLoaded && this.transactions.length > 0) {
+          this.transactions = [
+            ...this.transactions,
+            ...transactionsArray
+          ]
+        } else {
+          this.transactions = transactionsArray
+        }
         this.transactionsLoaded = true
       }
     }
