@@ -99,6 +99,7 @@ def check_token():
         "message": "Token valid",
         "user": {
             "id": user["id"],
-            "email": user["email"]
+            "email": user["email"],
+            "name": user["name"]
         }
     }), HTTPStatus.OK
