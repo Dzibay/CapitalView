@@ -21,22 +21,10 @@ const uiStore = useUIStore()
 const transactionsStore = useTransactionsStore()
 
 // Локальное состояние
-const selectedPortfolioId = ref(null)
 const selectedPortfolioAnalytics = ref(null)
 const isLoadingAnalytics = ref(false)
 
 const portfolios = computed(() => dashboardStore.portfolios ?? [])
-
-// Автовыбор первого портфеля
-watch(
-  () => dashboardStore.portfolios,
-  (newPortfolios) => {
-    if (newPortfolios?.length && !selectedPortfolioId.value) {
-      selectedPortfolioId.value = newPortfolios[0].id
-    }
-  },
-  { immediate: true }
-)
 
 // Автозагрузка аналитики
 watch(
@@ -74,9 +62,12 @@ async function safeLoadAnalytics() {
 }
 
 // Перерисовка при смене портфеля
-watch(selectedPortfolioId, async () => {
-  await updateSelectedAnalytics()
-})
+watch(
+  () => uiStore.selectedPortfolioId,
+  async () => {
+    await updateSelectedAnalytics()
+  }
+)
 
 // Форматирование чисел
 function formatMoney(value) {
@@ -99,10 +90,10 @@ function formatPercent(value) {
 async function updateSelectedAnalytics() {
   const allAnalytics = dashboardStore.analytics ?? []
   selectedPortfolioAnalytics.value =
-    allAnalytics.find(a => a.portfolio_id === selectedPortfolioId.value) || null
+    allAnalytics.find(a => a.portfolio_id === uiStore.selectedPortfolioId) || null
 
   if (!selectedPortfolioAnalytics.value) {
-    console.warn('⚠️ Аналитика не найдена для портфеля', selectedPortfolioId.value)
+    console.warn('⚠️ Аналитика не найдена для портфеля', uiStore.selectedPortfolioId)
     return
   }
 }
@@ -118,8 +109,8 @@ async function updateSelectedAnalytics() {
 
       <PortfolioSelector 
         :portfolios="portfolios"
-        :modelValue="selectedPortfolioId"
-        @update:modelValue="selectedPortfolioId = $event"
+        :modelValue="uiStore.selectedPortfolioId"
+        @update:modelValue="uiStore.setSelectedPortfolioId"
       />
     </div>
 
@@ -183,7 +174,7 @@ async function updateSelectedAnalytics() {
         <PortfoliosDistributionChartWidget 
           :portfolios="portfolios"
           :all-portfolios="dashboardStore.analytics || []"
-          :selected-portfolio-id="selectedPortfolioId"
+          :selected-portfolio-id="uiStore.selectedPortfolioId"
         />
       </div>
     </div>

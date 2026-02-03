@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
 
 Chart.register(...registerables)
@@ -40,12 +40,19 @@ const chartData = computed(() => {
 })
 
 const renderChart = () => {
-  if (!chartCanvas.value || !chartData.value.labels.length) {
+  // Уничтожаем старый график при любых изменениях
+  if (chartInstance) {
+    chartInstance.destroy()
+    chartInstance = null
+  }
+
+  if (!chartCanvas.value) {
     return
   }
 
-  if (chartInstance) {
-    chartInstance.destroy()
+  // Если данных нет, не создаем график
+  if (!chartData.value.labels.length) {
+    return
   }
 
   const ctx = chartCanvas.value.getContext('2d')
@@ -120,7 +127,9 @@ const renderChart = () => {
 }
 
 watch(() => props.assetDistribution, renderChart, { deep: true })
-onMounted(renderChart)
+onMounted(() => {
+  nextTick(() => renderChart())
+})
 onUnmounted(() => {
   if (chartInstance) {
     chartInstance.destroy()
@@ -167,6 +176,9 @@ onUnmounted(() => {
           <span class="legend-label">{{ asset.asset_name || asset.asset_ticker || 'Unknown' }}</span>
         </div>
       </div>
+    </div>
+    <div v-else class="empty-state">
+      <p>Нет данных о распределении активов</p>
     </div>
   </div>
 </template>
@@ -271,6 +283,21 @@ onUnmounted(() => {
   height: 12px;
   border-radius: 50%;
   margin-right: 8px;
+}
+
+.empty-state {
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+  padding: 40px 20px;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-state p {
+  margin: 0;
 }
 </style>
 

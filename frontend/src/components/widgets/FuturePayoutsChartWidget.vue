@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, onUnmounted, computed } from 'vue'
+import { ref, onMounted, watch, onUnmounted, computed, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
 
 Chart.register(...registerables)
@@ -38,12 +38,19 @@ const filteredPayouts = computed(() => {
 })
 
 const renderChart = () => {
-  if (!chartCanvas.value || !filteredPayouts.value?.length) {
+  // Уничтожаем старый график при любых изменениях
+  if (chartInstance) {
+    chartInstance.destroy()
+    chartInstance = null
+  }
+
+  if (!chartCanvas.value) {
     return
   }
 
-  if (chartInstance) {
-    chartInstance.destroy()
+  // Если данных нет, не создаем график
+  if (!filteredPayouts.value?.length) {
+    return
   }
 
   const ctx = chartCanvas.value.getContext('2d')
@@ -115,7 +122,9 @@ const renderChart = () => {
 
 watch(() => props.futurePayouts, renderChart, { deep: true })
 watch(() => filteredPayouts.value, renderChart, { deep: true })
-onMounted(renderChart)
+onMounted(() => {
+  nextTick(() => renderChart())
+})
 onUnmounted(() => {
   if (chartInstance) {
     chartInstance.destroy()
@@ -132,6 +141,9 @@ onUnmounted(() => {
     </div>
     <div class="chart-container">
       <canvas ref="chartCanvas"></canvas>
+      <div v-if="!filteredPayouts || filteredPayouts.length === 0" class="empty-state">
+        <p>Нет данных о будущих выплатах</p>
+      </div>
     </div>
   </div>
 </template>
@@ -172,6 +184,26 @@ onUnmounted(() => {
 .chart-container {
   height: 300px;
   position: relative;
+}
+
+.empty-state {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+  background: white;
+  z-index: 10;
+}
+
+.empty-state p {
+  margin: 0;
 }
 </style>
 
