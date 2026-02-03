@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useTransactionsStore } from '../stores/transactions.store'
 import { useContextMenu } from '../composables/useContextMenu'
@@ -18,11 +18,27 @@ const isLoadingOperations = ref(false)
 
 const transactions = computed(() => dashboardStore.transactions || [])
 
+// Обработчик клика вне выпадающих списков
+const handleClickOutside = (event) => {
+  const target = event.target
+  if (!target.closest('.custom-select-wrapper')) {
+    portfolioDropdownOpen.value = false
+    typeDropdownOpen.value = false
+  }
+}
+
 // Загружаем транзакции при открытии страницы, если они еще не загружены
 onMounted(async () => {
   if (!dashboardStore.transactionsLoaded) {
     await transactionsStore.preloadTransactions()
   }
+  
+  // Закрываем выпадающие списки при клике вне их
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
 })
 
 // Загрузка операций
@@ -126,6 +142,10 @@ const recentAssets = ref([])
 
 const selectedPortfolio = ref('')
 const selectedType = ref('') // тип операции
+
+// Состояния для кастомных выпадающих списков
+const portfolioDropdownOpen = ref(false)
+const typeDropdownOpen = ref(false)
 
 const periodPreset = ref('month') // today | week | month | quarter | year | all | custom
 const startDate = ref('')
@@ -395,6 +415,9 @@ watch(operations, () => {
 // следим за изменением режима просмотра
 watch(viewMode, () => {
   applyFilter()
+  // Закрываем выпадающие списки при смене режима
+  portfolioDropdownOpen.value = false
+  typeDropdownOpen.value = false
 })
 
 // фильтры, которые сразу триггерят пересчёт
@@ -662,7 +685,8 @@ const transactionsSummary = computed(() => {
           <div class="card">
           <div class="toolbar">
             <div class="filters-top">
-          <div v-if="viewMode === 'transactions'" class="input-wrapper asset-search-wrapper">
+          <div v-if="viewMode === 'transactions'" class="asset-search-wrapper">
+            <span class="select-label">Актив</span>
             <span class="input-icon">🔍</span>
             <input
               type="text"
@@ -677,24 +701,91 @@ const transactionsSummary = computed(() => {
                 <span v-html="highlightMatch(a)" />
                 <span v-if="getAssetMeta(a)" class="meta-ticker">{{ getAssetMeta(a).ticker }}</span>
               </li>
-              <li v-if="filteredAssetsList.length === 0" class="asset-empty">Ничего не найдено</li>
+              <li v-if="filteredAssetsList.length === 0" class="asset-empty">
+                <span style="display: block; margin-bottom: 4px;">🔍</span>
+                Ничего не найдено
+              </li>
             </ul>
           </div>
 
           <div class="select-group">
-            <select v-model="selectedPortfolio" class="form-select">
-              <option value="">Все портфели</option>
-              <option v-for="p in portfolios" :key="p.id" :value="p.name">{{ p.name }}</option>
-            </select>
-            <select v-model="selectedType" class="form-select">
-              <option value="">Все типы</option>
-              <option v-if="viewMode === 'transactions'" v-for="t in txTypes" :key="t" :value="t">{{ t }}</option>
-              <option v-if="viewMode === 'operations'" v-for="t in operationTypes" :key="t" :value="t">{{ t }}</option>
-            </select>
+            <div class="custom-select-wrapper">
+              <span class="select-label">Портфель</span>
+              <div class="custom-select" :class="{ 'is-open': portfolioDropdownOpen }" @click="portfolioDropdownOpen = !portfolioDropdownOpen">
+                <span class="custom-select-value" :class="{ 'placeholder': !selectedPortfolio }">
+                  {{ selectedPortfolio || 'Все портфели' }}
+                </span>
+                <span class="custom-select-arrow">▼</span>
+              </div>
+              <div v-if="portfolioDropdownOpen" class="custom-select-dropdown" @click.stop>
+                <div 
+                  class="custom-select-option" 
+                  :class="{ 'is-selected': !selectedPortfolio }"
+                  @click="selectedPortfolio = ''; portfolioDropdownOpen = false; applyFilter()"
+                >
+                  <span>Все портфели</span>
+                  <span v-if="!selectedPortfolio" class="check-icon">✓</span>
+                </div>
+                <div 
+                  v-for="p in portfolios" 
+                  :key="p.id" 
+                  class="custom-select-option"
+                  :class="{ 'is-selected': selectedPortfolio === p.name }"
+                  @click="selectedPortfolio = p.name; portfolioDropdownOpen = false; applyFilter()"
+                >
+                  <span>{{ p.name }}</span>
+                  <span v-if="selectedPortfolio === p.name" class="check-icon">✓</span>
+                </div>
+              </div>
+            </div>
+            <div class="custom-select-wrapper">
+              <span class="select-label">Тип</span>
+              <div class="custom-select" :class="{ 'is-open': typeDropdownOpen }" @click="typeDropdownOpen = !typeDropdownOpen">
+                <span class="custom-select-value" :class="{ 'placeholder': !selectedType }">
+                  {{ selectedType || 'Все типы' }}
+                </span>
+                <span class="custom-select-arrow">▼</span>
+              </div>
+              <div v-if="typeDropdownOpen" class="custom-select-dropdown" @click.stop>
+                <div 
+                  class="custom-select-option" 
+                  :class="{ 'is-selected': !selectedType }"
+                  @click="selectedType = ''; typeDropdownOpen = false; applyFilter()"
+                >
+                  <span>Все типы</span>
+                  <span v-if="!selectedType" class="check-icon">✓</span>
+                </div>
+                <template v-if="viewMode === 'transactions'">
+                  <div 
+                    v-for="t in txTypes" 
+                    :key="t" 
+                    class="custom-select-option"
+                    :class="{ 'is-selected': selectedType === t }"
+                    @click="selectedType = t; typeDropdownOpen = false; applyFilter()"
+                  >
+                    <span>{{ t }}</span>
+                    <span v-if="selectedType === t" class="check-icon">✓</span>
+                  </div>
+                </template>
+                <template v-if="viewMode === 'operations'">
+                  <div 
+                    v-for="t in operationTypes" 
+                    :key="t" 
+                    class="custom-select-option"
+                    :class="{ 'is-selected': selectedType === t }"
+                    @click="selectedType = t; typeDropdownOpen = false; applyFilter()"
+                  >
+                    <span>{{ t }}</span>
+                    <span v-if="selectedType === t" class="check-icon">✓</span>
+                  </div>
+                </template>
+              </div>
+            </div>
           </div>
           
           <!-- Поиск по активу для операций -->
-          <div v-if="viewMode === 'operations'" class="input-wrapper asset-search-wrapper">
+          <div v-if="viewMode === 'operations'" class="asset-search-wrapper">
+            <span class="select-label">Актив</span>
             <span class="input-icon">🔍</span>
             <input
               type="text"
@@ -708,7 +799,10 @@ const transactionsSummary = computed(() => {
               <li v-for="a in filteredOperationsAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
                 <span v-html="highlightMatch(a)" />
               </li>
-              <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">Ничего не найдено</li>
+              <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">
+                <span style="display: block; margin-bottom: 4px;">🔍</span>
+                Ничего не найдено
+              </li>
             </ul>
           </div>
           
@@ -1096,6 +1190,8 @@ const transactionsSummary = computed(() => {
   display: flex;
   gap: 12px;
   margin-bottom: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
 }
 
 .filters-bottom {
@@ -1110,94 +1206,429 @@ const transactionsSummary = computed(() => {
   flex: 1;
   max-width: 300px;
 }
+
+.asset-search-wrapper {
+  position: relative;
+  flex: 1;
+  max-width: 300px;
+  min-width: 180px;
+}
+
+.asset-search-wrapper .select-label {
+  position: absolute;
+  top: -8px;
+  left: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  background: #fff;
+  padding: 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  z-index: 2;
+  pointer-events: none;
+}
+
 .input-icon {
   position: absolute;
-  left: 10px;
+  left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: #9ca3af;
-  font-size: 14px;
+  color: #6b7280;
+  font-size: 16px;
+  z-index: 1;
+  pointer-events: none;
+  transition: color 0.2s ease;
 }
+
+.asset-search-wrapper:focus-within .input-icon {
+  color: #3b82f6;
+}
+
 .form-input, .form-select {
   width: 100%;
-  padding: 8px 12px 8px 32px; /* padding left for icon */
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  padding: 10px 40px 10px 36px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
   font-size: 14px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: all 0.2s ease;
+  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+  color: #111827;
+  font-weight: 400;
+  min-height: 42px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.form-input::placeholder {
+  color: #9ca3af;
+}
+
+.form-input:hover {
+  border-color: #d1d5db;
+  background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+}
+
+.form-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1), 0 4px 12px rgba(59,130,246,0.15);
+  background: #fff;
+  transform: translateY(0);
 }
 .form-select {
   padding-left: 12px;
+  padding-right: 36px;
   cursor: pointer;
-  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+/* Скрываем старые select элементы, если они еще используются */
+.form-select {
+  display: none;
+}
+.form-input:hover, .form-select:hover {
+  border-color: #d1d5db;
+  background-color: #fafafa;
 }
 .form-input:focus, .form-select:focus {
   border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  background-color: #fff;
+}
+.form-select option {
+  padding: 10px;
+  background-color: #fff;
+  color: #111827;
 }
 
 .select-group {
   display: flex;
   gap: 12px;
+  flex: 1;
+}
+
+/* Кастомные выпадающие списки */
+.custom-select-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+}
+
+.select-label {
+  position: absolute;
+  top: -8px;
+  left: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  background: #fff;
+  padding: 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.custom-select {
+  position: relative;
+  width: 100%;
+  padding: 10px 36px 10px 12px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.custom-select:hover {
+  border-color: #d1d5db;
+  background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+}
+
+.custom-select.is-open {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1), 0 4px 12px rgba(59,130,246,0.15);
+  background: #fff;
+  transform: translateY(0);
+}
+
+.custom-select-value {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 400;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.custom-select-value.placeholder {
+  color: #9ca3af;
+}
+
+.custom-select-arrow {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+  font-size: 10px;
+  transition: transform 0.2s ease;
+  pointer-events: none;
+}
+
+.custom-select.is-open .custom-select-arrow {
+  transform: translateY(-50%) rotate(180deg);
+  color: #3b82f6;
+}
+
+.custom-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05);
+  z-index: 100;
+  max-height: 300px;
+  overflow-y: auto;
+  animation: slideDown 0.2s ease;
+}
+
+.custom-select-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-select-dropdown::-webkit-scrollbar-track {
+  background: #f9fafb;
+  border-radius: 3px;
+}
+
+.custom-select-dropdown::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.custom-select-dropdown::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.custom-select-option {
+  padding: 12px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.15s ease;
+  border-left: 3px solid transparent;
+  font-size: 14px;
+  color: #111827;
+  position: relative;
+}
+
+.custom-select-option:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.custom-select-option:last-child {
+  border-radius: 0 0 8px 8px;
+}
+
+.custom-select-option:hover {
+  background: linear-gradient(90deg, #f3f4f6 0%, #f9fafb 100%);
+  border-left-color: #3b82f6;
+  padding-left: 13px;
+  transform: translateX(2px);
+}
+
+.custom-select-option.is-selected {
+  background: linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%);
+  color: #2563eb;
+  font-weight: 600;
+  border-left-color: #3b82f6;
+  box-shadow: inset 0 0 0 1px rgba(59,130,246,0.1);
+}
+
+.custom-select-option.is-selected:hover {
+  background: linear-gradient(90deg, #dbeafe 0%, #bfdbfe 100%);
+}
+
+.check-icon {
+  color: #2563eb;
+  font-weight: 700;
+  font-size: 18px;
+  margin-left: 8px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: rgba(37,99,235,0.1);
+  border-radius: 50%;
+  line-height: 1;
 }
 
 .reset-btn {
   font-size: 18px;
-  padding: 0 10px;
+  padding: 8px 12px;
   color: #6b7280;
-  background: transparent;
-  border: none;
+  background: #f9fafb;
+  border: 1.5px solid #e5e7eb;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 42px;
 }
-.reset-btn:hover { background: #f3f4f6; color: #1f2937; }
+.reset-btn:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+  border-color: #d1d5db;
+  transform: rotate(90deg);
+}
+.reset-btn:active {
+  transform: rotate(90deg) scale(0.95);
+}
 .clear-btn {
   position: absolute;
-  right: 8px;
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
-  background: none;
-  border: none;
+  background: #f3f4f6;
+  border: 1.5px solid transparent;
   font-size: 18px;
-  color: #9ca3af;
+  color: #6b7280;
   cursor: pointer;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 2;
+  line-height: 1;
+  padding: 0;
+  font-weight: 300;
+}
+.clear-btn:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+  transform: translateY(-50%) scale(1.1);
+  box-shadow: 0 2px 4px rgba(220,38,38,0.2);
+}
+.clear-btn:active {
+  transform: translateY(-50%) scale(0.95);
 }
 
 /* Chips */
 .chips-group {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .chip {
-  background: #f3f4f6;
-  border: none;
-  padding: 6px 12px;
+  background: #f9fafb;
+  border: 1.5px solid #e5e7eb;
+  padding: 8px 16px;
   border-radius: 20px;
   font-size: 13px;
+  font-weight: 500;
   color: #4b5563;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  position: relative;
+  overflow: hidden;
 }
-.chip:hover { background: #e5e7eb; }
+.chip::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  transition: left 0.5s;
+}
+.chip:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+.chip:hover::before {
+  left: 100%;
+}
 .chip.active {
-  background: #eff6ff;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
   color: #2563eb;
-  font-weight: 500;
-  box-shadow: 0 0 0 1px #bfdbfe;
+  font-weight: 600;
+  border-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(59,130,246,0.2);
+  transform: translateY(-1px);
+}
+.chip.active::before {
+  display: none;
 }
 
 /* Date Range */
 .date-range {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1.5px solid #e5e7eb;
 }
 .date-input {
-  padding-left: 12px;
+  padding: 8px 12px;
   width: auto;
+  min-width: 140px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  transition: all 0.2s ease;
 }
-.separator { color: #9ca3af; }
+.date-input:hover {
+  border-color: #9ca3af;
+  background: #fff;
+}
+.date-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  outline: none;
+}
+.separator {
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 14px;
+  user-select: none;
+}
 
 /* --- Table --- */
 .table-container {
@@ -1281,36 +1712,86 @@ const transactionsSummary = computed(() => {
 /* Asset Dropdown (Search) */
 .asset-dropdown {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 4px);
   left: 0;
   width: 100%;
   background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
   margin-top: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05);
   list-style: none;
-  padding: 0;
-  max-height: 250px;
+  padding: 6px 0;
+  max-height: 300px;
   overflow-y: auto;
-  z-index: 50;
+  z-index: 100;
+  animation: slideDown 0.2s ease;
+}
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.asset-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+.asset-dropdown::-webkit-scrollbar-track {
+  background: #f9fafb;
+  border-radius: 3px;
+}
+.asset-dropdown::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+.asset-dropdown::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 .asset-option {
-  padding: 8px 12px;
+  padding: 10px 16px;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  transition: all 0.15s ease;
+  border-left: 3px solid transparent;
 }
-.asset-option:hover { background: #f9fafb; }
-.meta-ticker {
+.asset-option:hover {
   background: #f3f4f6;
-  color: #6b7280;
-  font-size: 11px;
-  padding: 1px 4px;
-  border-radius: 4px;
+  border-left-color: #3b82f6;
+  padding-left: 13px;
 }
-.asset-empty { padding: 12px; text-align: center; color: #9ca3af; font-size: 13px; }
+.asset-option:active {
+  background: #e5e7eb;
+}
+.asset-option mark {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0 2px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+.meta-ticker {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  color: #1e40af;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.asset-empty {
+  padding: 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+  font-style: italic;
+}
 
 /* Footer Summary */
 .card-footer {
