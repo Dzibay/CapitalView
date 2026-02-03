@@ -31,7 +31,7 @@ const loadOperations = async () => {
   
   try {
     isLoadingOperations.value = true
-    const response = await operationsService.getOperations({})
+    const response = await operationsService.getOperations({ limit: 2000 })
     operations.value = response?.operations || response || []
   } catch (err) {
     if (import.meta.env.DEV) {
@@ -537,41 +537,129 @@ const summary = computed(() => {
 
   return res
 })
+
+// --- КАЛЬКУЛЯТОР ДЛЯ ОПЕРАЦИЙ ---
+const calculatorFormula = ref([]) // Массив элементов формулы: [{ type: 'operation'|'operator', value: 'Депозит'|'+'|'-', label: 'Депозит'|'+'|'-' }]
+
+// Добавление элемента в формулу
+const addToFormula = (type, value, label) => {
+  calculatorFormula.value.push({ type, value, label })
+}
+
+// Удаление элемента из формулы
+const removeFromFormula = (index) => {
+  calculatorFormula.value.splice(index, 1)
+}
+
+// Очистка формулы
+const clearFormula = () => {
+  calculatorFormula.value = []
+}
+
+// Вычисление результата формулы
+const calculatorResult = computed(() => {
+  if (calculatorFormula.value.length === 0) return 0
+  
+  let result = null
+  let nextOperator = '+'
+  
+  for (let i = 0; i < calculatorFormula.value.length; i++) {
+    const item = calculatorFormula.value[i]
+    
+    if (item.type === 'operator') {
+      // Сохраняем оператор для следующей операции
+      nextOperator = item.value
+    } else if (item.type === 'operation') {
+      // Находим сумму для этого типа операции из отфильтрованных данных
+      const typeSum = getOperationTypeSum(item.value)
+      
+      // Если это первая операция, просто присваиваем значение
+      if (result === null) {
+        result = typeSum
+      } else {
+        // Применяем сохраненный оператор
+        if (nextOperator === '+') {
+          result += typeSum
+        } else if (nextOperator === '-') {
+          result -= typeSum
+        }
+        // Сбрасываем оператор после применения
+        nextOperator = '+'
+      }
+    }
+  }
+  
+  return result !== null ? Math.round(result * 100) / 100 : 0
+})
+
+// Получение суммы по типу операции из отфильтрованных данных
+const getOperationTypeSum = (operationType) => {
+  let sum = 0
+  for (const op of filteredOperations.value) {
+    if (op.operation_type === operationType) {
+      sum += Math.abs(Number(op.amount || 0))
+    }
+  }
+  return sum
+}
+
+// Суммы покупок и продаж для транзакций
+const transactionsSummary = computed(() => {
+  let buySum = 0
+  let sellSum = 0
+  
+  for (const tx of filteredTransactions.value) {
+    const value = Number(tx.quantity || 0) * Number(tx.price || 0)
+    const normalized = normalizeType(tx.transaction_type)
+    
+    if (normalized === 'buy') {
+      buySum += value
+    } else if (normalized === 'sell') {
+      sellSum += value
+    }
+  }
+  
+  return {
+    buy: Math.round(buySum * 100) / 100,
+    sell: Math.round(sellSum * 100) / 100
+  }
+})
 </script>
 
 <template>
   <div class="transactions-page">
-    <div class="header-row">
-      <h1 class="page-title">История транзакций</h1>
-      <div class="header-actions">
-        <div class="view-mode-switcher">
-          <button 
-            class="btn btn-ghost" 
-            :class="{ active: viewMode === 'transactions' }"
-            @click="viewMode = 'transactions'"
-          >
-            Транзакции
-          </button>
-          <button 
-            class="btn btn-ghost" 
-            :class="{ active: viewMode === 'operations' }"
-            @click="viewMode = 'operations'"
-          >
-            Операции
-          </button>
+    <div class="page-layout">
+      <div class="main-content">
+        <div class="header-row">
+          <h1 class="page-title">История транзакций</h1>
+          <div class="header-actions">
+            <div class="view-mode-switcher">
+              <button 
+                class="btn btn-ghost" 
+                :class="{ active: viewMode === 'transactions' }"
+                @click="viewMode = 'transactions'"
+              >
+                Транзакции
+              </button>
+              <button 
+                class="btn btn-ghost" 
+                :class="{ active: viewMode === 'operations' }"
+                @click="viewMode = 'operations'"
+              >
+                Операции
+              </button>
+            </div>
+            <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
+              <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
+              <button @click="deleteSelected" class="btn btn-danger-soft">
+                Удалить выбранные
+              </button>
+            </div>
+          </div>
         </div>
-        <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
-          <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
-          <button @click="deleteSelected" class="btn btn-danger-soft">
-            Удалить выбранные
-          </button>
-        </div>
-      </div>
-    </div>
 
-    <div class="card">
-      
-      <div class="toolbar">
+        <div class="card">
+          <div class="toolbar">
         <div class="filters-top">
           <div v-if="viewMode === 'transactions'" class="input-wrapper asset-search-wrapper">
             <span class="input-icon">🔍</span>
@@ -647,10 +735,10 @@ const summary = computed(() => {
             <span class="separator">—</span>
             <input type="date" v-model="endDate" class="form-input date-input" />
           </div>
+          </div>
         </div>
-      </div>
 
-      <div class="table-container">
+        <div class="table-container">
         <!-- Таблица транзакций -->
         <table v-if="viewMode === 'transactions'" class="transactions-table">
           <thead>
@@ -739,13 +827,132 @@ const summary = computed(() => {
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
-      
-      <div v-if="(viewMode === 'transactions' && filteredTransactions.length > 0) || (viewMode === 'operations' && filteredOperations.length > 0)" class="card-footer">
-         <div class="summary-block">
-            <span class="summary-label">{{ viewMode === 'transactions' ? 'Оборот за период:' : 'Сумма операций за период:' }}</span>
-            <span class="summary-value">{{ summary.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}</span>
-         </div>
+    </div>
+
+      <!-- Правый блок с калькулятором -->
+      <div class="calculator-sidebar">
+        <div class="calculator-card">
+          <h3 class="calculator-title">
+            {{ viewMode === 'transactions' ? 'Суммы транзакций' : 'Калькулятор операций' }}
+          </h3>
+          
+          <!-- Для транзакций: сумма покупок и продаж -->
+          <div v-if="viewMode === 'transactions'" class="transactions-summary">
+            <div class="summary-item">
+              <span class="summary-item-label">Покупки:</span>
+              <span class="summary-item-value text-green">
+                {{ transactionsSummary.buy.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-item-label">Продажи:</span>
+              <span class="summary-item-value text-red">
+                {{ transactionsSummary.sell.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-item-label">Оборот:</span>
+              <span class="summary-item-value text-red">
+                {{ (transactionsSummary.buy + transactionsSummary.sell).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Для операций: калькулятор -->
+          <div v-else class="operations-calculator">
+            <!-- Формула -->
+            <div class="formula-display">
+              <div v-if="calculatorFormula.length === 0" class="formula-empty">
+                Добавьте элементы формулы
+              </div>
+              <div v-else class="formula-items">
+                <div 
+                  v-for="(item, index) in calculatorFormula" 
+                  :key="index"
+                  class="formula-item"
+                  :class="{ 'formula-operator': item.type === 'operator' }"
+                >
+                  <span class="formula-item-text">{{ item.label }}</span>
+                  <button 
+                    @click="removeFromFormula(index)" 
+                    class="formula-remove-btn"
+                    title="Удалить"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Результат -->
+            <div class="calculator-result">
+              <span class="result-label">Результат:</span>
+              <span class="result-value" :class="calculatorResult >= 0 ? 'text-green' : 'text-red'">
+                {{ calculatorResult.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+              </span>
+            </div>
+
+            <!-- Кнопки операторов -->
+            <div class="calculator-operators">
+              <button 
+                @click="addToFormula('operator', '+', '+')" 
+                class="calc-btn calc-operator"
+                :disabled="calculatorFormula.length === 0 || calculatorFormula[calculatorFormula.length - 1]?.type === 'operator'"
+              >
+                +
+              </button>
+              <button 
+                @click="addToFormula('operator', '-', '-')" 
+                class="calc-btn calc-operator"
+                :disabled="calculatorFormula.length === 0 || calculatorFormula[calculatorFormula.length - 1]?.type === 'operator'"
+              >
+                −
+              </button>
+              <button 
+                @click="clearFormula()" 
+                class="calc-btn calc-clear"
+                :disabled="calculatorFormula.length === 0"
+              >
+                Очистить
+              </button>
+            </div>
+
+            <!-- Доступные типы операций -->
+            <div class="calculator-operations">
+              <div class="operations-label">Добавить в формулу:</div>
+              <div class="operations-buttons">
+                <button 
+                  v-for="opType in operationTypes" 
+                  :key="opType"
+                  @click="addToFormula('operation', opType, opType)"
+                  class="calc-btn calc-operation"
+                  :disabled="calculatorFormula.length > 0 && calculatorFormula[calculatorFormula.length - 1]?.type === 'operation'"
+                >
+                  {{ opType }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Суммы по типам операций -->
+            <div class="operations-sums">
+              <div class="sums-label">Суммы по типам:</div>
+              <div class="sums-list">
+                <div 
+                  v-for="opType in operationTypes" 
+                  :key="opType"
+                  class="sum-item"
+                >
+                  <span class="sum-type">{{ opType }}:</span>
+                  <span class="sum-value">
+                    {{ getOperationTypeSum(opType).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -756,16 +963,35 @@ const summary = computed(() => {
       @deleteTransaction="handleDeleteTransaction"
     />
   </div>
+  
 </template>
 
 <style scoped>
 /* --- Layout & Typography --- */
 .transactions-page {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 32px 20px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: #1f2937;
+}
+
+.page-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.calculator-sidebar {
+  width: 360px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 24px;
 }
 
 .header-row {
@@ -1109,5 +1335,281 @@ const summary = computed(() => {
   height: 16px;
   cursor: pointer;
   accent-color: #2563eb;
+}
+
+/* --- Калькулятор --- */
+.calculator-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.calculator-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: #111827;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 8px;
+}
+
+/* Суммы транзакций */
+.transactions-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+}
+
+.summary-item-label {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.summary-item-value {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* Калькулятор операций */
+.operations-calculator {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.formula-display {
+  min-height: 50px;
+  padding: 10px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.formula-empty {
+  color: #9ca3af;
+  font-size: 12px;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.formula-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.formula-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.formula-item.formula-operator {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.formula-item-text {
+  color: #111827;
+}
+
+.formula-remove-btn {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.formula-remove-btn:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.calculator-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #f0fdf4;
+  border: 2px solid #86efac;
+  border-radius: 6px;
+}
+
+.result-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #166534;
+}
+
+.result-value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.calculator-operators {
+  display: flex;
+  gap: 6px;
+}
+
+.calc-btn {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #fff;
+  color: #111827;
+}
+
+.calc-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.calc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.calc-operator {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #2563eb;
+}
+
+.calc-operator:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.calc-clear {
+  flex: 1;
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.calc-clear:hover:not(:disabled) {
+  background: #fecaca;
+}
+
+.calculator-operations {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.operations-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.operations-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.calc-operation {
+  text-align: center;
+  justify-content: center;
+  background: #f9fafb;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.calc-operation:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: #3b82f6;
+}
+
+.operations-sums {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.sums-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sums-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sum-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: #f9fafb;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.sum-type {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.sum-value {
+  color: #111827;
+  font-weight: 600;
+}
+
+/* Адаптивность */
+@media (max-width: 1024px) {
+  .page-layout {
+    flex-direction: column;
+  }
+  
+  .calculator-sidebar {
+    width: 100%;
+    position: static;
+  }
 }
 </style>
