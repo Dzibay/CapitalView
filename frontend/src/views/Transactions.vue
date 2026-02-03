@@ -658,9 +658,10 @@ const transactionsSummary = computed(() => {
           </div>
         </div>
 
-        <div class="card">
+        <div style="display: flex; gap: 20px;">
+          <div class="card">
           <div class="toolbar">
-        <div class="filters-top">
+            <div class="filters-top">
           <div v-if="viewMode === 'transactions'" class="input-wrapper asset-search-wrapper">
             <span class="input-icon">🔍</span>
             <input
@@ -714,9 +715,9 @@ const transactionsSummary = computed(() => {
           <button @click="resetFilters" class="btn btn-ghost reset-btn" title="Сбросить фильтры">
              ↺
           </button>
-        </div>
+            </div>
 
-        <div class="filters-bottom">
+            <div class="filters-bottom">
            <div class="chips-group">
             <button v-for="p in ['today', 'week', 'month', 'year', 'all']" 
                     :key="p" 
@@ -735,224 +736,226 @@ const transactionsSummary = computed(() => {
             <span class="separator">—</span>
             <input type="date" v-model="endDate" class="form-input date-input" />
           </div>
+            </div>
           </div>
-        </div>
-
-        <div class="table-container">
-        <!-- Таблица транзакций -->
-        <table v-if="viewMode === 'transactions'" class="transactions-table">
-          <thead>
-            <tr>
-              <th class="w-checkbox">
-                <input type="checkbox" v-model="allSelected" @change="toggleAll" class="custom-checkbox" />
-              </th>
-              <th>Дата</th>
-              <th>Тип</th>
-              <th>Актив</th>
-              <th>Портфель</th>
-              <th class="text-right">Кол-во</th>
-              <th class="text-right">Цена</th>
-              <th class="text-right">Сумма</th>
-              <th class="w-actions"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="tx in filteredTransactions" :key="tx.transaction_id" class="tx-row">
-              <td class="w-checkbox">
-                <input type="checkbox" :value="tx.transaction_id" v-model="selectedTxIds" class="custom-checkbox" />
-              </td>
-              <td class="td-date">{{ formatDate(tx.transaction_date) }}</td>
-              <td>
-                <span :class="['badge', 'badge-' + normalizeType(tx.transaction_type)]">
-                  {{ tx.transaction_type }}
-                </span>
-              </td>
-              <td class="font-medium">{{ tx.asset_name }}</td>
-              <td class="text-secondary">{{ tx.portfolio_name }}</td>
-              <td class="text-right num-font">{{ tx.quantity }}</td>
-              <td class="text-right num-font">{{ tx.price.toLocaleString() }}</td>
-              <td class="text-right num-font font-semibold">
-                {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}
-              </td>
-              <td class="w-actions">
-                 <button class="icon-btn" @click="openMenu($event, 'transaction', tx)">⋯</button>
-              </td>
-            </tr>
-            <tr v-if="filteredTransactions.length === 0">
-              <td colspan="9" class="empty-cell">
-                <div class="empty-state">
-                  <span class="empty-icon">🔍</span>
-                  <p>Транзакции не найдены</p>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <!-- Таблица операций -->
-        <table v-else class="transactions-table">
-          <thead>
-            <tr>
-              <th>Дата</th>
-              <th>Тип</th>
-              <th>Актив</th>
-              <th>Портфель</th>
-              <th class="text-right">Сумма</th>
-              <th class="text-right">Валюта</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="op in filteredOperations" :key="op.cash_operation_id" class="tx-row">
-              <td class="td-date">{{ formatDate(op.operation_date) }}</td>
-              <td>
-                <span :class="['badge', 'badge-' + normalizeType(op.operation_type)]">
-                  {{ op.operation_type }}
-                </span>
-              </td>
-              <td class="font-medium">{{ op.asset_name || '—' }}</td>
-              <td class="text-secondary">{{ op.portfolio_name }}</td>
-              <td class="text-right num-font font-semibold" :class="op.amount >= 0 ? 'text-green' : 'text-red'">
-                {{ Math.abs(op.amount).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
-              </td>
-              <td class="text-right num-font">{{ op.currency_ticker || 'RUB' }}</td>
-            </tr>
-            <tr v-if="filteredOperations.length === 0">
-              <td colspan="6" class="empty-cell">
-                <div class="empty-state">
-                  <span class="empty-icon">🔍</span>
-                  <p v-if="isLoadingOperations">Загрузка операций...</p>
-                  <p v-else>Операции не найдены</p>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        </div>
-      </div>
-    </div>
-
-      <!-- Правый блок с калькулятором -->
-      <div class="calculator-sidebar">
-        <div class="calculator-card">
-          <h3 class="calculator-title">
-            {{ viewMode === 'transactions' ? 'Суммы транзакций' : 'Калькулятор операций' }}
-          </h3>
           
-          <!-- Для транзакций: сумма покупок и продаж -->
-          <div v-if="viewMode === 'transactions'" class="transactions-summary">
-            <div class="summary-item">
-              <span class="summary-item-label">Покупки:</span>
-              <span class="summary-item-value text-green">
-                {{ transactionsSummary.buy.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-              </span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-item-label">Продажи:</span>
-              <span class="summary-item-value text-red">
-                {{ transactionsSummary.sell.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-              </span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-item-label">Оборот:</span>
-              <span class="summary-item-value text-red">
-                {{ (transactionsSummary.buy + transactionsSummary.sell).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-              </span>
-            </div>
+          <div class="table-container">
+          <!-- Таблица транзакций -->
+          <table v-if="viewMode === 'transactions'" class="transactions-table">
+            <thead>
+              <tr>
+                <th class="w-checkbox">
+                  <input type="checkbox" v-model="allSelected" @change="toggleAll" class="custom-checkbox" />
+                </th>
+                <th>Дата</th>
+                <th>Тип</th>
+                <th>Актив</th>
+                <th>Портфель</th>
+                <th class="text-right">Кол-во</th>
+                <th class="text-right">Цена</th>
+                <th class="text-right">Сумма</th>
+                <th class="w-actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="tx in filteredTransactions" :key="tx.transaction_id" class="tx-row">
+                <td class="w-checkbox">
+                  <input type="checkbox" :value="tx.transaction_id" v-model="selectedTxIds" class="custom-checkbox" />
+                </td>
+                <td class="td-date">{{ formatDate(tx.transaction_date) }}</td>
+                <td>
+                  <span :class="['badge', 'badge-' + normalizeType(tx.transaction_type)]">
+                    {{ tx.transaction_type }}
+                  </span>
+                </td>
+                <td class="font-medium">{{ tx.asset_name }}</td>
+                <td class="text-secondary">{{ tx.portfolio_name }}</td>
+                <td class="text-right num-font">{{ tx.quantity }}</td>
+                <td class="text-right num-font">{{ tx.price.toLocaleString() }}</td>
+                <td class="text-right num-font font-semibold">
+                  {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}
+                </td>
+                <td class="w-actions">
+                  <button class="icon-btn" @click="openMenu($event, 'transaction', tx)">⋯</button>
+                </td>
+              </tr>
+              <tr v-if="filteredTransactions.length === 0">
+                <td colspan="9" class="empty-cell">
+                  <div class="empty-state">
+                    <span class="empty-icon">🔍</span>
+                    <p>Транзакции не найдены</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Таблица операций -->
+          <table v-else class="transactions-table">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Тип</th>
+                <th>Актив</th>
+                <th>Портфель</th>
+                <th class="text-right">Сумма</th>
+                <th class="text-right">Валюта</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="op in filteredOperations" :key="op.cash_operation_id" class="tx-row">
+                <td class="td-date">{{ formatDate(op.operation_date) }}</td>
+                <td>
+                  <span :class="['badge', 'badge-' + normalizeType(op.operation_type)]">
+                    {{ op.operation_type }}
+                  </span>
+                </td>
+                <td class="font-medium">{{ op.asset_name || '—' }}</td>
+                <td class="text-secondary">{{ op.portfolio_name }}</td>
+                <td class="text-right num-font font-semibold" :class="op.amount >= 0 ? 'text-green' : 'text-red'">
+                  {{ Math.abs(op.amount).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                </td>
+                <td class="text-right num-font">{{ op.currency_ticker || 'RUB' }}</td>
+              </tr>
+              <tr v-if="filteredOperations.length === 0">
+                <td colspan="6" class="empty-cell">
+                  <div class="empty-state">
+                    <span class="empty-icon">🔍</span>
+                    <p v-if="isLoadingOperations">Загрузка операций...</p>
+                    <p v-else>Операции не найдены</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
           </div>
 
-          <!-- Для операций: калькулятор -->
-          <div v-else class="operations-calculator">
-            <!-- Формула -->
-            <div class="formula-display">
-              <div v-if="calculatorFormula.length === 0" class="formula-empty">
-                Добавьте элементы формулы
+          <!-- Правый блок с калькулятором -->
+          <div class="calculator-sidebar">
+          <div class="calculator-card">
+            <h3 class="calculator-title">
+              {{ viewMode === 'transactions' ? 'Суммы транзакций' : 'Калькулятор операций' }}
+            </h3>
+            
+            <!-- Для транзакций: сумма покупок и продаж -->
+            <div v-if="viewMode === 'transactions'" class="transactions-summary">
+              <div class="summary-item">
+                <span class="summary-item-label">Покупки:</span>
+                <span class="summary-item-value text-green">
+                  {{ transactionsSummary.buy.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+                </span>
               </div>
-              <div v-else class="formula-items">
-                <div 
-                  v-for="(item, index) in calculatorFormula" 
-                  :key="index"
-                  class="formula-item"
-                  :class="{ 'formula-operator': item.type === 'operator' }"
-                >
-                  <span class="formula-item-text">{{ item.label }}</span>
-                  <button 
-                    @click="removeFromFormula(index)" 
-                    class="formula-remove-btn"
-                    title="Удалить"
+              <div class="summary-item">
+                <span class="summary-item-label">Продажи:</span>
+                <span class="summary-item-value text-red">
+                  {{ transactionsSummary.sell.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+                </span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-item-label">Оборот:</span>
+                <span class="summary-item-value text-red">
+                  {{ (transactionsSummary.buy + transactionsSummary.sell).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Для операций: калькулятор -->
+            <div v-else class="operations-calculator">
+              <!-- Формула -->
+              <div class="formula-display">
+                <div v-if="calculatorFormula.length === 0" class="formula-empty">
+                  Добавьте элементы формулы
+                </div>
+                <div v-else class="formula-items">
+                  <div 
+                    v-for="(item, index) in calculatorFormula" 
+                    :key="index"
+                    class="formula-item"
+                    :class="{ 'formula-operator': item.type === 'operator' }"
                   >
-                    ×
+                    <span class="formula-item-text">{{ item.label }}</span>
+                    <button 
+                      @click="removeFromFormula(index)" 
+                      class="formula-remove-btn"
+                      title="Удалить"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Результат -->
+              <div class="calculator-result">
+                <span class="result-label">Результат:</span>
+                <span class="result-value" :class="calculatorResult >= 0 ? 'text-green' : 'text-red'">
+                  {{ calculatorResult.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+                </span>
+              </div>
+
+              <!-- Кнопки операторов -->
+              <div class="calculator-operators">
+                <button 
+                  @click="addToFormula('operator', '+', '+')" 
+                  class="calc-btn calc-operator"
+                  :disabled="calculatorFormula.length === 0 || calculatorFormula[calculatorFormula.length - 1]?.type === 'operator'"
+                >
+                  +
+                </button>
+                <button 
+                  @click="addToFormula('operator', '-', '-')" 
+                  class="calc-btn calc-operator"
+                  :disabled="calculatorFormula.length === 0 || calculatorFormula[calculatorFormula.length - 1]?.type === 'operator'"
+                >
+                  −
+                </button>
+                <button 
+                  @click="clearFormula()" 
+                  class="calc-btn calc-clear"
+                  :disabled="calculatorFormula.length === 0"
+                >
+                  Очистить
+                </button>
+              </div>
+
+              <!-- Доступные типы операций -->
+              <div class="calculator-operations">
+                <div class="operations-label">Добавить в формулу:</div>
+                <div class="operations-buttons">
+                  <button 
+                    v-for="opType in operationTypes" 
+                    :key="opType"
+                    @click="addToFormula('operation', opType, opType)"
+                    class="calc-btn calc-operation"
+                    :disabled="calculatorFormula.length > 0 && calculatorFormula[calculatorFormula.length - 1]?.type === 'operation'"
+                  >
+                    {{ opType }}
                   </button>
                 </div>
               </div>
-            </div>
 
-            <!-- Результат -->
-            <div class="calculator-result">
-              <span class="result-label">Результат:</span>
-              <span class="result-value" :class="calculatorResult >= 0 ? 'text-green' : 'text-red'">
-                {{ calculatorResult.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-              </span>
-            </div>
-
-            <!-- Кнопки операторов -->
-            <div class="calculator-operators">
-              <button 
-                @click="addToFormula('operator', '+', '+')" 
-                class="calc-btn calc-operator"
-                :disabled="calculatorFormula.length === 0 || calculatorFormula[calculatorFormula.length - 1]?.type === 'operator'"
-              >
-                +
-              </button>
-              <button 
-                @click="addToFormula('operator', '-', '-')" 
-                class="calc-btn calc-operator"
-                :disabled="calculatorFormula.length === 0 || calculatorFormula[calculatorFormula.length - 1]?.type === 'operator'"
-              >
-                −
-              </button>
-              <button 
-                @click="clearFormula()" 
-                class="calc-btn calc-clear"
-                :disabled="calculatorFormula.length === 0"
-              >
-                Очистить
-              </button>
-            </div>
-
-            <!-- Доступные типы операций -->
-            <div class="calculator-operations">
-              <div class="operations-label">Добавить в формулу:</div>
-              <div class="operations-buttons">
-                <button 
-                  v-for="opType in operationTypes" 
-                  :key="opType"
-                  @click="addToFormula('operation', opType, opType)"
-                  class="calc-btn calc-operation"
-                  :disabled="calculatorFormula.length > 0 && calculatorFormula[calculatorFormula.length - 1]?.type === 'operation'"
-                >
-                  {{ opType }}
-                </button>
-              </div>
-            </div>
-
-            <!-- Суммы по типам операций -->
-            <div class="operations-sums">
-              <div class="sums-label">Суммы по типам:</div>
-              <div class="sums-list">
-                <div 
-                  v-for="opType in operationTypes" 
-                  :key="opType"
-                  class="sum-item"
-                >
-                  <span class="sum-type">{{ opType }}:</span>
-                  <span class="sum-value">
-                    {{ getOperationTypeSum(opType).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-                  </span>
+              <!-- Суммы по типам операций -->
+              <div class="operations-sums">
+                <div class="sums-label">Суммы по типам:</div>
+                <div class="sums-list">
+                  <div 
+                    v-for="opType in operationTypes" 
+                    :key="opType"
+                    class="sum-item"
+                  >
+                    <span class="sum-type">{{ opType }}:</span>
+                    <span class="sum-value">
+                      {{ getOperationTypeSum(opType).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+          </div>
         </div>
+
       </div>
     </div>
 
@@ -1076,6 +1079,7 @@ const transactionsSummary = computed(() => {
 /* --- Card & Structure --- */
 .card {
   background: #fff;
+  width: 100%;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   border: 1px solid #e5e7eb;

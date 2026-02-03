@@ -13,49 +13,6 @@ operations_bp = Blueprint("operations", __name__)
 @operations_bp.route("/", methods=["GET"])
 @jwt_required()
 def get_operations_route():
-    """
-    Получение операций с фильтрацией.
-    ---
-    tags:
-      - Operations
-    summary: Список операций
-    description: Возвращает операции с возможностью фильтрации
-    security:
-      - Bearer: []
-    parameters:
-      - in: query
-        name: portfolio_id
-        type: integer
-        description: Фильтр по ID портфеля
-      - in: query
-        name: start_date
-        type: string
-        format: date-time
-        description: Начальная дата периода
-      - in: query
-        name: end_date
-        type: string
-        format: date-time
-        description: Конечная дата периода
-      - in: query
-        name: limit
-        type: integer
-        description: Лимит записей
-    responses:
-      200:
-        description: Список операций
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            operations:
-              type: array
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         user_email = get_jwt_identity()
         user = get_user_by_email(user_email)

@@ -12,32 +12,6 @@ dashboard_bp = Blueprint("dashboard", __name__)
 @dashboard_bp.route("/", methods=["GET"])
 @jwt_required()
 async def dashboard():
-    """
-    Получение данных дашборда.
-    ---
-    tags:
-      - Dashboard
-    summary: Данные дашборда
-    description: Возвращает сводные данные для дашборда пользователя
-    security:
-      - Bearer: []
-    produces:
-      - application/json
-    responses:
-      200:
-        description: Данные дашборда
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            data:
-              type: object
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         logger.info('Запрос на дашборд получен')
         email = get_jwt_identity()

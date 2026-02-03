@@ -30,35 +30,6 @@ portfolio_bp = Blueprint("portfolio", __name__)
 @portfolio_bp.route("/list", methods=["GET"])
 @jwt_required()
 def list_portfolios_route():
-    """
-    Получение списка портфелей пользователя.
-    ---
-    tags:
-      - Portfolio
-    summary: Список портфелей
-    description: Возвращает все портфели текущего пользователя
-    security:
-      - Bearer: []
-    produces:
-      - application/json
-    responses:
-      200:
-        description: Список портфелей
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: true
-            portfolios:
-              type: array
-              items:
-                type: object
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         user_email = get_jwt_identity()
         data = asyncio.run(get_user_portfolios(user_email))
@@ -76,59 +47,6 @@ def list_portfolios_route():
 @portfolio_bp.route("/add", methods=["POST"])
 @jwt_required()
 def add_portfolio_route():
-    """
-    Создание нового портфеля.
-    ---
-    tags:
-      - Portfolio
-    summary: Создать портфель
-    description: Создает новый портфель для текущего пользователя
-    security:
-      - Bearer: []
-    consumes:
-      - application/json
-    produces:
-      - application/json
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - name
-          properties:
-            name:
-              type: string
-              example: Мой портфель
-              description: Название портфеля
-            parent_portfolio_id:
-              type: integer
-              example: 1
-              description: ID родительского портфеля (опционально)
-            description:
-              type: object
-              example: {}
-              description: Дополнительное описание
-    responses:
-      201:
-        description: Портфель успешно создан
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            message:
-              type: string
-            portfolio:
-              type: object
-      400:
-        description: Ошибка валидации
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         # Валидация входных данных
         data = CreatePortfolioRequest(**request.get_json())
@@ -187,29 +105,6 @@ def add_portfolio_route():
 @portfolio_bp.route("/<int:portfolio_id>/delete", methods=["DELETE"])
 @jwt_required()
 def delete_portfolio_route(portfolio_id):
-    """
-    Удаление портфеля.
-    ---
-    tags:
-      - Portfolio
-    summary: Удалить портфель
-    description: Удаляет портфель и все связанные данные
-    security:
-      - Bearer: []
-    parameters:
-      - in: path
-        name: portfolio_id
-        type: integer
-        required: true
-        description: ID портфеля
-    responses:
-      200:
-        description: Портфель успешно удален
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         logger.info(f"Запрос удаления портфеля {portfolio_id}")
         rpc("clear_portfolio_full", {"p_portfolio_id": portfolio_id, "p_delete_self": True})
@@ -245,36 +140,6 @@ def portfolio_clear_route(portfolio_id):
 @portfolio_bp.route("/<int:portfolio_id>/assets", methods=["GET"])
 @jwt_required()
 def portfolio_assets_route(portfolio_id):
-    """
-    Получение активов портфеля.
-    ---
-    tags:
-      - Portfolio
-    summary: Активы портфеля
-    description: Возвращает все активы указанного портфеля
-    security:
-      - Bearer: []
-    parameters:
-      - in: path
-        name: portfolio_id
-        type: integer
-        required: true
-        description: ID портфеля
-    responses:
-      200:
-        description: Список активов
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            assets:
-              type: array
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         data = asyncio.run(get_portfolio_assets(portfolio_id))
         return jsonify({
@@ -345,49 +210,6 @@ def portfolio_history_route(portfolio_id):
 @portfolio_bp.route("/<int:portfolio_id>", methods=["GET"])
 @jwt_required()
 def get_portfolio_info_route(portfolio_id):
-    """
-    Получение детальной информации о портфеле.
-    ---
-    tags:
-      - Portfolio
-    summary: Информация о портфеле
-    description: Возвращает детальную информацию о портфеле, включая активы, транзакции и историю стоимости
-    security:
-      - Bearer: []
-    parameters:
-      - in: path
-        name: portfolio_id
-        type: integer
-        required: true
-        description: ID портфеля
-    responses:
-      200:
-        description: Детальная информация о портфеле
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            portfolio:
-              type: object
-              properties:
-                assets:
-                  type: array
-                assets_count:
-                  type: integer
-                transactions:
-                  type: array
-                transactions_count:
-                  type: integer
-                value_history:
-                  type: array
-      404:
-        description: Портфель не найден
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         result = get_portfolio_info(portfolio_id)
         
@@ -408,45 +230,6 @@ def get_portfolio_info_route(portfolio_id):
 @portfolio_bp.route("/<int:portfolio_id>/summary", methods=["GET"])
 @jwt_required()
 def get_portfolio_summary_route(portfolio_id):
-    """
-    Получение краткой сводки по портфелю.
-    ---
-    tags:
-      - Portfolio
-    summary: Краткая сводка портфеля
-    description: Возвращает краткую информацию о портфеле без детальной истории
-    security:
-      - Bearer: []
-    parameters:
-      - in: path
-        name: portfolio_id
-        type: integer
-        required: true
-        description: ID портфеля
-    responses:
-      200:
-        description: Краткая сводка портфеля
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            portfolio:
-              type: object
-              properties:
-                assets:
-                  type: array
-                assets_count:
-                  type: integer
-                total_value:
-                  type: number
-      404:
-        description: Портфель не найден
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         result = get_portfolio_summary(portfolio_id)
         
@@ -467,36 +250,6 @@ def get_portfolio_summary_route(portfolio_id):
 @portfolio_bp.route("/<int:portfolio_id>/transactions", methods=["GET"])
 @jwt_required()
 def get_portfolio_transactions_route(portfolio_id):
-    """
-    Получение транзакций портфеля.
-    ---
-    tags:
-      - Portfolio
-    summary: Транзакции портфеля
-    description: Возвращает все транзакции указанного портфеля
-    security:
-      - Bearer: []
-    parameters:
-      - in: path
-        name: portfolio_id
-        type: integer
-        required: true
-        description: ID портфеля
-    responses:
-      200:
-        description: Список транзакций
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            transactions:
-              type: array
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         data = asyncio.run(get_portfolio_transactions(portfolio_id))
         return jsonify({
@@ -515,66 +268,6 @@ def get_portfolio_transactions_route(portfolio_id):
 @portfolio_bp.route("/import_broker", methods=["POST"])
 @jwt_required()
 async def import_broker_route():
-    """
-    Импорт или синхронизация портфелей с брокером.
-    ---
-    tags:
-      - Portfolio
-    summary: Импорт из брокера
-    description: Импортирует или синхронизирует портфели с брокером (например, Тинькофф)
-    security:
-      - Bearer: []
-    consumes:
-      - application/json
-    produces:
-      - application/json
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - broker_id
-            - token
-          properties:
-            broker_id:
-              type: integer
-              example: 1
-              description: ID брокера (1 = Tinkoff)
-            token:
-              type: string
-              example: t.xxxxx
-              description: Токен или API-ключ брокера
-            portfolio_id:
-              type: integer
-              example: 1
-              description: ID существующего портфеля (опционально)
-            portfolio_name:
-              type: string
-              example: Портфель Тинькофф
-              description: Название нового портфеля (опционально)
-    responses:
-      201:
-        description: Импорт завершен успешно
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            message:
-              type: string
-            portfolio_id:
-              type: integer
-            import_result:
-              type: object
-      400:
-        description: Ошибка валидации или брокер не поддерживается
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         # Валидация входных данных
         data = ImportBrokerRequest(**request.get_json())

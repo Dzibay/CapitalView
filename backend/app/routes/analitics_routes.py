@@ -14,34 +14,6 @@ analytics_bp = Blueprint("analytics", __name__)
 @analytics_bp.route("/portfolios", methods=["GET"])
 @jwt_required()
 def user_portfolios_analytics_route():
-    """
-    Возвращает сводную аналитику по всем портфелям пользователя.
-    ---
-    tags:
-      - Analytics
-    summary: Аналитика портфелей
-    description: Возвращает аналитику по всем портфелям пользователя
-    security:
-      - Bearer: []
-    produces:
-      - application/json
-    responses:
-      200:
-        description: Аналитика портфелей
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            analytics:
-              type: object
-      401:
-        description: Требуется аутентификация
-      404:
-        description: Пользователь не найден
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         user_email = get_jwt_identity()
         logger.info(f"📊 Запрос аналитики всех портфелей для пользователя {user_email}")

@@ -10,65 +10,6 @@ auth_bp = Blueprint("auth", __name__)
 
 @auth_bp.route("/register", methods=["POST"])
 def register():
-    """
-    Регистрация нового пользователя.
-    ---
-    tags:
-      - Auth
-    summary: Регистрация нового пользователя
-    description: Создает нового пользователя в системе
-    consumes:
-      - application/json
-    produces:
-      - application/json
-    parameters:
-      - in: body
-        name: body
-        description: Данные для регистрации
-        required: true
-        schema:
-          type: object
-          required:
-            - email
-            - password
-          properties:
-            email:
-              type: string
-              format: email
-              example: user@example.com
-              description: Email пользователя
-            password:
-              type: string
-              minLength: 6
-              example: password123
-              description: Пароль (минимум 6 символов)
-    responses:
-      201:
-        description: Пользователь успешно создан
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: true
-            message:
-              type: string
-              example: Пользователь успешно создан
-      400:
-        description: Ошибка валидации или пользователь уже существует
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: false
-            error:
-              type: string
-            details:
-              type: array
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         # Валидация входных данных
         data = RegisterRequest(**request.get_json())
@@ -103,73 +44,6 @@ def register():
 
 @auth_bp.route("/login", methods=["POST"])
 def login():
-    """
-    Вход пользователя в систему.
-    ---
-    tags:
-      - Auth
-    summary: Вход в систему
-    description: Аутентификация пользователя и получение JWT токена
-    consumes:
-      - application/json
-    produces:
-      - application/json
-    parameters:
-      - in: body
-        name: body
-        description: Учетные данные пользователя
-        required: true
-        schema:
-          type: object
-          required:
-            - email
-            - password
-          properties:
-            email:
-              type: string
-              format: email
-              example: user@example.com
-            password:
-              type: string
-              example: password123
-    responses:
-      200:
-        description: Успешный вход
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: true
-            message:
-              type: string
-              example: Успешный вход в систему
-            access_token:
-              type: string
-              example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
-            user:
-              type: object
-              properties:
-                id:
-                  type: string
-                email:
-                  type: string
-      401:
-        description: Неверные учетные данные
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: false
-            error:
-              type: string
-              example: Неверные учетные данные
-      400:
-        description: Ошибка валидации
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         # Валидация входных данных
         data = LoginRequest(**request.get_json())
@@ -211,41 +85,6 @@ def login():
 @auth_bp.route("/check-token", methods=["GET"])
 @jwt_required()
 def check_token():
-    """
-    Проверка валидности токена.
-    ---
-    tags:
-      - Auth
-    summary: Проверка токена
-    description: Проверяет валидность JWT токена и возвращает данные пользователя
-    security:
-      - Bearer: []
-    produces:
-      - application/json
-    responses:
-      200:
-        description: Токен валиден
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: true
-            message:
-              type: string
-              example: Token valid
-            user:
-              type: object
-              properties:
-                id:
-                  type: string
-                email:
-                  type: string
-      401:
-        description: Токен недействителен или отсутствует
-      404:
-        description: Пользователь не найден
-    """
     email = get_jwt_identity()
     user = get_user_by_email(email)
     

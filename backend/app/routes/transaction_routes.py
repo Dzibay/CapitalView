@@ -15,53 +15,6 @@ transactions_bp = Blueprint("transactions", __name__)
 @transactions_bp.route("/", methods=["GET"])
 @jwt_required()
 def get_transactions_route():
-    """
-    Получение транзакций с фильтрацией.
-    ---
-    tags:
-      - Transactions
-    summary: Список транзакций
-    description: Возвращает транзакции с возможностью фильтрации
-    security:
-      - Bearer: []
-    parameters:
-      - in: query
-        name: asset_name
-        type: string
-        description: Фильтр по названию актива
-      - in: query
-        name: portfolio_id
-        type: integer
-        description: Фильтр по ID портфеля
-      - in: query
-        name: start_date
-        type: string
-        format: date-time
-        description: Начальная дата периода
-      - in: query
-        name: end_date
-        type: string
-        format: date-time
-        description: Конечная дата периода
-      - in: query
-        name: limit
-        type: integer
-        description: Лимит записей
-    responses:
-      200:
-        description: Список транзакций
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            transactions:
-              type: array
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         user_email = get_jwt_identity()
         user = get_user_by_email(user_email)
@@ -112,72 +65,6 @@ def get_transactions_route():
 @transactions_bp.route("/", methods=["POST"])
 @jwt_required()
 def add_transaction_route():
-    """
-    Создание новой транзакции.
-    ---
-    tags:
-      - Transactions
-    summary: Создать транзакцию
-    description: Создает новую транзакцию (покупка/продажа актива)
-    security:
-      - Bearer: []
-    consumes:
-      - application/json
-    produces:
-      - application/json
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - portfolio_asset_id
-            - asset_id
-            - transaction_type
-            - quantity
-            - price
-            - transaction_date
-          properties:
-            portfolio_asset_id:
-              type: integer
-              example: 1
-            asset_id:
-              type: integer
-              example: 1
-            transaction_type:
-              type: string
-              enum: [buy, sell]
-              example: buy
-            quantity:
-              type: number
-              example: 10.5
-            price:
-              type: number
-              example: 150.50
-            transaction_date:
-              type: string
-              format: date-time
-              example: "2024-01-15T00:00:00Z"
-    responses:
-      201:
-        description: Транзакция успешно создана
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-            message:
-              type: string
-            transaction_id:
-              type: integer
-      400:
-        description: Ошибка валидации
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         # Логирование входящих данных для отладки
         json_data = request.get_json()
@@ -244,66 +131,6 @@ def add_transaction_route():
 @transactions_bp.route("/", methods=["PUT"])
 @jwt_required()
 def update_transaction_route():
-    """
-    Обновление транзакции.
-    ---
-    tags:
-      - Transactions
-    summary: Обновить транзакцию
-    description: Обновляет существующую транзакцию
-    security:
-      - Bearer: []
-    consumes:
-      - application/json
-    produces:
-      - application/json
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - transaction_id
-            - portfolio_asset_id
-            - asset_id
-            - transaction_type
-            - quantity
-            - price
-            - transaction_date
-          properties:
-            transaction_id:
-              type: integer
-              example: 1
-            portfolio_asset_id:
-              type: integer
-              example: 1
-            asset_id:
-              type: integer
-              example: 1
-            transaction_type:
-              type: integer
-              example: 1
-            quantity:
-              type: number
-              example: 10.5
-            price:
-              type: number
-              example: 150.50
-            transaction_date:
-              type: string
-              format: date-time
-              example: "2024-01-15T00:00:00Z"
-    responses:
-      200:
-        description: Транзакция успешно обновлена
-      400:
-        description: Ошибка валидации
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         json_data = request.get_json()
         if not json_data:
@@ -358,43 +185,6 @@ def update_transaction_route():
 @transactions_bp.route("/", methods=["DELETE"])
 @jwt_required()
 def delete_transactions_route():
-    """
-    Удаление транзакций.
-    ---
-    tags:
-      - Transactions
-    summary: Удалить транзакции
-    description: Удаляет одну или несколько транзакций
-    security:
-      - Bearer: []
-    consumes:
-      - application/json
-    produces:
-      - application/json
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - ids
-          properties:
-            ids:
-              type: array
-              items:
-                type: integer
-              example: [1, 2, 3]
-    responses:
-      200:
-        description: Транзакции успешно удалены
-      400:
-        description: Ошибка валидации
-      401:
-        description: Требуется аутентификация
-      500:
-        description: Внутренняя ошибка сервера
-    """
     try:
         json_data = request.get_json()
         if not json_data:
