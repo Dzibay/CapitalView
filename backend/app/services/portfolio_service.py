@@ -306,19 +306,32 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                 filters={"portfolio_id": portfolio_id}
             )
             
+            print(f"   📋 Загружено {len(existing_ops)} существующих денежных операций из БД")
+            
             for op in existing_ops:
                 # Нормализуем дату до дня
                 op_date = normalize_tx_date_day(op["date"])
                 if not op_date:
+                    print(f"   ⚠️ Пропущена операция из-за невалидной даты: {op}")
                     continue
-                # Округляем amount для сравнения
-                amount = round(float(op.get("amount") or 0), 6)
-                op_type = op.get("type")
-                asset_id = op.get("asset_id")
+                # Округляем amount до 2 знаков для денежных операций (копейки)
+                # Это решает проблему с разной точностью хранения в БД
+                amount = round(float(op.get("amount") or 0), 2)
+                # Нормализуем типы для корректного сравнения
+                op_portfolio_id = int(op.get("portfolio_id") or 0)
+                op_type = int(op.get("type") or 0)
+                # Нормализуем asset_id: приводим к int или None
+                asset_id_raw = op.get("asset_id")
+                asset_id = int(asset_id_raw) if asset_id_raw is not None else None
                 # Ключ уникальности: (portfolio_id, type, date, amount, asset_id)
-                existing_ops_keys.add((op["portfolio_id"], op_type, op_date, amount, asset_id))
+                key = (op_portfolio_id, op_type, op_date, amount, asset_id)
+                existing_ops_keys.add(key)
 
             print(f"   ✔ Найдено существующих: {len(existing_tx_keys)} транзакций, {len(existing_ops_keys)} операций")
+            # Отладочный вывод первых нескольких ключей для проверки
+            if existing_ops_keys and len(existing_ops_keys) > 0:
+                sample_keys = list(existing_ops_keys)[:3]
+                print(f"   🔍 Примеры ключей существующих операций: {sample_keys}")
 
         # ========================
         # 3. Фильтруем и добавляем только новые транзакции брокера
@@ -328,6 +341,7 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
         new_ops = []
         affected_pa = set()
         min_tx_date = None  # Самая старая дата новой транзакции
+        min_op_date = None  # Самая старая дата новой денежной операции
 
         for tx in pdata["transactions"]:
             tx_type = tx["type"]
@@ -398,15 +412,28 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                 if not op_date_normalized:
                     continue
                 
-                amount = round(payment, 6)
+                # Округляем amount до 2 знаков для денежных операций (копейки)
+                # Это решает проблему с разной точностью хранения в БД
+                amount = round(payment, 2)
+                
+                # Нормализуем все значения для корректного сравнения
+                portfolio_id_int = int(portfolio_id) if portfolio_id else 0
+                op_type_id_int = int(op_type_id) if op_type_id else 0
+                asset_id_normalized = int(asset_id) if asset_id is not None else None
                 
                 # Проверяем, существует ли уже такая операция
-                op_key = (portfolio_id, op_type_id, op_date_normalized, amount, asset_id)
+                op_key = (portfolio_id_int, op_type_id_int, op_date_normalized, amount, asset_id_normalized)
+                
+                # Проверяем точное совпадение
                 if op_key in existing_ops_keys:
                     continue  # Пропускаем дубликат
-
+                
                 # Добавляем в множество существующих
                 existing_ops_keys.add(op_key)
+                
+                # Обновляем минимальную дату для денежных операций
+                if min_op_date is None or op_date_normalized < min_op_date:
+                    min_op_date = op_date_normalized
 
                 new_ops.append({
                     "user_id": user_id,
@@ -421,12 +448,41 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
 
         # Вставляем только новые записи
         if new_tx:
-            print(f"   ➕ Добавляем {len(new_tx)} новых транзакций...")
-            await table_insert_bulk_async("transactions", new_tx)
+            # Сортируем транзакции по дате перед вставкой, чтобы FIFO работал корректно
+            # Это важно для правильного расчета FIFO - транзакции должны обрабатываться в хронологическом порядке
+            new_tx_sorted = sorted(new_tx, key=lambda x: (
+                datetime.fromisoformat(x["transaction_date"].replace("Z", "+00:00")) if isinstance(x["transaction_date"], str) 
+                else x["transaction_date"] if isinstance(x["transaction_date"], datetime)
+                else datetime.min
+            ))
+            
+            print(f"   ➕ Добавляем {len(new_tx_sorted)} новых транзакций (отсортированы по дате)...")
+            try:
+                await table_insert_bulk_async("transactions", new_tx_sorted)
+                print(f"   ✅ Транзакции успешно добавлены")
+            except Exception as e:
+                print(f"   ❌ Ошибка при добавлении транзакций: {e}")
+                import traceback
+                traceback.print_exc()
 
         if new_ops:
             print(f"   ➕ Добавляем {len(new_ops)} новых денежных операций...")
-            await table_insert_bulk_async("cash_operations", new_ops)
+            try:
+                await table_insert_bulk_async("cash_operations", new_ops)
+                print(f"   ✅ Денежные операции успешно добавлены")
+                
+                # Проверяем, что операции действительно добавились
+                # Загружаем операции снова для проверки
+                check_ops = table_select(
+                    "cash_operations",
+                    select="id,portfolio_id,type,date,amount",
+                    filters={"portfolio_id": portfolio_id}
+                )
+                print(f"   📊 Всего операций в портфеле после добавления: {len(check_ops) if check_ops else 0}")
+            except Exception as e:
+                print(f"   ❌ Ошибка при добавлении денежных операций: {e}")
+                import traceback
+                traceback.print_exc()
 
         if not new_tx and not new_ops:
             print("   ℹ️ Новых транзакций и операций не найдено")
@@ -442,52 +498,63 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
 
         
         # ==========================
-        # 5. Обновление истории портфеля только с даты самой старой новой транзакции
+        # 5. Обновление истории портфеля с даты самой старой новой транзакции или операции
         # ==========================
-        if min_tx_date:
-            print(f"   📊 Обновляем историю портфеля с даты {min_tx_date}...")
+        
+        # Определяем минимальную дату для обновления (из транзакций или операций)
+        min_date = None
+        if min_tx_date and min_op_date:
+            # Если есть и транзакции, и операции, берем самую раннюю дату
+            min_date = min_tx_date if min_tx_date < min_op_date else min_op_date
+        elif min_tx_date:
+            min_date = min_tx_date
+        elif min_op_date:
+            min_date = min_op_date
+        
+        if min_date:
+            print(f"   📊 Обновляем историю портфеля с даты {min_date}...")
             
             # Преобразуем дату в формат для SQL функции (YYYY-MM-DD)
-            if isinstance(min_tx_date, str):
-                from_date_str = min_tx_date[:10] if len(min_tx_date) > 10 else min_tx_date
-            elif hasattr(min_tx_date, 'isoformat'):
-                from_date_str = min_tx_date.isoformat()[:10]
+            if isinstance(min_date, str):
+                from_date_str = min_date[:10] if len(min_date) > 10 else min_date
+            elif hasattr(min_date, 'isoformat'):
+                from_date_str = min_date.isoformat()[:10]
             else:
-                from_date_str = str(min_tx_date)[:10]
+                from_date_str = str(min_date)[:10]
             
-            # Обновляем FIFO (обычно пересчитывается полностью, но быстрее чем история)
-            try:
-                rpc("rebuild_fifo_for_portfolio", {"p_portfolio_id": portfolio_id})
-                print('   ✔ Fifo данные обновлены')
-            except Exception as e:
-                # Если функция не поддерживает параметр даты, это нормально
-                print(f'   ⚠️ Ошибка обновления FIFO: {e}')
+            # Обновляем FIFO (только если есть транзакции, т.к. FIFO связан с транзакциями)
+            if min_tx_date:
+                try:
+                    rpc("rebuild_fifo_for_portfolio", {"p_portfolio_id": portfolio_id})
+                    print('   ✔ Fifo данные обновлены')
+                except Exception as e:
+                    error_msg = str(e)
+                    # Ошибка "Not enough quantity to sell" может возникать из-за:
+                    # 1. Транзакции в неправильном порядке (исправлено сортировкой выше)
+                    # 2. Проблемы с данными (продажи до покупок)
+                    # 3. Проблемы с существующими данными в БД
+                    if "Not enough quantity" in error_msg or "P0001" in str(e):
+                        print(f'   ⚠️ Ошибка обновления FIFO (возможно, проблема с порядком транзакций или данными): {error_msg}')
+                        print(f'   💡 Это может быть связано с некорректными данными в БД. Проверьте транзакции для portfolio_asset_id из ошибки.')
+                        # Не прерываем процесс, продолжаем обновление позиций и значений
+                    else:
+                        print(f'   ⚠️ Ошибка обновления FIFO: {error_msg}')
             
-            # Обновляем позиции с даты самой старой новой транзакции
+            # Обновляем позиции с даты самой старой новой транзакции или операции
             try:
                 rpc("update_portfolio_positions_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": from_date_str})
                 print('   ✔ Positions данные обновлены')
             except Exception as e:
                 print(f'   ⚠️ Ошибка обновления позиций: {e}')
             
-            # Обновляем значения с даты самой старой новой транзакции
+            # Обновляем значения с даты самой старой новой транзакции или операции
             try:
                 rpc("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": from_date_str})
                 print('   ✔ Values данные обновлены')
             except Exception as e:
                 print(f'   ⚠️ Ошибка обновления значений: {e}')
         else:
-            # Если нет новых транзакций, но есть новые операции, обновляем с сегодняшней даты
-            if new_ops:
-                today_str = date.today().isoformat()
-                print(f"   📊 Обновляем историю портфеля с сегодняшней даты ({today_str})...")
-                try:
-                    rpc("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": today_str})
-                    print('   ✔ Values данные обновлены')
-                except Exception as e:
-                    print(f'   ⚠️ Ошибка обновления значений: {e}')
-            else:
-                print("   ℹ️ Нет новых данных для обновления истории")
+            print("   ℹ️ Нет новых данных для обновления истории")
 
         print(f"🎯 Готово: добавлено {len(new_tx)} транзакций, {len(new_ops)} денежн. операций")
 
