@@ -138,8 +138,24 @@ asset_yields AS (
     CASE 
       WHEN LOWER(COALESCE(at.name, '')) LIKE '%bond%' OR LOWER(COALESCE(at.name, '')) LIKE '%облига%' THEN
         CASE 
-          WHEN COALESCE(apf.curr_price, 0) > 0 AND a.properties->>'coupon_percent' IS NOT NULL
-          THEN CAST(a.properties->>'coupon_percent' AS numeric)
+          WHEN COALESCE(apf.curr_price, 0) > 0 AND a.properties->>'coupon_percent' IS NOT NULL THEN
+            -- Годовая доходность облигации = (купонный процент * номинал * частота) / текущая цена * 100
+            -- coupon_percent уже в процентах (например, 7.5 означает 7.5%)
+            CASE 
+              WHEN a.properties->>'face_value' IS NOT NULL AND CAST(a.properties->>'face_value' AS numeric) > 0 THEN
+                -- Если есть номинал: (coupon_percent / 100 * face_value * frequency) / current_price * 100
+                (
+                  CAST(a.properties->>'coupon_percent' AS numeric) / 100.0 * 
+                  CAST(a.properties->>'face_value' AS numeric) * 
+                  COALESCE(NULLIF(CAST(a.properties->>'coupon_frequency' AS numeric), 0), 2) / 
+                  COALESCE(apf.curr_price, 1)
+                ) * 100
+              ELSE
+                -- Если номинала нет, используем текущую цену как базу (предполагаем номинал = текущая цена)
+                -- coupon_percent * frequency (это уже процент годовой доходности при номинале = текущей цене)
+                CAST(a.properties->>'coupon_percent' AS numeric) *
+                COALESCE(NULLIF(CAST(a.properties->>'coupon_frequency' AS numeric), 0), 2)
+            END
           ELSE 0
         END
       ELSE
@@ -172,6 +188,7 @@ asset_yields AS (
   WHERE COALESCE(pa.quantity, 0) > 0
 ),
 dividends_by_year AS (
+  -- Полученные дивиденды из cash_operations
   SELECT
     co.portfolio_id,
     EXTRACT(YEAR FROM co.date)::int AS year,
@@ -181,6 +198,23 @@ dividends_by_year AS (
   JOIN p ON p.id = co.portfolio_id
   WHERE ot.name = 'Dividend'
   GROUP BY co.portfolio_id, EXTRACT(YEAR FROM co.date)
+  
+  UNION ALL
+  
+  -- Прогноз дивидендов на текущий год из будущих выплат
+  SELECT
+    pa.portfolio_id,
+    EXTRACT(YEAR FROM CURRENT_DATE)::int AS year,
+    SUM(ap.value * COALESCE(pa.quantity, 0)) AS total_dividends
+  FROM portfolio_assets pa
+  JOIN p ON p.id = pa.portfolio_id
+  JOIN assets a ON a.id = pa.asset_id
+  JOIN asset_payouts ap ON ap.asset_id = a.id
+  WHERE ap.type = 'dividend'
+    AND EXTRACT(YEAR FROM ap.payment_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+    AND ap.payment_date >= CURRENT_DATE
+    AND COALESCE(pa.quantity, 0) > 0
+  GROUP BY pa.portfolio_id, EXTRACT(YEAR FROM CURRENT_DATE)
 )
 SELECT json_agg(
   json_build_object(
@@ -234,6 +268,26 @@ SELECT json_agg(
         FROM dividends_by_year dy
         WHERE dy.portfolio_id = p.id
           AND dy.year = EXTRACT(YEAR FROM CURRENT_DATE)
+      ),
+      'coupons_per_year', (
+        -- Прогноз купонов на текущий год из будущих выплат
+        SELECT COALESCE(SUM(ap.value * COALESCE(pa.quantity, 0)), 0)
+        FROM portfolio_assets pa
+        JOIN assets a ON a.id = pa.asset_id
+        JOIN asset_payouts ap ON ap.asset_id = a.id
+        WHERE pa.portfolio_id = p.id
+          AND ap.type = 'coupon'
+          AND EXTRACT(YEAR FROM ap.payment_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+          AND ap.payment_date >= CURRENT_DATE
+          AND COALESCE(pa.quantity, 0) > 0
+      ) + (
+        -- Полученные купоны за текущий год
+        SELECT COALESCE(SUM(co.amount), 0)
+        FROM cash_operations co
+        JOIN operations_type ot ON ot.id = co.type
+        WHERE co.portfolio_id = p.id
+          AND ot.name = 'Coupon'
+          AND EXTRACT(YEAR FROM co.date) = EXTRACT(YEAR FROM CURRENT_DATE)
       )
     ),
     'operations_breakdown', (
