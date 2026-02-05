@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from tinkoff.invest import Client, InstrumentIdType
+from t_tech.invest import Client, InstrumentIdType
 
 OPERATION_CLASSIFICATION = {
     "OPERATION_TYPE_BUY": "Buy",
