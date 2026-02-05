@@ -4,6 +4,7 @@ from app.services.supabase_service import (
 from app.services.user_service import get_user_by_email
 from datetime import datetime
 from app.services.transactions_service import create_transaction
+from app.utils.portfolio_helpers import update_portfolios_with_asset, normalize_date_to_string
 
 
 
@@ -58,6 +59,9 @@ def create_asset(email: str, data: dict):
                     update_result = rpc('update_asset_latest_price', {'p_asset_id': asset_id})
                     if update_result is False:
                         print(f"⚠️ Ошибка при обновлении цены актива {asset_id}")
+                    
+                    # Обновляем все портфели, содержащие этот актив
+                    update_portfolios_with_asset(asset_id, date)
             else:
                 # Создаём кастомный актив
                 new_asset = {
@@ -131,23 +135,18 @@ def create_asset(email: str, data: dict):
 
         # --- Обновляем историю портфеля с даты транзакции ---
         # Преобразуем дату транзакции в формат YYYY-MM-DD
-        if isinstance(date, str):
-            from_date = date[:10] if 'T' in date else date
-        elif hasattr(date, 'date'):
-            from_date = date.date().isoformat()
-        else:
-            from_date = str(date)[:10]
-        
-        # Обновляем историю портфеля начиная с даты транзакции
-        try:
-            update_result = rpc("update_portfolio_values_from_date", {
-                "p_portfolio_id": portfolio_id,
-                "p_from_date": from_date
-            })
-            if update_result is False:
-                print(f"⚠️ Ошибка при обновлении истории портфеля {portfolio_id}")
-        except Exception as e:
-            print(f"⚠️ Ошибка при обновлении истории портфеля: {e}")
+        from_date = normalize_date_to_string(date)
+        if from_date:
+            # Обновляем историю портфеля начиная с даты транзакции
+            try:
+                update_result = rpc("update_portfolio_values_from_date", {
+                    "p_portfolio_id": portfolio_id,
+                    "p_from_date": from_date
+                })
+                if update_result is False:
+                    print(f"⚠️ Ошибка при обновлении истории портфеля {portfolio_id}")
+            except Exception as e:
+                print(f"⚠️ Ошибка при обновлении истории портфеля: {e}")
 
         # --- Берём последнюю цену актива ---
         last_price_resp = table_select(
@@ -363,6 +362,9 @@ def add_asset_price(data):
             # Если RPC выбросил исключение, логируем, но не прерываем выполнение
             print(f"⚠️ Ошибка при обновлении цены актива {asset_id}: {rpc_error}")
             # Продолжаем выполнение, так как цена уже добавлена
+        
+        # Находим все портфели, содержащие этот актив, и обновляем их
+        update_portfolios_with_asset(asset_id, date)
         
         return {"success": True, "message": "Цена успешно добавлена", "data": res}
     except Exception as e:
