@@ -150,7 +150,7 @@ async def get_user_portfolios_analytics(user_id: str):
 
                 # Выплаты по активам - объединяем из дочерних портфелей
                 for pba in child.get("payouts_by_asset") or []:
-                    asset_key = pba.get("asset_id") or pba.get("asset_ticker") or ""
+                    asset_key = pba.get("asset_id") or pba.get("asset_ticker", "")
                     if asset_key:
                         if asset_key not in payouts_by_asset_map:
                             payouts_by_asset_map[asset_key] = {

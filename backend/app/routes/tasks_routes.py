@@ -1,8 +1,8 @@
 """
 Роуты для работы с задачами импорта портфелей.
 """
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask import Blueprint, request
+from flask_jwt_extended import jwt_required
 from app.services.task_service import (
     create_import_task,
     get_task,
@@ -11,9 +11,10 @@ from app.services.task_service import (
     update_task_status,
     TaskStatus
 )
-from app.services.user_service import get_user_by_email
 from app.models.task_models import CreateImportTaskRequest, TaskResponse, TaskStatusResponse
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
+from app.decorators import require_user, handle_errors, validate_json_body
+from app.utils.response_helpers import success_response, error_response, not_found_response, forbidden_response
 from pydantic import ValidationError
 import logging
 
@@ -24,157 +25,77 @@ tasks_bp = Blueprint("tasks", __name__)
 
 @tasks_bp.route("/<int:task_id>", methods=["GET"])
 @jwt_required()
-def get_task_route(task_id: int):
+@require_user
+@handle_errors
+def get_task_route(task_id: int, user):
     """Получение информации о задаче."""
-    try:
-        user_email = get_jwt_identity()
-        user = get_user_by_email(user_email)
-        
-        if not user:
-            return jsonify({
-                "success": False,
-                "error": ErrorMessages.USER_NOT_FOUND
-            }), HTTPStatus.NOT_FOUND
-        
-        task = get_task(task_id)
-        
-        if not task:
-            return jsonify({
-                "success": False,
-                "error": "Задача не найдена"
-            }), HTTPStatus.NOT_FOUND
-        
-        # Проверяем права доступа (сравниваем UUID как строки)
-        task_user_id = str(task["user_id"]) if task.get("user_id") else None
-        user_id = str(user["id"]) if user.get("id") else None
-        if task_user_id != user_id:
-            return jsonify({
-                "success": False,
-                "error": "Доступ запрещен"
-            }), HTTPStatus.FORBIDDEN
-        
-        return jsonify({
-            "success": True,
-            "task": task
-        }), HTTPStatus.OK
-        
-    except Exception as e:
-        logger.error(f"Ошибка при получении задачи {task_id}: {e}", exc_info=True)
-        return jsonify({
-            "success": False,
-            "error": ErrorMessages.INTERNAL_ERROR
-        }), HTTPStatus.INTERNAL_SERVER_ERROR
+    task = get_task(task_id)
+    
+    if not task:
+        return not_found_response("Задача")
+    
+    # Проверяем права доступа (сравниваем UUID как строки)
+    task_user_id = str(task["user_id"]) if task.get("user_id") else None
+    user_id = str(user["id"]) if user.get("id") else None
+    if task_user_id != user_id:
+        return forbidden_response("Доступ запрещен")
+    
+    return success_response(data={"task": task})
 
 
 @tasks_bp.route("/<int:task_id>/status", methods=["GET"])
 @jwt_required()
-def get_task_status_route(task_id: int):
+@require_user
+@handle_errors
+def get_task_status_route(task_id: int, user):
     """Получение статуса задачи (упрощенный endpoint для polling)."""
-    try:
-        user_email = get_jwt_identity()
-        user = get_user_by_email(user_email)
-        
-        if not user:
-            return jsonify({
-                "success": False,
-                "error": ErrorMessages.USER_NOT_FOUND
-            }), HTTPStatus.NOT_FOUND
-        
-        task = get_task(task_id)
-        
-        if not task:
-            return jsonify({
-                "success": False,
-                "error": "Задача не найдена"
-            }), HTTPStatus.NOT_FOUND
-        
-        # Проверяем права доступа (сравниваем UUID как строки)
-        task_user_id = str(task["user_id"]) if task.get("user_id") else None
-        user_id = str(user["id"]) if user.get("id") else None
-        if task_user_id != user_id:
-            return jsonify({
-                "success": False,
-                "error": "Доступ запрещен"
-            }), HTTPStatus.FORBIDDEN
-        
-        return jsonify({
-            "success": True,
+    task = get_task(task_id)
+    
+    if not task:
+        return not_found_response("Задача")
+    
+    # Проверяем права доступа (сравниваем UUID как строки)
+    task_user_id = str(task["user_id"]) if task.get("user_id") else None
+    user_id = str(user["id"]) if user.get("id") else None
+    if task_user_id != user_id:
+        return forbidden_response("Доступ запрещен")
+    
+    return success_response(
+        data={
             "status": task["status"],
             "progress": task.get("progress", 0),
             "progress_message": task.get("progress_message"),
             "error_message": task.get("error_message"),
             "result": task.get("result"),
             "completed_at": task.get("completed_at")
-        }), HTTPStatus.OK
-        
-    except Exception as e:
-        logger.error(f"Ошибка при получении статуса задачи {task_id}: {e}", exc_info=True)
-        return jsonify({
-            "success": False,
-            "error": ErrorMessages.INTERNAL_ERROR
-        }), HTTPStatus.INTERNAL_SERVER_ERROR
+        }
+    )
 
 
 @tasks_bp.route("/user", methods=["GET"])
 @jwt_required()
-def get_user_tasks_route():
+@require_user
+@handle_errors
+def get_user_tasks_route(user):
     """Получение списка задач пользователя."""
-    try:
-        user_email = get_jwt_identity()
-        user = get_user_by_email(user_email)
-        
-        if not user:
-            return jsonify({
-                "success": False,
-                "error": ErrorMessages.USER_NOT_FOUND
-            }), HTTPStatus.NOT_FOUND
-        
-        limit = request.args.get("limit", type=int, default=50)
-        tasks = get_user_tasks(user["id"], limit=limit)
-        
-        return jsonify({
-            "success": True,
-            "tasks": tasks
-        }), HTTPStatus.OK
-        
-    except Exception as e:
-        logger.error(f"Ошибка при получении задач пользователя: {e}", exc_info=True)
-        return jsonify({
-            "success": False,
-            "error": ErrorMessages.INTERNAL_ERROR
-        }), HTTPStatus.INTERNAL_SERVER_ERROR
+    limit = request.args.get("limit", type=int, default=50)
+    tasks = get_user_tasks(user["id"], limit=limit)
+    
+    return success_response(data={"tasks": tasks})
 
 
 @tasks_bp.route("/<int:task_id>/cancel", methods=["POST"])
 @jwt_required()
-def cancel_task_route(task_id: int):
+@require_user
+@handle_errors
+def cancel_task_route(task_id: int, user):
     """Отмена задачи."""
-    try:
-        user_email = get_jwt_identity()
-        user = get_user_by_email(user_email)
-        
-        if not user:
-            return jsonify({
-                "success": False,
-                "error": ErrorMessages.USER_NOT_FOUND
-            }), HTTPStatus.NOT_FOUND
-        
-        success = cancel_task(task_id, user["id"])
-        
-        if not success:
-            return jsonify({
-                "success": False,
-                "error": "Не удалось отменить задачу"
-            }), HTTPStatus.BAD_REQUEST
-        
-        return jsonify({
-            "success": True,
-            "message": "Задача отменена"
-        }), HTTPStatus.OK
-        
-    except Exception as e:
-        logger.error(f"Ошибка при отмене задачи {task_id}: {e}", exc_info=True)
-        return jsonify({
-            "success": False,
-            "error": ErrorMessages.INTERNAL_ERROR
-        }), HTTPStatus.INTERNAL_SERVER_ERROR
+    success = cancel_task(task_id, user["id"])
+    
+    if not success:
+        return error_response(
+            "Не удалось отменить задачу",
+            status_code=HTTPStatus.BAD_REQUEST
+        )
+    
+    return success_response(message="Задача отменена")

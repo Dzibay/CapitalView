@@ -52,7 +52,7 @@ def register_blueprints(app):
     from app.routes.assets_routes import assets_bp
     from app.routes.transaction_routes import transactions_bp
     from app.routes.operations_routes import operations_bp
-    from app.routes.analitics_routes import analytics_bp
+    from app.routes.analytics_routes import analytics_bp
     from app.routes.tasks_routes import tasks_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
@@ -61,5 +61,5 @@ def register_blueprints(app):
     app.register_blueprint(assets_bp, url_prefix="/api/assets")
     app.register_blueprint(transactions_bp, url_prefix="/api/transactions")
     app.register_blueprint(operations_bp, url_prefix="/api/operations")
-    app.register_blueprint(analytics_bp, url_prefix="/api/analitics")
+    app.register_blueprint(analytics_bp, url_prefix="/api/analytics")
     app.register_blueprint(tasks_bp, url_prefix="/api/tasks")
