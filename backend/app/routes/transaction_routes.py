@@ -53,23 +53,23 @@ async def add_transaction_route(
     """Создание новой транзакции."""
     logger.info(f"Получен запрос на создание транзакции: {data.model_dump()}")
 
-        # Преобразуем transaction_date в строку, если это datetime
-        transaction_date_str = data.transaction_date
-        if isinstance(transaction_date_str, datetime):
-            transaction_date_str = transaction_date_str.isoformat()
-        elif isinstance(transaction_date_str, str) and 'T' not in transaction_date_str:
-            # Если дата в формате YYYY-MM-DD, добавляем время
-            transaction_date_str = f"{transaction_date_str}T00:00:00"
-        
-        tx_id = create_transaction(
-            user_id=user["id"],
-            portfolio_asset_id=data.portfolio_asset_id,
-            asset_id=data.asset_id,
-        transaction_type=data.transaction_type,
-            quantity=data.quantity,
-            price=data.price,
-            transaction_date=transaction_date_str,
-        )
+    # Преобразуем transaction_date в строку, если это datetime
+    transaction_date_str = data.transaction_date
+    if isinstance(transaction_date_str, datetime):
+        transaction_date_str = transaction_date_str.isoformat()
+    elif isinstance(transaction_date_str, str) and 'T' not in transaction_date_str:
+        # Если дата в формате YYYY-MM-DD, добавляем время
+        transaction_date_str = f"{transaction_date_str}T00:00:00"
+    
+    tx_id = create_transaction(
+        user_id=user["id"],
+        portfolio_asset_id=data.portfolio_asset_id,
+        asset_id=data.asset_id,
+    transaction_type=data.transaction_type,
+        quantity=data.quantity,
+        price=data.price,
+        transaction_date=transaction_date_str,
+    )
 
     return success_response(
         data={"transaction_id": tx_id},
@@ -90,22 +90,22 @@ async def update_transaction_route(
     user: dict = Depends(get_current_user)
 ):
     """Обновление транзакции."""
-        if not transaction_id:
+    if not transaction_id:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="transaction_id is required"
         )
 
-        tx_id = update_transaction(
-            transaction_id=transaction_id,
-            user_id=user["id"],
-        portfolio_asset_id=portfolio_asset_id,
-        asset_id=asset_id,
-        transaction_type=transaction_type,
-        quantity=quantity,
-        price=price,
-        transaction_date=transaction_date,
-        )
+    tx_id = update_transaction(
+        transaction_id=transaction_id,
+        user_id=user["id"],
+    portfolio_asset_id=portfolio_asset_id,
+    asset_id=asset_id,
+    transaction_type=transaction_type,
+    quantity=quantity,
+    price=price,
+    transaction_date=transaction_date,
+    )
 
     return success_response(
         data={"transaction_id": tx_id},
@@ -127,9 +127,9 @@ async def delete_transactions_route(
             detail="ids must be a non-empty array"
         )
         
-        # Удаляем каждую транзакцию
-        deleted_count = 0
-        errors = []
+    # Удаляем каждую транзакцию
+    deleted_count = 0
+    errors = []
         
     for tx_id in ids:
             try:
@@ -139,7 +139,7 @@ async def delete_transactions_route(
                 errors.append(f"Транзакция {tx_id}: {str(e)}")
                 logger.warning(f"Ошибка при удалении транзакции {tx_id}: {e}")
         
-        if deleted_count == 0:
+    if deleted_count == 0:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="Не удалось удалить транзакции"

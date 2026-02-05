@@ -1,20 +1,11 @@
-import logging
 import os
 import time
 from app.extensions import supabase as _supabase_global, init_extensions
 from app.config import Config
+from app.core.logging import get_logger
+from app.core.exceptions import DatabaseError
 
-# Настройка логирования
-logger = logging.getLogger(__name__)
-LOG_LEVEL = os.getenv("SUPABASE_LOG_LEVEL", "WARNING").upper()
-logger.setLevel(getattr(logging, LOG_LEVEL, logging.WARNING))
-
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(
-        logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    )
-    logger.addHandler(handler)
+logger = get_logger(__name__)
 
 # Конфигурация повторных попыток
 MAX_RETRIES = 5
