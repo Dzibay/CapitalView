@@ -2,12 +2,46 @@ import asyncio
 import aiohttp
 import json
 import pytz
+import logging
+import os
 from datetime import datetime, timedelta, time, date
 
 from tqdm.asyncio import tqdm_asyncio
 
-from app.services import supabase_service
-from app.supabase_data.moex_utils import get_price_moex_history, get_price_moex
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+
+from app.services.supabase_async import (
+    db_select,
+    db_insert,
+    db_upsert,
+    db_update,
+    db_delete,
+    db_refresh_view,
+    db_rpc
+)
+from app.supabase_data.moex_utils import (
+    create_moex_session,
+    get_price_moex_history,
+    get_price_moex,
+    normalize_date,
+    format_date
+)
+
+# Настройка логирования
+LOG_LEVEL = os.getenv("MOEX_LOG_LEVEL", "INFO").upper()
+logger = logging.getLogger(__name__)
+logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    )
+    logger.addHandler(handler)
 
 # -----------------------------
 # ПАРАЛЛЕЛИЗМ
@@ -18,29 +52,7 @@ sem = asyncio.Semaphore(MAX_PARALLEL)
 MSK_TZ = pytz.timezone("Europe/Moscow")
 
 
-# -----------------------------
-# ASYNC WRAPPERS
-# -----------------------------
-async def db_select(*args, **kwargs):
-    return await asyncio.to_thread(supabase_service.table_select, *args, **kwargs)
-
-async def db_insert(*args, **kwargs):
-    return await asyncio.to_thread(supabase_service.table_insert, *args, **kwargs)
-
-async def db_upsert(*args, **kwargs):
-    return await asyncio.to_thread(supabase_service.table_upsert, *args, **kwargs)
-
-async def db_update(*args, **kwargs):
-    return await asyncio.to_thread(supabase_service.table_update, *args, **kwargs)
-
-async def db_delete(*args, **kwargs):
-    return await asyncio.to_thread(supabase_service.table_delete, *args, **kwargs)
-
-async def db_refresh_view(name: str):
-    return await asyncio.to_thread(supabase_service.refresh_materialized_view, name)
-
-async def db_rpc(*args, **kwargs):
-    return await asyncio.to_thread(supabase_service.rpc, *args, **kwargs)
+# Обертки импортированы из app.services.supabase_async
 
 
 # ======================================================
@@ -76,22 +88,27 @@ async def fetch_all_last_prices():
 # ======================================================
 async def get_last_price_date(asset_id: int) -> str:
     """Возвращает последнюю известную дату цены актива или None."""
-    last_price = await db_select(
-        "asset_prices",
-        select="trade_date",
-        filters={"asset_id": asset_id},
-        order={"column": "trade_date", "desc": True},
-        limit=1
-    )
-    if last_price and last_price[0].get("trade_date"):
-        # Преобразуем в строку формата YYYY-MM-DD
-        trade_date = last_price[0]["trade_date"]
-        if isinstance(trade_date, str):
-            return trade_date[:10]  # Берем только дату
-        elif hasattr(trade_date, 'date'):
-            return trade_date.date().isoformat()
-        else:
-            return str(trade_date)[:10]
+    try:
+        last_price = await db_select(
+            "asset_prices",
+            select="trade_date",
+            filters={"asset_id": asset_id},
+            order={"column": "trade_date", "desc": True},
+            limit=1
+        )
+        if last_price and len(last_price) > 0 and last_price[0].get("trade_date"):
+            # Преобразуем в строку формата YYYY-MM-DD
+            trade_date = last_price[0]["trade_date"]
+            if isinstance(trade_date, str):
+                return trade_date[:10]  # Берем только дату
+            elif hasattr(trade_date, 'date'):
+                return trade_date.date().isoformat()
+            else:
+                return str(trade_date)[:10]
+    except Exception as e:
+        # Тихая обработка ошибок - просто возвращаем None
+        # Это не критично, так как скрипт продолжит работу без последней даты
+        pass
     return None
 
 
@@ -115,35 +132,37 @@ async def update_asset_history(session, asset, last_date_map: dict):
             last_date_map[asset_id] = last_date
 
     async with sem:
-        # Получаем историю цен
-        prices = await get_price_moex_history(session, ticker)
+        # Получаем историю цен с повторными попытками
+        try:
+            logger.debug(f"Запрос истории цен для {ticker}")
+            prices = await get_price_moex_history(session, ticker)
+            logger.debug(f"Получено {len(prices)} цен для {ticker}")
+            # Небольшая задержка между запросами для снижения нагрузки на MOEX
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            logger.error(f"Ошибка получения истории для {ticker}: {type(e).__name__}: {e}")
+            print(f"⚠️ Ошибка получения истории для {ticker}: {e}")
+            return False, None
 
     if not prices:
+        logger.debug(f"Нет цен для {ticker}")
         return False, None
 
-    # Фильтруем цены: берем только те, что после последней известной даты
+    # Фильтруем цены: берем только те, что после последней известной даты (оптимизировано)
     if last_date:
         # Преобразуем last_date в date для сравнения
-        try:
-            if isinstance(last_date, str):
-                last_dt = datetime.strptime(last_date[:10], "%Y-%m-%d").date()
-            elif isinstance(last_date, date):
-                last_dt = last_date
-            else:
-                last_dt = datetime.strptime(str(last_date)[:10], "%Y-%m-%d").date()
-            
+        last_dt = normalize_date(last_date)
+        if last_dt:
             # Фильтруем только новые цены (строго больше, чтобы не дублировать последнюю)
             new_prices = []
             for trade_date, close_price in prices:
                 try:
-                    price_date = datetime.strptime(trade_date[:10], "%Y-%m-%d").date()
-                    if price_date > last_dt:
+                    price_date = normalize_date(trade_date)
+                    if price_date and price_date > last_dt:
                         new_prices.append((trade_date, close_price))
                 except (ValueError, AttributeError):
-                    # Если ошибка парсинга, пропускаем эту цену
                     continue
-        except (ValueError, AttributeError, TypeError):
-            # Если ошибка парсинга last_date, берем все цены
+        else:
             new_prices = prices
     else:
         # Если нет последней даты, берем все цены (первое обновление)
@@ -151,10 +170,14 @@ async def update_asset_history(session, asset, last_date_map: dict):
 
     if not new_prices:
         # Нет новых цен для обновления
+        logger.debug(f"Нет новых цен для {ticker}")
         return True, None
+
+    logger.info(f"Найдено {len(new_prices)} новых цен для {ticker}")
 
     # Находим минимальную дату обновления
     min_date = min(trade_date[:10] for trade_date, _ in new_prices)
+    logger.debug(f"Минимальная дата обновления для {ticker}: {min_date}")
 
     # Вставка пачками (используем upsert для избежания дубликатов)
     batch = []
@@ -168,14 +191,18 @@ async def update_asset_history(session, asset, last_date_map: dict):
         })
 
         if len(batch) == 200:
+            logger.debug(f"Создание батча из 200 цен для {ticker}")
             tasks.append(db_rpc("upsert_asset_prices", {"p_prices": batch.copy()}))
             batch.clear()
 
     if batch:
+        logger.debug(f"Создание финального батча из {len(batch)} цен для {ticker}")
         tasks.append(db_rpc("upsert_asset_prices", {"p_prices": batch}))
 
     if tasks:
+        logger.debug(f"Вставка {len(tasks)} батчей для {ticker}")
         await asyncio.gather(*tasks)
+        logger.debug(f"Успешно вставлены все батчи для {ticker}")
 
     return True, min_date
 
@@ -257,27 +284,22 @@ async def update_history_prices():
         limit=100000  # Большой лимит для получения последних цен
     )
     
-    # Строим словарь последних дат
+    # Строим словарь последних дат (оптимизировано)
     last_date_map = {}
     for price in all_prices:
         asset_id = price.get("asset_id")
         if asset_id and asset_id not in last_date_map:
             trade_date = price.get("trade_date")
             if trade_date:
-                if isinstance(trade_date, str):
-                    last_date_map[asset_id] = trade_date[:10]
-                elif hasattr(trade_date, 'date'):
-                    last_date_map[asset_id] = trade_date.date().isoformat()
-                else:
-                    last_date_map[asset_id] = str(trade_date)[:10]
+                formatted = format_date(trade_date)
+                if formatted:
+                    last_date_map[asset_id] = formatted
 
     # Словарь для отслеживания обновленных активов и их минимальных дат
     updated_assets = {}  # {asset_id: min_date}
     updated_asset_ids = []
 
-    async with aiohttp.ClientSession(
-        connector=aiohttp.TCPConnector(limit=MAX_PARALLEL)
-    ) as session:
+    async with create_moex_session() as session:
 
         tasks = [update_asset_history(session, a, last_date_map) for a in assets]
         results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="История")
@@ -290,24 +312,31 @@ async def update_history_prices():
             updated_asset_ids.append(asset_id)
 
     ok = sum(1 for r, _ in results if r)
+    logger.info(f"Обновлено активов: {ok}/{len(assets)}, с новыми данными: {len(updated_assets)}")
     print(f"✅ Обновлено активов: {ok}/{len(assets)}, с новыми данными: {len(updated_assets)}")
 
     if not updated_asset_ids:
+        logger.info("Нет новых данных для обновления")
         print("ℹ️ Нет новых данных для обновления")
         return ok
 
     # 1. Обновляем таблицу asset_latest_prices_full батчами
+    logger.info(f"Обновление цен для {len(updated_asset_ids)} активов батчами")
     print(f"🔄 Обновление цен для {len(updated_asset_ids)} активов...")
     batch_size = 500
     for i in range(0, len(updated_asset_ids), batch_size):
         batch_ids = updated_asset_ids[i:i + batch_size]
+        batch_num = i // batch_size + 1
+        logger.debug(f"Обработка батча {batch_num} ({len(batch_ids)} активов)")
         try:
             await db_rpc('update_asset_latest_prices_batch', {
                 'p_asset_ids': batch_ids
             })
+            logger.debug(f"Батч {batch_num} успешно обновлен")
             print(f"  ✅ Обновлено {min(i + batch_size, len(updated_asset_ids))}/{len(updated_asset_ids)} активов")
         except Exception as e:
-            print(f"  ⚠️ Ошибка при обновлении батча {i//batch_size + 1}: {e}")
+            logger.error(f"Ошибка при обновлении батча {batch_num}: {type(e).__name__}: {e}")
+            print(f"  ⚠️ Ошибка при обновлении батча {batch_num}: {e}")
             continue
 
     # 2. Получаем портфели с обновленными активами и минимальные даты
@@ -374,27 +403,39 @@ async def process_today_price(session, asset, today, trading, type_map, last_map
     ticker   = (asset.get("ticker") or "").upper().strip()
     props    = asset.get("properties") or {}
 
-    # только системные moex активы
-    if type_map.get(asset.get("asset_type_id"), True):
+    # только системные moex активы (пропускаем пользовательские)
+    asset_type_id = asset.get("asset_type_id")
+    if asset_type_id and type_map.get(asset_type_id, False):
         return None
     if props.get("source") != "moex":
         return None
     if not ticker:
         return None
 
-    # берем предварительно загруженную последнюю цену
+    # берем предварительно загруженную последнюю цену (оптимизировано)
     last = last_map.get(asset_id)
-    prev_price = last["price"] if last else None
-    prev_date  = last["trade_date"][:10] if last else None
+    prev_price = last.get("price") if last else None
+    prev_date = format_date(last.get("trade_date")) if last else None
 
     async with sem:
-        price = await get_price_moex(session, ticker)
+        try:
+            logger.debug(f"Запрос текущей цены для {ticker}")
+            price = await get_price_moex(session, ticker)
+            logger.debug(f"Получена цена для {ticker}: {price}")
+            # Небольшая задержка между запросами для снижения нагрузки на MOEX
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            logger.error(f"Ошибка получения цены для {ticker}: {type(e).__name__}: {e}")
+            print(f"⚠️ Ошибка получения цены для {ticker}: {e}")
+            return (ticker, "ошибка")
 
     if not price:
+        logger.debug(f"Нет цены для {ticker}")
         return (ticker, "нет данных")
 
     # анти-скачок
     if prev_price and abs(price - prev_price) / prev_price > 0.1:
+        logger.warning(f"Обнаружен скачок цены для {ticker}: {prev_price} -> {price} ({(abs(price - prev_price) / prev_price * 100):.1f}%)")
         return (ticker, "скачок")
 
     # выбираем дату для вставки
@@ -438,9 +479,7 @@ async def update_today_prices():
 
     updates_batch = []
 
-    async with aiohttp.ClientSession(
-        connector=aiohttp.TCPConnector(limit=MAX_PARALLEL)
-    ) as session:
+    async with create_moex_session() as session:
 
         tasks = [
             process_today_price(session, a, today, trading, type_map, last_map, now)

@@ -1,31 +1,28 @@
-from flask import Blueprint, request
-from flask_jwt_extended import jwt_required
+from fastapi import APIRouter, Query, Depends
 from app.services.operations_service import get_operations
-from app.constants import HTTPStatus
-from app.decorators import require_user, handle_errors
+from app.dependencies import get_current_user
 from app.utils.response_helpers import success_response
 from app.utils.date_utils import parse_date_range
+from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
-operations_bp = Blueprint("operations", __name__)
+router = APIRouter()
 
-@operations_bp.route("/", methods=["GET"])
-@jwt_required()
-@require_user
-@handle_errors
-def get_operations_route(user):
+
+@router.get("/")
+async def get_operations_route(
+    user: dict = Depends(get_current_user),
+    portfolio_id: Optional[int] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    limit: int = Query(1000, ge=1)
+):
     """Получение списка операций пользователя."""
-    # Парсинг query параметров
-    portfolio_id = request.args.get("portfolio_id", type=int)
-    start_date_str = request.args.get("start_date")
-    end_date_str = request.args.get("end_date")
-    limit = request.args.get("limit", type=int, default=1000)
-
     # Используем единую утилиту для парсинга дат
-    start_date, end_date = parse_date_range(start_date_str, end_date_str)
+    start_date_parsed, end_date_parsed = parse_date_range(start_date, end_date)
 
-    data = get_operations(user["id"], portfolio_id, start_date, end_date, limit)
+    data = get_operations(user["id"], portfolio_id, start_date_parsed, end_date_parsed, limit)
 
     return success_response(data={"operations": data})

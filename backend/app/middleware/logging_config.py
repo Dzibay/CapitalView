@@ -1,33 +1,37 @@
 """
-Настройка логирования для приложения.
+Настройка логирования для FastAPI приложения.
 """
 import logging
 import sys
 from app.config import Config
 
 
-def setup_logging(app):
-    """Настраивает логирование для приложения."""
-    # Устанавливаем уровень логирования
-    log_level = getattr(logging, Config.LOG_LEVEL.upper(), logging.INFO)
+def setup_logging(app=None):
+    """
+    Настраивает логирование для приложения.
     
+    Args:
+        app: Не используется (оставлен для совместимости)
+    """
     # Настройка формата логов
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     date_format = "%Y-%m-%d %H:%M:%S"
     
-    # Настройка обработчика для консоли
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(log_level)
-    console_handler.setFormatter(logging.Formatter(log_format, date_format))
+    # Настройка уровня логирования
+    log_level = getattr(Config, "LOG_LEVEL", "INFO")
     
-    # Настройка корневого логгера
-    root_logger = logging.getLogger()
-    root_logger.setLevel(log_level)
-    root_logger.addHandler(console_handler)
+    # Настройка root logger
+    logging.basicConfig(
+        level=getattr(logging, log_level.upper()),
+        format=log_format,
+        datefmt=date_format,
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
     
-    # Настройка логгера Flask
-    app.logger.setLevel(log_level)
-    app.logger.addHandler(console_handler)
+    # Настройка уровня для uvicorn (если используется FastAPI)
+    logging.getLogger("uvicorn").setLevel(logging.INFO)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     
     return app
-

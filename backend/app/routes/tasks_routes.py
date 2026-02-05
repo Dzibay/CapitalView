@@ -1,8 +1,7 @@
 """
 Роуты для работы с задачами импорта портфелей.
 """
-from flask import Blueprint, request
-from flask_jwt_extended import jwt_required
+from fastapi import APIRouter, Query, HTTPException, Depends
 from app.services.task_service import (
     create_import_task,
     get_task,
@@ -11,54 +10,65 @@ from app.services.task_service import (
     update_task_status,
     TaskStatus
 )
-from app.models.task_models import CreateImportTaskRequest, TaskResponse, TaskStatusResponse
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
-from app.decorators import require_user, handle_errors, validate_json_body
-from app.utils.response_helpers import success_response, error_response, not_found_response, forbidden_response
-from pydantic import ValidationError
+from app.dependencies import get_current_user
+from app.utils.response_helpers import success_response
+from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
-tasks_bp = Blueprint("tasks", __name__)
+router = APIRouter()
 
 
-@tasks_bp.route("/<int:task_id>", methods=["GET"])
-@jwt_required()
-@require_user
-@handle_errors
-def get_task_route(task_id: int, user):
+@router.get("/{task_id}")
+async def get_task_route(
+    task_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Получение информации о задаче."""
     task = get_task(task_id)
     
     if not task:
-        return not_found_response("Задача")
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail="Задача не найдена"
+        )
     
     # Проверяем права доступа (сравниваем UUID как строки)
     task_user_id = str(task["user_id"]) if task.get("user_id") else None
     user_id = str(user["id"]) if user.get("id") else None
     if task_user_id != user_id:
-        return forbidden_response("Доступ запрещен")
+        raise HTTPException(
+            status_code=HTTPStatus.FORBIDDEN,
+            detail="Доступ запрещен"
+        )
     
     return success_response(data={"task": task})
 
 
-@tasks_bp.route("/<int:task_id>/status", methods=["GET"])
-@jwt_required()
-@require_user
-@handle_errors
-def get_task_status_route(task_id: int, user):
+@router.get("/{task_id}/status")
+async def get_task_status_route(
+    task_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Получение статуса задачи (упрощенный endpoint для polling)."""
     task = get_task(task_id)
     
     if not task:
-        return not_found_response("Задача")
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail="Задача не найдена"
+        )
     
     # Проверяем права доступа (сравниваем UUID как строки)
     task_user_id = str(task["user_id"]) if task.get("user_id") else None
     user_id = str(user["id"]) if user.get("id") else None
     if task_user_id != user_id:
-        return forbidden_response("Доступ запрещен")
+        raise HTTPException(
+            status_code=HTTPStatus.FORBIDDEN,
+            detail="Доступ запрещен"
+        )
     
     return success_response(
         data={
@@ -72,30 +82,29 @@ def get_task_status_route(task_id: int, user):
     )
 
 
-@tasks_bp.route("/user", methods=["GET"])
-@jwt_required()
-@require_user
-@handle_errors
-def get_user_tasks_route(user):
+@router.get("/user/list")
+async def get_user_tasks_route(
+    user: dict = Depends(get_current_user),
+    limit: int = Query(50, ge=1)
+):
     """Получение списка задач пользователя."""
-    limit = request.args.get("limit", type=int, default=50)
     tasks = get_user_tasks(user["id"], limit=limit)
     
     return success_response(data={"tasks": tasks})
 
 
-@tasks_bp.route("/<int:task_id>/cancel", methods=["POST"])
-@jwt_required()
-@require_user
-@handle_errors
-def cancel_task_route(task_id: int, user):
+@router.post("/{task_id}/cancel")
+async def cancel_task_route(
+    task_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Отмена задачи."""
     success = cancel_task(task_id, user["id"])
     
     if not success:
-        return error_response(
-            "Не удалось отменить задачу",
-            status_code=HTTPStatus.BAD_REQUEST
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail="Не удалось отменить задачу"
         )
     
     return success_response(message="Задача отменена")

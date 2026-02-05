@@ -1,53 +1,40 @@
 import asyncio
-import aiohttp
-from app.services.supabase_service import table_select, table_insert, table_update
+import logging
+import os
+from app.services.supabase_async import db_select, db_insert, db_update
 from tqdm.asyncio import tqdm_asyncio
-from datetime import date, datetime
+from app.supabase_data.moex_utils import (
+    create_moex_session,
+    fetch_json,
+    normalize_date,
+    format_date
+)
+
+# Настройка логирования
+LOG_LEVEL = os.getenv("MOEX_LOG_LEVEL", "INFO").upper()
+logger = logging.getLogger(__name__)
+logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    )
+    logger.addHandler(handler)
 
 MOEX_BONDIZATION_URL = "https://iss.moex.com/iss/securities/{ticker}/bondization.json"
 MOEX_COUPONS_URL = "https://iss.moex.com/iss/securities/{ticker}/coupons.json"
-
-
-# ===================================================
-# 📡 ВСПОМОГАТЕЛЬНЫЕ АСИНХРОННЫЕ ФУНКЦИИ
-# ===================================================
-
-async def fetch_json(session, url):
-    """Асинхронный запрос JSON"""
-    try:
-        async with session.get(url, timeout=10) as resp:
-            if resp.status != 200:
-                print(f"⚠️ Ошибка {resp.status}: {url}")
-                return None
-            return await resp.json()
-    except Exception as e:
-        print(f"❌ Ошибка при запросе {url}: {e}")
-        return None
-
-def normalize_date(d):
-    """Превращает строку или datetime в объект date для корректного сравнения"""
-    if not d:
-        return None
-    if isinstance(d, date) and not isinstance(d, datetime):
-        return d
-    if isinstance(d, datetime):
-        return d.date()
-    if isinstance(d, str):
-        try:
-            # Отрезаем время, если оно есть (2023-01-01T00:00:00 -> 2023-01-01)
-            return datetime.fromisoformat(d.split('T')[0]).date()
-        except ValueError:
-            return None
-    return None
 
 # ===================================================
 # 📊 ПОЛУЧЕНИЕ ДАННЫХ С MOEX (Только облигации)
 # ===================================================
 
 async def fetch_bond_payouts_from_moex(session, ticker: str):
+    logger.debug(f"Получение выплат по облигации {ticker}")
     url = MOEX_BONDIZATION_URL.format(ticker=ticker)
     data = await fetch_json(session, url)
     if not data:
+        logger.warning(f"Нет данных о выплатах для {ticker}")
         return []
 
     results = []
@@ -55,7 +42,9 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
     # --- Купоны ---
     if "coupons" in data and "data" in data["coupons"]:
         cols = data["coupons"]["columns"]
-        for row in data["coupons"]["data"]:
+        coupons_data = data["coupons"]["data"]
+        logger.debug(f"Найдено {len(coupons_data)} купонов для {ticker}")
+        for row in coupons_data:
             rec = dict(zip(cols, row))
             results.append({
                 "record_date": rec.get("recorddate"),
@@ -68,7 +57,9 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
     # --- Амортизации ---
     if "amortizations" in data and "data" in data["amortizations"]:
         cols = data["amortizations"]["columns"]
-        for row in data["amortizations"]["data"]:
+        amort_data = data["amortizations"]["data"]
+        logger.debug(f"Найдено {len(amort_data)} амортизаций для {ticker}")
+        for row in amort_data:
             rec = dict(zip(cols, row))
             results.append({
                 "record_date": rec.get("amortdate"),
@@ -78,19 +69,23 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
                 "type": "amortization"  # Тип выплаты
             })
 
+    logger.debug(f"Всего выплат для {ticker}: {len(results)}")
     return results
 
 
 async def fetch_bond_meta_from_coupons(session, ticker: str):
+    logger.debug(f"Получение метаданных облигации {ticker}")
     url = MOEX_COUPONS_URL.format(ticker=ticker)
     data = await fetch_json(session, url)
     if not data or "description" not in data or "data" not in data["description"]:
+        logger.warning(f"Нет метаданных для {ticker}")
         return {}
 
     desc = data["description"]["data"]
     meta = {row[0]: row[2] for row in desc if len(row) >= 3}
+    logger.debug(f"Метаданные для {ticker}: {len(meta)} полей")
 
-    return {
+    result = {
         "coupon_percent": float(meta.get("COUPONPERCENT", 0)) if meta.get("COUPONPERCENT") else None,
         "coupon_value": float(meta.get("COUPONVALUE", 0)) if meta.get("COUPONVALUE") else None,
         "coupon_frequency": int(meta.get("COUPONFREQUENCY", 0)) if meta.get("COUPONFREQUENCY") else None,
@@ -98,6 +93,8 @@ async def fetch_bond_meta_from_coupons(session, ticker: str):
         "currency": meta.get("FACEUNIT", "RUB"),
         "mat_date": meta.get("MATDATE"),
     }
+    logger.debug(f"Метаданные {ticker}: coupon_percent={result['coupon_percent']}, face_value={result['face_value']}")
+    return result
 
 # ===================================================
 # 🧠 ОБНОВЛЕНИЕ В БД
@@ -106,23 +103,31 @@ async def fetch_bond_meta_from_coupons(session, ticker: str):
 async def update_asset_payouts(session, asset):
     asset_id = asset["id"]
     ticker = asset["ticker"]
+    logger.debug(f"Обновление выплат для актива {ticker} (ID: {asset_id})")
 
-    atype = await asyncio.to_thread(table_select, "asset_types", select="name", filters={"id": asset["asset_type_id"]})
+    atype = await db_select("asset_types", select="name", filters={"id": asset["asset_type_id"]})
     type_name = (atype[0]["name"].lower() if atype else "").strip()
 
     # --- Проверка типа актива: работаем только с облигациями ---
     if "bond" not in type_name and "облига" not in type_name:
+        logger.debug(f"Пропуск {ticker}: не облигация (тип: {type_name})")
         return
 
-    # --- Получаем выплаты и метаданные ---
-    payouts = await fetch_bond_payouts_from_moex(session, ticker)
-    meta = await fetch_bond_meta_from_coupons(session, ticker)
+    # --- Получаем выплаты и метаданные параллельно (оптимизировано) ---
+    logger.debug(f"Параллельная загрузка выплат и метаданных для {ticker}")
+    payouts_task = fetch_bond_payouts_from_moex(session, ticker)
+    meta_task = fetch_bond_meta_from_coupons(session, ticker)
+    payouts, meta = await asyncio.gather(payouts_task, meta_task)
 
     if not payouts:
+        logger.debug(f"Нет выплат для {ticker}")
         return
 
+    logger.debug(f"Получено {len(payouts)} выплат для {ticker}")
+
     # --- Получаем существующие записи ---
-    existing = await asyncio.to_thread(table_select, "asset_payouts", filters={"asset_id": asset_id})
+    logger.debug(f"Загрузка существующих выплат для {ticker} из БД")
+    existing = await db_select("asset_payouts", filters={"asset_id": asset_id})
     
     # Формируем множество ключей: (Дата, Сумма, Тип)
     existing_keys = set()
@@ -133,7 +138,8 @@ async def update_asset_payouts(session, asset):
         if d:
             existing_keys.add((d, val, p_type))
 
-    # --- Фильтрация и вставка ---
+    # --- Фильтрация и батчевая вставка (оптимизировано) ---
+    payouts_to_insert = []
     for p in payouts:
         if not p["record_date"] or not p["value"]:
             continue
@@ -151,27 +157,42 @@ async def update_asset_payouts(session, asset):
         if key in existing_keys:
             continue
 
-        payout_data = {
+        # Нормализуем payment_date
+        payment_date = normalize_date(p.get("payment_date"))
+        
+        payouts_to_insert.append({
             "asset_id": asset_id,
-            "type": p["type"],  # <--- Добавлено поле типа выплаты
+            "type": p["type"],
             "value": p["value"],
             "dividend_yield": meta.get('coupon_percent'), 
             "last_buy_date": None,
-            "record_date": p_date.isoformat(), 
-            "payment_date": p.get("payment_date")
-        }
-
+            "record_date": format_date(p_date),
+            "payment_date": format_date(payment_date)
+        })
+    
+    # Батчевая вставка (вместо по одной записи)
+    if payouts_to_insert:
+        logger.info(f"Вставка {len(payouts_to_insert)} выплат для {ticker} батчем")
         try:
-            await asyncio.to_thread(table_insert, "asset_payouts", payout_data)
+            await db_insert("asset_payouts", payouts_to_insert)
+            logger.debug(f"Успешно вставлено {len(payouts_to_insert)} выплат для {ticker}")
         except Exception as e:
-            # print(f"Ошибка вставки для {ticker}: {e}")
-            pass
+            logger.warning(f"Ошибка батчевой вставки для {ticker}: {e}, пробуем по одной")
+            # Если батч не прошел, пробуем по одной (fallback)
+            inserted_count = 0
+            for payout_data in payouts_to_insert:
+                try:
+                    await db_insert("asset_payouts", payout_data)
+                    inserted_count += 1
+                except Exception as inner_e:
+                    logger.debug(f"Пропуск дубликата выплаты для {ticker}: {inner_e}")
+            logger.info(f"Вставлено {inserted_count}/{len(payouts_to_insert)} выплат для {ticker} по одной")
 
     # --- Обновляем свойства облигации ---
     if meta:
         props = asset.get("properties") or {}
         props.update(meta)
-        await asyncio.to_thread(table_update, "assets", {"properties": props}, {"id": asset_id})
+        await db_update("assets", {"properties": props}, {"id": asset_id})
 
 
 # ===================================================
@@ -179,19 +200,25 @@ async def update_asset_payouts(session, asset):
 # ===================================================
 
 async def update_all_moex_assets():
+    logger.info("Начало обновления выплат по облигациям MOEX")
     # Загружаем активы
-    assets = await asyncio.to_thread(table_select, "assets")
+    logger.debug("Загрузка активов из БД")
+    assets = await db_select("assets")
     moex_assets = [
         a for a in assets
         if a.get("properties") and a["properties"].get("source") == "moex"
     ]
+    logger.info(f"Найдено {len(moex_assets)} активов MOEX для обработки")
 
     if not moex_assets:
+        logger.warning("Нет активов MOEX для обработки")
         return
 
-    async with aiohttp.ClientSession() as session:
+    async with create_moex_session() as session:
+        logger.debug(f"Запуск обработки {len(moex_assets)} активов")
         tasks = [update_asset_payouts(session, a) for a in moex_assets]
         await tqdm_asyncio.gather(*tasks, desc="MOEX обновление (облигации)", total=len(tasks))
+    logger.info("Обновление выплат по облигациям завершено")
 
 
 if __name__ == "__main__":

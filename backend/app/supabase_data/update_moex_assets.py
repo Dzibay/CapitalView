@@ -1,6 +1,20 @@
 import asyncio
-import aiohttp
-from app.services.supabase_service import table_select, table_insert, table_update
+import logging
+import os
+from app.services.supabase_async import table_select_async, table_insert_async, table_update_async
+from app.supabase_data.moex_utils import create_moex_session, fetch_json
+
+# Настройка логирования
+LOG_LEVEL = os.getenv("MOEX_LOG_LEVEL", "INFO").upper()
+logger = logging.getLogger(__name__)
+logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    )
+    logger.addHandler(handler)
 
 
 MOEX_ENDPOINTS = {
@@ -15,12 +29,6 @@ MOEX_ENDPOINTS = {
 }
 
 
-async def fetch_json(session, url):
-    async with session.get(url, timeout=10) as resp:
-        resp.raise_for_status()
-        return await resp.json()
-
-
 async def upsert_asset(asset, existing_assets):
     """
     Обновляет актив если он существует, иначе создаёт.
@@ -31,6 +39,7 @@ async def upsert_asset(asset, existing_assets):
     if existing:
         # == UPDATE ==
         asset_id = existing["id"]
+        logger.debug(f"Обновление актива {ticker} (ID: {asset_id})")
 
         update_data = {
             "asset_type_id": asset["asset_type_id"],
@@ -39,21 +48,37 @@ async def upsert_asset(asset, existing_assets):
             "quote_asset_id": asset["quote_asset_id"],
         }
 
-        await asyncio.to_thread(table_update, "assets", update_data, {"id": asset_id})
+        await table_update_async("assets", update_data, {"id": asset_id})
+        logger.debug(f"Актив {ticker} обновлен")
         return "updated"
 
     else:
         # == INSERT ==
-        await asyncio.to_thread(table_insert, "assets", asset)
+        logger.debug(f"Создание нового актива {ticker}")
+        await table_insert_async("assets", asset)
+        logger.debug(f"Актив {ticker} создан")
         return "inserted"
 
 
 async def process_group(session, url, type_name, existing_assets, type_map):
+    logger.info(f"Обработка группы: {type_name}")
     print(f"\n🔹 Группа: {type_name}")
 
     js = await fetch_json(session, url)
-    cols = js["securities"]["columns"]
-    rows = js["securities"]["data"]
+    if not js or "securities" not in js:
+        logger.warning(f"Нет данных для группы {type_name} из {url}")
+        print(f"   ⚠️ Нет данных для группы {type_name}")
+        return 0, 0
+    
+    cols = js["securities"].get("columns", [])
+    rows = js["securities"].get("data", [])
+    
+    if not cols or not rows:
+        logger.warning(f"Пустые данные для группы {type_name}: {len(cols)} колонок, {len(rows)} строк")
+        print(f"   ⚠️ Пустые данные для группы {type_name}")
+        return 0, 0
+    
+    logger.info(f"Обработка {len(rows)} активов группы {type_name}")
 
     # Индексы необходимых полей
     i_SECID      = cols.index("SECID")
@@ -97,8 +122,15 @@ async def process_group(session, url, type_name, existing_assets, type_map):
                 "coupon_frequency": None,
             })
 
+        # Проверяем наличие типа в type_map
+        asset_type_id = type_map.get(type_name)
+        if not asset_type_id:
+            logger.warning(f"Неизвестный тип актива: {type_name}, пропускаем {ticker}")
+            print(f"   ⚠️ Неизвестный тип актива: {type_name}, пропускаем {ticker}")
+            continue
+        
         asset = {
-            "asset_type_id": type_map[type_name],
+            "asset_type_id": asset_type_id,
             "user_id": None,
             "name": name,
             "ticker": ticker,
@@ -120,15 +152,19 @@ async def process_group(session, url, type_name, existing_assets, type_map):
 
 
 async def import_moex_assets_async():
+    logger.info("Начало импорта и обновления активов MOEX")
     print("📥 Асинхронный импорт и обновление активов MOEX...\n")
 
     type_map = {"Акция": 1, "Облигация": 2, "Фонд": 10, "Валюта": 7, "Фьючерс": 11}
+    logger.debug(f"Типы активов: {type_map}")
 
     # Загружаем существующие активы ОДИН РАЗ
-    raw = await asyncio.to_thread(table_select, "assets", "id, ticker")
+    logger.debug("Загрузка существующих активов из БД")
+    raw = await table_select_async("assets", "id, ticker")
     existing_assets = {a["ticker"].upper(): a for a in raw if a.get("ticker")}
+    logger.info(f"Загружено {len(existing_assets)} существующих активов")
 
-    async with aiohttp.ClientSession() as session:
+    async with create_moex_session() as session:
         tasks = [
             process_group(session, url, type_name, existing_assets, type_map)
             for url, type_name in [v for v in MOEX_ENDPOINTS.values()]
@@ -139,6 +175,7 @@ async def import_moex_assets_async():
     total_inserted = sum(r[0] for r in results)
     total_updated = sum(r[1] for r in results)
 
+    logger.info(f"Импорт завершен: добавлено {total_inserted}, обновлено {total_updated}")
     print(f"\n🎯 Готово!")
     print(f"   ➕ Всего добавлено: {total_inserted}")
     print(f"   ♻️ Всего обновлено: {total_updated}")

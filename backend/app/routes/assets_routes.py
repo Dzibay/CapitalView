@@ -1,6 +1,4 @@
-from flask import Blueprint, request
-from flask_jwt_extended import jwt_required
-from pydantic import ValidationError
+from fastapi import APIRouter, Query, HTTPException, Depends
 from app.services.assets_service import (
     delete_asset, create_asset, add_asset_price,
     get_asset_info, get_asset_price_history, get_portfolio_asset_info,
@@ -8,30 +6,29 @@ from app.services.assets_service import (
 )
 from app.models.asset_models import AddAssetPriceRequest, MoveAssetRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
-from app.decorators import require_user, handle_errors, validate_json_body
-from app.utils.response_helpers import success_response, error_response, not_found_response
+from app.dependencies import get_current_user
+from app.utils.response_helpers import success_response
+from typing import Optional, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
 
-assets_bp = Blueprint("assets", __name__)
+router = APIRouter()
 
-@assets_bp.route('/add', methods=['POST'])
-@jwt_required()
-@require_user
-@validate_json_body
-@handle_errors
-def create_asset_route(user):
+
+@router.post("/add", status_code=HTTPStatus.CREATED)
+async def create_asset_route(
+    data: Dict[str, Any],
+    user: dict = Depends(get_current_user)
+):
     """Создание нового актива."""
-    data = request.get_json()
-    
     res = create_asset(user["email"], data)
     
     # Проверяем результат из сервиса
     if res.get("success") is False:
-        return error_response(
-            res.get("error", "Ошибка при создании актива"),
-            status_code=HTTPStatus.BAD_REQUEST
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=res.get("error", "Ошибка при создании актива")
         )
     
     return success_response(
@@ -39,12 +36,13 @@ def create_asset_route(user):
         message="Актив успешно создан",
         status_code=HTTPStatus.CREATED
     )
-    
-@assets_bp.route('/<int:asset_id>', methods=['DELETE'])
-@jwt_required()
-@require_user
-@handle_errors
-def delete_asset_route(asset_id, user):
+
+
+@router.delete("/{asset_id}")
+async def delete_asset_route(
+    asset_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Удаление актива."""
     logger.debug(f"Попытка удаления актива (portfolio_asset_id): {asset_id}")
     
@@ -55,33 +53,21 @@ def delete_asset_route(asset_id, user):
         error_msg = res.get("error", "Неизвестная ошибка")
         logger.warning(f"Ошибка при удалении актива {asset_id}: {error_msg}")
         status_code = res.get("status_code", HTTPStatus.BAD_REQUEST)
-        return error_response(error_msg, status_code=status_code)
+        raise HTTPException(status_code=status_code, detail=error_msg)
     
     return success_response(
         data=res,
         message="Актив успешно удален"
     )
 
-@assets_bp.route('/add_price', methods=['POST'])
-@jwt_required()
-@require_user
-@validate_json_body
-@handle_errors
-def add_asset_price_route(user):
+
+@router.post("/add_price", status_code=HTTPStatus.CREATED)
+async def add_asset_price_route(
+    data: AddAssetPriceRequest,
+    user: dict = Depends(get_current_user)
+):
     """Добавление цены актива."""
-    json_data = request.get_json()
-    logger.debug(f"Получены данные для добавления цены: {json_data}")
-    
-    # Валидация входных данных
-    try:
-        data = AddAssetPriceRequest(**json_data)
-    except ValidationError as e:
-        logger.warning(f"Ошибка валидации при добавлении цены. Данные: {json_data}, Ошибки: {e.errors()}")
-        return error_response(
-            ErrorMessages.VALIDATION_ERROR,
-            details=e.errors(),
-            status_code=HTTPStatus.BAD_REQUEST
-        )
+    logger.debug(f"Получены данные для добавления цены: {data.model_dump()}")
     
     # Преобразуем дату в строку
     if hasattr(data.date, 'isoformat'):
@@ -102,9 +88,9 @@ def add_asset_price_route(user):
     # Проверяем результат из сервиса
     if res.get("success") is False:
         logger.warning(f"Ошибка при добавлении цены: {res.get('error')}")
-        return error_response(
-            res.get("error", "Ошибка при добавлении цены"),
-            status_code=HTTPStatus.BAD_REQUEST
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=res.get("error", "Ошибка при добавлении цены")
         )
     
     return success_response(
@@ -114,73 +100,69 @@ def add_asset_price_route(user):
     )
 
 
-@assets_bp.route('/<int:asset_id>', methods=['GET'])
-@jwt_required()
-@require_user
-@handle_errors
-def get_asset_info_route(asset_id, user):
+@router.get("/{asset_id}")
+async def get_asset_info_route(
+    asset_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Получение информации об активе."""
     result = get_asset_info(asset_id)
     
     if not result.get("success"):
         status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
-        return error_response(
-            result.get("error", "Ошибка при получении информации об активе"),
-            status_code=status_code
+        raise HTTPException(
+            status_code=status_code,
+            detail=result.get("error", "Ошибка при получении информации об активе")
         )
     
     return success_response(data=result)
 
 
-@assets_bp.route('/<int:asset_id>/prices', methods=['GET'])
-@jwt_required()
-@require_user
-@handle_errors
-def get_asset_price_history_route(asset_id, user):
+@router.get("/{asset_id}/prices")
+async def get_asset_price_history_route(
+    asset_id: int,
+    user: dict = Depends(get_current_user),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    limit: int = Query(1000, ge=1)
+):
     """Получение истории цен актива."""
-    start_date = request.args.get("start_date")
-    end_date = request.args.get("end_date")
-    limit = request.args.get("limit", type=int) or 1000
-    
     result = get_asset_price_history(asset_id, start_date, end_date, limit)
     
     if not result.get("success"):
-        return error_response(
-            result.get("error", "Ошибка при получении истории цен"),
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=result.get("error", "Ошибка при получении истории цен")
         )
     
     return success_response(data=result)
 
 
-@assets_bp.route('/portfolio/<int:portfolio_asset_id>', methods=['GET'])
-@jwt_required()
-@require_user
-@handle_errors
-def get_portfolio_asset_info_route(portfolio_asset_id, user):
+@router.get("/portfolio/{portfolio_asset_id}")
+async def get_portfolio_asset_info_route(
+    portfolio_asset_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Получение информации о портфельном активе."""
     result = get_portfolio_asset_info(portfolio_asset_id)
     
     if not result.get("success"):
         status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
-        return error_response(
-            result.get("error", "Ошибка при получении информации о портфельном активе"),
-            status_code=status_code
+        raise HTTPException(
+            status_code=status_code,
+            detail=result.get("error", "Ошибка при получении информации о портфельном активе")
         )
     
     return success_response(data=result)
 
 
-@assets_bp.route('/portfolio/<int:portfolio_asset_id>/move', methods=['POST'])
-@jwt_required()
-@require_user
-@validate_json_body
-@handle_errors
-def move_asset_route(portfolio_asset_id, user):
+@router.post("/portfolio/{portfolio_asset_id}/move")
+async def move_asset_route(
+    portfolio_asset_id: int,
+    data: MoveAssetRequest,
+    user: dict = Depends(get_current_user)
+):
     """Перемещение актива в другой портфель."""
-    # Валидация входных данных
-    data = MoveAssetRequest(**request.get_json())
-    
     # Перемещаем актив
     result = move_asset_to_portfolio(
         portfolio_asset_id=portfolio_asset_id,
@@ -200,7 +182,7 @@ def move_asset_route(portfolio_asset_id, user):
         else:
             status_code = HTTPStatus.BAD_REQUEST
         
-        return error_response(error, status_code=status_code)
+        raise HTTPException(status_code=status_code, detail=error)
     
     return success_response(
         data=result,

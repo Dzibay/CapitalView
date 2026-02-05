@@ -1,8 +1,7 @@
 """
 Helper функции для формирования стандартизированных ответов API.
-Устраняют дублирование структуры ответов.
+Работает с FastAPI (возвращает dict вместо tuple).
 """
-from flask import jsonify
 from typing import Optional, Dict, Any, Union
 from app.constants import HTTPStatus
 
@@ -11,17 +10,17 @@ def success_response(
     data: Optional[Union[Dict[str, Any], list, Any]] = None,
     message: Optional[str] = None,
     status_code: int = HTTPStatus.OK
-) -> tuple:
+) -> Dict[str, Any]:
     """
     Формирует успешный JSON ответ.
     
     Args:
         data: Данные для ответа (dict, list или любой другой тип)
         message: Сообщение об успехе
-        status_code: HTTP статус код
+        status_code: HTTP статус код (для FastAPI используется в status_code параметре route)
     
     Returns:
-        tuple: (jsonify response, status_code)
+        dict: Словарь с ответом
     
     Examples:
         # Простой ответ
@@ -35,13 +34,6 @@ def success_response(
             data={"portfolios": [...]},
             message="Портфели успешно получены"
         )
-        
-        # Ответ с кастомным статус кодом
-        return success_response(
-            data={"task_id": 123},
-            message="Задача создана",
-            status_code=HTTPStatus.CREATED
-        )
     """
     response = {"success": True}
     
@@ -54,43 +46,30 @@ def success_response(
             response.update(data)
         else:
             # Иначе добавляем как отдельное поле
-            # Определяем имя поля на основе типа данных
             if isinstance(data, list):
-                # Для списков используем множественное число от имени функции
-                # или просто "data"
                 response["data"] = data
             else:
                 response["data"] = data
     
-    return jsonify(response), status_code
+    return response
 
 
 def error_response(
     error: str,
     details: Optional[Union[str, list, dict]] = None,
     status_code: int = HTTPStatus.BAD_REQUEST
-) -> tuple:
+) -> Dict[str, Any]:
     """
     Формирует JSON ответ с ошибкой.
+    В FastAPI используется через HTTPException.
     
     Args:
         error: Сообщение об ошибке
-        details: Дополнительные детали ошибки (валидационные ошибки и т.д.)
+        details: Дополнительные детали ошибки
         status_code: HTTP статус код
     
     Returns:
-        tuple: (jsonify response, status_code)
-    
-    Examples:
-        # Простая ошибка
-        return error_response("Пользователь не найден", status_code=HTTPStatus.NOT_FOUND)
-        
-        # Ошибка с деталями валидации
-        return error_response(
-            "Ошибка валидации",
-            details=validation_errors,
-            status_code=HTTPStatus.BAD_REQUEST
-        )
+        dict: Словарь с ошибкой (но обычно используется HTTPException)
     """
     response = {
         "success": False,
@@ -100,18 +79,13 @@ def error_response(
     if details is not None:
         response["details"] = details
     
-    return jsonify(response), status_code
+    return response
 
 
-def not_found_response(resource: str = "Ресурс") -> tuple:
+def not_found_response(resource: str = "Ресурс") -> Dict[str, Any]:
     """
     Формирует стандартный ответ 404.
-    
-    Args:
-        resource: Название ресурса (например, "Портфель", "Актив")
-    
-    Returns:
-        tuple: (jsonify response, HTTPStatus.NOT_FOUND)
+    В FastAPI используется через HTTPException.
     """
     return error_response(
         error=f"{resource} не найден",
@@ -119,15 +93,10 @@ def not_found_response(resource: str = "Ресурс") -> tuple:
     )
 
 
-def forbidden_response(message: str = "Доступ запрещен") -> tuple:
+def forbidden_response(message: str = "Доступ запрещен") -> Dict[str, Any]:
     """
     Формирует стандартный ответ 403.
-    
-    Args:
-        message: Сообщение об ошибке
-    
-    Returns:
-        tuple: (jsonify response, HTTPStatus.FORBIDDEN)
+    В FastAPI используется через HTTPException.
     """
     return error_response(
         error=message,

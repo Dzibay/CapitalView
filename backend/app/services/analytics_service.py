@@ -1,7 +1,7 @@
 import asyncio
 from collections import defaultdict
 from copy import deepcopy
-from app.services.supabase_service import rpc, table_select
+from app.services.supabase_async import rpc_async, table_select_async
 
 async def get_user_portfolios_analytics(user_id: str):
     """
@@ -12,11 +12,11 @@ async def get_user_portfolios_analytics(user_id: str):
 
     try:
         # === 1️⃣ Берём аналитику по всем портфелям ===
-        result = await asyncio.to_thread(rpc, "get_user_portfolios_analytics", {"p_user_id": user_id})
+        result = await rpc_async("get_user_portfolios_analytics", {"p_user_id": user_id})
         portfolios_analytics = result or []
 
         # === 2️⃣ Получаем структуру портфелей (id, parent_id, name) ===
-        portfolios = table_select(
+        portfolios = await table_select_async(
             "portfolios",
             select="id, parent_portfolio_id, name",
             filters={"user_id": user_id}

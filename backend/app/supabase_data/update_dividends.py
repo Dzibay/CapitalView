@@ -3,7 +3,7 @@ import aiohttp
 import random
 from bs4 import BeautifulSoup
 from datetime import datetime, date
-from app.services.supabase_service import table_select, table_insert
+from app.services.supabase_async import table_select_async, table_insert_async
 
 # URL страниц
 SMARTLAB_INDEX_URL = "https://smart-lab.ru/dividends/index/order_by_yield/desc/"
@@ -132,13 +132,12 @@ async def process_page(session, url, mode, ticker_map):
 
 async def update_forecasts():
     # 1. Получаем ID активов
-    assets = await asyncio.to_thread(table_select, "assets")
+    assets = await table_select_async("assets")
     ticker_map = {a["ticker"].upper(): a["id"] for a in assets if a.get("ticker")}
     
     # 2. Получаем существующие выплаты типа "dividend" (оптимизация: только нужные поля)
     # Загружаем только записи с типом "dividend" для экономии памяти
-    existing_payouts = await asyncio.to_thread(
-        table_select, 
+    existing_payouts = await table_select_async(
         "asset_payouts", 
         select="asset_id,record_date,value,type",
         filters={"type": "dividend"}
@@ -248,7 +247,7 @@ async def update_forecasts():
             
             try:
                 # Пытаемся вставить пакет
-                await asyncio.to_thread(table_insert, "asset_payouts", batch)
+                await table_insert_async("asset_payouts", batch)
                 print(f"   ✅ Вставлен пакет {batch_num} ({len(batch)} записей)")
                 added_count += len(batch)
             except Exception as e:
@@ -258,7 +257,7 @@ async def update_forecasts():
                     print(f"   ⚠️ Обнаружены дубликаты в пакете {batch_num}, вставляем по одной...")
                     for record in batch:
                         try:
-                            await asyncio.to_thread(table_insert, "asset_payouts", record)
+                            await table_insert_async("asset_payouts", record)
                             added_count += 1
                         except Exception as inner_e:
                             # Игнорируем дубликаты при индивидуальной вставке

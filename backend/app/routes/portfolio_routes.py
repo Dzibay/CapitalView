@@ -1,7 +1,4 @@
-from flask import Blueprint, request
-from flask_jwt_extended import jwt_required
-import asyncio
-from pydantic import ValidationError
+from fastapi import APIRouter, HTTPException, Depends
 from app.services.supabase_service import table_insert, rpc
 from app.services.portfolio_service import (
     get_user_portfolios,
@@ -20,41 +17,34 @@ from app.models.portfolio_models import (
     ImportBrokerRequest
 )
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
-from app.decorators import require_user, handle_errors, validate_json_body
-from app.utils.response_helpers import success_response, error_response, not_found_response
+from app.dependencies import get_current_user
+from app.utils.response_helpers import success_response
 import logging
 
 logger = logging.getLogger(__name__)
 
-portfolio_bp = Blueprint("portfolio", __name__)
+router = APIRouter()
 
-@portfolio_bp.route("/list", methods=["GET"])
-@jwt_required()
-@require_user
-@handle_errors
-def list_portfolios_route(user):
+
+@router.get("/list")
+async def list_portfolios_route(user: dict = Depends(get_current_user)):
     """Получение списка портфелей пользователя."""
-    # Примечание: asyncio.run блокирует event loop, но для совместимости оставляем
-    # В будущем можно переделать на полностью синхронный код или использовать Quart
-    data = asyncio.run(get_user_portfolios(user["email"]))
+    data = await get_user_portfolios(user["email"])
     return success_response(data={"portfolios": data})
 
-@portfolio_bp.route("/add", methods=["POST"])
-@jwt_required()
-@require_user
-@validate_json_body
-@handle_errors
-def add_portfolio_route(user):
+
+@router.post("/add", status_code=HTTPStatus.CREATED)
+async def add_portfolio_route(
+    data: CreatePortfolioRequest,
+    user: dict = Depends(get_current_user)
+):
     """Создание нового портфеля."""
-    # Валидация входных данных
-    data = CreatePortfolioRequest(**request.get_json())
-    
     user_id = user["id"]
     parent_portfolio_id = data.parent_portfolio_id
 
     # Если не указан родительский портфель, получаем корневой
     if not parent_portfolio_id:
-        parent_portfolio = asyncio.run(get_user_portfolio_parent(user["email"]))
+        parent_portfolio = await get_user_portfolio_parent(user["email"])
         parent_portfolio_id = parent_portfolio["id"]
 
     insert_data = {
@@ -67,9 +57,9 @@ def add_portfolio_route(user):
     res = table_insert("portfolios", insert_data)
     
     if not res:
-        return error_response(
-            "Ошибка при создании портфеля",
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Ошибка при создании портфеля"
         )
     
     return success_response(
@@ -78,46 +68,46 @@ def add_portfolio_route(user):
         status_code=HTTPStatus.CREATED
     )
 
-@portfolio_bp.route("/<int:portfolio_id>/delete", methods=["DELETE"])
-@jwt_required()
-@require_user
-@handle_errors
-def delete_portfolio_route(portfolio_id, user):
+
+@router.delete("/{portfolio_id}/delete")
+async def delete_portfolio_route(
+    portfolio_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Удаление портфеля."""
     logger.info(f"Запрос удаления портфеля {portfolio_id}")
     rpc("clear_portfolio_full", {"p_portfolio_id": portfolio_id, "p_delete_self": True})
     return success_response(message=SuccessMessages.PORTFOLIO_DELETED)
 
-@portfolio_bp.route("/<int:portfolio_id>/clear", methods=["POST"])
-@jwt_required()
-@require_user
-@handle_errors
-def portfolio_clear_route(portfolio_id, user):
+
+@router.post("/{portfolio_id}/clear")
+async def portfolio_clear_route(
+    portfolio_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Очистка портфеля (удаление всех активов и транзакций)."""
     logger.info(f"Запрос очистки портфеля {portfolio_id}")
     rpc("clear_portfolio_full", {"p_portfolio_id": portfolio_id})
     return success_response(message="Портфель успешно очищен")
 
-@portfolio_bp.route("/<int:portfolio_id>/assets", methods=["GET"])
-@jwt_required()
-@require_user
-@handle_errors
-def portfolio_assets_route(portfolio_id, user):
+
+@router.get("/{portfolio_id}/assets")
+async def portfolio_assets_route(
+    portfolio_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Получение активов портфеля."""
-    # Примечание: asyncio.run блокирует event loop
-    data = asyncio.run(get_portfolio_assets(portfolio_id))
+    data = await get_portfolio_assets(portfolio_id)
     return success_response(data={"assets": data})
 
-@portfolio_bp.route("/<int:portfolio_id>/description", methods=["POST"])
-@jwt_required()
-@require_user
-@validate_json_body
-@handle_errors
-def update_portfolio_description_route(portfolio_id, user):
+
+@router.post("/{portfolio_id}/description")
+async def update_portfolio_description_route(
+    portfolio_id: int,
+    data: UpdatePortfolioDescriptionRequest,
+    user: dict = Depends(get_current_user)
+):
     """Обновление описания портфеля."""
-    # Валидация входных данных
-    data = UpdatePortfolioDescriptionRequest(**request.get_json())
-    
     updated = update_portfolio_description(
         portfolio_id,
         text=data.text,
@@ -132,77 +122,72 @@ def update_portfolio_description_route(portfolio_id, user):
         message=SuccessMessages.PORTFOLIO_UPDATED
     )
 
-@portfolio_bp.route("/<int:portfolio_id>/history", methods=["GET"])
-@jwt_required()
-@require_user
-@handle_errors
-def portfolio_history_route(portfolio_id, user):
+
+@router.get("/{portfolio_id}/history")
+async def portfolio_history_route(
+    portfolio_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Получение истории стоимости портфеля."""
-    # Примечание: asyncio.run блокирует event loop
-    data = asyncio.run(get_portfolio_value_history(portfolio_id))
+    data = await get_portfolio_value_history(portfolio_id)
     return success_response(data={"history": data})
 
 
-@portfolio_bp.route("/<int:portfolio_id>", methods=["GET"])
-@jwt_required()
-@require_user
-@handle_errors
-def get_portfolio_info_route(portfolio_id, user):
+@router.get("/{portfolio_id}")
+async def get_portfolio_info_route(
+    portfolio_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Получение информации о портфеле."""
     result = get_portfolio_info(portfolio_id)
     
     if not result.get("success"):
         status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
-        return error_response(
-            result.get("error", "Ошибка при получении информации о портфеле"),
-            status_code=status_code
+        raise HTTPException(
+            status_code=status_code,
+            detail=result.get("error", "Ошибка при получении информации о портфеле")
         )
     
     return success_response(data=result)
 
 
-@portfolio_bp.route("/<int:portfolio_id>/summary", methods=["GET"])
-@jwt_required()
-@require_user
-@handle_errors
-def get_portfolio_summary_route(portfolio_id, user):
+@router.get("/{portfolio_id}/summary")
+async def get_portfolio_summary_route(
+    portfolio_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Получение сводки портфеля."""
     result = get_portfolio_summary(portfolio_id)
     
     if not result.get("success"):
         status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
-        return error_response(
-            result.get("error", "Ошибка при получении сводки портфеля"),
-            status_code=status_code
+        raise HTTPException(
+            status_code=status_code,
+            detail=result.get("error", "Ошибка при получении сводки портфеля")
         )
     
     return success_response(data=result)
 
 
-@portfolio_bp.route("/<int:portfolio_id>/transactions", methods=["GET"])
-@jwt_required()
-@require_user
-@handle_errors
-def get_portfolio_transactions_route(portfolio_id, user):
+@router.get("/{portfolio_id}/transactions")
+async def get_portfolio_transactions_route(
+    portfolio_id: int,
+    user: dict = Depends(get_current_user)
+):
     """Получение транзакций портфеля."""
-    # Примечание: asyncio.run блокирует event loop
-    data = asyncio.run(get_portfolio_transactions(portfolio_id))
+    data = await get_portfolio_transactions(portfolio_id)
     return success_response(data={"transactions": data})
 
 
-@portfolio_bp.route("/import_broker", methods=["POST"])
-@jwt_required()
-@require_user
-@validate_json_body
-@handle_errors
-def import_broker_route(user):
+@router.post("/import_broker", status_code=HTTPStatus.ACCEPTED)
+async def import_broker_route(
+    data: ImportBrokerRequest,
+    user: dict = Depends(get_current_user)
+):
     """
     Создает задачу импорта портфеля от брокера.
     Импорт выполняется в фоновом режиме через воркер.
     """
-    # Валидация входных данных
-    data = ImportBrokerRequest(**request.get_json())
-    
     logger.info(f"📥 Запрос создания задачи импорта портфеля от брокера {data.broker_id}")
     
     # Создаем задачу импорта
@@ -212,13 +197,13 @@ def import_broker_route(user):
         broker_token=data.token,
         portfolio_id=data.portfolio_id,
         portfolio_name=data.portfolio_name,
-        priority=0  # Можно добавить приоритет в запрос
+        priority=0
     )
     
     if not task:
-        return error_response(
-            "Ошибка при создании задачи импорта",
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Ошибка при создании задачи импорта"
         )
     
     logger.info(f"✅ Создана задача импорта: task_id={task['id']}, user_id={user['id']}")
@@ -229,5 +214,5 @@ def import_broker_route(user):
             "status": task["status"]
         },
         message="Задача импорта создана. Импорт выполняется в фоновом режиме.",
-        status_code=HTTPStatus.ACCEPTED  # 202 Accepted - запрос принят, но еще не обработан
+        status_code=HTTPStatus.ACCEPTED
     )

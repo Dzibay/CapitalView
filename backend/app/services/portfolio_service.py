@@ -1,5 +1,6 @@
 import asyncio
 from app.services.supabase_service import rpc, table_select, table_insert, table_update, table_delete
+from app.services.supabase_async import rpc_async, table_select_async, table_insert_async
 from app.services.user_service import get_user_by_email
 from concurrent.futures import ThreadPoolExecutor
 from time import time
@@ -49,17 +50,21 @@ def normalize_tx_date_day(dt):
     return None
 
 
-# Используем asyncio.to_thread, чтобы выполнять sync вызовы в потоках
+# Асинхронные обертки для RPC функций
 async def get_user_portfolios(user_email: str):
+    """Асинхронная обертка для get_user_portfolios_sync."""
     return await asyncio.to_thread(get_user_portfolios_sync, user_email)
 
 async def get_portfolio_assets(portfolio_id: int):
+    """Асинхронная обертка для get_portfolio_assets_sync."""
     return await asyncio.to_thread(get_portfolio_assets_sync, portfolio_id)
 
 async def get_portfolio_transactions(portfolio_id: int):
+    """Асинхронная обертка для get_portfolio_transactions_sync."""
     return await asyncio.to_thread(get_portfolio_transactions_sync, portfolio_id)
 
 async def get_portfolio_value_history(portfolio_id: int):
+    """Асинхронная обертка для get_portfolio_value_history_sync."""
     return await asyncio.to_thread(get_portfolio_value_history_sync, portfolio_id)
 
 
@@ -189,17 +194,11 @@ executor = ThreadPoolExecutor(max_workers=10)
 
 
 async def table_insert_bulk_async(table: str, rows: list[dict]):
+    """Батчевая вставка данных в таблицу."""
     if not rows:
         return True
-
-    loop = asyncio.get_event_loop()
-
-    # Один большой запрос
-    await loop.run_in_executor(
-        executor,
-        lambda: table_insert(table, rows)
-    )
-
+    # Используем асинхронную обертку вместо executor
+    await table_insert_async(table, rows)
     return True
 
 async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_data: dict):
@@ -215,11 +214,11 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
     user_id = user["id"]
 
     # Загружаем типы операций
-    op_types = table_select("operations_type", select="id, name")
+    op_types = await table_select_async("operations_type", select="id, name")
     op_type_map = {o["name"].lower(): o["id"] for o in op_types}
 
     # Загружаем все активы
-    all_assets = rpc("get_all_assets", {})
+    all_assets = await rpc_async("get_all_assets", {})
     isin_to_asset = {
         a["properties"].get("isin"): a["id"]
         for a in all_assets
@@ -231,14 +230,14 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
         print(f"📦 Синхронизируем портфель '{portfolio_name}'")
 
         # --- 1. ищем или создаём дочерний портфель ---
-        existing = table_select(
+        existing = await table_select_async(
             "portfolios", select="id",
             filters={"parent_portfolio_id": parent_portfolio_id, "name": portfolio_name}
         )
 
         if not existing:
             print(f"➕ Создаём дочерний портфель '{portfolio_name}'...")
-            inserted = table_insert("portfolios", {
+            inserted = await table_insert_async("portfolios", {
                 "user_id": user_id,
                 "parent_portfolio_id": parent_portfolio_id,
                 "name": portfolio_name,
@@ -249,7 +248,7 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                 portfolio_id = inserted[0]["id"]
             else:
                 # ищем повторно
-                pf = table_select(
+                pf = await table_select_async(
                     "portfolios", select="id",
                     filters={"parent_portfolio_id": parent_portfolio_id, "name": portfolio_name}
                 )
@@ -269,7 +268,7 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
             print(f"🔍 Проверяем существующие транзакции портфеля '{portfolio_name}' (id={portfolio_id})")
 
             # Получаем все portfolio_asset_id этого портфеля
-            pa_rows = table_select(
+            pa_rows = await table_select_async(
                 "portfolio_assets",
                 select="id, asset_id",
                 filters={"portfolio_id": portfolio_id}
@@ -280,7 +279,7 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
             # Загружаем существующие транзакции
             existing_tx_keys = set()
             if pa_ids:
-                existing_transactions = table_select(
+                existing_transactions = await table_select_async(
                     "transactions",
                     select="portfolio_asset_id,transaction_date,transaction_type,price,quantity",
                     in_filters={"portfolio_asset_id": pa_ids}
@@ -300,7 +299,7 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
 
             # Загружаем существующие денежные операции
             existing_ops_keys = set()
-            existing_ops = table_select(
+            existing_ops = await table_select_async(
                 "cash_operations",
                 select="portfolio_id,type,date,amount,asset_id",
                 filters={"portfolio_id": portfolio_id}
@@ -358,7 +357,7 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                 # portfolio_asset_id, если нет — создаём
                 pa_id = pa_map.get(asset_id)
                 if not pa_id:
-                    pa_inserted = table_insert("portfolio_assets", {
+                    pa_inserted = await table_insert_async("portfolio_assets", {
                         "portfolio_id": portfolio_id,
                         "asset_id": asset_id,
                         "quantity": 0,
@@ -473,7 +472,7 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
                 
                 # Проверяем, что операции действительно добавились
                 # Загружаем операции снова для проверки
-                check_ops = table_select(
+                check_ops = await table_select_async(
                     "cash_operations",
                     select="id,portfolio_id,type,date,amount",
                     filters={"portfolio_id": portfolio_id}
@@ -494,7 +493,7 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
         if affected_pa:
             print(f"   🔄 Пересчитываем {len(affected_pa)} активов...")
             for pa_id in affected_pa:
-                rpc("update_portfolio_asset", {"pa_id": pa_id})
+                await rpc_async("update_portfolio_asset", {"pa_id": pa_id})
 
         
         # ==========================
@@ -525,7 +524,7 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
             # Обновляем FIFO (только если есть транзакции, т.к. FIFO связан с транзакциями)
             if min_tx_date:
                 try:
-                    rpc("rebuild_fifo_for_portfolio", {"p_portfolio_id": portfolio_id})
+                    await rpc_async("rebuild_fifo_for_portfolio", {"p_portfolio_id": portfolio_id})
                     print('   ✔ Fifo данные обновлены')
                 except Exception as e:
                     error_msg = str(e)
@@ -542,14 +541,14 @@ async def import_broker_portfolio(email: str, parent_portfolio_id: int, broker_d
             
             # Обновляем позиции с даты самой старой новой транзакции или операции
             try:
-                rpc("update_portfolio_positions_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": from_date_str})
+                await rpc_async("update_portfolio_positions_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": from_date_str})
                 print('   ✔ Positions данные обновлены')
             except Exception as e:
                 print(f'   ⚠️ Ошибка обновления позиций: {e}')
             
             # Обновляем значения с даты самой старой новой транзакции или операции
             try:
-                rpc("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": from_date_str})
+                await rpc_async("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": from_date_str})
                 print('   ✔ Values данные обновлены')
             except Exception as e:
                 print(f'   ⚠️ Ошибка обновления значений: {e}')
