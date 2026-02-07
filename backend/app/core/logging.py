@@ -78,6 +78,9 @@ class AppLogger:
         logging.getLogger("uvicorn.error").setLevel(logging.INFO)
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("httpcore").setLevel(logging.WARNING)
+        logging.getLogger("hpack").setLevel(logging.WARNING)  # Отключаем DEBUG логи от HTTP/2 библиотеки
+        logging.getLogger("h2").setLevel(logging.WARNING)  # Отключаем DEBUG логи от HTTP/2 библиотеки
+        logging.getLogger("hyperframe").setLevel(logging.WARNING)  # Отключаем DEBUG логи от HTTP/2 библиотеки
         
         AppLogger._initialized = True
     

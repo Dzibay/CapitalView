@@ -37,7 +37,8 @@ app.add_middleware(
     allow_origins=Config.CORS_ORIGINS,
     allow_credentials=Config.CORS_SUPPORTS_CREDENTIALS,
     allow_methods=Config.CORS_METHODS,
-    allow_headers=["*"],
+    allow_headers=["*", "Authorization", "Content-Type"],
+    expose_headers=["*"],
 )
 
 # Регистрация обработчиков ошибок
@@ -45,26 +46,27 @@ register_error_handlers(app)
 
 
 # Импортируем и регистрируем роутеры
-from app.routes import (
-    auth_routes,
-    portfolio_routes,
-    dashboard_routes,
-    assets_routes,
-    transaction_routes,
-    operations_routes,
-    analytics_routes,
-    tasks_routes
+# API v1
+from app.api.v1 import (
+    auth,
+    portfolios,
+    assets,
+    transactions,
+    operations,
+    analytics,
+    dashboard,
+    tasks
 )
 
-# Регистрация роутеров
-app.include_router(auth_routes.router, prefix="/api/auth", tags=["auth"])
-app.include_router(portfolio_routes.router, prefix="/api/portfolio", tags=["portfolio"])
-app.include_router(dashboard_routes.router, prefix="/api/dashboard", tags=["dashboard"])
-app.include_router(assets_routes.router, prefix="/api/assets", tags=["assets"])
-app.include_router(transaction_routes.router, prefix="/api/transactions", tags=["transactions"])
-app.include_router(operations_routes.router, prefix="/api/operations", tags=["operations"])
-app.include_router(analytics_routes.router, prefix="/api/analytics", tags=["analytics"])
-app.include_router(tasks_routes.router, prefix="/api/tasks", tags=["tasks"])
+# Регистрация API v1 роутеров
+app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
+app.include_router(portfolios.router, prefix="/api/v1", tags=["portfolios"])
+app.include_router(assets.router, prefix="/api/v1", tags=["assets"])
+app.include_router(transactions.router, prefix="/api/v1", tags=["transactions"])
+app.include_router(operations.router, prefix="/api/v1", tags=["operations"])
+app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
+app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
+app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 
 
 @app.on_event("startup")

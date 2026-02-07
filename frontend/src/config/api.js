@@ -12,21 +12,21 @@ export const API_ENDPOINTS = {
     BASE: '/dashboard/',
   },
   PORTFOLIO: {
-    BASE: '/portfolio',
-    LIST: '/portfolio/list',
-    ADD: '/portfolio/add',
-    DELETE: (id) => `/portfolio/${id}/delete`,
-    CLEAR: (id) => `/portfolio/${id}/clear`,
-    DESCRIPTION: (id) => `/portfolio/${id}/description`,
-    ASSETS: (id) => `/portfolio/${id}/assets`,
-    HISTORY: (id) => `/portfolio/${id}/history`,
-    IMPORT_BROKER: '/portfolio/import_broker',
+    BASE: '/portfolios/',
+    LIST: '/portfolios/',  // Исправлено: на backend это GET /portfolios/ (со слешем!)
+    ADD: '/portfolios/',  // Исправлено: на backend это POST /portfolios/ (со слешем!)
+    DELETE: (id) => `/portfolios/${id}`,  // Исправлено: на backend это DELETE /portfolios/{id}
+    CLEAR: (id) => `/portfolios/${id}/clear`,
+    DESCRIPTION: (id) => `/portfolios/${id}/description`,
+    ASSETS: (id) => `/portfolios/${id}/assets`,
+    HISTORY: (id) => `/portfolios/${id}/history`,
+    IMPORT_BROKER: '/portfolios/import-broker',  // Исправлено: на backend это /portfolios/import-broker
   },
   ASSETS: {
-    BASE: '/assets',
-    ADD: '/assets/add',
+    BASE: '/assets/',
+    ADD: '/assets/',  // Исправлено: на backend это POST /assets/ (со слешем!)
     DELETE: (id) => `/assets/${id}`,
-    ADD_PRICE: '/assets/add_price',
+    ADD_PRICE: '/assets/price',  // Исправлено: на backend это POST /assets/price
     MOVE: (portfolio_asset_id) => `/assets/portfolio/${portfolio_asset_id}/move`,
     GET_INFO: (id) => `/assets/${id}`,
     GET_PRICES: (id) => `/assets/${id}/prices`,
@@ -39,14 +39,14 @@ export const API_ENDPOINTS = {
     BASE: '/operations/',
   },
   ANALYTICS: {
-    BASE: '/analitics',
-    PORTFOLIOS: '/analitics/portfolios',
+    BASE: '/analytics',
+    PORTFOLIOS: '/analytics/portfolios',
   },
   TASKS: {
     BASE: '/tasks',
     GET: (id) => `/tasks/${id}`,
     STATUS: (id) => `/tasks/${id}/status`,
-    USER: '/tasks/user',
+    USER: '/tasks/user/list',  // Исправлено: на backend это GET /tasks/user/list
     CANCEL: (id) => `/tasks/${id}/cancel`,
   },
 };

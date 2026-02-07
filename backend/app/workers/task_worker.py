@@ -9,14 +9,14 @@ import time
 from typing import Optional
 from datetime import datetime
 
-from app.services.task_service import (
+from app.domain.services.task_service import (
     get_next_pending_task,
     update_task_status,
     TaskStatus
 )
-from app.services.portfolio_service import import_broker_portfolio
-from app.services.user_service import get_user_by_id
-from app.services.broker_connections_service import upsert_broker_connection
+from app.domain.services.portfolio_service import import_broker_portfolio
+from app.domain.services.user_service import get_user_by_id
+from app.domain.services.broker_connections_service import upsert_broker_connection
 from app.constants import BrokerID
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ async def process_import_task(task: dict) -> bool:
         broker_id_int = int(broker_id) if isinstance(broker_id, str) else broker_id
         
         if broker_id_int == BrokerID.TINKOFF:
-            from app.services.integrations.tinkoff_import import get_tinkoff_portfolio
+            from app.infrastructure.external.brokers.tinkoff import get_tinkoff_portfolio
             broker_data = get_tinkoff_portfolio(broker_token, 365)
         else:
             raise Exception(f"Импорт для брокера {broker_id_int} не реализован")
@@ -84,9 +84,9 @@ async def process_import_task(task: dict) -> bool:
                 progress=40,
                 progress_message="Создание портфеля..."
             )
-            from app.services.portfolio_service import get_user_portfolio_parent
+            from app.domain.services.portfolio_service import get_user_portfolio_parent
             user_root_portfolio = await get_user_portfolio_parent(user_email)
-            from app.services.supabase_service import table_insert
+            from app.infrastructure.database.supabase_service import table_insert
             new_portfolio = {
                 "user_id": user_id,
                 "parent_portfolio_id": user_root_portfolio["id"],
@@ -151,7 +151,7 @@ async def process_import_task(task: dict) -> bool:
             logger.info(f"Повторная попытка {new_retry_count}/{MAX_RETRIES} для задачи {task_id}")
             
             # Обновляем retry_count и возвращаем задачу в pending
-            from app.services.supabase_service import table_update
+            from app.infrastructure.database.supabase_service import table_update
             table_update(
                 "import_tasks",
                 {"retry_count": new_retry_count, "status": TaskStatus.PENDING.value},
@@ -192,7 +192,7 @@ async def worker_loop():
                 task = get_next_pending_task()
                 
                 if task:
-                    print(task)
+                    logger.debug(f"Найдена задача: {task}")
                     task_id = task["task_id"]
                     logger.info(f"Найдена задача {task_id}, начинаем обработку")
                     
