@@ -5,8 +5,8 @@ API endpoints для работы с денежными операциями.
 from fastapi import APIRouter, Query, Depends
 from app.domain.services.operations_service import get_operations
 from app.core.dependencies import get_current_user
-from app.shared.utils.response import success_response
-from app.shared.utils.date import parse_date_range
+from app.utils.response import success_response
+from app.utils.date import parse_date_range
 from typing import Optional
 import logging
 

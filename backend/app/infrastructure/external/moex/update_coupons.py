@@ -6,7 +6,7 @@ import asyncio
 from app.infrastructure.database.supabase_async import db_select, db_insert, db_update
 from tqdm.asyncio import tqdm_asyncio
 from app.infrastructure.external.moex.client import create_moex_session, fetch_json
-from app.shared.utils.date import parse_date as normalize_date, normalize_date_to_string as format_date
+from app.utils.date import parse_date as normalize_date, normalize_date_to_string as format_date
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

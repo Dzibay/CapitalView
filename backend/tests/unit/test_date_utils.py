@@ -3,7 +3,7 @@ Unit тесты для утилит работы с датами.
 """
 import pytest
 from datetime import datetime, date, timezone
-from app.shared.utils.date import (
+from app.utils.date import (
     parse_date,
     normalize_date_to_string,
     normalize_date_to_day_string,

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 import time
 from app.domain.services.dashboard_service import get_dashboard_data
 from app.core.dependencies import get_current_user
-from app.shared.utils.response import success_response
+from app.utils.response import success_response
 import logging
 
 logger = logging.getLogger(__name__)

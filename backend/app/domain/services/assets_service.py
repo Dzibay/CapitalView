@@ -4,8 +4,8 @@ from app.infrastructure.database.supabase_service import (
 from app.domain.services.user_service import get_user_by_email
 from datetime import datetime
 from app.domain.services.transactions_service import create_transaction
-from app.shared.helpers.portfolio import update_portfolios_with_asset
-from app.shared.utils.date import normalize_date_to_string
+from app.domain.services.portfolio_service import update_portfolios_with_asset
+from app.utils.date import normalize_date_to_string
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

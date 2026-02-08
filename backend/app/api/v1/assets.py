@@ -11,7 +11,7 @@ from app.domain.services.assets_service import (
 from app.domain.models.asset_models import AddAssetPriceRequest, MoveAssetRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.core.dependencies import get_current_user
-from app.shared.utils.response import success_response
+from app.utils.response import success_response
 from typing import Optional, Dict, Any
 import logging
 

@@ -4,7 +4,7 @@ API endpoints для работы с портфелями.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from app.core.dependencies import get_current_user
-from app.shared.utils.response import success_response
+from app.utils.response import success_response
 from app.infrastructure.database.supabase_service import table_insert, rpc
 from app.domain.services.portfolio_service import (
     get_user_portfolios,

@@ -7,8 +7,8 @@ from app.domain.services.user_service import create_user, get_user_by_email
 from app.extensions import bcrypt
 from app.domain.models.auth_models import RegisterRequest, LoginRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
-from app.shared.utils.response import success_response
-from app.shared.utils.jwt import create_access_token
+from app.utils.response import success_response
+from app.utils.jwt import create_access_token
 from app.core.dependencies import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
