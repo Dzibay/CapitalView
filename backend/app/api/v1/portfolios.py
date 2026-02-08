@@ -5,7 +5,7 @@ API endpoints для работы с портфелями.
 from fastapi import APIRouter, Depends, HTTPException
 from app.core.dependencies import get_current_user
 from app.utils.response import success_response
-from app.infrastructure.database.supabase_service import table_insert, rpc
+from app.infrastructure.database.supabase_service import table_select, table_insert, rpc
 from app.domain.services.portfolio_service import (
     get_user_portfolios,
     get_portfolio_assets,
@@ -91,8 +91,11 @@ async def delete_portfolio_route(
 ):
     """Удаление портфеля."""
     logger.info(f"Запрос удаления портфеля {portfolio_id}")
-    rpc("clear_portfolio_full", {"p_portfolio_id": portfolio_id, "p_delete_self": True})
-    return success_response(message=SuccessMessages.PORTFOLIO_DELETED)
+    if not table_select("portfolios", "parent_portfolio_id", {"id": portfolio_id})[0]['parent_portfolio_id']:
+        raise HTTPException(status_code=400, detail=ErrorMessages.PARENT_PORTFOLIO_CANNOT_BE_DELETED)
+    else:
+        rpc("clear_portfolio_full", {"p_portfolio_id": portfolio_id, "p_delete_self": True})
+        return success_response(message=SuccessMessages.PORTFOLIO_DELETED)
 
 
 @router.post("/{portfolio_id}/clear")

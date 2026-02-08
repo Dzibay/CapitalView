@@ -36,6 +36,7 @@ class ErrorMessages:
     FORBIDDEN = "Доступ запрещен"
     VALIDATION_ERROR = "Ошибка валидации данных"
     INTERNAL_ERROR = "Внутренняя ошибка сервера"
+    PARENT_PORTFOLIO_CANNOT_BE_DELETED = "Невозможно удалить портфель, который является родительским для других портфелей"
 
 
 # Сообщения об успехе
