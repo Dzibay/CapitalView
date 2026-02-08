@@ -90,11 +90,15 @@ onBeforeUnmount(() => {
           <span class="menu-title">Портфель</span>
         </div>
         <div class="divider"></div>
-        <button class="item" @click="closeMenu(); $emit('clearPortfolio', menu.payload)">
+        <button class="item" @click="closeMenu(); $emit('clearPortfolio', menu.payload.id)">
           <span class="item-icon">🧹</span>
           <span class="item-text">Очистить</span>
         </button>
-        <button class="item danger" @click="closeMenu(); $emit('deletePortfolio', menu.payload)">
+        <button 
+          v-if="menu.payload.parent_portfolio_id" 
+          class="item danger" 
+          @click="closeMenu(); $emit('deletePortfolio', menu.payload.id)"
+        >
           <span class="item-icon">🗑️</span>
           <span class="item-text">Удалить</span>
         </button>

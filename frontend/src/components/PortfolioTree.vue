@@ -117,7 +117,7 @@ const getDividendYield5Y = (asset) => {
         </div>
         <button
           class="menu-btn icon-btn"
-          @click.stop="openMenu($event, 'portfolio', portfolio.id)"
+          @click.stop="openMenu($event, 'portfolio', portfolio)"
         >
           ⋯
         </button>
