@@ -86,10 +86,6 @@ def rpc(fn_name: str, params: dict):
     supabase = get_supabase_client()
     result = supabase.rpc(fn_name, params).execute().data
     
-    # Если результат - список с одним элементом (boolean)
-    if isinstance(result, list) and len(result) == 1:
-        return result[0]
-    
     # Если результат - просто boolean
     if isinstance(result, bool):
         return result
