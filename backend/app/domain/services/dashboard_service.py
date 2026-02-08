@@ -1,22 +1,109 @@
 from collections import defaultdict
+from datetime import datetime, timedelta
 from time import time
 from app.domain.services.portfolio_service import get_user_portfolios_with_assets_and_history
 from app.domain.services.reference_service import get_reference_data_cached
-# Транзакции загружаются отдельным запросом в фоне
-# from app.domain.services.transactions_service import get_transactions
 from app.domain.services.user_service import get_user_by_email
 from app.domain.services.broker_connections_service import get_user_portfolio_connections
 from app.core.logging import get_logger
+from app.utils.date import normalize_date_to_day_string
 
 logger = get_logger(__name__)
+
+def _get_aggregated_history(portfolio_map, portfolio_id, fallback_history=None):
+    """Получает агрегированную историю из портфеля или возвращает fallback"""
+    portfolio = portfolio_map.get(portfolio_id)
+    return (portfolio.get("history") if portfolio else None) or fallback_history or []
+
+
+def forward_fill_history(history_list):
+    """
+    Заполняет пропущенные даты последним известным значением (forward fill).
+    Это необходимо для корректного объединения истории дочерних портфелей,
+    у которых могут быть разные диапазоны дат.
+    """
+    if not history_list:
+        return []
+    
+    # Сортируем по датам
+    sorted_history = sorted(
+        history_list,
+        key=lambda h: normalize_date_to_day_string(h.get("date") or h.get("report_date")) or ""
+    )
+    
+    if not sorted_history:
+        return []
+    
+    # Находим диапазон дат: от первой до последней
+    first_date_str = normalize_date_to_day_string(
+        sorted_history[0].get("date") or sorted_history[0].get("report_date")
+    )
+    last_date_str = normalize_date_to_day_string(
+        sorted_history[-1].get("date") or sorted_history[-1].get("report_date")
+    )
+    
+    if not first_date_str or not last_date_str:
+        return sorted_history
+    
+    first_date = datetime.strptime(first_date_str, "%Y-%m-%d").date()
+    last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
+    
+    # Создаем словарь для быстрого доступа по датам
+    history_by_date = {}
+    for h in sorted_history:
+        date_str = normalize_date_to_day_string(h.get("date") or h.get("report_date"))
+        if date_str:
+            history_by_date[date_str] = h
+    
+    # Заполняем пропущенные даты
+    filled_history = []
+    current_values = {
+        "value": 0.0,
+        "invested": 0.0,
+        "payouts": 0.0,
+        "pnl": 0.0
+    }
+    
+    current_date = first_date
+    while current_date <= last_date:
+        date_str = current_date.isoformat()
+        
+        if date_str in history_by_date:
+            # Есть запись на эту дату - обновляем текущие значения
+            h = history_by_date[date_str]
+            current_values = {
+                "value": float(h.get("value") or 0),
+                "invested": float(h.get("invested") or 0),
+                "payouts": float(h.get("payouts") or 0),
+                "pnl": float(h.get("pnl") or 0)
+            }
+        # Иначе используем последние известные значения (forward fill)
+        
+        filled_history.append({
+            "date": date_str,
+            "value": current_values["value"],
+            "invested": current_values["invested"],
+            "payouts": current_values["payouts"],
+            "pnl": current_values["pnl"]
+        })
+        
+        current_date += timedelta(days=1)
+    
+    return filled_history
+
 
 def aggregate_and_sort_history_list(history_list):
     """Агрегирует историю по датам: стоимость + инвестиции, и сортирует"""
     combined = defaultdict(lambda: {"value": 0.0, "invested": 0.0, "payouts": 0.0, "pnl": 0.0})
 
     for h in history_list or []:
-        date = h.get("date") or h.get("report_date")
+        date_raw = h.get("date") or h.get("report_date")
+        if not date_raw:
+            continue
+        
+        date = normalize_date_to_day_string(date_raw)
         if not date:
+            logger.warning(f"Не удалось нормализовать дату: {date_raw} (тип: {type(date_raw)})")
             continue
 
         combined[date]["value"] += float(h.get("value") or 0)
@@ -25,7 +112,8 @@ def aggregate_and_sort_history_list(history_list):
         combined[date]["pnl"] += float(h.get("pnl") or 0)
 
     return [
-        {"date": d, "value": round(v["value"], 2), "invested": round(v["invested"], 2), "payouts": round(v["payouts"], 2), "pnl": round(v["pnl"], 2)}
+        {"date": d, "value": round(v["value"], 2), "invested": round(v["invested"], 2), 
+         "payouts": round(v["payouts"], 2), "pnl": round(v["pnl"], 2)}
         for d, v in sorted(combined.items())
     ]
 
@@ -37,6 +125,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     # 1️⃣ Активы + история
     combined_assets = list(portfolio.get("assets") or [])
     combined_history = list(portfolio.get("history") or [])
+    portfolio_name = portfolio.get("name", "N/A")
 
     # 2️⃣ Аналитика текущего портфеля (если есть)
     analytics = portfolio.get("analytics") or {}
@@ -56,7 +145,20 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
         p for p in portfolio_map.values()
         if p.get("parent_portfolio_id") == portfolio_id
     ]
-
+    
+    # Собираем данные дочерних портфелей и находим максимальную дату
+    child_data_list = []
+    max_child_date = None
+    
+    def _get_max_date_from_history(history_list):
+        """Вспомогательная функция для поиска максимальной даты в истории"""
+        max_date = None
+        for h in history_list or []:
+            date_str = normalize_date_to_day_string(h.get("date") or h.get("report_date"))
+            if date_str and (max_date is None or date_str > max_date):
+                max_date = date_str
+        return max_date
+    
     for child in children:
         (
             child_value,
@@ -65,9 +167,63 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
             child_history,
             child_analytics
         ) = sum_portfolio_totals_bottom_up(child["id"], portfolio_map)
+        
+        child_data_list.append({
+            "child": child,
+            "value": child_value,
+            "invested": child_invested,
+            "assets": child_assets,
+            "history": child_history,
+            "analytics": child_analytics
+        })
+        
+        # Находим максимальную дату в агрегированной истории дочернего портфеля
+        child_history_agg = _get_aggregated_history(portfolio_map, child["id"], child_history)
+        child_max_date = _get_max_date_from_history(child_history_agg)
+        if child_max_date and (max_child_date is None or child_max_date > max_child_date):
+            max_child_date = child_max_date
 
-        # История
-        combined_history.extend(child_history)
+    # Проверяем максимальную дату в собственной истории родителя
+    parent_max_date = _get_max_date_from_history(combined_history)
+    if parent_max_date and (max_child_date is None or parent_max_date > max_child_date):
+        max_child_date = parent_max_date
+
+    # Обрабатываем каждый дочерний портфель с учетом максимальной даты
+    for child_data in child_data_list:
+        child = child_data["child"]
+        child_value = child_data["value"]
+        child_invested = child_data["invested"]
+        child_assets = child_data["assets"]
+        child_analytics = child_data["analytics"]
+        
+        # Используем агрегированную историю из портфеля (уже обработана рекурсивно)
+        child_history_aggregated = _get_aggregated_history(portfolio_map, child["id"], child_data["history"])
+
+        if child_history_aggregated:
+            # Применяем forward fill для дочернего портфеля до максимальной даты
+            child_history_filled = forward_fill_history(child_history_aggregated)
+            
+            # Если есть максимальная дата среди всех портфелей, заполняем до неё
+            if max_child_date and child_history_filled:
+                last_filled_date_str = child_history_filled[-1].get("date")
+                if last_filled_date_str and last_filled_date_str < max_child_date:
+                    last_filled_date = datetime.strptime(last_filled_date_str, "%Y-%m-%d").date()
+                    max_date = datetime.strptime(max_child_date, "%Y-%m-%d").date()
+                    last_values = child_history_filled[-1]
+                    
+                    # Добавляем записи до максимальной даты
+                    current_date = last_filled_date + timedelta(days=1)
+                    while current_date <= max_date:
+                        child_history_filled.append({
+                            "date": current_date.isoformat(),
+                            "value": last_values["value"],
+                            "invested": last_values["invested"],
+                            "payouts": last_values["payouts"],
+                            "pnl": last_values["pnl"]
+                        })
+                        current_date += timedelta(days=1)
+            
+            combined_history.extend(child_history_filled)
 
         # Активы — объединение
         existing = {a["asset_id"]: a for a in combined_assets}
@@ -135,7 +291,24 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     portfolio["total_value"] = round(total_value, 2)
     portfolio["total_invested"] = round(total_invested, 2)
     portfolio["combined_assets"] = combined_assets
-    portfolio["history"] = aggregate_and_sort_history_list(combined_history)
+    
+    # Агрегируем историю
+    aggregated_history = aggregate_and_sort_history_list(combined_history)
+    
+    # Проверяем аномалии в последних записях (только критичные случаи)
+    if len(aggregated_history) >= 4:
+        prev_value = aggregated_history[-4]['value']
+        last_value = aggregated_history[-1]['value']
+        if prev_value > 0:
+            diff_percent = ((last_value - prev_value) / prev_value) * 100
+            if diff_percent < -5:  # Если разница больше 5% в меньшую сторону
+                logger.error(
+                    f"Портфель {portfolio_id} ({portfolio_name}): "
+                    f"последняя запись на {abs(diff_percent):.1f}% меньше предыдущей "
+                    f"({prev_value} -> {last_value})"
+                )
+    
+    portfolio["history"] = aggregated_history
     portfolio["asset_allocation"] = calculate_asset_allocation(combined_assets)
 
     portfolio["analytics"] = {
@@ -155,6 +328,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
         }
     }
 
+    # Возвращаем combined_history (неагрегированную) для родительского портфеля
     return total_value, total_invested, combined_assets, combined_history, combined_analytics
 
 
