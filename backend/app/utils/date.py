@@ -41,6 +41,33 @@ def parse_date(date_value: Union[str, datetime, date, None]) -> Optional[datetim
         if not date_str or date_str == '-':
             return None
         
+        # Нормализуем формат даты для корректного парсинга
+        # Исправляем неполные миллисекунды/микросекунды (например, .9 -> .900000)
+        if '.' in date_str and 'T' in date_str:
+            # Находим позицию точки и следующего за ней символа
+            dot_pos = date_str.find('.')
+            if dot_pos != -1:
+                # Ищем конец дробной части (до 'Z', '+' или конца строки)
+                end_pos = len(date_str)
+                for char in ['Z', '+', '-']:
+                    pos = date_str.find(char, dot_pos)
+                    if pos != -1:
+                        end_pos = min(end_pos, pos)
+                
+                # Извлекаем дробную часть
+                fractional = date_str[dot_pos + 1:end_pos]
+                if fractional:
+                    # Нормализуем до 6 знаков (микросекунды)
+                    # Если меньше 6 знаков, дополняем нулями
+                    if len(fractional) < 6:
+                        fractional = fractional.ljust(6, '0')
+                    elif len(fractional) > 6:
+                        # Если больше 6 знаков, обрезаем до 6
+                        fractional = fractional[:6]
+                    
+                    # Собираем строку обратно
+                    date_str = date_str[:dot_pos + 1] + fractional + date_str[end_pos:]
+        
         try:
             # Пробуем ISO формат с timezone
             if 'T' in date_str or 'Z' in date_str:
