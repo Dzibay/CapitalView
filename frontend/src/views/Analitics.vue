@@ -20,6 +20,7 @@ import PortfolioChartWidget from '../components/widgets/PortfolioChartWidget.vue
 import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
 import ReturnWidget from '../components/widgets/ReturnWidget.vue'
 import DividendsWidget from '../components/widgets/DividendsWidget.vue'
+import AssetReturnsChartWidget from '../components/widgets/AssetReturnsChartWidget.vue'
 
 // Используем stores
 const authStore = useAuthStore()
@@ -188,6 +189,12 @@ const portfolioChartData = computed(() => {
           class="full-width-chart"
           :asset-distribution="selectedPortfolioAnalytics.asset_distribution || []"
           layout="horizontal"
+        />
+
+        <!-- 2.5) График доходности активов -->
+        <AssetReturnsChartWidget 
+          class="full-width-chart"
+          :asset-returns="selectedPortfolioAnalytics.asset_returns || []"
         />
 
         <!-- 3) График полученных выплат по месяцам и график будущих выплат -->

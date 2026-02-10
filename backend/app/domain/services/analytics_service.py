@@ -16,7 +16,14 @@ async def get_user_portfolios_analytics(user_id: str):
     try:
         # === 1️⃣ Берём аналитику по всем портфелям ===
         result = await rpc_async("get_user_portfolios_analytics", {"p_user_id": user_id})
-        portfolios_analytics = result or []
+        
+        # Обрабатываем результат: может быть массивом или объектом с ключом имени функции
+        if isinstance(result, dict) and "get_user_portfolios_analytics" in result:
+            portfolios_analytics = result["get_user_portfolios_analytics"] or []
+        elif isinstance(result, list):
+            portfolios_analytics = result
+        else:
+            portfolios_analytics = []
 
         # === 2️⃣ Получаем структуру портфелей (id, parent_id, name) ===
         portfolios = await table_select_async(
@@ -48,6 +55,7 @@ async def get_user_portfolios_analytics(user_id: str):
                     "asset_distribution": [],
                     "payouts_by_asset": [],
                     "future_payouts": [],
+                    "asset_returns": [],
                 }
 
             parent_analytics = analytics_map[parent_id]
@@ -70,6 +78,32 @@ async def get_user_portfolios_analytics(user_id: str):
                 "total_payouts": 0.0
             })
             future_payouts_map = defaultdict(lambda: {"dividends": 0.0, "coupons": 0.0, "amortizations": 0.0, "total_amount": 0.0, "payout_count": 0})
+            asset_returns_map = defaultdict(lambda: {
+                "asset_id": None,
+                "asset_name": "",
+                "asset_ticker": "",
+                "invested_amount": 0.0,
+                "current_value": 0.0,
+                "price_change": 0.0,
+                "realized_profit": 0.0,
+                "total_payouts": 0.0,
+                "total_return": 0.0,
+                "return_percent": 0.0,
+                # Данные за год
+                "value_year_ago": 0.0,
+                "price_change_year": 0.0,
+                "realized_profit_year": 0.0,
+                "total_payouts_year": 0.0,
+                "total_return_year": 0.0,
+                "return_percent_year": 0.0,
+                # Данные за месяц
+                "value_month_ago": 0.0,
+                "price_change_month": 0.0,
+                "realized_profit_month": 0.0,
+                "total_payouts_month": 0.0,
+                "total_return_month": 0.0,
+                "return_percent_month": 0.0
+            })
 
             # учитываем текущие данные родителя
             for op in parent_analytics.get("operations_breakdown") or []:
@@ -122,6 +156,72 @@ async def get_user_portfolios_analytics(user_id: str):
                 future_payouts_map[month_key]["amortizations"] += fp.get("amortizations", 0) or 0
                 future_payouts_map[month_key]["total_amount"] += fp.get("total_amount", 0) or 0
                 future_payouts_map[month_key]["payout_count"] += fp.get("payout_count", 0) or 0
+
+            # Доходность по активам - учитываем собственные активы родителя
+            for ar in parent_analytics.get("asset_returns") or []:
+                asset_key = ar.get("asset_id") or ar.get("asset_ticker") or ar.get("asset_name", "")
+                if asset_key:
+                    if asset_key not in asset_returns_map:
+                        asset_returns_map[asset_key] = {
+                            "asset_id": ar.get("asset_id"),
+                            "asset_name": ar.get("asset_name", ""),
+                            "asset_ticker": ar.get("asset_ticker", ""),
+                            "invested_amount": 0.0,
+                            "current_value": 0.0,
+                            "price_change": 0.0,
+                            "realized_profit": 0.0,
+                            "total_payouts": 0.0,
+                            "total_return": 0.0,
+                            "return_percent": 0.0,
+                            # Данные за год
+                            "value_year_ago": 0.0,
+                            "price_change_year": 0.0,
+                            "realized_profit_year": 0.0,
+                            "total_payouts_year": 0.0,
+                            "total_return_year": 0.0,
+                            "return_percent_year": 0.0,
+                            # Данные за месяц
+                            "value_month_ago": 0.0,
+                            "price_change_month": 0.0,
+                            "realized_profit_month": 0.0,
+                            "total_payouts_month": 0.0,
+                            "total_return_month": 0.0,
+                            "return_percent_month": 0.0
+                        }
+                    asset_returns_map[asset_key]["invested_amount"] += ar.get("invested_amount", 0) or 0
+                    asset_returns_map[asset_key]["current_value"] += ar.get("current_value", 0) or 0
+                    asset_returns_map[asset_key]["price_change"] += ar.get("price_change", 0) or 0
+                    asset_returns_map[asset_key]["realized_profit"] += ar.get("realized_profit", 0) or 0
+                    asset_returns_map[asset_key]["total_payouts"] += ar.get("total_payouts", 0) or 0
+                    asset_returns_map[asset_key]["total_return"] += ar.get("total_return", 0) or 0
+                    # Данные за год
+                    asset_returns_map[asset_key]["value_year_ago"] += ar.get("value_year_ago", 0) or 0
+                    asset_returns_map[asset_key]["price_change_year"] += ar.get("price_change_year", 0) or 0
+                    asset_returns_map[asset_key]["realized_profit_year"] += ar.get("realized_profit_year", 0) or 0
+                    asset_returns_map[asset_key]["total_payouts_year"] += ar.get("total_payouts_year", 0) or 0
+                    asset_returns_map[asset_key]["total_return_year"] += ar.get("total_return_year", 0) or 0
+                    # Данные за месяц
+                    asset_returns_map[asset_key]["value_month_ago"] += ar.get("value_month_ago", 0) or 0
+                    asset_returns_map[asset_key]["price_change_month"] += ar.get("price_change_month", 0) or 0
+                    asset_returns_map[asset_key]["realized_profit_month"] += ar.get("realized_profit_month", 0) or 0
+                    asset_returns_map[asset_key]["total_payouts_month"] += ar.get("total_payouts_month", 0) or 0
+                    asset_returns_map[asset_key]["total_return_month"] += ar.get("total_return_month", 0) or 0
+                    # Пересчитываем процент доходности на основе объединенных данных
+                    if asset_returns_map[asset_key]["invested_amount"] > 0:
+                        asset_returns_map[asset_key]["return_percent"] = (
+                            asset_returns_map[asset_key]["total_return"] / 
+                            asset_returns_map[asset_key]["invested_amount"]
+                        ) * 100
+                    if asset_returns_map[asset_key]["value_year_ago"] > 0:
+                        asset_returns_map[asset_key]["return_percent_year"] = (
+                            asset_returns_map[asset_key]["total_return_year"] / 
+                            asset_returns_map[asset_key]["value_year_ago"]
+                        ) * 100
+                    if asset_returns_map[asset_key]["value_month_ago"] > 0:
+                        asset_returns_map[asset_key]["return_percent_month"] = (
+                            asset_returns_map[asset_key]["total_return_month"] / 
+                            asset_returns_map[asset_key]["value_month_ago"]
+                        ) * 100
 
             # === объединяем детей ===
             for child_id in parent_to_children.get(parent_id, []):
@@ -187,6 +287,72 @@ async def get_user_portfolios_analytics(user_id: str):
                     future_payouts_map[month_key]["amortizations"] += fp.get("amortizations", 0) or 0
                     future_payouts_map[month_key]["total_amount"] += fp.get("total_amount", 0) or 0
                     future_payouts_map[month_key]["payout_count"] += fp.get("payout_count", 0) or 0
+
+                # Доходность по активам - объединяем из дочерних портфелей
+                for ar in child.get("asset_returns") or []:
+                    asset_key = ar.get("asset_id") or ar.get("asset_ticker") or ar.get("asset_name", "")
+                    if asset_key:
+                        if asset_key not in asset_returns_map:
+                            asset_returns_map[asset_key] = {
+                                "asset_id": ar.get("asset_id"),
+                                "asset_name": ar.get("asset_name", ""),
+                                "asset_ticker": ar.get("asset_ticker", ""),
+                                "invested_amount": 0.0,
+                                "current_value": 0.0,
+                                "price_change": 0.0,
+                                "realized_profit": 0.0,
+                                "total_payouts": 0.0,
+                                "total_return": 0.0,
+                                "return_percent": 0.0,
+                                # Данные за год
+                                "value_year_ago": 0.0,
+                                "price_change_year": 0.0,
+                                "realized_profit_year": 0.0,
+                                "total_payouts_year": 0.0,
+                                "total_return_year": 0.0,
+                                "return_percent_year": 0.0,
+                                # Данные за месяц
+                                "value_month_ago": 0.0,
+                                "price_change_month": 0.0,
+                                "realized_profit_month": 0.0,
+                                "total_payouts_month": 0.0,
+                                "total_return_month": 0.0,
+                                "return_percent_month": 0.0
+                            }
+                        asset_returns_map[asset_key]["invested_amount"] += ar.get("invested_amount", 0) or 0
+                        asset_returns_map[asset_key]["current_value"] += ar.get("current_value", 0) or 0
+                        asset_returns_map[asset_key]["price_change"] += ar.get("price_change", 0) or 0
+                        asset_returns_map[asset_key]["realized_profit"] += ar.get("realized_profit", 0) or 0
+                        asset_returns_map[asset_key]["total_payouts"] += ar.get("total_payouts", 0) or 0
+                        asset_returns_map[asset_key]["total_return"] += ar.get("total_return", 0) or 0
+                        # Данные за год
+                        asset_returns_map[asset_key]["value_year_ago"] += ar.get("value_year_ago", 0) or 0
+                        asset_returns_map[asset_key]["price_change_year"] += ar.get("price_change_year", 0) or 0
+                        asset_returns_map[asset_key]["realized_profit_year"] += ar.get("realized_profit_year", 0) or 0
+                        asset_returns_map[asset_key]["total_payouts_year"] += ar.get("total_payouts_year", 0) or 0
+                        asset_returns_map[asset_key]["total_return_year"] += ar.get("total_return_year", 0) or 0
+                        # Данные за месяц
+                        asset_returns_map[asset_key]["value_month_ago"] += ar.get("value_month_ago", 0) or 0
+                        asset_returns_map[asset_key]["price_change_month"] += ar.get("price_change_month", 0) or 0
+                        asset_returns_map[asset_key]["realized_profit_month"] += ar.get("realized_profit_month", 0) or 0
+                        asset_returns_map[asset_key]["total_payouts_month"] += ar.get("total_payouts_month", 0) or 0
+                        asset_returns_map[asset_key]["total_return_month"] += ar.get("total_return_month", 0) or 0
+                        # Пересчитываем процент доходности на основе объединенных данных
+                        if asset_returns_map[asset_key]["invested_amount"] > 0:
+                            asset_returns_map[asset_key]["return_percent"] = (
+                                asset_returns_map[asset_key]["total_return"] / 
+                                asset_returns_map[asset_key]["invested_amount"]
+                            ) * 100
+                        if asset_returns_map[asset_key]["value_year_ago"] > 0:
+                            asset_returns_map[asset_key]["return_percent_year"] = (
+                                asset_returns_map[asset_key]["total_return_year"] / 
+                                asset_returns_map[asset_key]["value_year_ago"]
+                            ) * 100
+                        if asset_returns_map[asset_key]["value_month_ago"] > 0:
+                            asset_returns_map[asset_key]["return_percent_month"] = (
+                                asset_returns_map[asset_key]["total_return_month"] / 
+                                asset_returns_map[asset_key]["value_month_ago"]
+                            ) * 100
 
             # Пересчитываем return_percent на основе средней доходности активов
             # Доходность уже вычислена в SQL на основе средней доходности за 5 лет (акции) или ставки купона (облигации)
@@ -271,6 +437,11 @@ async def get_user_portfolios_analytics(user_id: str):
                 }
                 for k, v in sorted(future_payouts_map.items())
             ]
+            analytics_map[parent_id]["asset_returns"] = sorted(
+                list(asset_returns_map.values()),
+                key=lambda x: x.get("return_percent", 0),
+                reverse=True
+            )
 
         # === 5️⃣ Собираем итог ===
         # Определяем корневые портфели (без parent_portfolio_id)
