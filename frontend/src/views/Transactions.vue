@@ -7,6 +7,8 @@ import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/ContextMenu.vue'
 import operationsService from '../services/operationsService'
 import CustomSelect from '../components/CustomSelect.vue'
+import PageLayout from '../components/PageLayout.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 // Используем stores вместо inject
 const dashboardStore = useDashboardStore()
@@ -629,36 +631,38 @@ const transactionsSummary = computed(() => {
 </script>
 
 <template>
-  <div class="transactions-page">
-    <div class="page-layout">
-      <div class="main-content">
-        <div class="header-row">
-          <h1 class="page-title">История транзакций</h1>
-          <div class="header-actions">
-            <div class="view-mode-switcher">
-              <button 
-                class="btn btn-ghost" 
-                :class="{ active: viewMode === 'transactions' }"
-                @click="viewMode = 'transactions'"
-              >
-                Транзакции
-              </button>
-              <button 
-                class="btn btn-ghost" 
-                :class="{ active: viewMode === 'operations' }"
-                @click="viewMode = 'operations'"
-              >
-                Операции
-              </button>
-            </div>
-            <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
-              <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
-              <button @click="deleteSelected" class="btn btn-danger-soft">
-                Удалить выбранные
-              </button>
-            </div>
+  <PageLayout>
+    <PageHeader title="История транзакций">
+      <template #actions>
+        <div class="header-actions">
+          <div class="view-mode-switcher">
+            <button 
+              class="btn btn-ghost" 
+              :class="{ active: viewMode === 'transactions' }"
+              @click="viewMode = 'transactions'"
+            >
+              Транзакции
+            </button>
+            <button 
+              class="btn btn-ghost" 
+              :class="{ active: viewMode === 'operations' }"
+              @click="viewMode = 'operations'"
+            >
+              Операции
+            </button>
+          </div>
+          <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
+            <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
+            <button @click="deleteSelected" class="btn btn-danger-soft">
+              Удалить выбранные
+            </button>
           </div>
         </div>
+      </template>
+    </PageHeader>
+
+    <div class="transactions-content">
+      <div class="main-content">
 
         <div style="display: flex; gap: 20px;">
           <div class="card">
@@ -984,24 +988,17 @@ const transactionsSummary = computed(() => {
       @editTransaction="handleEditTransaction"
       @deleteTransaction="handleDeleteTransaction"
     />
-  </div>
-  
+  </PageLayout>
 </template>
 
 <style scoped>
 /* --- Layout & Typography --- */
-.transactions-page {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 32px 20px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: #1f2937;
-}
-
-.page-layout {
+.transactions-content {
   display: flex;
   gap: 24px;
   align-items: flex-start;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1f2937;
 }
 
 .main-content {
@@ -1014,20 +1011,6 @@ const transactionsSummary = computed(() => {
   flex-shrink: 0;
   position: sticky;
   top: 24px;
-}
-
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  margin: 0;
-  color: #111827;
 }
 
 .header-actions {

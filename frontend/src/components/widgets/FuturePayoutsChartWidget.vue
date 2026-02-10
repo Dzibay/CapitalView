@@ -1,8 +1,6 @@
 <script setup>
-import { ref, onMounted, watch, onUnmounted, computed, nextTick } from 'vue'
-import { Chart, registerables } from 'chart.js'
-
-Chart.register(...registerables)
+import { computed } from 'vue'
+import BarChart from '../charts/BarChart.vue'
 
 const props = defineProps({
   futurePayouts: {
@@ -11,125 +9,124 @@ const props = defineProps({
   }
 })
 
-const chartCanvas = ref(null)
-let chartInstance = null
 
 const formatMoney = (value) => {
-  return new Intl.NumberFormat('ru-RU', {
-    style: 'currency',
-    currency: 'RUB',
-    maximumFractionDigits: 0
-  }).format(value || 0)
+  const num = value || 0
+  if (num >= 1000) {
+    const kValue = num / 1000
+    // Форматируем с одной цифрой после запятой, если нужно
+    const formatted = kValue % 1 === 0 
+      ? kValue.toFixed(0) 
+      : kValue.toFixed(1).replace('.', ',')
+    return `${formatted}K ₽`
+  }
+  return `${num} ₽`
 }
 
 // Фильтруем только на год вперед
 const filteredPayouts = computed(() => {
-  if (!props.futurePayouts?.length) return []
+  if (!props.futurePayouts || !Array.isArray(props.futurePayouts) || props.futurePayouts.length === 0) {
+    return []
+  }
   
   const currentDate = new Date()
   const oneYearLater = new Date(currentDate)
   oneYearLater.setFullYear(currentDate.getFullYear() + 1)
   
   return props.futurePayouts.filter(fp => {
-    const [year, month] = fp.month.split('-')
-    const payoutDate = new Date(parseInt(year), parseInt(month) - 1)
-    return payoutDate <= oneYearLater
-  })
-})
-
-const renderChart = () => {
-  // Уничтожаем старый график при любых изменениях
-  if (chartInstance) {
-    chartInstance.destroy()
-    chartInstance = null
-  }
-
-  if (!chartCanvas.value) {
-    return
-  }
-
-  // Если данных нет, не создаем график
-  if (!filteredPayouts.value?.length) {
-    return
-  }
-
-  const ctx = chartCanvas.value.getContext('2d')
-  if (!ctx) return
-
-  const labels = filteredPayouts.value.map(f => f.month)
-  const data = filteredPayouts.value.map(f => f.total_amount || 0)
-
-  chartInstance = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Будущие выплаты',
-        data: data,
-        borderColor: '#f59e0b',
-        backgroundColor: 'rgba(245, 158, 11, 0.1)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        pointBackgroundColor: '#f59e0b',
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          enabled: true,
-          backgroundColor: '#1f2937',
-          titleFont: { weight: 'bold', size: 14 },
-          bodyFont: { size: 14 },
-          padding: 12,
-          cornerRadius: 6,
-          displayColors: false,
-          callbacks: {
-            label: (context) => formatMoney(context.parsed.y)
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid: { display: false },
-          ticks: {
-            font: { size: 12 },
-            color: '#6b7280'
-          }
-        },
-        y: {
-          beginAtZero: true,
-          grid: {
-            color: '#f3f4f6',
-            drawBorder: false
-          },
-          ticks: {
-            font: { size: 12 },
-            color: '#6b7280',
-            callback: (value) => formatMoney(value)
-          }
-        }
-      }
+    if (!fp || !fp.month) return false
+    try {
+      const [year, month] = fp.month.split('-')
+      if (!year || !month) return false
+      const payoutDate = new Date(parseInt(year), parseInt(month) - 1)
+      return payoutDate <= oneYearLater
+    } catch (e) {
+      return false
     }
   })
-}
-
-watch(() => props.futurePayouts, renderChart, { deep: true })
-watch(() => filteredPayouts.value, renderChart, { deep: true })
-onMounted(() => {
-  nextTick(() => renderChart())
 })
-onUnmounted(() => {
-  if (chartInstance) {
-    chartInstance.destroy()
-    chartInstance = null
+
+const chartLabels = computed(() => {
+  return filteredPayouts.value.map(f => f.month) || []
+})
+
+const chartDatasets = computed(() => {
+  if (!filteredPayouts.value || filteredPayouts.value.length === 0) {
+    return []
   }
+  
+  const datasets = []
+  
+  // Дивиденды - всегда показываем, даже если все значения 0
+  const dividends = filteredPayouts.value.map(f => Number(f.dividends) || 0)
+  const dividendsSum = dividends.reduce((a, b) => a + b, 0)
+  datasets.push({
+    label: 'Дивиденды',
+    data: dividends,
+    backgroundColor: 'rgba(16, 185, 129, 0.85)',
+    borderColor: '#10b981',
+    borderWidth: 0,
+    hoverBackgroundColor: '#10b981',
+    hoverBorderColor: '#059669',
+    borderRadius: 8,
+    borderSkipped: false,
+    totalSum: dividendsSum
+  })
+  
+  // Купоны - всегда показываем, даже если все значения 0
+  const coupons = filteredPayouts.value.map(f => Number(f.coupons) || 0)
+  const couponsSum = coupons.reduce((a, b) => a + b, 0)
+  datasets.push({
+    label: 'Купоны',
+    data: coupons,
+    backgroundColor: 'rgba(59, 130, 246, 0.85)',
+    borderColor: '#3b82f6',
+    borderWidth: 0,
+    hoverBackgroundColor: '#3b82f6',
+    hoverBorderColor: '#2563eb',
+    borderRadius: 0,
+    borderSkipped: false,
+    totalSum: couponsSum
+  })
+  
+  // Амортизации - всегда показываем, даже если все значения 0
+  const amortizations = filteredPayouts.value.map(f => Number(f.amortizations) || 0)
+  const amortizationsSum = amortizations.reduce((a, b) => a + b, 0)
+  datasets.push({
+    label: 'Амортизации',
+    data: amortizations,
+    backgroundColor: 'rgba(245, 158, 11, 0.85)',
+    borderColor: '#f59e0b',
+    borderWidth: 0,
+    hoverBackgroundColor: '#f59e0b',
+    hoverBorderColor: '#d97706',
+    borderRadius: 0,
+    borderSkipped: false,
+    totalSum: amortizationsSum
+  })
+  
+  // Сортируем по сумме значений (от меньших к большим)
+  // В stacked графике порядок снизу вверх, поэтому меньшие внизу, большие наверху
+  const sorted = datasets.sort((a, b) => a.totalSum - b.totalSum)
+  
+  // Применяем borderRadius только к верхнему слою (скругление только сверху)
+  // Если есть только один dataset, он тоже должен быть скруглен сверху
+  sorted.forEach((dataset, index) => {
+    if (index === sorted.length - 1) {
+      // Верхний слой (или единственный слой) - скругление только сверху
+      dataset.borderRadius = {
+        topLeft: 8,
+        topRight: 8,
+        bottomLeft: 0,
+        bottomRight: 0
+      }
+    } else {
+      // Нижние и средние слои - без скругления
+      dataset.borderRadius = 0
+    }
+  })
+  
+  return sorted
 })
 </script>
 
@@ -140,8 +137,15 @@ onUnmounted(() => {
       <h2>График будущих выплат</h2>
     </div>
     <div class="chart-container">
-      <canvas ref="chartCanvas"></canvas>
-      <div v-if="!filteredPayouts || filteredPayouts.length === 0" class="empty-state">
+      <BarChart
+        v-if="filteredPayouts && filteredPayouts.length > 0"
+        :labels="chartLabels"
+        :datasets="chartDatasets"
+        :stacked="true"
+        :format-value="formatMoney"
+        height="300px"
+      />
+      <div v-else class="empty-state">
         <p>Нет данных о будущих выплатах</p>
       </div>
     </div>

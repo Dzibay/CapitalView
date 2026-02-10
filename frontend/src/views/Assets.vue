@@ -19,6 +19,8 @@ import { useExpandedState } from '../composables/useExpandedState';
 import { useModals } from '../composables/useModal';
 import { usePortfolio } from '../composables/usePortfolio';
 import LoadingState from '../components/LoadingState.vue';
+import PageLayout from '../components/PageLayout.vue';
+import PageHeader from '../components/PageHeader.vue';
 
 const selectedAsset = ref(null);
 
@@ -239,30 +241,45 @@ const handleMoveAsset = (asset) => {
 </script>
 
 <template>
-  <div class="dashboard-container">
-    <div class="content-wrapper">
-      
-      <div class="action-bar">
-        <h1 class="page-title">Мои Активы</h1>
-        <div class="buttons-group">
-          <button class="btn btn-primary" @click="openModal('addAsset')">
-            <span class="icon">➕</span>
-            <span>Добавить актив</span>
-          </button>
-          <button class="btn btn-secondary" @click="openModal('addPortfolio')">
-            <span class="icon">📁</span>
-            <span>Создать портфель</span>
-          </button>
-          <div class="divider-vertical"></div>
-          <button class="btn btn-outline" @click="openModal('import')">
+  <PageLayout>
+    <PageHeader 
+      title="Мои Активы"
+      subtitle="Управление портфелями и активами"
+    >
+      <template #actions>
+        <label class="filter-checkbox">
+          <input 
+            type="checkbox" 
+            v-model="showSoldAssets"
+            class="checkbox-input"
+          />
+          <span class="checkbox-label">Показать проданные активы</span>
+        </label>
+      </template>
+    </PageHeader>
+
+    <div class="assets-menu">
+      <div class="buttons-group">
+        <button class="btn btn-primary" @click="openModal('addAsset')">
+          <span class="icon">➕</span>
+          <span>Добавить актив</span>
+        </button>
+        <button class="btn btn-secondary" @click="openModal('addPortfolio')">
+          <span class="icon">📁</span>
+          <span>Создать портфель</span>
+        </button>
+        <div class="divider-vertical"></div>
+        <div class="button-group-unified">
+          <button class="btn btn-outline btn-group-left" @click="openModal('import')">
             <span class="icon">📥</span>
             <span>Импорт</span>
           </button>
-          <button class="btn btn-ghost" @click="refreshPortfolios" title="Обновить портфели">
+          <button class="btn btn-outline btn-group-right btn-refresh" @click="refreshPortfolios" title="Обновить портфели">
             <span class="icon">🔄</span>
           </button>
         </div>
       </div>
+    </div>
 
       <AddAssetModal v-if="modals.addAsset" @close="closeModal('addAsset')" :onSave="addAsset" :referenceData="parsedDashboard.reference" :portfolios="parsedDashboard.portfolios"/>
       <AddPortfolioModal v-if="modals.addPortfolio" @close="closeModal('addPortfolio')" :onSave="addPortfolio" :portfolios="parsedDashboard.portfolios"/>
@@ -319,19 +336,7 @@ const handleMoveAsset = (asset) => {
         </button>
       </div>
 
-      <div v-else class="tree-wrapper">
-        <!-- Фильтр для проданных активов -->
-        <div class="assets-filter">
-          <label class="filter-checkbox">
-            <input 
-              type="checkbox" 
-              v-model="showSoldAssets"
-              class="checkbox-input"
-            />
-            <span class="checkbox-label">Показать проданные активы</span>
-          </label>
-        </div>
-        
+      <div v-else class="assets-content">
         <PortfolioTree
           :portfolios="parsedDashboard.portfolioTree"
           :expandedPortfolios="expandedPortfolios"
@@ -355,57 +360,10 @@ const handleMoveAsset = (asset) => {
           @moveAsset="handleMoveAsset"
         />
       </div>
-    </div>
-  </div>
+  </PageLayout>
 </template>
 
 <style scoped>
-/* Base Layout */
-.dashboard-container {
-  min-height: 100vh;
-  padding: 32px 20px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: #1f2937;
-}
-
-.content-wrapper {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-/* Action Bar */
-.action-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 32px;
-  padding: 0;
-  background: transparent;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 768px) {
-  .action-bar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-  }
-  
-  .buttons-group {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #111827;
-  margin: 0;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-}
 
 .buttons-group {
   display: flex;
@@ -480,6 +438,31 @@ const handleMoveAsset = (asset) => {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
+.button-group-unified {
+  display: flex;
+  gap: 0;
+}
+
+.button-group-unified .btn-group-left {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+
+.button-group-unified .btn-group-right {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 1px solid #e5e7eb;
+}
+
+.button-group-unified .btn-group-left:hover {
+  border-right-color: #2563eb;
+}
+
+.button-group-unified .btn-group-right:hover {
+  border-left-color: #2563eb;
+}
+
 .btn-outline {
   background: transparent;
   border: 1px solid #e5e7eb;
@@ -496,6 +479,15 @@ const handleMoveAsset = (asset) => {
 .btn-outline:active {
   transform: translateY(0);
   background: #e0f2fe;
+}
+
+.btn-refresh .icon {
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+
+.btn-refresh:hover .icon {
+  transform: rotate(90deg);
 }
 
 .btn-ghost {
@@ -653,14 +645,17 @@ const handleMoveAsset = (asset) => {
   margin-top: 8px;
 }
 
-/* Assets Filter */
-.assets-filter {
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  background: white;
-  border-radius: 10px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  border: 1px solid #e5e7eb;
+/* Assets Menu */
+.assets-menu {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.assets-content {
+  margin-top: 0;
 }
 
 .filter-checkbox {
@@ -671,6 +666,16 @@ const handleMoveAsset = (asset) => {
   user-select: none;
   font-size: 14px;
   color: #374151;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.filter-checkbox:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
 }
 
 .checkbox-input {
@@ -678,9 +683,11 @@ const handleMoveAsset = (asset) => {
   height: 18px;
   cursor: pointer;
   accent-color: #2563eb;
+  flex-shrink: 0;
 }
 
 .checkbox-label {
   font-weight: 500;
+  white-space: nowrap;
 }
 </style>

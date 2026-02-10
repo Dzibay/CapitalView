@@ -1,9 +1,9 @@
 <script setup>
 import { computed } from 'vue'
-import BarChart from '../charts/BarChart.vue'
+import DoughnutChart from '../charts/DoughnutChart.vue'
 
 const props = defineProps({
-  payoutsByAsset: {
+  operationsBreakdown: {
     type: Array,
     default: () => []
   }
@@ -18,34 +18,11 @@ const formatMoney = (value) => {
 }
 
 const chartLabels = computed(() => {
-  const topAssets = props.payoutsByAsset?.slice(0, 10) || []
-  return topAssets.map(a => a.asset_ticker || a.asset_name || 'Unknown')
+  return props.operationsBreakdown?.map(op => op.type || 'Unknown') || []
 })
 
-const chartDatasets = computed(() => {
-  const topAssets = props.payoutsByAsset?.slice(0, 10) || []
-  return [
-    {
-      label: 'Дивиденды',
-      data: topAssets.map(a => a.total_dividends || 0),
-      backgroundColor: 'rgba(16, 185, 129, 0.85)',
-      borderColor: '#10b981',
-      borderWidth: 2,
-      hoverBackgroundColor: '#10b981',
-      hoverBorderColor: '#059669',
-      borderRadius: 8
-    },
-    {
-      label: 'Купоны',
-      data: topAssets.map(a => a.total_coupons || 0),
-      backgroundColor: 'rgba(59, 130, 246, 0.85)',
-      borderColor: '#3b82f6',
-      borderWidth: 2,
-      hoverBackgroundColor: '#3b82f6',
-      hoverBorderColor: '#2563eb',
-      borderRadius: 8
-    }
-  ]
+const chartValues = computed(() => {
+  return props.operationsBreakdown?.map(op => Math.abs(op.sum || 0)) || []
 })
 </script>
 
@@ -53,19 +30,20 @@ const chartDatasets = computed(() => {
   <div class="widget">
     <div class="widget-title">
       <div class="widget-title-icon-rect"></div>
-      <h2>Выплаты по активам</h2>
+      <h2>Распределение операций</h2>
     </div>
     <div class="chart-container">
-      <BarChart
-        v-if="payoutsByAsset && payoutsByAsset.length > 0"
+      <DoughnutChart
+        v-if="operationsBreakdown && operationsBreakdown.length > 0"
         :labels="chartLabels"
-        :datasets="chartDatasets"
-        :stacked="true"
+        :values="chartValues"
+        layout="vertical"
         :format-value="formatMoney"
         height="300px"
+        :show-legend="true"
       />
       <div v-else class="empty-state">
-        <p>Нет данных о выплатах по активам</p>
+        <p>Нет данных об операциях</p>
       </div>
     </div>
   </div>
@@ -129,4 +107,3 @@ const chartDatasets = computed(() => {
   margin: 0;
 }
 </style>
-

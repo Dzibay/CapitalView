@@ -7,6 +7,8 @@ import { usePortfoliosStore } from '../stores/portfolios.store'
 
 // Компоненты
 import LoadingState from '../components/LoadingState.vue'
+import PageLayout from '../components/PageLayout.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 // Виджеты
 import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
@@ -95,19 +97,19 @@ const goalData = computed(() => {
 </script>
 
 <template>
-  <div v-if="!uiStore.loading && parsedDashboard">
-    <div class="title" style="display: flex; align-items: center; justify-content: space-between;">
-      <div>
-        <h1>С возвращением, {{ authStore.user?.name }}</h1>
-        <h2>Главная</h2>
-      </div>
-      
-      <PortfolioSelector 
-        :portfolios="portfolios"
-        :modelValue="uiStore.selectedPortfolioId"
-        @update:modelValue="uiStore.setSelectedPortfolioId"
-      />
-    </div>
+  <PageLayout v-if="!uiStore.loading && parsedDashboard">
+    <PageHeader 
+      :title="`С возвращением, ${authStore.user?.name}`"
+      subtitle="Главная"
+    >
+      <template #actions>
+        <PortfolioSelector 
+          :portfolios="portfolios"
+          :modelValue="uiStore.selectedPortfolioId"
+          @update:modelValue="uiStore.setSelectedPortfolioId"
+        />
+      </template>
+    </PageHeader>
 
     <div class="widgets-grid">
       <TotalCapitalWidget 
@@ -117,7 +119,8 @@ const goalData = computed(() => {
       <PortfolioProfitWidget 
         :total-amount="parsedDashboard.totalAmount" 
         :total-profit="selectedPortfolio.analytics?.total_profit || 0" 
-        :monthly-change="0" 
+        :monthly-change="parsedDashboard.monthlyChange"
+        :invested-amount="parsedDashboard.investedAmount"
       />
       <GoalProgressWidget 
         :goal-data="goalData"
@@ -140,16 +143,12 @@ const goalData = computed(() => {
       <TopAssetsWidget :assets="parsedDashboard.assets" />
       <PortfolioProfitChartWidget :chartData="parsedDashboard.portfolioChart" />
     </div>
-  </div>
+  </PageLayout>
 
   <LoadingState v-else />
 </template>
 
 <style scoped>
-.title {
-  margin-bottom: var(--spacing);
-}
-
 .widgets-grid {
   display: grid;
   gap: var(--spacing);

@@ -6,6 +6,8 @@ import { useUIStore } from '../stores/ui.store'
 import { useTransactionsStore } from '../stores/transactions.store'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 import LoadingState from '../components/LoadingState.vue'
+import PageLayout from '../components/PageLayout.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 // Виджеты
 import MonthlyPayoutsChartWidget from '../components/widgets/MonthlyPayoutsChartWidget.vue'
@@ -13,6 +15,11 @@ import PayoutsByAssetChartWidget from '../components/widgets/PayoutsByAssetChart
 import FuturePayoutsChartWidget from '../components/widgets/FuturePayoutsChartWidget.vue'
 import PortfoliosDistributionChartWidget from '../components/widgets/PortfoliosDistributionChartWidget.vue'
 import AnalyticsAssetDistributionWidget from '../components/widgets/AnalyticsAssetDistributionWidget.vue'
+import MonthlyFlowChartWidget from '../components/widgets/MonthlyFlowChartWidget.vue'
+import PortfolioChartWidget from '../components/widgets/PortfolioChartWidget.vue'
+import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
+import ReturnWidget from '../components/widgets/ReturnWidget.vue'
+import DividendsWidget from '../components/widgets/DividendsWidget.vue'
 
 // Используем stores
 const authStore = useAuthStore()
@@ -97,81 +104,117 @@ async function updateSelectedAnalytics() {
     return
   }
 }
+
+// Расчет годовых дивидендов: процент доходности * сумма портфеля
+const calculatedAnnualDividends = computed(() => {
+  if (!selectedPortfolioAnalytics.value?.totals) return 0
+  const returnPercent = selectedPortfolioAnalytics.value.totals.return_percent || 0
+  const totalValue = selectedPortfolioAnalytics.value.totals.total_value || 0
+  // return_percent уже в процентах, поэтому делим на 100
+  return (returnPercent / 100) * totalValue
+})
+
+// Получаем данные для графика динамики капитала (в формате для PortfolioChartWidget)
+const portfolioChartData = computed(() => {
+  if (!uiStore.selectedPortfolioId) return { labels: [], data_value: [], data_invested: [] }
+  const portfolio = portfolios.value.find(p => p.id === uiStore.selectedPortfolioId)
+  if (!portfolio?.history) return { labels: [], data_value: [], data_invested: [] }
+  
+  // Если история уже в нужном формате
+  if (portfolio.history.labels && portfolio.history.data_value) {
+    return {
+      labels: portfolio.history.labels || [],
+      data_value: portfolio.history.data_value || [],
+      data_invested: portfolio.history.data_invested || []
+    }
+  }
+  
+  // Если история в формате массива объектов, преобразуем
+  if (Array.isArray(portfolio.history) && portfolio.history.length > 0) {
+    return {
+      labels: portfolio.history.map(h => h.date || h.month || ''),
+      data_value: portfolio.history.map(h => h.value || h.total_value || 0),
+      data_invested: portfolio.history.map(h => h.invested || h.total_invested || 0)
+    }
+  }
+  
+  return { labels: [], data_value: [], data_invested: [] }
+})
 </script>
 
 <template>
-  <div v-if="!uiStore.loading" class="analytics-container">
-    <div class="title" style="display: flex; align-items: center; justify-content: space-between;">
-      <div>
-        <h1>Финансовая аналитика</h1>
-        <h2>Сводные показатели</h2>
-      </div>
-
-      <PortfolioSelector 
-        :portfolios="portfolios"
-        :modelValue="uiStore.selectedPortfolioId"
-        @update:modelValue="uiStore.setSelectedPortfolioId"
-      />
-    </div>
+  <PageLayout v-if="!uiStore.loading">
+    <PageHeader 
+      title="Финансовая аналитика"
+      subtitle="Сводные показатели"
+    >
+      <template #actions>
+        <PortfolioSelector 
+          :portfolios="portfolios"
+          :modelValue="uiStore.selectedPortfolioId"
+          @update:modelValue="uiStore.setSelectedPortfolioId"
+        />
+      </template>
+    </PageHeader>
 
     <LoadingState v-if="isLoadingAnalytics" message="Загрузка аналитики..." />
 
     <div v-else-if="selectedPortfolioAnalytics" class="analytics-content">
-      <!-- Метрики -->
-      <div class="metrics-grid">
-        <div class="metric-card">
-          <div class="metric-label">Доходность портфеля</div>
-          <div class="metric-value" :class="(selectedPortfolioAnalytics.totals?.return_percent || 0) >= 0 ? 'positive' : 'negative'">
-            {{ formatPercent(selectedPortfolioAnalytics.totals?.return_percent || 0) }}
-          </div>
-        </div>
-        
-        <div class="metric-card">
-          <div class="metric-label">Дивиденды в год</div>
-          <div class="metric-value positive">
-            {{ formatMoney(selectedPortfolioAnalytics.totals?.dividends_per_year || 0) }}
-          </div>
-        </div>
-
-        <div class="metric-card">
-          <div class="metric-label">Инвестировано</div>
-          <div class="metric-value">
-            {{ formatMoney(selectedPortfolioAnalytics.totals?.total_invested || 0) }}
-          </div>
-        </div>
-
-        <div class="metric-card">
-          <div class="metric-label">Текущая стоимость</div>
-          <div class="metric-value">
-            {{ formatMoney(selectedPortfolioAnalytics.totals?.total_value || 0) }}
-          </div>
-        </div>
+      <!-- Виджеты -->
+      <div class="widgets-grid">
+        <TotalCapitalWidget 
+          :total-amount="selectedPortfolioAnalytics.totals?.total_value || 0"
+          :invested-amount="selectedPortfolioAnalytics.totals?.total_invested || 0"
+        />
+        <ReturnWidget 
+          :return-percent="selectedPortfolioAnalytics.totals?.return_percent || 0"
+          :total-value="selectedPortfolioAnalytics.totals?.total_value || 0"
+          :total-invested="selectedPortfolioAnalytics.totals?.total_invested || 0"
+        />
+        <DividendsWidget 
+          :annual-dividends="calculatedAnnualDividends"
+        />
       </div>
 
       <!-- Графики -->
       <div class="charts-grid">
-        <!-- График полученных выплат по месяцам -->
+        <!-- 1) График стоимости портфеля -->
+        <PortfolioChartWidget 
+          :chart-data="portfolioChartData"
+        />
+
+        <!-- 2) График распределения активов -->
+        <AnalyticsAssetDistributionWidget 
+          class="full-width-chart"
+          :asset-distribution="selectedPortfolioAnalytics.asset_distribution || []"
+          layout="horizontal"
+        />
+
+        <!-- 3) График полученных выплат по месяцам и график будущих выплат -->
         <MonthlyPayoutsChartWidget 
+          class="half-width-chart"
           :monthly-payouts="selectedPortfolioAnalytics.monthly_payouts || []"
         />
 
-        <!-- Распределение по активам -->
-        <AnalyticsAssetDistributionWidget 
-          :asset-distribution="selectedPortfolioAnalytics.asset_distribution || []"
-        />
-
-        <!-- График будущих выплат -->
         <FuturePayoutsChartWidget 
+          class="half-width-chart"
           :future-payouts="selectedPortfolioAnalytics.future_payouts || []"
         />
 
-        <!-- График полученных выплат по активам -->
+        <!-- 4) График месячных потоков и график выплат по активам -->
+        <MonthlyFlowChartWidget 
+          class="full-width-chart"
+          :monthly-flow="selectedPortfolioAnalytics.monthly_flow || []"
+        />
+
         <PayoutsByAssetChartWidget 
+          class="half-width-chart"
           :payouts-by-asset="selectedPortfolioAnalytics.payouts_by_asset || []"
         />
 
-        <!-- Круговая диаграмма портфелей -->
+        <!-- 5) График распределения портфелей -->
         <PortfoliosDistributionChartWidget 
+          class="half-width-chart"
           :portfolios="portfolios"
           :all-portfolios="dashboardStore.analytics || []"
           :selected-portfolio-id="uiStore.selectedPortfolioId"
@@ -180,66 +223,53 @@ async function updateSelectedAnalytics() {
     </div>
 
     <LoadingState v-else />
-  </div>
+  </PageLayout>
 </template>
 
 <style scoped>
-.analytics-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.title {
-  margin-bottom: var(--spacing);
-}
-
 .analytics-content {
   display: flex;
   flex-direction: column;
   gap: var(--spacing);
 }
 
-.metrics-grid {
+.widgets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: var(--spacing);
-}
-
-.metric-card {
-  background: white;
-  padding: 24px;
-  border-radius: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.metric-label {
-  font-size: 0.9rem;
-  color: #6b7280;
-  font-weight: 500;
-}
-
-.metric-value {
-  font-size: 1.8rem;
-  font-weight: 600;
-  color: #111827;
-}
-
-.metric-value.positive {
-  color: #10b981;
-}
-
-.metric-value.negative {
-  color: #ef4444;
+  grid-template-columns: repeat(auto-fit, minmax(clamp(350px, 20%, 400px), 1fr));
+  grid-auto-rows: 150px;
 }
 
 .charts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--spacing);
+}
+
+.charts-grid > :first-child {
+  min-height: 450px;
+}
+
+.charts-grid > *:first-child {
+  grid-column: 1 / -1;
+}
+
+.charts-grid > .full-width-chart {
+  grid-column: 1 / -1;
+}
+
+.charts-grid > .half-width-chart {
+  grid-column: span 1;
+}
+
+@media (max-width: 800px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .charts-grid > .half-width-chart {
+    grid-column: span 1;
+  }
 }
 
 

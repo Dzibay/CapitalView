@@ -54,7 +54,7 @@ async def get_user_portfolios_analytics(user_id: str):
             totals = defaultdict(float, parent_analytics.get("totals", {}))
             op_map = defaultdict(float)
             month_map = defaultdict(lambda: {"inflow": 0.0, "outflow": 0.0})
-            monthly_payouts_map = defaultdict(float)
+            monthly_payouts_map = defaultdict(lambda: {"dividends": 0.0, "coupons": 0.0, "amortizations": 0.0, "total_payouts": 0.0})
             asset_distribution_map = defaultdict(lambda: {
                 "asset_id": None,
                 "asset_name": "",
@@ -69,7 +69,7 @@ async def get_user_portfolios_analytics(user_id: str):
                 "total_coupons": 0.0,
                 "total_payouts": 0.0
             })
-            future_payouts_map = defaultdict(lambda: {"total_amount": 0.0, "payout_count": 0})
+            future_payouts_map = defaultdict(lambda: {"dividends": 0.0, "coupons": 0.0, "amortizations": 0.0, "total_amount": 0.0, "payout_count": 0})
 
             # учитываем текущие данные родителя
             for op in parent_analytics.get("operations_breakdown") or []:
@@ -80,7 +80,11 @@ async def get_user_portfolios_analytics(user_id: str):
                 month_map[m["month"]]["outflow"] += m.get("outflow", 0)
 
             for mp in parent_analytics.get("monthly_payouts") or []:
-                monthly_payouts_map[mp["month"]] += mp.get("total_payouts", 0)
+                month_key = mp["month"]
+                monthly_payouts_map[month_key]["dividends"] += mp.get("dividends", 0) or 0
+                monthly_payouts_map[month_key]["coupons"] += mp.get("coupons", 0) or 0
+                monthly_payouts_map[month_key]["amortizations"] += mp.get("amortizations", 0) or 0
+                monthly_payouts_map[month_key]["total_payouts"] += mp.get("total_payouts", 0) or 0
 
             for ad in parent_analytics.get("asset_distribution") or []:
                 asset_key = ad.get("asset_id") or ad.get("asset_ticker") or ad.get("asset_name", "")
@@ -112,8 +116,12 @@ async def get_user_portfolios_analytics(user_id: str):
                     payouts_by_asset_map[asset_key]["total_payouts"] += pba.get("total_payouts", 0)
 
             for fp in parent_analytics.get("future_payouts") or []:
-                future_payouts_map[fp["month"]]["total_amount"] += fp.get("total_amount", 0)
-                future_payouts_map[fp["month"]]["payout_count"] += fp.get("payout_count", 0)
+                month_key = fp["month"]
+                future_payouts_map[month_key]["dividends"] += fp.get("dividends", 0) or 0
+                future_payouts_map[month_key]["coupons"] += fp.get("coupons", 0) or 0
+                future_payouts_map[month_key]["amortizations"] += fp.get("amortizations", 0) or 0
+                future_payouts_map[month_key]["total_amount"] += fp.get("total_amount", 0) or 0
+                future_payouts_map[month_key]["payout_count"] += fp.get("payout_count", 0) or 0
 
             # === объединяем детей ===
             for child_id in parent_to_children.get(parent_id, []):
@@ -137,7 +145,11 @@ async def get_user_portfolios_analytics(user_id: str):
                     month_map[m["month"]]["outflow"] += m.get("outflow", 0)
 
                 for mp in child.get("monthly_payouts") or []:
-                    monthly_payouts_map[mp["month"]] += mp.get("total_payouts", 0)
+                    month_key = mp["month"]
+                    monthly_payouts_map[month_key]["dividends"] += mp.get("dividends", 0) or 0
+                    monthly_payouts_map[month_key]["coupons"] += mp.get("coupons", 0) or 0
+                    monthly_payouts_map[month_key]["amortizations"] += mp.get("amortizations", 0) or 0
+                    monthly_payouts_map[month_key]["total_payouts"] += mp.get("total_payouts", 0) or 0
 
                 for ad in child.get("asset_distribution") or []:
                     asset_key = ad.get("asset_id") or ad.get("asset_ticker") or ad.get("asset_name", "")
@@ -169,8 +181,12 @@ async def get_user_portfolios_analytics(user_id: str):
                         payouts_by_asset_map[asset_key]["total_payouts"] += pba.get("total_payouts", 0)
 
                 for fp in child.get("future_payouts") or []:
-                    future_payouts_map[fp["month"]]["total_amount"] += fp.get("total_amount", 0)
-                    future_payouts_map[fp["month"]]["payout_count"] += fp.get("payout_count", 0)
+                    month_key = fp["month"]
+                    future_payouts_map[month_key]["dividends"] += fp.get("dividends", 0) or 0
+                    future_payouts_map[month_key]["coupons"] += fp.get("coupons", 0) or 0
+                    future_payouts_map[month_key]["amortizations"] += fp.get("amortizations", 0) or 0
+                    future_payouts_map[month_key]["total_amount"] += fp.get("total_amount", 0) or 0
+                    future_payouts_map[month_key]["payout_count"] += fp.get("payout_count", 0) or 0
 
             # Пересчитываем return_percent на основе средней доходности активов
             # Доходность уже вычислена в SQL на основе средней доходности за 5 лет (акции) или ставки купона (облигации)
@@ -225,7 +241,14 @@ async def get_user_portfolios_analytics(user_id: str):
                 {"month": k, **v} for k, v in sorted(month_map.items())
             ]
             analytics_map[parent_id]["monthly_payouts"] = [
-                {"month": k, "total_payouts": v} for k, v in sorted(monthly_payouts_map.items())
+                {
+                    "month": k,
+                    "dividends": v["dividends"],
+                    "coupons": v["coupons"],
+                    "amortizations": v["amortizations"],
+                    "total_payouts": v["total_payouts"]
+                }
+                for k, v in sorted(monthly_payouts_map.items())
             ]
             analytics_map[parent_id]["asset_distribution"] = sorted(
                 list(asset_distribution_map.values()),
@@ -238,7 +261,14 @@ async def get_user_portfolios_analytics(user_id: str):
                 reverse=True
             )
             analytics_map[parent_id]["future_payouts"] = [
-                {"month": k, "total_amount": v["total_amount"], "payout_count": v["payout_count"]}
+                {
+                    "month": k,
+                    "dividends": v["dividends"],
+                    "coupons": v["coupons"],
+                    "amortizations": v["amortizations"],
+                    "total_amount": v["total_amount"],
+                    "payout_count": v["payout_count"]
+                }
                 for k, v in sorted(future_payouts_map.items())
             ]
 

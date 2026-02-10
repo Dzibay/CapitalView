@@ -1,8 +1,6 @@
 <script setup>
-import { ref, onMounted, watch, onUnmounted, computed, nextTick } from 'vue'
-import { Chart, registerables } from 'chart.js'
-
-Chart.register(...registerables)
+import { computed } from 'vue'
+import DoughnutChart from '../charts/DoughnutChart.vue'
 
 const props = defineProps({
   portfolios: {
@@ -19,9 +17,6 @@ const props = defineProps({
   }
 })
 
-const chartCanvas = ref(null)
-let chartInstance = null
-
 const formatMoney = (value) => {
   return new Intl.NumberFormat('ru-RU', {
     style: 'currency',
@@ -29,6 +24,13 @@ const formatMoney = (value) => {
     maximumFractionDigits: 0
   }).format(value || 0)
 }
+
+// Общий массив цветов для графика и легенды
+const colors = [
+  '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#10b981', '#f472b6', '#60a5fa', '#fbbf24', '#a78bfa',
+  '#ec4899', '#14b8a6', '#f97316', '#6366f1'
+]
 
 // Получаем портфели только на один уровень вниз
 const portfolioValues = computed(() => {
@@ -41,11 +43,12 @@ const portfolioValues = computed(() => {
   // Получаем портфели только на один уровень вниз
   const directChildren = props.portfolios
     .filter(p => p.parent_portfolio_id === props.selectedPortfolioId)
-    .map(childPortfolio => {
+    .map((childPortfolio, index) => {
       const childAnalytics = props.allPortfolios.find(a => a.portfolio_id === childPortfolio.id)
       return {
         name: childPortfolio.name,
-        value: childAnalytics?.totals?.total_value || 0
+        value: childAnalytics?.totals?.total_value || 0,
+        index: index
       }
     })
     .filter(p => p.value > 0)
@@ -59,7 +62,8 @@ const portfolioValues = computed(() => {
   if (ownValue > 0) {
     values.push({
       name: selectedPortfolio.portfolio_name,
-      value: ownValue
+      value: ownValue,
+      index: -1
     })
   }
   values.push(...directChildren)
@@ -67,87 +71,21 @@ const portfolioValues = computed(() => {
   return values
 })
 
-const renderChart = () => {
-  // Уничтожаем старый график при любых изменениях
-  if (chartInstance) {
-    chartInstance.destroy()
-    chartInstance = null
-  }
-
-  if (!chartCanvas.value) {
-    return
-  }
-
-  // Если данных нет, не создаем график
+const chartData = computed(() => {
   if (!portfolioValues.value?.length) {
-    return
+    return { labels: [], values: [] }
   }
-
-  const ctx = chartCanvas.value.getContext('2d')
-  if (!ctx) return
-
+  
   const labels = portfolioValues.value.map(p => p.name)
-  const data = portfolioValues.value.map(p => p.value)
-
-  chartInstance = new Chart(ctx, {
-    type: 'pie',
-    data: {
-      labels: labels,
-      datasets: [{
-        data: data,
-        backgroundColor: [
-          '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
-          '#8b5cf6', '#f472b6', '#60a5fa', '#fbbf24'
-        ]
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { 
-          position: 'bottom',
-          labels: {
-            font: { size: 12 },
-            color: '#6b7280',
-            usePointStyle: true,
-            padding: 15
-          }
-        },
-        tooltip: {
-          enabled: true,
-          backgroundColor: '#1f2937',
-          titleFont: { weight: 'bold', size: 14 },
-          bodyFont: { size: 14 },
-          padding: 12,
-          cornerRadius: 6,
-          displayColors: true,
-          callbacks: {
-            label: (context) => {
-              const label = context.label || ''
-              const value = formatMoney(context.parsed)
-              const total = context.dataset.data.reduce((a, b) => a + b, 0)
-              const percent = total > 0 ? ((context.parsed / total) * 100).toFixed(1) : 0
-              return `${label}: ${value} (${percent}%)`
-            }
-          }
-        }
-      }
-    }
-  })
-}
-
-watch(() => portfolioValues.value, renderChart, { deep: true, immediate: true })
-watch(() => props.selectedPortfolioId, renderChart)
-onMounted(() => {
-  nextTick(() => renderChart())
+  const values = portfolioValues.value.map(p => p.value)
+  
+  return { labels, values }
 })
-onUnmounted(() => {
-  if (chartInstance) {
-    chartInstance.destroy()
-    chartInstance = null
-  }
+
+const total = computed(() => {
+  return chartData.value.values.reduce((a, b) => a + b, 0)
 })
+
 </script>
 
 <template>
@@ -156,11 +94,40 @@ onUnmounted(() => {
       <div class="widget-title-icon-rect"></div>
       <h2>Распределение портфелей</h2>
     </div>
-    <div class="chart-container">
-      <canvas ref="chartCanvas"></canvas>
-      <div v-if="!portfolioValues || portfolioValues.length === 0" class="empty-state">
-        <p>Нет данных о распределении портфелей</p>
+
+    <div v-if="portfolioValues && portfolioValues.length" class="allocation-container">
+      <div class="chart-section">
+        <DoughnutChart
+          :labels="chartData.labels"
+          :values="chartData.values"
+          :colors="colors"
+          layout="horizontal"
+          :format-value="formatMoney"
+          height="300px"
+          :show-legend="false"
+        />
       </div>
+      
+      <div class="legend-section">
+        <div class="legends">
+          <div 
+            v-for="(portfolio, i) in portfolioValues" 
+            :key="portfolio.name || i" 
+            class="legend-item"
+          >
+            <span 
+              class="legend-color" 
+              :style="{ 
+                backgroundColor: colors[i % colors.length]
+              }"
+            ></span>
+            <span class="legend-label">{{ portfolio.name }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-else class="empty-state">
+      <p>Нет данных о распределении портфелей</p>
     </div>
   </div>
 </template>
@@ -173,8 +140,9 @@ onUnmounted(() => {
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   width: 100%;
+  min-width: 0;
 }
 
 .widget-title {
@@ -198,29 +166,87 @@ onUnmounted(() => {
   margin: 0;
 }
 
-.chart-container {
-  height: 300px;
-  position: relative;
+.allocation-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 60px;
+  width: 100%;
+  min-width: 0;
+}
+
+.chart-section {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.legend-section {
+  flex: 1;
+  min-width: 0;
+}
+
+.legends {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.legends {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.legend-value {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 400;
+  flex-shrink: 0;
 }
 
 .empty-state {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
   color: #6b7280;
   font-size: 14px;
-  background: white;
-  z-index: 10;
+  padding: 40px 20px;
 }
 
 .empty-state p {
   margin: 0;
 }
 </style>
-

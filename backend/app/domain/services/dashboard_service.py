@@ -387,13 +387,29 @@ def calculate_asset_allocation(assets):
 
 
 def calculate_monthly_change(history):
+    """
+    Вычисляет прибыль за месяц как разницу между текущей прибылью и прибылью месяц назад.
+    Прибыль за месяц = текущая прибыль (pnl) - прибыль месяц назад (pnl)
+    """
     if len(history) >= 2:
         try:
-            return history[-1]['value'] - history[-30]['value']
-        except:
-            return history[-1]['value']
+            # Получаем текущую прибыль (последняя запись)
+            current_pnl = history[-1].get('pnl', 0) or 0
+            
+            # Получаем прибыль месяц назад (примерно 30 дней назад)
+            # Ищем запись примерно месяц назад
+            month_ago_index = max(0, len(history) - 30)
+            month_ago_pnl = history[month_ago_index].get('pnl', 0) or 0
+            
+            # Прибыль за месяц = текущая прибыль - прибыль месяц назад
+            monthly_profit = current_pnl - month_ago_pnl
+            return monthly_profit
+        except (KeyError, IndexError, TypeError):
+            # Если нет данных о прибыли, возвращаем 0
+            return 0
     elif len(history) == 1:
-        return history[0]['value']
+        # Если только одна запись, возвращаем текущую прибыль
+        return history[0].get('pnl', 0) or 0
     else:
         return 0
 

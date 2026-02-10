@@ -42,11 +42,14 @@ monthly_payouts AS (
   SELECT
     co.portfolio_id,
     to_char(date_trunc('month', co.date), 'YYYY-MM') AS month,
-    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') THEN co.amount ELSE 0 END) AS total_payouts
+    SUM(CASE WHEN ot.name = 'Dividend' THEN co.amount ELSE 0 END) AS dividends,
+    SUM(CASE WHEN ot.name = 'Coupon' THEN co.amount ELSE 0 END) AS coupons,
+    SUM(CASE WHEN ot.name = 'Amortization' THEN co.amount ELSE 0 END) AS amortizations,
+    SUM(CASE WHEN ot.name IN ('Dividend','Coupon','Amortization') THEN co.amount ELSE 0 END) AS total_payouts
   FROM cash_operations co
   JOIN operations_type ot ON ot.id = co.type
   JOIN p ON p.id = co.portfolio_id
-  WHERE ot.name IN ('Dividend','Coupon')
+  WHERE ot.name IN ('Dividend','Coupon','Amortization')
   GROUP BY co.portfolio_id, date_trunc('month', co.date)
 ),
 totals AS (
@@ -97,6 +100,9 @@ future_payouts AS (
   SELECT
     pa.portfolio_id,
     to_char(date_trunc('month', ap.payment_date), 'YYYY-MM') AS month,
+    SUM(CASE WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'dividend' THEN ap.value * COALESCE(pa.quantity, 0) ELSE 0 END) AS dividends,
+    SUM(CASE WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'coupon' THEN ap.value * COALESCE(pa.quantity, 0) ELSE 0 END) AS coupons,
+    SUM(CASE WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'amortization' THEN ap.value * COALESCE(pa.quantity, 0) ELSE 0 END) AS amortizations,
     SUM(ap.value * COALESCE(pa.quantity, 0)) AS total_amount,
     COUNT(*) AS payout_count
   FROM portfolio_assets pa
@@ -106,6 +112,8 @@ future_payouts AS (
   WHERE ap.payment_date >= CURRENT_DATE
     AND ap.payment_date <= CURRENT_DATE + INTERVAL '1 year'
     AND COALESCE(pa.quantity, 0) > 0
+    AND ap.type IS NOT NULL
+    AND TRIM(ap.type) != ''
   GROUP BY pa.portfolio_id, date_trunc('month', ap.payment_date)
 ),
 asset_yields AS (
@@ -127,7 +135,7 @@ asset_yields AS (
         SELECT SUM(CAST(ap2.value AS numeric)) AS total
         FROM asset_payouts ap2
         WHERE ap2.asset_id = a.id
-          AND ap2.type = 'dividend'
+          AND LOWER(TRIM(COALESCE(ap2.type, ''))) = 'dividend'
           AND ap2.record_date IS NOT NULL
           AND EXTRACT(YEAR FROM ap2.record_date) >= EXTRACT(YEAR FROM CURRENT_DATE) - 5
           AND EXTRACT(YEAR FROM ap2.record_date) < EXTRACT(YEAR FROM CURRENT_DATE)
@@ -168,7 +176,7 @@ asset_yields AS (
                 SELECT SUM(CAST(ap2.value AS numeric)) AS total
                 FROM asset_payouts ap2
                 WHERE ap2.asset_id = a.id
-                  AND ap2.type = 'dividend'
+                  AND LOWER(TRIM(COALESCE(ap2.type, ''))) = 'dividend'
                   AND ap2.record_date IS NOT NULL
                   AND EXTRACT(YEAR FROM ap2.record_date) >= EXTRACT(YEAR FROM CURRENT_DATE) - 5
                   AND EXTRACT(YEAR FROM ap2.record_date) < EXTRACT(YEAR FROM CURRENT_DATE)
@@ -210,7 +218,7 @@ dividends_by_year AS (
   JOIN p ON p.id = pa.portfolio_id
   JOIN assets a ON a.id = pa.asset_id
   JOIN asset_payouts ap ON ap.asset_id = a.id
-  WHERE ap.type = 'dividend'
+  WHERE LOWER(TRIM(COALESCE(ap.type, ''))) = 'dividend'
     AND EXTRACT(YEAR FROM ap.payment_date) = EXTRACT(YEAR FROM CURRENT_DATE)
     AND ap.payment_date >= CURRENT_DATE
     AND COALESCE(pa.quantity, 0) > 0
@@ -276,7 +284,7 @@ SELECT json_agg(
         JOIN assets a ON a.id = pa.asset_id
         JOIN asset_payouts ap ON ap.asset_id = a.id
         WHERE pa.portfolio_id = p.id
-          AND ap.type = 'coupon'
+          AND LOWER(TRIM(COALESCE(ap.type, ''))) = 'coupon'
           AND EXTRACT(YEAR FROM ap.payment_date) = EXTRACT(YEAR FROM CURRENT_DATE)
           AND ap.payment_date >= CURRENT_DATE
           AND COALESCE(pa.quantity, 0) > 0
@@ -301,7 +309,13 @@ SELECT json_agg(
       WHERE m.portfolio_id = p.id
     ),
     'monthly_payouts', (
-      SELECT json_agg(json_build_object('month', mp.month, 'total_payouts', mp.total_payouts) ORDER BY mp.month)
+      SELECT json_agg(json_build_object(
+        'month', mp.month, 
+        'dividends', COALESCE(mp.dividends, 0),
+        'coupons', COALESCE(mp.coupons, 0),
+        'amortizations', COALESCE(mp.amortizations, 0),
+        'total_payouts', COALESCE(mp.total_payouts, 0)
+      ) ORDER BY mp.month)
       FROM monthly_payouts mp
       WHERE mp.portfolio_id = p.id
     ),
@@ -328,7 +342,14 @@ SELECT json_agg(
       WHERE apba.portfolio_id = p.id
     ),
     'future_payouts', (
-      SELECT json_agg(json_build_object('month', fp.month, 'total_amount', fp.total_amount, 'payout_count', fp.payout_count) ORDER BY fp.month)
+      SELECT json_agg(json_build_object(
+        'month', fp.month,
+        'dividends', COALESCE(fp.dividends, 0),
+        'coupons', COALESCE(fp.coupons, 0),
+        'amortizations', COALESCE(fp.amortizations, 0),
+        'total_amount', COALESCE(fp.total_amount, 0),
+        'payout_count', fp.payout_count
+      ) ORDER BY fp.month)
       FROM future_payouts fp
       WHERE fp.portfolio_id = p.id
     )

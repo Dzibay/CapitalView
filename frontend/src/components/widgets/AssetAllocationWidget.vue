@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, DoughnutController } from 'chart.js'
 
@@ -14,8 +14,8 @@ const props = defineProps({
 })
 
 const centerInfo = ref({
-  label: '',
-  percentage: 0,
+  label: 'Всего',
+  percentage: 100,
   value: 0
 })
 
@@ -28,7 +28,12 @@ const chartData = computed(() => ({
   datasets: props.assetAllocation?.datasets ?? []
 }))
 
-const chartOptions = {
+const total = computed(() => {
+  if (!props.assetAllocation?.datasets?.length) return 0
+  return props.assetAllocation.datasets[0].data.reduce((a, b) => a + b, 0)
+})
+
+const chartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   cutout: '75%',
@@ -44,17 +49,36 @@ const chartOptions = {
           const idx = tooltipModel.dataPoints[0].dataIndex
           const label = data.labels[idx]
           const value = data.datasets[0].data[idx]
-          const total = data.datasets[0].data.reduce((a, b) => a + b, 0)
-          const percentage = Math.round((value / total) * 100)
+          const totalValue = total.value
+          const percentage = totalValue > 0 ? Math.round((value / totalValue) * 100) : 0
           centerInfo.value = { label, value, percentage }
         } else if (data.datasets?.length) {
-          const total = data.datasets[0].data.reduce((a, b) => a + b, 0)
-          centerInfo.value = { label: 'Всего', value: total, percentage: 100 }
+          centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
         }
       }
     }
+  },
+  onHover: (event, activeElements, chart) => {
+    const data = props.assetAllocation
+    if (activeElements && activeElements.length > 0 && data.datasets?.length) {
+      const index = activeElements[0].index
+      const label = data.labels[index]
+      const value = data.datasets[0].data[index]
+      const totalValue = total.value
+      const percentage = totalValue > 0 ? Math.round((value / totalValue) * 100) : 0
+      centerInfo.value = { label, value, percentage }
+    } else if (data.datasets?.length) {
+      centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
+    }
   }
-}
+}))
+
+// Инициализация и обновление centerInfo при изменении данных
+watch(() => props.assetAllocation, () => {
+  if (props.assetAllocation?.datasets?.length) {
+    centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
+  }
+}, { immediate: true, deep: true })
 </script>
 
 <template>

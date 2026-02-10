@@ -1,59 +1,38 @@
 <script setup>
-import { computed } from 'vue';
+import { computed } from 'vue'
 
 const props = defineProps({
-  totalAmount: { type: Number, required: true },
-  totalProfit: { type: Number, required: true },
-  monthlyChange: { type: Number, required: true },
-  investedAmount: { type: Number, required: true },
-});
+  annualDividends: {
+    type: Number,
+    default: 0
+  }
+})
 
-const isPositiveChange = computed(() => {
-  return props.totalProfit >= 0
-});
+const formattedAnnualDividends = computed(() => {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    maximumFractionDigits: 0
+  }).format(props.annualDividends || 0)
+})
 
-// Рост прибыли за месяц в процентах
-// monthlyChange = current_pnl - month_ago_pnl
-// month_ago_pnl = current_pnl - monthlyChange
-// Процент роста = (monthlyChange / month_ago_pnl) * 100
-const monthlyGrowthPercent = computed(() => {
-  if (!props.monthlyChange || props.monthlyChange === 0) return 0
-  const monthAgoPnl = props.totalProfit - props.monthlyChange
-  if (!monthAgoPnl || monthAgoPnl === 0) return 0
-  return (props.monthlyChange / Math.abs(monthAgoPnl)) * 100
-});
+// Средняя выплата в месяц = годовые дивиденды / 12
+const monthlyAverage = computed(() => {
+  return (props.annualDividends || 0) / 12
+})
 
-const formattedMonthlyGrowthPercent = computed(() => {
-  const percent = monthlyGrowthPercent.value
-  const formatted = new Intl.NumberFormat('ru-RU', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(percent);
-  return `${formatted}%`;
-});
-
-// Отношение прибыли к инвестициям
-const profitToInvestedPercent = computed(() => {
-  if (!props.investedAmount || props.investedAmount === 0) return 0
-  return (props.totalProfit / props.investedAmount) * 100
-});
-
-const formattedProfitToInvestedPercent = computed(() => {
-  const percent = profitToInvestedPercent.value
-  const formatted = new Intl.NumberFormat('ru-RU', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(percent);
-  return `${formatted}%`;
-});
-
+const formattedMonthlyAverage = computed(() => {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    maximumFractionDigits: 0
+  }).format(monthlyAverage.value)
+})
 </script>
 
 <template>
   <div class="widget">
-
     <div class="widget-title">
-
       <div class="widget-title-icon-rect">
         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 15 15">
           <g clip-path="url(#a)">
@@ -62,24 +41,14 @@ const formattedProfitToInvestedPercent = computed(() => {
           </g>
         </svg>
       </div>
-
-      <h2 class="widget-title">Прибыль</h2>
-      
+      <h2 class="widget-title">Дивиденды</h2>
     </div>
 
     <div class="capital-value-with-change">
-      <div class="capital-values">{{ props.totalProfit.toFixed(2) }} ₽</div>
-      <div class="value-change" :class="{ 'positive': monthlyGrowthPercent >= 0, 'negative': monthlyGrowthPercent < 0 }">
-        <span v-if="monthlyGrowthPercent >= 0">+</span>
-        <span>{{ formattedMonthlyGrowthPercent }} за месяц</span>
-      </div>
+      <div class="capital-values">{{ formattedAnnualDividends }}</div><p> в год</p>
     </div>
-    <p>
-      <span class="profit-percent" :class="{ 'positive': profitToInvestedPercent >= 0, 'negative': profitToInvestedPercent < 0 }">
-        {{ formattedProfitToInvestedPercent }}
-      </span>
-      <span> от инвестиций</span>
-    </p>
+
+    <p>{{ formattedMonthlyAverage }} в месяц</p>
   </div>
 </template>
 
@@ -97,21 +66,22 @@ const formattedProfitToInvestedPercent = computed(() => {
 .capital-value-with-change {
   margin: 15px 0;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.capital-value-with-change p {
+  margin: 0;
+  font-size: 1rem;
+  color: #6b7280;
+  line-height: 1;
+  padding-bottom: 0.2rem;
 }
 
 .value-change.positive {
   color: var(--positiveColor);
 }
 .value-change.negative {
-  color: var(--negativeColor);
-}
-
-.profit-percent.positive {
-  color: var(--positiveColor);
-}
-.profit-percent.negative {
   color: var(--negativeColor);
 }
 </style>

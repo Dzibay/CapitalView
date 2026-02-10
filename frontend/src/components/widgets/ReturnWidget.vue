@@ -1,59 +1,54 @@
 <script setup>
-import { computed } from 'vue';
+import { computed } from 'vue'
 
 const props = defineProps({
-  totalAmount: { type: Number, required: true },
-  totalProfit: { type: Number, required: true },
-  monthlyChange: { type: Number, required: true },
-  investedAmount: { type: Number, required: true },
-});
+  returnPercent: {
+    type: Number,
+    default: 0
+  },
+  totalValue: {
+    type: Number,
+    default: 0
+  },
+  totalInvested: {
+    type: Number,
+    default: 0
+  }
+})
 
-const isPositiveChange = computed(() => {
-  return props.totalProfit >= 0
-});
-
-// Рост прибыли за месяц в процентах
-// monthlyChange = current_pnl - month_ago_pnl
-// month_ago_pnl = current_pnl - monthlyChange
-// Процент роста = (monthlyChange / month_ago_pnl) * 100
-const monthlyGrowthPercent = computed(() => {
-  if (!props.monthlyChange || props.monthlyChange === 0) return 0
-  const monthAgoPnl = props.totalProfit - props.monthlyChange
-  if (!monthAgoPnl || monthAgoPnl === 0) return 0
-  return (props.monthlyChange / Math.abs(monthAgoPnl)) * 100
-});
-
-const formattedMonthlyGrowthPercent = computed(() => {
-  const percent = monthlyGrowthPercent.value
-  const formatted = new Intl.NumberFormat('ru-RU', {
+const formattedReturnPercent = computed(() => {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'percent',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  }).format(percent);
-  return `${formatted}%`;
-});
+  }).format((props.returnPercent || 0) / 100)
+})
 
-// Отношение прибыли к инвестициям
-const profitToInvestedPercent = computed(() => {
-  if (!props.investedAmount || props.investedAmount === 0) return 0
-  return (props.totalProfit / props.investedAmount) * 100
-});
+// Процент на вложенный капитал
+// Доходность на вложенный = обычная доходность * (капитал / вложенный капитал)
+// return_percent приходит как процент (15 для 15%)
+const returnOnInvestedPercent = computed(() => {
+  if (!props.totalInvested || props.totalInvested === 0) return 0
+  if (!props.totalValue || props.totalValue === 0) return 0
+  
+  // return_percent уже в процентах (15 для 15%)
+  // Умножаем на отношение капитала к вложенному капиталу
+  const ratio = props.totalValue / props.totalInvested
+  return props.returnPercent * ratio
+})
 
-const formattedProfitToInvestedPercent = computed(() => {
-  const percent = profitToInvestedPercent.value
-  const formatted = new Intl.NumberFormat('ru-RU', {
+const formattedReturnOnInvestedPercent = computed(() => {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'percent',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  }).format(percent);
-  return `${formatted}%`;
-});
-
+  }).format(returnOnInvestedPercent.value / 100)
+})
 </script>
 
 <template>
   <div class="widget">
-
     <div class="widget-title">
-
       <div class="widget-title-icon-rect">
         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 15 15">
           <g clip-path="url(#a)">
@@ -62,24 +57,14 @@ const formattedProfitToInvestedPercent = computed(() => {
           </g>
         </svg>
       </div>
-
-      <h2 class="widget-title">Прибыль</h2>
-      
+      <h2 class="widget-title">Доходность</h2>
     </div>
 
     <div class="capital-value-with-change">
-      <div class="capital-values">{{ props.totalProfit.toFixed(2) }} ₽</div>
-      <div class="value-change" :class="{ 'positive': monthlyGrowthPercent >= 0, 'negative': monthlyGrowthPercent < 0 }">
-        <span v-if="monthlyGrowthPercent >= 0">+</span>
-        <span>{{ formattedMonthlyGrowthPercent }} за месяц</span>
-      </div>
+      <div class="capital-values">{{ formattedReturnPercent }}</div>
     </div>
-    <p>
-      <span class="profit-percent" :class="{ 'positive': profitToInvestedPercent >= 0, 'negative': profitToInvestedPercent < 0 }">
-        {{ formattedProfitToInvestedPercent }}
-      </span>
-      <span> от инвестиций</span>
-    </p>
+
+    <p>{{ formattedReturnOnInvestedPercent }} на вложенный капитал</p>
   </div>
 </template>
 
@@ -105,13 +90,6 @@ const formattedProfitToInvestedPercent = computed(() => {
   color: var(--positiveColor);
 }
 .value-change.negative {
-  color: var(--negativeColor);
-}
-
-.profit-percent.positive {
-  color: var(--positiveColor);
-}
-.profit-percent.negative {
   color: var(--negativeColor);
 }
 </style>

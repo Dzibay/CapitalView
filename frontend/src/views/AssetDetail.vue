@@ -7,6 +7,8 @@ import MultiLineChart from '../components/MultiLineChart.vue'
 import ChartControls from '../components/ChartControls.vue'
 import LoadingState from '../components/LoadingState.vue'
 import assetsService from '../services/assetsService'
+import PageLayout from '../components/PageLayout.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -502,22 +504,21 @@ watch(() => route.params.id, () => {
   <div class="asset-detail-page">
     <LoadingState v-if="isLoading || uiStore.loading" message="Загрузка данных об активе..." />
 
-    <div v-else-if="assetInfo && portfolioAsset" class="content-wrapper">
-      <!-- Заголовок с кнопкой назад -->
-      <div class="header-row">
-        <div>
-          <h1 class="page-title">{{ portfolioAsset.asset.name }}</h1>
-          <div class="asset-meta-header">
-            <span class="ticker">{{ portfolioAsset.asset.ticker }}</span>
-            <span v-if="portfolioAsset.asset.leverage && portfolioAsset.asset.leverage > 1" class="badge-leverage">
-              ×{{ portfolioAsset.asset.leverage }}
-            </span>
-            <span class="portfolio-name">Портфель: {{ portfolioAsset.portfolio.name }}</span>
-          </div>
-        </div>
-        <button class="btn-back" @click="router.back()">
-          ← Назад
-        </button>
+    <PageLayout v-else-if="assetInfo && portfolioAsset">
+      <PageHeader :title="portfolioAsset.asset.name">
+        <template #actions>
+          <button class="btn-back" @click="router.back()">
+            ← Назад
+          </button>
+        </template>
+      </PageHeader>
+      
+      <div class="asset-meta-header">
+        <span class="ticker">{{ portfolioAsset.asset.ticker }}</span>
+        <span v-if="portfolioAsset.asset.leverage && portfolioAsset.asset.leverage > 1" class="badge-leverage">
+          ×{{ portfolioAsset.asset.leverage }}
+        </span>
+        <span class="portfolio-name">Портфель: {{ portfolioAsset.portfolio.name }}</span>
       </div>
 
 
@@ -655,7 +656,7 @@ watch(() => route.params.id, () => {
           </table>
         </div>
       </div>
-    </div>
+    </PageLayout>
 
     <div v-else class="error-state">
       <p>Актив не найден</p>
@@ -670,12 +671,6 @@ watch(() => route.params.id, () => {
   background: #f8fafc;
 }
 
-.content-wrapper {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 32px 20px;
-}
-
 .error-state {
   display: flex;
   flex-direction: column;
@@ -685,19 +680,6 @@ watch(() => route.params.id, () => {
   gap: 1rem;
 }
 
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #111827;
-  margin: 0 0 8px 0;
-}
 
 .btn-back {
   padding: 0.5rem 1rem;

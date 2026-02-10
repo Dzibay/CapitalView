@@ -4,6 +4,8 @@ import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 import LoadingState from '../components/LoadingState.vue'
+import PageLayout from '../components/PageLayout.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 // Используем stores вместо inject
 const dashboardStore = useDashboardStore()
@@ -192,21 +194,20 @@ watch(() => uiStore.selectedPortfolioId, () => {
 </script>
 
 <template>
-  <div class="dividends-page">
-    
-    <div class="header-row">
-      <div>
-        <h1 class="page-title">Календарь выплат</h1>
-        <p class="subtitle">График дивидендов, купонов и амортизаций</p>
-      </div>
-      
-      <PortfolioSelector 
-        v-if="portfolios.length > 0"
-        :portfolios="portfolios"
-        :modelValue="uiStore.selectedPortfolioId"
-        @update:modelValue="uiStore.setSelectedPortfolioId"
-      />
-    </div>
+  <PageLayout>
+    <PageHeader 
+      title="Календарь выплат"
+      subtitle="График дивидендов, купонов и амортизаций"
+    >
+      <template #actions>
+        <PortfolioSelector 
+          v-if="portfolios.length > 0"
+          :portfolios="portfolios"
+          :modelValue="uiStore.selectedPortfolioId"
+          @update:modelValue="uiStore.setSelectedPortfolioId"
+        />
+      </template>
+    </PageHeader>
 
     <LoadingState v-if="uiStore.loading" />
 
@@ -321,35 +322,12 @@ watch(() => uiStore.selectedPortfolioId, () => {
 
       </div>
     </div>
-  </div>
+  </PageLayout>
 </template>
 
 <style scoped>
-.dividends-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding-bottom: 40px;
-}
 
 
-/* Header */
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 32px;
-}
-.page-title {
-  font-size: 28px;
-  font-weight: 700;
-  color: #111827;
-  margin: 0 0 4px 0;
-}
-.subtitle {
-  color: #6b7280;
-  margin: 0;
-  font-size: 14px;
-}
 
 /* Calendar Controls */
 .calendar-controls {
