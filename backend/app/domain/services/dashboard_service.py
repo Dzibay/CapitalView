@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
 from time import time
+import copy
 from app.domain.services.portfolio_service import get_user_portfolios_with_assets_and_history
 from app.domain.services.reference_service import get_reference_data_cached
 from app.domain.services.user_service import get_user_by_email
@@ -123,7 +124,8 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     portfolio = portfolio_map[portfolio_id]
 
     # 1️⃣ Активы + история
-    combined_assets = list(portfolio.get("assets") or [])
+    # Создаем глубокие копии, чтобы не модифицировать оригинальные данные
+    combined_assets = [copy.deepcopy(a) for a in (portfolio.get("assets") or [])]
     combined_history = list(portfolio.get("history") or [])
     portfolio_name = portfolio.get("name", "N/A")
 
@@ -226,24 +228,31 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
             combined_history.extend(child_history_filled)
 
         # Активы — объединение
-        existing = {a["asset_id"]: a for a in combined_assets}
+        # Используем portfolio_asset_id как уникальный ключ, так как один и тот же asset_id
+        # может быть в разных портфелях с разными количествами
+        # portfolio_asset_id уникален для каждого портфеля, поэтому активы из разных портфелей
+        # должны оставаться отдельными записями
+        existing_by_portfolio_asset = {a.get("portfolio_asset_id"): a for a in combined_assets if a.get("portfolio_asset_id")}
+        
         for ca in child_assets:
-            aid = ca["asset_id"]
-            if aid in existing:
-                old = existing[aid]
-                q1, q2 = float(old["quantity"] or 0), float(ca["quantity"] or 0)
-                if q2 > 0:
-                    new_qty = q1 + q2
-                    new_avg_price = (
-                        (q1 * float(old.get("average_price") or 0)) +
-                        (q2 * float(ca.get("average_price") or 0))
-                    ) / new_qty if new_qty else 0
-                    old["quantity"] = new_qty
-                    old["average_price"] = new_avg_price
-                if ca.get("last_price") and not old.get("last_price"):
-                    old["last_price"] = ca["last_price"]
+            # Создаем копию актива, чтобы не модифицировать оригинал
+            ca_copy = copy.deepcopy(ca)
+            portfolio_asset_id = ca_copy.get("portfolio_asset_id")
+            
+            # Если есть portfolio_asset_id, проверяем, не добавлен ли уже этот актив
+            if portfolio_asset_id and portfolio_asset_id in existing_by_portfolio_asset:
+                # Актив с таким portfolio_asset_id уже есть - это тот же актив из того же портфеля
+                # Обновляем данные, но не суммируем количество (это один и тот же актив)
+                old = existing_by_portfolio_asset[portfolio_asset_id]
+                # Обновляем только если данные изменились
+                if ca_copy.get("last_price") and not old.get("last_price"):
+                    old["last_price"] = ca_copy["last_price"]
             else:
-                combined_assets.append(ca)
+                # Новый актив (с другим portfolio_asset_id) - добавляем как отдельную запись
+                # Это позволяет иметь один и тот же asset_id в разных портфелях с разными количествами
+                combined_assets.append(ca_copy)
+                if portfolio_asset_id:
+                    existing_by_portfolio_asset[portfolio_asset_id] = ca_copy
 
         # 4️⃣ Аналитика — суммирование
         combined_analytics["realized_pl"] += child_analytics.get("realized_pl", 0)

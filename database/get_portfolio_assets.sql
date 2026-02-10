@@ -54,6 +54,6 @@ BEGIN
     LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
     LEFT JOIN assets qa ON qa.id = a.quote_asset_id
     LEFT JOIN asset_last_currency_prices curr ON curr.asset_id = a.quote_asset_id
-    WHERE pa.portfolio_id = p_portfolio_id 
-    AND COALESCE(pa.quantity,0) <> 0;  -- 🚫 Исключаем активы с количеством = 0;
+    WHERE pa.portfolio_id = p_portfolio_id;
+    -- ✅ Включаем все активы, включая проданные (quantity = 0)
 END;

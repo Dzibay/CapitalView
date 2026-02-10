@@ -10,6 +10,10 @@ const props = defineProps({
   portfolios: Array,
   expandedPortfolios: Array,
   updatingPortfolios: Object,
+  showSoldAssets: {
+    type: Boolean,
+    default: false
+  },
 });
 
 const emit = defineEmits([
@@ -41,6 +45,17 @@ const sortAssets = (assets) => {
   return assetsWithValue.map(item => item.asset);
 };
 
+// Фильтрация активов по количеству
+const filterAssets = (assets) => {
+  if (!assets || assets.length === 0) return [];
+  if (props.showSoldAssets) {
+    // Показываем все активы, включая проданные
+    return assets;
+  }
+  // Фильтруем только активы с quantity > 0
+  return assets.filter(asset => (asset.quantity || 0) > 0);
+};
+
 // 📦 === Рекурсивная сортировка портфелей по total_value ===
 // Оптимизировано: минимизированы копии объектов
 const sortPortfolios = (portfolios) => {
@@ -49,7 +64,9 @@ const sortPortfolios = (portfolios) => {
   const processedPortfolios = portfolios.map((p) => {
     const processed = { ...p };
     if (p.assets && p.assets.length > 0) {
-      processed.assets = sortAssets(p.assets);
+      // Сначала фильтруем активы, затем сортируем
+      const filteredAssets = filterAssets(p.assets);
+      processed.assets = sortAssets(filteredAssets);
     }
     if (p.children && p.children.length > 0) {
       processed.children = sortPortfolios(p.children);
@@ -145,10 +162,17 @@ const getDividendYield5Y = (asset) => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="asset in portfolio.assets" :key="asset.portfolio_asset_id">
+                <tr 
+                  v-for="asset in portfolio.assets" 
+                  :key="asset.portfolio_asset_id"
+                  :class="{ 'sold-asset': (asset.quantity || 0) === 0 }"
+                >
                   <td class="cell-name clickable" @click="router.push(`/assets/${asset.portfolio_asset_id}`)">
                     <div class="asset-main">
-                      <span class="asset-name">{{ asset.name }}</span>
+                      <span class="asset-name">
+                        {{ asset.name }}
+                        <span v-if="(asset.quantity || 0) === 0" class="sold-badge">(Продан)</span>
+                      </span>
                       <div class="asset-meta">
                         <span class="asset-ticker">{{ asset.ticker }}</span>
                         <span v-if="asset.leverage && asset.leverage > 1" class="badge-leverage">×{{ asset.leverage }}</span>
@@ -200,6 +224,7 @@ const getDividendYield5Y = (asset) => {
               :portfolios="portfolio.children"
               :expandedPortfolios="expandedPortfolios"
               :updatingPortfolios="updatingPortfolios"
+              :showSoldAssets="showSoldAssets"
               @togglePortfolio="$emit('togglePortfolio', $event)"
               @removeAsset="$emit('removeAsset', $event)"
               @deletePortfolio="$emit('deletePortfolio', $event)"
@@ -343,6 +368,21 @@ const getDividendYield5Y = (asset) => {
 
 .asset-table tr:hover td {
   background: #fbfbfc;
+}
+
+.asset-table tr.sold-asset {
+  opacity: 0.6;
+}
+
+.asset-table tr.sold-asset:hover {
+  opacity: 0.8;
+}
+
+.sold-badge {
+  font-size: 11px;
+  color: #ef4444;
+  font-weight: 500;
+  margin-left: 6px;
 }
 
 /* Column Alignments */

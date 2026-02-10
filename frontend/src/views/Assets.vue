@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useDashboardStore } from '../stores/dashboard.store';
 import { useUIStore } from '../stores/ui.store';
 import { useAssetsStore } from '../stores/assets.store';
@@ -131,6 +131,29 @@ const { modals, open: openModal, close: closeModal } = useModals([
 
 // ID текущей задачи импорта
 const currentImportTaskId = ref(null);
+
+// Фильтр для показа проданных активов (с сохранением в localStorage)
+const SHOW_SOLD_ASSETS_KEY = 'showSoldAssets';
+const showSoldAssets = ref(false);
+
+onMounted(() => {
+  try {
+    const stored = localStorage.getItem(SHOW_SOLD_ASSETS_KEY);
+    if (stored !== null) {
+      showSoldAssets.value = stored === '1' || stored === 'true';
+    }
+  } catch (e) {
+    // localStorage может быть недоступен, просто игнорируем
+  }
+});
+
+watch(showSoldAssets, (value) => {
+  try {
+    localStorage.setItem(SHOW_SOLD_ASSETS_KEY, value ? '1' : '0');
+  } catch (e) {
+    // игнорируем ошибки записи в localStorage
+  }
+});
 
 
 // Используем композабл для работы с портфелями
@@ -297,10 +320,23 @@ const handleMoveAsset = (asset) => {
       </div>
 
       <div v-else class="tree-wrapper">
+        <!-- Фильтр для проданных активов -->
+        <div class="assets-filter">
+          <label class="filter-checkbox">
+            <input 
+              type="checkbox" 
+              v-model="showSoldAssets"
+              class="checkbox-input"
+            />
+            <span class="checkbox-label">Показать проданные активы</span>
+          </label>
+        </div>
+        
         <PortfolioTree
           :portfolios="parsedDashboard.portfolioTree"
           :expandedPortfolios="expandedPortfolios"
           :updatingPortfolios="updatingPortfolios"
+          :showSoldAssets="showSoldAssets"
           @togglePortfolio="togglePortfolio"
           @clearPortfolio="clearPortfolio"
           @deletePortfolio="deletePortfolio"
@@ -615,5 +651,36 @@ const handleMoveAsset = (asset) => {
 
 .empty-btn {
   margin-top: 8px;
+}
+
+/* Assets Filter */
+.assets-filter {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e5e7eb;
+}
+
+.filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+  color: #374151;
+}
+
+.checkbox-input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #2563eb;
+}
+
+.checkbox-label {
+  font-weight: 500;
 }
 </style>
