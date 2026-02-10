@@ -1,4 +1,7 @@
 <script setup>
+import { computed } from 'vue'
+import CustomSelect from './CustomSelect.vue'
+
 const props = defineProps({
   chartType: {
     type: String,
@@ -35,24 +38,31 @@ const updateChartType = (value) => {
 const updatePeriod = (value) => {
   emit('update:period', value)
 }
+
+// Преобразуем chartTypeOptions в формат для CustomSelect
+const chartTypeSelectOptions = computed(() => {
+  return props.chartTypeOptions.map(opt => ({
+    value: opt.key,
+    label: opt.label
+  }))
+})
 </script>
 
 <template>
   <div class="chart-controls">
     <!-- Выбор типа графика -->
-    <select 
-      :value="chartType" 
-      @change="updateChartType($event.target.value)"
-      class="control-select"
-    >
-      <option 
-        v-for="option in chartTypeOptions" 
-        :key="option.key" 
-        :value="option.key"
-      >
-        {{ option.label }}
-      </option>
-    </select>
+    <CustomSelect
+      :modelValue="chartType"
+      :options="chartTypeSelectOptions"
+      label="Тип графика"
+      placeholder="Выберите тип графика"
+      :show-empty-option="false"
+      option-label="label"
+      option-value="value"
+      :min-width="'200px'"
+      :flex="'none'"
+      @update:modelValue="updateChartType"
+    />
 
     <!-- Выбор периода -->
     <div class="capital-filters">
@@ -76,27 +86,6 @@ const updatePeriod = (value) => {
   flex-wrap: wrap;
 }
 
-.control-select {
-  padding: 0.5rem 0.9rem;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: #111827;
-  min-width: 180px;
-}
-
-.control-select:hover {
-  border-color: #d1d5db;
-}
-
-.control-select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
 
 .capital-filters {
   display: flex;

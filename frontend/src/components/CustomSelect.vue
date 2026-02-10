@@ -167,6 +167,8 @@ onUnmounted(() => {
   position: relative;
   flex: 1;
   min-width: 180px;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .select-label {
@@ -187,6 +189,7 @@ onUnmounted(() => {
 .custom-select {
   position: relative;
   width: 100%;
+  max-width: 100%;
   padding: 10px 36px 10px 12px;
   border: 1.5px solid #e5e7eb;
   border-radius: 8px;
@@ -199,6 +202,8 @@ onUnmounted(() => {
   min-height: 42px;
   user-select: none;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .custom-select:hover {
@@ -257,7 +262,10 @@ onUnmounted(() => {
   z-index: 100;
   max-height: 300px;
   overflow-y: auto;
+  overflow-x: hidden;
   animation: slideDown 0.2s ease;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 @keyframes slideDown {
@@ -300,6 +308,16 @@ onUnmounted(() => {
   font-size: 14px;
   color: #111827;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.custom-select-option > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .custom-select-option:first-child {
@@ -314,7 +332,6 @@ onUnmounted(() => {
   background: linear-gradient(90deg, #f3f4f6 0%, #f9fafb 100%);
   border-left-color: #3b82f6;
   padding-left: 13px;
-  transform: translateX(2px);
 }
 
 .custom-select-option.is-selected {
