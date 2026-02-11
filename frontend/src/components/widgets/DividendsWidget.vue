@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import Tooltip from '../Tooltip.vue'
 
 const props = defineProps({
   annualDividends: {
@@ -45,7 +46,12 @@ const formattedMonthlyAverage = computed(() => {
     </div>
 
     <div class="capital-value-with-change">
-      <div class="capital-values">{{ formattedAnnualDividends }}</div><p> в год</p>
+      <Tooltip content="Среднегодовые дивиденды всех активов в портфеле" position="top">
+        <div class="capital-values">
+          {{ formattedAnnualDividends }}
+        </div>
+      </Tooltip>
+      <p> в год</p>
     </div>
 
     <p>{{ formattedMonthlyAverage }} в месяц</p>
@@ -76,6 +82,10 @@ const formattedMonthlyAverage = computed(() => {
   color: #6b7280;
   line-height: 1;
   padding-bottom: 0.2rem;
+}
+
+.capital-values {
+  cursor: help;
 }
 
 .value-change.positive {

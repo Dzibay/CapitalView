@@ -1,11 +1,13 @@
 <script setup>
 import { computed } from 'vue';
+import Tooltip from '../Tooltip.vue';
 
 const props = defineProps({
   totalAmount: { type: Number, required: true },
   totalProfit: { type: Number, required: true },
   monthlyChange: { type: Number, required: true },
   investedAmount: { type: Number, required: true },
+  analytics: { type: Object, default: () => ({}) },
 });
 
 const isPositiveChange = computed(() => {
@@ -47,6 +49,51 @@ const formattedProfitToInvestedPercent = computed(() => {
   return `${formatted}%`;
 });
 
+// Форматирование для tooltip разбивки прибыли
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    maximumFractionDigits: 0
+  }).format(value || 0);
+};
+
+const profitBreakdown = computed(() => {
+  const analytics = props.analytics || {}
+  const realized = analytics.realized_pl || 0
+  const unrealized = analytics.unrealized_pl || 0
+  const dividends = analytics.dividends || 0
+  const coupons = analytics.coupons || 0
+  const commissions = analytics.commissions || 0
+  const taxes = analytics.taxes || 0
+  
+  return {
+    realized,
+    unrealized,
+    dividends,
+    coupons,
+    commissions,
+    taxes,
+    total: props.totalProfit
+  }
+});
+
+const profitBreakdownTooltip = computed(() => {
+  const b = profitBreakdown.value
+  const parts = []
+  
+  if (b.realized !== 0) parts.push(`Реализованная прибыль: ${formatCurrency(b.realized)}`)
+  if (b.unrealized !== 0) parts.push(`Нереализованная прибыль: ${formatCurrency(b.unrealized)}`)
+  if (b.dividends !== 0) parts.push(`Дивиденды: ${formatCurrency(b.dividends)}`)
+  if (b.coupons !== 0) parts.push(`Купоны: ${formatCurrency(b.coupons)}`)
+  if (b.commissions !== 0) parts.push(`Комиссии: ${formatCurrency(Math.abs(b.commissions))} (уменьшают прибыль)`)
+  if (b.taxes !== 0) parts.push(`Налоги: ${formatCurrency(Math.abs(b.taxes))} (уменьшают прибыль)`)
+  
+  if (parts.length === 0) return 'Прибыль: 0 ₽'
+  
+  return `Состав прибыли:\n${parts.join('\n')}\n\nИтого: ${formatCurrency(b.total)}`
+});
+
 </script>
 
 <template>
@@ -68,14 +115,33 @@ const formattedProfitToInvestedPercent = computed(() => {
     </div>
 
     <div class="capital-value-with-change">
-      <div class="capital-values">{{ props.totalProfit.toFixed(2) }} ₽</div>
-      <div class="value-change" :class="{ 'positive': monthlyGrowthPercent >= 0, 'negative': monthlyGrowthPercent < 0 }">
-        <span v-if="monthlyGrowthPercent >= 0">+</span>
-        <span>{{ formattedMonthlyGrowthPercent }} за месяц</span>
-      </div>
+      <Tooltip :content="profitBreakdownTooltip" position="top">
+        <div class="capital-values">
+          {{ props.totalProfit.toFixed(2) }} ₽
+        </div>
+      </Tooltip>
+      <Tooltip :content="`Изменение прибыли за последний месяц составляет ${formattedMonthlyGrowthPercent}`" position="top">
+        <div 
+          class="value-change" 
+          :class="{ 'positive': monthlyGrowthPercent >= 0, 'negative': monthlyGrowthPercent < 0 }"
+        >
+          <span class="arrow-icon" :class="{ 'up': monthlyGrowthPercent >= 0, 'down': monthlyGrowthPercent < 0 }">
+            <svg v-if="monthlyGrowthPercent >= 0" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </span>
+          <span>{{ formattedMonthlyGrowthPercent }}</span>
+        </div>
+      </Tooltip>
     </div>
     <p>
-      <span class="profit-percent" :class="{ 'positive': profitToInvestedPercent >= 0, 'negative': profitToInvestedPercent < 0 }">
+      <span 
+        class="profit-percent" 
+        :class="{ 'positive': profitToInvestedPercent >= 0, 'negative': profitToInvestedPercent < 0 }"
+      >
         {{ formattedProfitToInvestedPercent }}
       </span>
       <span> от инвестиций</span>
@@ -101,6 +167,13 @@ const formattedProfitToInvestedPercent = computed(() => {
   align-items: center;
 }
 
+.value-change {
+  cursor: help;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .value-change.positive {
   color: var(--positiveColor);
 }
@@ -108,10 +181,28 @@ const formattedProfitToInvestedPercent = computed(() => {
   color: var(--negativeColor);
 }
 
+.arrow-icon {
+  display: flex;
+  align-items: center;
+}
+
+.arrow-icon.up {
+  color: var(--positiveColor);
+}
+
+.arrow-icon.down {
+  color: var(--negativeColor);
+}
+
+
 .profit-percent.positive {
   color: var(--positiveColor);
 }
 .profit-percent.negative {
   color: var(--negativeColor);
+}
+
+.capital-values {
+  cursor: help;
 }
 </style>

@@ -21,6 +21,9 @@ import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
 import ReturnWidget from '../components/widgets/ReturnWidget.vue'
 import DividendsWidget from '../components/widgets/DividendsWidget.vue'
 import AssetReturnsChartWidget from '../components/widgets/AssetReturnsChartWidget.vue'
+import AssetAllocationWidget from '../components/widgets/AssetAllocationWidget.vue'
+import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWidget.vue'
+import PortfolioProfitChartWidget from '../components/widgets/PortfolioProfitChartWidget.vue'
 
 // Используем stores
 const authStore = useAuthStore()
@@ -141,6 +144,47 @@ const portfolioChartData = computed(() => {
   
   return { labels: [], data_value: [], data_invested: [] }
 })
+
+// Получаем выбранный портфель
+const selectedPortfolio = computed(() => {
+  return portfolios.value.find(p => p.id === uiStore.selectedPortfolioId) || null
+})
+
+// Функция для сбора всех id выбранного портфеля и его дочерних
+function collectPortfolioIds(portfolio, allPortfolios) {
+  let ids = [portfolio.id];
+  const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id);
+
+  for (const child of children) {
+    ids = ids.concat(collectPortfolioIds(child, allPortfolios));
+  }
+
+  return ids;
+}
+
+// Данные для AssetAllocationWidget
+const assetAllocationData = computed(() => {
+  if (!selectedPortfolio.value) {
+    return { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
+  }
+  return selectedPortfolio.value.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
+})
+
+// Данные для RecentTransactionsWidget
+const transactionsData = computed(() => {
+  if (!selectedPortfolio.value) return []
+  const allPortfolios = portfolios.value
+  const portfolioIds = collectPortfolioIds(selectedPortfolio.value, allPortfolios)
+  return (dashboardStore.transactions ?? []).filter(t => portfolioIds.includes(t.portfolio_id))
+})
+
+// Данные для PortfolioProfitChartWidget
+const profitChartData = computed(() => {
+  if (!selectedPortfolio.value?.history) {
+    return { labels: [], data: [] }
+  }
+  return selectedPortfolio.value.history
+})
 </script>
 
 <template>
@@ -174,6 +218,19 @@ const portfolioChartData = computed(() => {
         />
         <DividendsWidget 
           :annual-dividends="calculatedAnnualDividends"
+        />
+      </div>
+
+      <!-- Дополнительные виджеты -->
+      <div class="additional-widgets-grid">
+        <AssetAllocationWidget 
+          :assetAllocation="assetAllocationData"
+        />
+        <RecentTransactionsWidget 
+          :transactions="transactionsData"
+        />
+        <PortfolioProfitChartWidget 
+          :chartData="profitChartData"
         />
       </div>
 
@@ -245,6 +302,13 @@ const portfolioChartData = computed(() => {
   gap: var(--spacing);
   grid-template-columns: repeat(auto-fit, minmax(clamp(350px, 20%, 400px), 1fr));
   grid-auto-rows: 150px;
+}
+
+.additional-widgets-grid {
+  display: grid;
+  gap: var(--spacing);
+  grid-template-columns: repeat(auto-fit, minmax(clamp(350px, 20%, 400px), 1fr));
+  grid-auto-rows: min-content;
 }
 
 .charts-grid {

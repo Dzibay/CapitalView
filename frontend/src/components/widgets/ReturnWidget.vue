@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import Tooltip from '../Tooltip.vue'
 
 const props = defineProps({
   returnPercent: {
@@ -61,7 +62,11 @@ const formattedReturnOnInvestedPercent = computed(() => {
     </div>
 
     <div class="capital-value-with-change">
-      <div class="capital-values">{{ formattedReturnPercent }}</div>
+      <Tooltip content="Среднегодовая доходность всех активов в портфеле" position="top">
+        <div class="capital-values">
+          {{ formattedReturnPercent }}
+        </div>
+      </Tooltip>
     </div>
 
     <p>{{ formattedReturnOnInvestedPercent }} на вложенный капитал</p>
@@ -91,5 +96,9 @@ const formattedReturnOnInvestedPercent = computed(() => {
 }
 .value-change.negative {
   color: var(--negativeColor);
+}
+
+.capital-values {
+  cursor: help;
 }
 </style>
