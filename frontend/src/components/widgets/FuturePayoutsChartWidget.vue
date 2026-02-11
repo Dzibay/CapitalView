@@ -1,6 +1,8 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import BarChart from '../charts/BarChart.vue'
+import CustomSelect from '../CustomSelect.vue'
+import Widget from './Widget.vue'
 
 const props = defineProps({
   futurePayouts: {
@@ -9,12 +11,48 @@ const props = defineProps({
   }
 })
 
+// Фильтры
+const selectedPeriod = ref('12')
+const selectedGrouping = ref('month')
+
+// Опции для фильтров
+const periodOptions = [
+  { value: '6', label: '6 мес.' },
+  { value: '12', label: '12 мес.' },
+  { value: '24', label: '24 мес.' },
+  { value: '36', label: '36 мес.' }
+]
+
+const groupingOptions = [
+  { value: 'month', label: 'По месяцам' },
+  { value: 'quarter', label: 'По кварталам' }
+]
+
+// Фирменные цвета для типов выплат
+const payoutColors = {
+  // Дивиденды - синий
+  dividends: '#2563eb',
+  dividendsAlpha: 'rgba(37, 99, 235, 0.85)',
+  dividendsHover: '#1d4ed8',
+  dividendsDark: '#1e40af',
+  
+  // Купоны - голубой/cyan
+  coupons: '#06b6d4',
+  couponsAlpha: 'rgba(6, 182, 212, 0.85)',
+  couponsHover: '#0891b2',
+  couponsDark: '#0e7490',
+  
+  // Амортизации - оранжевый
+  amortizations: '#fb923c',
+  amortizationsAlpha: 'rgba(251, 146, 60, 0.85)',
+  amortizationsHover: '#f97316',
+  amortizationsDark: '#ea580c'
+}
 
 const formatMoney = (value) => {
   const num = value || 0
   if (num >= 1000) {
     const kValue = num / 1000
-    // Форматируем с одной цифрой после запятой, если нужно
     const formatted = kValue % 1 === 0 
       ? kValue.toFixed(0) 
       : kValue.toFixed(1).replace('.', ',')
@@ -23,31 +61,100 @@ const formatMoney = (value) => {
   return `${num} ₽`
 }
 
-// Фильтруем только на год вперед
+// Форматирование для отображения суммы
+const formatMoneyFull = (value) => {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    maximumFractionDigits: 0
+  }).format(value || 0)
+}
+
+// Форматирование меток месяцев
+const formatMonthLabel = (monthStr) => {
+  if (!monthStr) return ''
+  try {
+    const [year, month] = monthStr.split('-')
+    if (!year || !month) return monthStr
+    
+    const date = new Date(parseInt(year), parseInt(month) - 1)
+    const monthName = date.toLocaleString('ru-RU', { month: 'long' })
+    const shortYear = year.slice(-2)
+    return `${monthName} ${shortYear}`
+  } catch (e) {
+    return monthStr
+  }
+}
+
+// Фильтрация и группировка данных
 const filteredPayouts = computed(() => {
   if (!props.futurePayouts || !Array.isArray(props.futurePayouts) || props.futurePayouts.length === 0) {
     return []
   }
   
-  const currentDate = new Date()
-  const oneYearLater = new Date(currentDate)
-  oneYearLater.setFullYear(currentDate.getFullYear() + 1)
+  const periodMonths = parseInt(selectedPeriod.value) || 12
+  const today = new Date()
+  const cutoffDate = new Date(today)
+  cutoffDate.setMonth(today.getMonth() + periodMonths)
   
-  return props.futurePayouts.filter(fp => {
+  // Фильтруем по периоду (будущие выплаты)
+  let filtered = props.futurePayouts.filter(fp => {
     if (!fp || !fp.month) return false
     try {
       const [year, month] = fp.month.split('-')
       if (!year || !month) return false
       const payoutDate = new Date(parseInt(year), parseInt(month) - 1)
-      return payoutDate <= oneYearLater
+      return payoutDate >= today && payoutDate <= cutoffDate
     } catch (e) {
       return false
     }
   })
+  
+  // Группировка по кварталам, если выбрано
+  if (selectedGrouping.value === 'quarter') {
+    const grouped = {}
+    filtered.forEach(fp => {
+      if (!fp.month) return
+      try {
+        const [year, month] = fp.month.split('-')
+        const quarter = Math.floor((parseInt(month) - 1) / 3) + 1
+        const key = `${year}-Q${quarter}`
+        
+        if (!grouped[key]) {
+          grouped[key] = {
+            month: key,
+            dividends: 0,
+            coupons: 0,
+            amortizations: 0
+          }
+        }
+        
+        grouped[key].dividends += fp.dividends || 0
+        grouped[key].coupons += fp.coupons || 0
+        grouped[key].amortizations += fp.amortizations || 0
+      } catch (e) {
+        // Игнорируем ошибки
+      }
+    })
+    
+    return Object.values(grouped).sort((a, b) => {
+      return a.month.localeCompare(b.month)
+    })
+  }
+  
+  return filtered
+})
+
+// Общая сумма будущих выплат
+const totalPayouts = computed(() => {
+  return filteredPayouts.value.reduce((sum, fp) => {
+    return sum + (Number(fp.dividends) || 0) + (Number(fp.coupons) || 0) + (Number(fp.amortizations) || 0)
+  }, 0)
 })
 
 const chartLabels = computed(() => {
-  return filteredPayouts.value.map(f => f.month) || []
+  // Передаем исходные даты, BarChart будет форматировать их адаптивно
+  return filteredPayouts.value.map(fp => fp.month) || []
 })
 
 const chartDatasets = computed(() => {
@@ -57,72 +164,108 @@ const chartDatasets = computed(() => {
   
   const datasets = []
   
-  // Дивиденды - всегда показываем, даже если все значения 0
-  const dividends = filteredPayouts.value.map(f => Number(f.dividends) || 0)
+  // Дивиденды - синий
+  const dividends = filteredPayouts.value.map(fp => Number(fp.dividends) || 0)
   const dividendsSum = dividends.reduce((a, b) => a + b, 0)
   datasets.push({
     label: 'Дивиденды',
     data: dividends,
-    backgroundColor: 'rgba(16, 185, 129, 0.85)',
-    borderColor: '#10b981',
+    backgroundColor: payoutColors.dividendsAlpha,
+    borderColor: payoutColors.dividends,
     borderWidth: 0,
-    hoverBackgroundColor: '#10b981',
-    hoverBorderColor: '#059669',
-    borderRadius: 8,
+    hoverBackgroundColor: payoutColors.dividendsHover,
+    hoverBorderColor: payoutColors.dividendsDark,
     borderSkipped: false,
     totalSum: dividendsSum
   })
   
-  // Купоны - всегда показываем, даже если все значения 0
-  const coupons = filteredPayouts.value.map(f => Number(f.coupons) || 0)
+  // Купоны - голубой/cyan
+  const coupons = filteredPayouts.value.map(fp => Number(fp.coupons) || 0)
   const couponsSum = coupons.reduce((a, b) => a + b, 0)
   datasets.push({
     label: 'Купоны',
     data: coupons,
-    backgroundColor: 'rgba(59, 130, 246, 0.85)',
-    borderColor: '#3b82f6',
+    backgroundColor: payoutColors.couponsAlpha,
+    borderColor: payoutColors.coupons,
     borderWidth: 0,
-    hoverBackgroundColor: '#3b82f6',
-    hoverBorderColor: '#2563eb',
-    borderRadius: 0,
+    hoverBackgroundColor: payoutColors.couponsHover,
+    hoverBorderColor: payoutColors.couponsDark,
     borderSkipped: false,
     totalSum: couponsSum
   })
   
-  // Амортизации - всегда показываем, даже если все значения 0
-  const amortizations = filteredPayouts.value.map(f => Number(f.amortizations) || 0)
+  // Амортизации - оранжевый
+  const amortizations = filteredPayouts.value.map(fp => Number(fp.amortizations) || 0)
   const amortizationsSum = amortizations.reduce((a, b) => a + b, 0)
   datasets.push({
     label: 'Амортизации',
     data: amortizations,
-    backgroundColor: 'rgba(245, 158, 11, 0.85)',
-    borderColor: '#f59e0b',
+    backgroundColor: payoutColors.amortizationsAlpha,
+    borderColor: payoutColors.amortizations,
     borderWidth: 0,
-    hoverBackgroundColor: '#f59e0b',
-    hoverBorderColor: '#d97706',
-    borderRadius: 0,
+    hoverBackgroundColor: payoutColors.amortizationsHover,
+    hoverBorderColor: payoutColors.amortizationsDark,
     borderSkipped: false,
     totalSum: amortizationsSum
   })
   
   // Сортируем по сумме значений (от меньших к большим)
-  // В stacked графике порядок снизу вверх, поэтому меньшие внизу, большие наверху
   const sorted = datasets.sort((a, b) => a.totalSum - b.totalSum)
   
-  // Применяем borderRadius только к верхнему слою (скругление только сверху)
-  // Если есть только один dataset, он тоже должен быть скруглен сверху
-  sorted.forEach((dataset, index) => {
-    if (index === sorted.length - 1) {
-      // Верхний слой (или единственный слой) - скругление только сверху
-      dataset.borderRadius = {
-        topLeft: 8,
-        topRight: 8,
-        bottomLeft: 0,
-        bottomRight: 0
+  // Применяем borderRadius только к верхнему слою для каждого столбца отдельно
+  sorted.forEach((dataset, datasetIndex) => {
+    const borderRadiusArray = dataset.data.map((value, dataIndex) => {
+      if (value === 0) {
+        return 0
+      }
+      
+      // Проверяем, есть ли ненулевые значения выше этого слоя для данного столбца
+      let hasValueAbove = false
+      for (let i = datasetIndex + 1; i < sorted.length; i++) {
+        if (sorted[i].data[dataIndex] > 0) {
+          hasValueAbove = true
+          break
+        }
+      }
+      
+      // Если нет значений выше, это верхний слой - скругляем сверху
+      if (!hasValueAbove) {
+        return 8
+      }
+      
+      return 0
+    })
+    
+    // Проверяем, все ли значения одинаковые
+    const firstValue = borderRadiusArray[0]
+    const allSame = borderRadiusArray.every(br => br === firstValue)
+    
+    if (allSame) {
+      if (firstValue > 0) {
+        dataset.borderRadius = {
+          topLeft: firstValue,
+          topRight: firstValue,
+          bottomLeft: 0,
+          bottomRight: 0
+        }
+      } else {
+        dataset.borderRadius = 0
       }
     } else {
-      // Нижние и средние слои - без скругления
-      dataset.borderRadius = 0
+      // Если разные, используем функцию для динамического скругления
+      dataset.borderRadius = (ctx) => {
+        const index = ctx.dataIndex
+        const radius = borderRadiusArray[index] || 0
+        if (radius > 0) {
+          return {
+            topLeft: radius,
+            topRight: radius,
+            bottomLeft: 0,
+            bottomRight: 0
+          }
+        }
+        return 0
+      }
     }
   })
   
@@ -131,11 +274,35 @@ const chartDatasets = computed(() => {
 </script>
 
 <template>
-  <div class="widget">
-    <div class="widget-title">
-      <div class="widget-title-icon-rect"></div>
-      <h2>График будущих выплат</h2>
+  <Widget title="График будущих выплат">
+    <template #header>
+      <CustomSelect
+        v-model="selectedPeriod"
+        :options="periodOptions"
+        :option-label="'label'"
+        :option-value="'value'"
+        placeholder="Период"
+        :show-empty-option="false"
+        min-width="120px"
+        flex="0"
+      />
+      <CustomSelect
+        v-model="selectedGrouping"
+        :options="groupingOptions"
+        :option-label="'label'"
+        :option-value="'value'"
+        placeholder="Группировка"
+        :show-empty-option="false"
+        min-width="140px"
+        flex="0"
+      />
+    </template>
+    
+    <div class="total-amount">
+      <span class="total-label">Всего</span>
+      <span class="total-value">{{ formatMoneyFull(totalPayouts) }}</span>
     </div>
+    
     <div class="chart-container">
       <BarChart
         v-if="filteredPayouts && filteredPayouts.length > 0"
@@ -149,40 +316,27 @@ const chartDatasets = computed(() => {
         <p>Нет данных о будущих выплатах</p>
       </div>
     </div>
-  </div>
+  </Widget>
 </template>
 
 <style scoped>
-.widget {
-  background-color: #fff;
-  padding: var(--spacing);
-  border-radius: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+.total-amount {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: 100%;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 1rem;
 }
 
-.widget-title {
-  display: flex;
-  gap: 5px;
-  align-items: center;
+.total-label {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 400;
 }
 
-.widget-title-icon-rect {
-  padding: 5px;
-  width: 25px;
-  height: 25px;
-  border-radius: 6px;
-  background-color: #F6F6F6;
-}
-
-.widget-title h2 {
-  font-size: 1rem;
+.total-value {
+  font-size: 1.25rem;
   font-weight: 600;
   color: #111827;
-  margin: 0;
 }
 
 .chart-container {

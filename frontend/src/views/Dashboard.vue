@@ -15,12 +15,13 @@ import PageHeader from '../components/PageHeader.vue'
 import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
 import GoalProgressWidget from '../components/widgets/GoalProgressWidget.vue'
 import PortfolioChartWidget from '../components/widgets/PortfolioChartWidget.vue'
-import TopAssetsWidget from '../components/widgets/TopAssetsWidget.vue'
 import TopMoversWidget from '../components/widgets/TopMoversWidget.vue'
 import PortfolioProfitWidget from '../components/widgets/PortfolioProfitWidget.vue'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 import DividendsWidget from '../components/widgets/DividendsWidget.vue'
 import ReturnWidget from '../components/widgets/ReturnWidget.vue'
+import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWidget.vue'
+import MonthlyPayoutsChartWidget from '../components/widgets/MonthlyPayoutsChartWidget.vue'
 
 const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
@@ -213,6 +214,24 @@ const returnData = computed(() => {
   }
 })
 
+// Данные для MonthlyPayoutsChartWidget
+const monthlyPayouts = computed(() => {
+  return selectedPortfolioAnalytics.value?.monthly_payouts || []
+})
+
+// Данные для RecentTransactionsWidget - последние транзакции, отсортированные по дате
+const recentTransactions = computed(() => {
+  const transactions = parsedDashboard.value?.transactions || []
+  // Сортируем по дате (новые первыми) и берем последние
+  return [...transactions]
+    .sort((a, b) => {
+      const dateA = new Date(a.transaction_date || 0)
+      const dateB = new Date(b.transaction_date || 0)
+      return dateB - dateA
+    })
+    .slice(0, 10)
+})
+
 </script>
 
 <template>
@@ -263,7 +282,7 @@ const returnData = computed(() => {
         :chartData="parsedDashboard.portfolioChart" 
       />
       
-      <!-- Два виджета в ряд: Топ роста и Топ падений -->
+      <!-- Три виджета в ряд: Топ роста, Топ падений, Последние операции -->
       <TopMoversWidget
         class="movers-widget"
         title="Топ роста за день"
@@ -276,11 +295,15 @@ const returnData = computed(() => {
         :assets="selectedPortfolio.combined_assets || []"
         direction="down"
       />
+      <RecentTransactionsWidget
+        class="transactions-widget"
+        :transactions="recentTransactions"
+      />
       
-      <!-- Два виджета в ряд: TopAssetsWidget и GoalProgressWidget -->
-      <TopAssetsWidget 
-        class="assets-widget"
-        :assets="parsedDashboard.assets" 
+      <!-- Два виджета в ряд: Выплаты по месяцам и Цели -->
+      <MonthlyPayoutsChartWidget 
+        class="payouts-widget"
+        :monthly-payouts="monthlyPayouts" 
       />
       <GoalProgressWidget 
         class="goal-widget"
@@ -298,13 +321,13 @@ const returnData = computed(() => {
 .widgets-grid {
   display: grid;
   gap: var(--spacing);
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(12, 1fr);
   grid-auto-rows: min-content;
 }
 
 /* 4 маленьких виджета вверху */
 .small-widget {
-  grid-column: span 1;
+  grid-column: span 3;
   min-height: 150px;
 }
 
@@ -314,27 +337,28 @@ const returnData = computed(() => {
   min-height: 500px;
 }
 
-/* Два виджета в ряд: Топ роста и Топ падений */
-.movers-widget {
-  grid-column: span 2;
+/* Три виджета в ряд: Топ роста, Топ падений, Последние операции */
+.movers-widget,
+.transactions-widget {
+  grid-column: span 4;
   min-height: 300px;
 }
 
-/* Два виджета в ряд: TopAssetsWidget и GoalProgressWidget */
-.assets-widget,
+/* Два виджета в ряд: Выплаты по месяцам и Цели */
+.payouts-widget,
 .goal-widget {
-  grid-column: span 2;
+  grid-column: span 6;
   min-height: 300px;
 }
 
 /* Адаптивность для планшетов */
 @media (max-width: 1200px) {
   .widgets-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(6, 1fr);
   }
   
   .small-widget {
-    grid-column: span 1;
+    grid-column: span 3;
   }
   
   .large-chart {
@@ -342,9 +366,13 @@ const returnData = computed(() => {
   }
   
   .movers-widget,
-  .assets-widget,
+  .transactions-widget {
+    grid-column: span 2;
+  }
+  
+  .payouts-widget,
   .goal-widget {
-    grid-column: span 1;
+    grid-column: span 3;
   }
 }
 
@@ -357,7 +385,8 @@ const returnData = computed(() => {
   .small-widget,
   .large-chart,
   .movers-widget,
-  .assets-widget,
+  .transactions-widget,
+  .payouts-widget,
   .goal-widget {
     grid-column: span 1;
   }

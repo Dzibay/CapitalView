@@ -149,6 +149,18 @@ const chartData = computed(() => {
 })
 
 const chartOptions = computed(() => {
+  // Получаем цвета из CSS переменных
+  const getCSSVariable = (varName) => {
+    if (typeof window !== 'undefined') {
+      return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#6b7280'
+    }
+    return '#6b7280'
+  }
+  
+  const axisText = getCSSVariable('--axis-text') || '#6b7280'
+  const axisTextLight = getCSSVariable('--axis-text-light') || '#9ca3af'
+  const axisGrid = getCSSVariable('--axis-grid') || '#e5e7eb'
+  
   // Универсальное форматирование для оси Y (1K вместо 1000)
   const formatYTick = (value) => {
     // Всегда используем формат с K для оси Y (работает и для отрицательных значений)
@@ -164,6 +176,17 @@ const chartOptions = computed(() => {
   }
   
   return {
+    animation: {
+      duration: 1200,
+      easing: 'easeOutQuart',
+      delay: (context) => {
+        let delay = 0
+        if (context.type === 'data' && context.mode === 'default') {
+          delay = context.dataIndex * 50
+        }
+        return delay
+      }
+    },
     interaction: {
       mode: 'index',
       intersect: false
@@ -175,14 +198,31 @@ const chartOptions = computed(() => {
       tooltip: {
         mode: 'index',
         intersect: false,
-        backgroundColor: 'rgba(31, 41, 55, 0.95)',
-        titleColor: '#fff',
-        bodyColor: '#fff',
+        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+        backdropFilter: 'blur(8px)',
+        titleColor: '#ffffff',
+        bodyColor: '#f9fafb',
         borderColor: 'rgba(255, 255, 255, 0.1)',
         borderWidth: 1,
-        padding: 12,
-        cornerRadius: 8,
+        padding: 14,
+        cornerRadius: 12,
         displayColors: true,
+        titleFont: {
+          size: 13,
+          weight: '600',
+          family: 'Inter, system-ui, sans-serif'
+        },
+        bodyFont: {
+          size: 12,
+          weight: '500',
+          family: 'Inter, system-ui, sans-serif'
+        },
+        boxPadding: 8,
+        titleSpacing: 6,
+        bodySpacing: 4,
+        usePointStyle: true,
+        boxWidth: 12,
+        boxHeight: 12,
         callbacks: props.formatValue ? {
           title: (context) => {
             return context[0].label || ''
@@ -222,11 +262,189 @@ const chartOptions = computed(() => {
     scales: {
       x: {
         stacked: props.stacked,
-        grid: { display: false },
+        grid: { 
+          display: false,
+          drawBorder: false
+        },
+        border: {
+          display: false
+        },
         ticks: {
-          color: '#6b7280',
+          color: axisText,
           font: {
-            size: 11
+            size: 12,
+            family: 'Inter, system-ui, sans-serif',
+            weight: '500'
+          },
+          padding: 12,
+          maxRotation: 0,
+          minRotation: 0,
+          autoSkip: true,
+          maxTicksLimit: undefined,
+          callback: function(value, index) {
+            const labels = this.chart.data.labels
+            if (!labels || index >= labels.length) return ''
+            
+            const label = labels[index]
+            if (!label) return ''
+            
+            const totalLabels = labels.length
+            
+            // Адаптивное форматирование в зависимости от количества меток
+            // Если меток <= 12: показываем все с полными названиями месяцев
+            // Если меток 13-36: показываем каждую 2-ю или 3-ю метку
+            // Если меток > 36: показываем только годы
+            
+            // Проверяем, это квартал или месяц
+            if (typeof label === 'string' && label.includes('Q')) {
+              // Кварталы: формат может быть "2025-Q1" или "Q1 25"
+              let quarterStr = ''
+              let year = ''
+              
+              if (label.includes('-Q')) {
+                // Формат "2025-Q1"
+                const [y, quarter] = label.split('-Q')
+                year = y
+                quarterStr = `Q${quarter} ${year.slice(-2)}`
+              } else {
+                // Формат уже "Q1 25"
+                quarterStr = label
+                const yearMatch = label.match(/\d{2}$/)
+                if (yearMatch) {
+                  year = `20${yearMatch[0]}`
+                }
+              }
+              
+              if (totalLabels <= 12) {
+                // Показываем все кварталы
+                return quarterStr
+              } else if (totalLabels <= 36) {
+                // Показываем каждый 2-й квартал
+                if (index % 2 === 0 || index === labels.length - 1) {
+                  return quarterStr
+                }
+                return ''
+              } else {
+                // Показываем только год
+                if (!year && label.includes('-Q')) {
+                  const [y] = label.split('-Q')
+                  year = y
+                }
+                if (index === 0 || index === labels.length - 1) {
+                  return year || label
+                }
+                // Показываем год только при смене года
+                if (index > 0 && year) {
+                  const prevLabel = labels[index - 1]
+                  if (prevLabel && typeof prevLabel === 'string') {
+                    let prevYear = ''
+                    if (prevLabel.includes('-Q')) {
+                      const [y] = prevLabel.split('-Q')
+                      prevYear = y
+                    } else {
+                      const yearMatch = prevLabel.match(/\d{2}$/)
+                      if (yearMatch) {
+                        prevYear = `20${yearMatch[0]}`
+                      }
+                    }
+                    if (prevYear && prevYear !== year) {
+                      return year
+                    }
+                  }
+                }
+                return ''
+              }
+            }
+            
+            // Обработка месяцев
+            // Парсим метку месяца (формат: "июнь 25" или "2025-06")
+            let monthStr = label
+            let year = ''
+            let month = ''
+            
+            // Если метка уже отформатирована как "июнь 25"
+            if (typeof label === 'string' && /[а-яё]+\s+\d{2}/i.test(label)) {
+              if (totalLabels <= 12) {
+                return label
+              } else if (totalLabels <= 36) {
+                // Показываем каждую 2-ю метку
+                if (index % 2 === 0 || index === labels.length - 1) {
+                  return label
+                }
+                return ''
+              } else {
+                // Извлекаем год из метки
+                const yearMatch = label.match(/\d{2}$/)
+                if (yearMatch) {
+                  const shortYear = yearMatch[0]
+                  if (index === 0 || index === labels.length - 1) {
+                    return `20${shortYear}`
+                  }
+                  // Показываем год только при смене
+                  if (index > 0) {
+                    const prevLabel = labels[index - 1]
+                    if (prevLabel && typeof prevLabel === 'string') {
+                      const prevYearMatch = prevLabel.match(/\d{2}$/)
+                      if (prevYearMatch && prevYearMatch[0] !== shortYear) {
+                        return `20${shortYear}`
+                      }
+                    }
+                  }
+                }
+                return ''
+              }
+            }
+            
+            // Если метка в формате "2025-06"
+            if (typeof label === 'string' && /^\d{4}-\d{2}/.test(label)) {
+              const [y, m] = label.split('-')
+              year = y
+              month = m
+              
+              try {
+                const date = new Date(parseInt(year), parseInt(month) - 1)
+                const monthName = date.toLocaleString('ru-RU', { month: 'short' })
+                const yearShort = year.slice(-2)
+                
+                // Сокращаем длинные названия месяцев
+                let shortMonth = monthName
+                if (monthName.length > 4) {
+                  shortMonth = monthName.slice(0, 4) + '.'
+                }
+                
+                if (totalLabels <= 12) {
+                  // Показываем все метки
+                  return `${shortMonth} ${yearShort}`
+                } else if (totalLabels <= 36) {
+                  // Показываем каждую 2-ю метку
+                  if (index % 2 === 0 || index === labels.length - 1) {
+                    return `${shortMonth} ${yearShort}`
+                  }
+                  return ''
+                } else {
+                  // Показываем только год
+                  if (index === 0 || index === labels.length - 1) {
+                    return year
+                  }
+                  // Показываем год только при смене года
+                  if (index > 0) {
+                    const prevLabel = labels[index - 1]
+                    if (prevLabel && typeof prevLabel === 'string') {
+                      const [prevYear] = prevLabel.split('-')
+                      if (prevYear !== year) {
+                        return year
+                      }
+                    }
+                  }
+                  return ''
+                }
+              } catch (e) {
+                return label
+              }
+            }
+            
+            // Если метка уже отформатирована, возвращаем как есть
+            return label
           }
         }
       },
@@ -234,17 +452,26 @@ const chartOptions = computed(() => {
         stacked: props.stacked,
         beginAtZero: true,
         grid: {
-          color: '#e5e7eb',
+          color: axisGrid,
           drawBorder: false,
-          lineWidth: 1
+          lineWidth: 1,
+          drawTicks: false,
+          tickLength: 0
+        },
+        border: {
+          display: false
         },
         ticks: {
-          color: '#9ca3af',
+          color: axisTextLight,
           font: {
-            size: 11
+            size: 12,
+            family: 'Inter, system-ui, sans-serif',
+            weight: '500'
           },
           callback: formatYTick,
-          padding: 8
+          padding: 12,
+          stepSize: null,
+          maxTicksLimit: 8
         }
       }
     }

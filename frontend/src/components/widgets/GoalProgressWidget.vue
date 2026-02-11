@@ -440,7 +440,6 @@ const formatAmountShort = (value) => {
           :datasets="goalProjection.datasets"
           :formatValue="formatCurrency"
           :useInflation="useInflation.value"
-          height="240px"
         />
       </div>
     </template>
@@ -464,11 +463,11 @@ const formatAmountShort = (value) => {
   grid-column: span 1;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   background-color: #fff;
   border-radius: 12px;
   padding: 1.5rem;
   box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  min-height: 0;
 }
 
 .widget-title {
@@ -649,6 +648,23 @@ const formatAmountShort = (value) => {
 }
 
 .projection-chart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   margin-top: 0.75rem;
+  position: relative;
+}
+
+.projection-chart :deep(div) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.projection-chart :deep(canvas) {
+  flex: 1;
+  min-height: 0;
 }
 </style>

@@ -914,13 +914,18 @@ watch(() => route.params.id, () => {
 }
 
 .badge-dividend {
-  background: #dbeafe;
-  color: #1e40af;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--payout-dividends, #2563eb);
 }
 
 .badge-coupon {
-  background: #f3e8ff;
-  color: #6b21a8;
+  background: rgba(6, 182, 212, 0.1);
+  color: var(--payout-coupons, #06b6d4);
+}
+
+.badge-amortization {
+  background: rgba(251, 146, 60, 0.1);
+  color: var(--payout-amortizations, #fb923c);
 }
 
 .badge-other {

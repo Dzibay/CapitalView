@@ -1415,8 +1415,18 @@ const transactionsSummary = computed(() => {
 }
 .badge-buy { background: #dcfce7; color: #166534; }
 .badge-sell { background: #fee2e2; color: #991b1b; }
-.badge-dividend { background: #dbeafe; color: #1e40af; }
-.badge-coupon { background: #f3e8ff; color: #6b21a8; }
+.badge-dividend { 
+  background: rgba(37, 99, 235, 0.1); 
+  color: var(--payout-dividends, #2563eb); 
+}
+.badge-coupon { 
+  background: rgba(6, 182, 212, 0.1); 
+  color: var(--payout-coupons, #06b6d4); 
+}
+.badge-amortization {
+  background: rgba(251, 146, 60, 0.1);
+  color: var(--payout-amortizations, #fb923c);
+}
 .badge-other { background: #f3f4f6; color: #4b5563; }
 .badge-deposit { background: #ccfbf1; color: #0f766e; }
 .badge-withdraw { background: #ffedd5; color: #9a3412; }

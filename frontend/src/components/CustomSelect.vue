@@ -1,5 +1,5 @@
 <template>
-  <div class="custom-select-wrapper" :style="{ minWidth: minWidth, flex: flex }">
+  <div ref="wrapperRef" class="custom-select-wrapper" :style="{ minWidth: minWidth, flex: flex }">
     <span v-if="label" class="select-label">{{ label }}</span>
     <div 
       class="custom-select" 
@@ -84,6 +84,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'change'])
 
 const isOpen = ref(false)
+const wrapperRef = ref(null)
 
 const getOptionLabel = (option) => {
   if (typeof props.optionLabel === 'function') {
@@ -142,23 +143,58 @@ const selectOption = (option, emptyText = null) => {
   isOpen.value = false
 }
 
-const toggleDropdown = () => {
-  isOpen.value = !isOpen.value
-}
 
 const handleClickOutside = (event) => {
   const target = event.target
-  if (!target.closest('.custom-select-wrapper')) {
+  if (wrapperRef.value && !wrapperRef.value.contains(target)) {
+    isOpen.value = false
+  }
+}
+
+// Закрываем все другие селекты при открытии этого
+const handleSelectOpen = () => {
+  // Отправляем событие для закрытия всех других селектов
+  window.dispatchEvent(new CustomEvent('closeAllSelects'))
+}
+
+const handleCloseAllSelects = () => {
+  // Закрываем этот селект при открытии другого
+  // Используем небольшую задержку, чтобы текущий селект успел открыться
+  if (isOpen.value && wrapperRef.value) {
+    setTimeout(() => {
+      // Проверяем, открыт ли этот селект (если нет - значит был открыт другой)
+      if (isOpen.value) {
+        const select = wrapperRef.value.querySelector('.custom-select')
+        // Если у селекта нет класса is-open, значит он был закрыт
+        // Или если есть другой открытый селект
+        const allOpenSelects = document.querySelectorAll('.custom-select.is-open')
+        if (allOpenSelects.length > 1 || (select && !select.classList.contains('is-open'))) {
+          isOpen.value = false
+        }
+      }
+    }, 10)
+  }
+}
+
+const toggleDropdown = () => {
+  if (!isOpen.value) {
+    // Перед открытием закрываем все другие селекты
+    handleSelectOpen()
+    // Открываем этот селект
+    isOpen.value = true
+  } else {
     isOpen.value = false
   }
 }
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('closeAllSelects', handleCloseAllSelects)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('closeAllSelects', handleCloseAllSelects)
 })
 </script>
 

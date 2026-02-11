@@ -2,6 +2,27 @@
 import { computed } from 'vue'
 import BarChart from '../charts/BarChart.vue'
 
+// Фирменные цвета для типов выплат
+const payoutColors = {
+  // Дивиденды - синий
+  dividends: '#2563eb',
+  dividendsAlpha: 'rgba(37, 99, 235, 0.85)',
+  dividendsHover: '#1d4ed8',
+  dividendsDark: '#1e40af',
+  
+  // Купоны - голубой/cyan
+  coupons: '#06b6d4',
+  couponsAlpha: 'rgba(6, 182, 212, 0.85)',
+  couponsHover: '#0891b2',
+  couponsDark: '#0e7490',
+  
+  // Амортизации - оранжевый
+  amortizations: '#fb923c',
+  amortizationsAlpha: 'rgba(251, 146, 60, 0.85)',
+  amortizationsHover: '#f97316',
+  amortizationsDark: '#ea580c'
+}
+
 const props = defineProps({
   payoutsByAsset: {
     type: Array,
@@ -28,21 +49,21 @@ const chartDatasets = computed(() => {
     {
       label: 'Дивиденды',
       data: topAssets.map(a => a.total_dividends || 0),
-      backgroundColor: 'rgba(16, 185, 129, 0.85)',
-      borderColor: '#10b981',
+      backgroundColor: payoutColors.dividendsAlpha,
+      borderColor: payoutColors.dividends,
       borderWidth: 2,
-      hoverBackgroundColor: '#10b981',
-      hoverBorderColor: '#059669',
+      hoverBackgroundColor: payoutColors.dividendsHover,
+      hoverBorderColor: payoutColors.dividendsDark,
       borderRadius: 8
     },
     {
       label: 'Купоны',
       data: topAssets.map(a => a.total_coupons || 0),
-      backgroundColor: 'rgba(59, 130, 246, 0.85)',
-      borderColor: '#3b82f6',
+      backgroundColor: payoutColors.couponsAlpha,
+      borderColor: payoutColors.coupons,
       borderWidth: 2,
-      hoverBackgroundColor: '#3b82f6',
-      hoverBorderColor: '#2563eb',
+      hoverBackgroundColor: payoutColors.couponsHover,
+      hoverBorderColor: payoutColors.couponsDark,
       borderRadius: 8
     }
   ]

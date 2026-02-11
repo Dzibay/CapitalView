@@ -33,44 +33,80 @@ const chartData = computed(() => ({
   }))
 }))
 
-const chartOptions = computed(() => ({
-  scales: {
-    x: {
-      grid: { display: false },
-      ticks: {
-        color: '#6b7280',
-        font: {
-          size: 11
+const chartOptions = computed(() => {
+  // Получаем цвета из CSS переменных
+  const getCSSVariable = (varName) => {
+    if (typeof window !== 'undefined') {
+      return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#6b7280'
+    }
+    return '#6b7280'
+  }
+  
+  const axisText = getCSSVariable('--axis-text') || '#6b7280'
+  const axisTextLight = getCSSVariable('--axis-text-light') || '#9ca3af'
+  const axisGrid = getCSSVariable('--axis-grid') || '#e5e7eb'
+  
+  // Форматирование для оси Y
+  const formatYTick = (value) => {
+    const absValue = Math.abs(value)
+    if (absValue >= 1000) {
+      const kValue = value / 1000
+      const formatted = Math.abs(kValue) % 1 === 0 
+        ? kValue.toFixed(0) 
+        : kValue.toFixed(1)
+      return `${formatted}K`
+    }
+    return value.toString()
+  }
+  
+  return {
+    scales: {
+      x: {
+        grid: { 
+          display: false,
+          drawBorder: false
+        },
+        border: {
+          display: false
+        },
+        ticks: {
+          color: axisText,
+          font: {
+            size: 12,
+            family: 'Inter, system-ui, sans-serif',
+            weight: '500'
+          },
+          padding: 12,
+          maxRotation: 45,
+          minRotation: 0
+        }
+      },
+      y: {
+        beginAtZero: true,
+        grid: {
+          color: axisGrid,
+          drawBorder: false,
+          lineWidth: 1,
+          drawTicks: false,
+          tickLength: 0
+        },
+        border: {
+          display: false
+        },
+        ticks: {
+          color: axisTextLight,
+          font: {
+            size: 12,
+            family: 'Inter, system-ui, sans-serif',
+            weight: '500'
+          },
+          callback: formatYTick,
+          padding: 12,
+          stepSize: null,
+          maxTicksLimit: 8
         }
       }
     },
-    y: {
-      beginAtZero: true,
-      grid: {
-        color: '#e5e7eb',
-        drawBorder: false,
-        lineWidth: 1
-      },
-      ticks: {
-        color: '#9ca3af',
-        font: {
-          size: 11
-        },
-        padding: 8,
-        callback: (value) => {
-          // Универсальное форматирование: 1K вместо 1000 для всех графиков
-          if (value >= 1000) {
-            const kValue = value / 1000
-            const formatted = kValue % 1 === 0 
-              ? kValue.toFixed(0) 
-              : kValue.toFixed(1)
-            return `${formatted}K`
-          }
-          return value.toString()
-        }
-      }
-    }
-  },
   plugins: {
     tooltip: {
       callbacks: props.formatValue ? {
@@ -82,7 +118,8 @@ const chartOptions = computed(() => ({
       } : {}
     }
   }
-}))
+  }
+})
 </script>
 
 <template>

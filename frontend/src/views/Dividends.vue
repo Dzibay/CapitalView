@@ -485,20 +485,20 @@ watch(() => uiStore.selectedPortfolioId, () => {
   box-sizing: border-box;
 }
 
-/* Цвета по типам выплат */
+/* Цвета по типам выплат - фирменные цвета */
 .dot-dividend {
-  background-color: #10b981; /* Зеленый */
-  border-color: #10b981;
+  background-color: var(--payout-dividends, #2563eb); /* Синий - дивиденды */
+  border-color: var(--payout-dividends, #2563eb);
 }
 
 .dot-coupon {
-  background-color: #3b82f6; /* Синий */
-  border-color: #3b82f6;
+  background-color: var(--payout-coupons, #06b6d4); /* Голубой - купоны */
+  border-color: var(--payout-coupons, #06b6d4);
 }
 
 .dot-amortization {
-  background-color: #f59e0b; /* Оранжевый */
-  border-color: #f59e0b;
+  background-color: var(--payout-amortizations, #fb923c); /* Оранжевый - амортизации */
+  border-color: var(--payout-amortizations, #fb923c);
 }
 
 .dot-unknown {

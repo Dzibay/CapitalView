@@ -6,8 +6,88 @@ html {
   --headerHeight: 100px;
   --sidebarWidth : 260px;
   --sidebarWidthCollapsed: 80px;
+  
+  /* Цветовая палитра сайта */
   --positiveColor: #1CBD88;
   --negativeColor: #EF4444;
+  
+  /* Основные цвета */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #3b82f6;
+  --primary-lighter: #60a5fa;
+  --primary-dark: #1e40af;
+  
+  --secondary: #7c3aed;
+  --secondary-hover: #6d28d9;
+  --secondary-light: #8b5cf6;
+  --secondary-lighter: #a78bfa;
+  --secondary-dark: #5b21b6;
+  
+  /* Семантические цвета */
+  --success: #1CBD88;
+  --success-light: #10b981;
+  --success-lighter: #34d399;
+  --success-dark: #059669;
+  
+  --warning: #f59e0b;
+  --warning-light: #fbbf24;
+  --warning-lighter: #fcd34d;
+  --warning-dark: #d97706;
+  
+  --danger: #EF4444;
+  --danger-light: #f87171;
+  --danger-lighter: #fca5a5;
+  --danger-dark: #dc2626;
+  
+  /* Цвета для графиков */
+  --chart-primary: #2563eb;
+  --chart-primary-alpha: rgba(37, 99, 235, 0.85);
+  --chart-secondary: #7c3aed;
+  --chart-secondary-alpha: rgba(124, 58, 237, 0.85);
+  --chart-success: #1CBD88;
+  --chart-success-alpha: rgba(28, 189, 136, 0.85);
+  --chart-warning: #f59e0b;
+  --chart-warning-alpha: rgba(245, 158, 11, 0.85);
+  --chart-danger: #EF4444;
+  --chart-danger-alpha: rgba(239, 68, 68, 0.85);
+  --chart-purple: #8b5cf6;
+  --chart-purple-alpha: rgba(139, 92, 246, 0.85);
+  
+  /* Фирменные цвета для типов выплат */
+  --payout-dividends: #2563eb;              /* Синий - дивиденды */
+  --payout-dividends-alpha: rgba(37, 99, 235, 0.85);
+  --payout-dividends-hover: #1d4ed8;
+  --payout-dividends-dark: #1e40af;
+  
+  --payout-coupons: #06b6d4;                /* Голубой/cyan - купоны */
+  --payout-coupons-alpha: rgba(6, 182, 212, 0.85);
+  --payout-coupons-hover: #0891b2;
+  --payout-coupons-dark: #0e7490;
+  
+  --payout-amortizations: #fb923c;          /* Оранжевый - амортизации */
+  --payout-amortizations-alpha: rgba(251, 146, 60, 0.85);
+  --payout-amortizations-hover: #f97316;
+  --payout-amortizations-dark: #ea580c;
+  
+  /* Цвета текста */
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-tertiary: #6b7280;
+  --text-quaternary: #9ca3af;
+  
+  /* Цвета фона */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --bg-tertiary: #f3f4f6;
+  --bg-quaternary: #e5e7eb;
+  
+  /* Цвета для осей графиков */
+  --axis-text: #6b7280;
+  --axis-text-light: #9ca3af;
+  --axis-grid: #e5e7eb;
+  --axis-grid-light: #f3f4f6;
+  --axis-border: #d1d5db;
 }
 
 body {

@@ -178,6 +178,18 @@ const chartData = computed(() => {
 })
 
 const chartOptions = computed(() => {
+  // Получаем цвета из CSS переменных
+  const getCSSVariable = (varName) => {
+    if (typeof window !== 'undefined') {
+      return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#6b7280'
+    }
+    return '#6b7280'
+  }
+  
+  const axisText = getCSSVariable('--axis-text') || '#6b7280'
+  const axisTextLight = getCSSVariable('--axis-text-light') || '#9ca3af'
+  const axisGrid = getCSSVariable('--axis-grid') || '#e5e7eb'
+  
   return {
     indexAxis: 'y', // Горизонтальная ориентация
     interaction: {
@@ -245,21 +257,32 @@ const chartOptions = computed(() => {
         beginAtZero: true,
         min: 0, // Все бары начинаются с нуля (только правая сторона)
         grid: {
-          color: '#e5e7eb',
+          color: axisGrid,
           drawBorder: false,
-          lineWidth: 1
+          lineWidth: 1,
+          drawTicks: false,
+          tickLength: 0
+        },
+        border: {
+          display: false
         },
         ticks: {
-          color: '#9ca3af',
+          color: axisTextLight,
           font: {
-            size: 11
+            size: 12,
+            family: 'Inter, system-ui, sans-serif',
+            weight: '500'
           },
           callback: (value) => {
             if (displayMode.value === 'currency') {
               // Для валюты используем форматирование денег
               const absValue = Math.abs(value)
               if (absValue >= 1000) {
-                return `${(value / 1000).toFixed(1)}K ₽`
+                const kValue = value / 1000
+                const formatted = Math.abs(kValue) % 1 === 0 
+                  ? kValue.toFixed(0) 
+                  : kValue.toFixed(1)
+                return `${formatted}K ₽`
               }
               return formatMoney(value)
             } else {
@@ -267,23 +290,40 @@ const chartOptions = computed(() => {
               return formatPercentAxis(value)
             }
           },
-          padding: 8
+          padding: 12,
+          stepSize: null,
+          maxTicksLimit: 8
         }
       },
       y: {
         grid: {
+          display: false,
+          drawBorder: false
+        },
+        border: {
           display: false
         },
         ticks: {
-          color: '#6b7280',
+          color: axisText,
           font: {
-            size: 11
+            size: 12,
+            family: 'Inter, system-ui, sans-serif',
+            weight: '500'
           },
-          padding: 8,
+          padding: 12,
           // Показываем все активы на оси Y
           autoSkip: false,
-          maxRotation: 0,
-          minRotation: 0
+          // Для названий активов разрешаем наклон
+          maxRotation: 45,
+          minRotation: 0,
+          // Убеждаемся, что все метки отображаются
+          callback: function(value, index) {
+            const labels = this.chart.data.labels
+            if (labels && index < labels.length) {
+              return labels[index] || ''
+            }
+            return ''
+          }
         }
       }
     }

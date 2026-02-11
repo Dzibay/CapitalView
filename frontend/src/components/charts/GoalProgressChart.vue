@@ -37,65 +37,90 @@ const chartData = computed(() => ({
   }))
 }))
 
-const chartOptions = computed(() => ({
-  responsive: true,
-  maintainAspectRatio: false,
-  interaction: {
-    mode: 'index',
-    intersect: false
-  },
-  scales: {
-    x: {
-      display: true,
-      grid: { 
-        display: false,
-        drawBorder: false
-      },
-      ticks: {
-        color: '#9ca3af',
-        font: {
-          size: 10,
-          weight: '400'
-        },
-        padding: 8,
-        maxRotation: 0,
-        minRotation: 0
-      }
+const chartOptions = computed(() => {
+  // Получаем цвета из CSS переменных
+  const getCSSVariable = (varName) => {
+    if (typeof window !== 'undefined') {
+      return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#6b7280'
+    }
+    return '#6b7280'
+  }
+  
+  const axisText = getCSSVariable('--axis-text') || '#6b7280'
+  const axisTextLight = getCSSVariable('--axis-text-light') || '#9ca3af'
+  const axisGrid = getCSSVariable('--axis-grid') || '#e5e7eb'
+  
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index',
+      intersect: false
     },
-    y: {
-      beginAtZero: true,
-      display: true,
-      grid: {
-        color: '#f3f4f6',
-        drawBorder: false,
-        lineWidth: 1,
-        borderDash: [4, 4]
-      },
-      ticks: {
-        color: '#9ca3af',
-        font: {
-          size: 10
+    scales: {
+      x: {
+        display: true,
+        grid: { 
+          display: false,
+          drawBorder: false
         },
-        padding: 8,
-        callback: (value) => {
-          if (value >= 1000000) {
-            const mValue = value / 1000000
-            const formatted = mValue % 1 === 0 
-              ? mValue.toFixed(0) 
-              : mValue.toFixed(1)
-            return `${formatted} млн`
-          } else if (value >= 1000) {
-            const kValue = value / 1000
-            const formatted = kValue % 1 === 0 
-              ? kValue.toFixed(0) 
-              : kValue.toFixed(1)
-            return `${formatted}К`
+        border: {
+          display: false
+        },
+        ticks: {
+          color: axisText,
+          font: {
+            size: 12,
+            family: 'Inter, system-ui, sans-serif',
+            weight: '500'
+          },
+          padding: 12,
+          maxRotation: 45,
+          minRotation: 0
+        }
+      },
+      y: {
+        beginAtZero: true,
+        display: true,
+        grid: {
+          color: axisGrid,
+          drawBorder: false,
+          lineWidth: 1,
+          drawTicks: false,
+          tickLength: 0
+        },
+        border: {
+          display: false
+        },
+        ticks: {
+          color: axisTextLight,
+          font: {
+            size: 12,
+            family: 'Inter, system-ui, sans-serif',
+            weight: '500'
+          },
+          padding: 12,
+          stepSize: null,
+          maxTicksLimit: 8,
+          callback: (value) => {
+            if (value >= 1000000) {
+              const mValue = value / 1000000
+              const formatted = mValue % 1 === 0 
+                ? mValue.toFixed(0) 
+                : mValue.toFixed(1)
+              return `${formatted} млн`
+            } else if (value >= 1000) {
+              const kValue = value / 1000
+              const formatted = kValue % 1 === 0 
+                ? kValue.toFixed(0) 
+                : kValue.toFixed(1)
+              return `${formatted}K`
+            }
+            return value.toString()
           }
-          return value.toString()
         }
       }
-    }
-  },
+    },
   plugins: {
     legend: {
       display: false
@@ -151,7 +176,8 @@ const chartOptions = computed(() => ({
       } : {}
     }
   }
-}))
+  }
+})
 </script>
 
 <template>

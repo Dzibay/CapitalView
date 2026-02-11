@@ -254,6 +254,18 @@ const renderChart = (aggr) => {
     existingChart.destroy()
   }
 
+  // Получаем цвета из CSS переменных
+  const getCSSVariable = (varName) => {
+    if (typeof window !== 'undefined') {
+      return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#6b7280'
+    }
+    return '#6b7280'
+  }
+  
+  const axisText = getCSSVariable('--axis-text') || '#6b7280'
+  const axisTextLight = getCSSVariable('--axis-text-light') || '#9ca3af'
+  const axisGrid = getCSSVariable('--axis-grid') || '#e5e7eb'
+
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
@@ -269,30 +281,104 @@ const renderChart = (aggr) => {
         y: {
           min: yMin,
           max: yMax,
-          ticks: {
-            callback: v => (v >= 1000 ? v / 1000 + 'k' : v),
-            color: '#9ca3af',
-            padding: 10
+          grid: {
+            color: axisGrid,
+            drawBorder: false,
+            lineWidth: 1,
+            drawTicks: false,
+            tickLength: 0
           },
-          grid: { color: '#e5e7eb', borderDash: [5, 5], drawBorder: false }
+          border: {
+            display: false
+          },
+          ticks: {
+            callback: v => {
+              const absValue = Math.abs(v)
+              if (absValue >= 1000) {
+                const kValue = v / 1000
+                const formatted = Math.abs(kValue) % 1 === 0 
+                  ? kValue.toFixed(0) 
+                  : kValue.toFixed(1)
+                return `${formatted}K`
+              }
+              return v.toString()
+            },
+            color: axisTextLight,
+            font: {
+              size: 12,
+              family: 'Inter, system-ui, sans-serif',
+              weight: '500'
+            },
+            padding: 12,
+            stepSize: null,
+            maxTicksLimit: 8
+          }
         },
 
         x: {
           type: 'category',
+          grid: {
+            display: false,
+            drawBorder: false
+          },
+          border: {
+            display: false
+          },
           ticks: {
-            color: '#9ca3af',
+            color: axisText,
+            font: {
+              size: 12,
+              family: 'Inter, system-ui, sans-serif',
+              weight: '500'
+            },
             autoSkip: false,
             maxRotation: 0,
             minRotation: 0,
+            padding: 12,
             callback: function (value, index) {
               const labels = this.chart.data.labels
               if (!labels || index >= labels.length) return ''
-              const d = new Date(labels[index])
-              const prev = index > 0 ? new Date(labels[index - 1]) : null
-              const first = new Date(labels[0])
-              const last = new Date(labels[labels.length - 1])
+              
+              let d
+              try {
+                d = new Date(labels[index])
+                if (isNaN(d.getTime())) return ''
+              } catch (e) {
+                return ''
+              }
+              
+              const prev = index > 0 ? (() => {
+                try {
+                  const prevDate = new Date(labels[index - 1])
+                  return isNaN(prevDate.getTime()) ? null : prevDate
+                } catch {
+                  return null
+                }
+              })() : null
+              
+              const first = (() => {
+                try {
+                  const firstDate = new Date(labels[0])
+                  return isNaN(firstDate.getTime()) ? null : firstDate
+                } catch {
+                  return null
+                }
+              })()
+              
+              const last = (() => {
+                try {
+                  const lastDate = new Date(labels[labels.length - 1])
+                  return isNaN(lastDate.getTime()) ? null : lastDate
+                } catch {
+                  return null
+                }
+              })()
+              
+              if (!first || !last) return ''
+              
               const totalDays = (last - first) / 86400000
 
+              // Старая логика форматирования подписей
               if (totalDays <= 45) {
                 const step = Math.ceil(labels.length / 45) || 1
                 if (index === 0) return d.getDate()
