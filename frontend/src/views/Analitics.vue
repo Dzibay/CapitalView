@@ -213,6 +213,7 @@ const profitChartData = computed(() => {
         />
         <ReturnWidget 
           :return-percent="selectedPortfolioAnalytics.totals?.return_percent || 0"
+          :return-percent-on-invested="selectedPortfolioAnalytics.totals?.return_percent_on_invested || 0"
           :total-value="selectedPortfolioAnalytics.totals?.total_value || 0"
           :total-invested="selectedPortfolioAnalytics.totals?.total_invested || 0"
         />

@@ -357,40 +357,76 @@ async def get_user_portfolios_analytics(user_id: str):
             # Пересчитываем return_percent на основе средней доходности активов
             # Доходность уже вычислена в SQL на основе средней доходности за 5 лет (акции) или ставки купона (облигации)
             # Для объединенных портфелей считаем как средневзвешенную по инвестированным суммам
+            # return_percent - взвешенная по текущей стоимости
             total_weighted_return = 0.0
+            total_value_for_return = 0.0
+            
+            # return_percent_on_invested - взвешенная по вложенному капиталу
+            total_weighted_return_on_invested = 0.0
             total_invested_for_return = 0.0
             
             # Добавляем данные родителя (если есть активы в самом портфеле)
+            # Учитываем портфели с 0% доходностью тоже, так как они влияют на среднюю доходность
             parent_invested = totals.get("total_invested", 0) or 0
+            parent_value = totals.get("total_value", 0) or 0
             parent_return = parent_analytics.get("totals", {}).get("return_percent", 0) or 0
-            if parent_invested > 0 and parent_return > 0:
+            parent_return_on_invested = parent_analytics.get("totals", {}).get("return_percent_on_invested", 0) or 0
+            
+            if parent_value > 0 or parent_invested > 0:
                 # Вычитаем инвестированную сумму дочерних портфелей, чтобы получить только собственные активы
                 children_invested_sum = sum(
                     analytics_map.get(child_id, {}).get("totals", {}).get("total_invested", 0) or 0
                     for child_id in parent_to_children.get(parent_id, [])
                 )
+                children_value_sum = sum(
+                    analytics_map.get(child_id, {}).get("totals", {}).get("total_value", 0) or 0
+                    for child_id in parent_to_children.get(parent_id, [])
+                )
                 own_invested = max(0, parent_invested - children_invested_sum)
+                own_value = max(0, parent_value - children_value_sum)
+                
+                if own_value > 0:
+                    # Учитываем даже если доходность 0%, так как это влияет на среднюю
+                    total_weighted_return += parent_return * own_value
+                    total_value_for_return += own_value
+                
                 if own_invested > 0:
-                    total_weighted_return += parent_return * own_invested
+                    # Учитываем даже если доходность 0%, так как это влияет на среднюю
+                    total_weighted_return_on_invested += parent_return_on_invested * own_invested
                     total_invested_for_return += own_invested
             
             # Собираем данные из дочерних портфелей для расчета средневзвешенной доходности
+            # Учитываем портфели с 0% доходностью тоже, так как они влияют на среднюю доходность
             for child_id in parent_to_children.get(parent_id, []):
                 child = analytics_map.get(child_id)
                 if not child:
                     continue
                 child_totals = child.get("totals") or {}
                 child_invested = child_totals.get("total_invested", 0) or 0
+                child_value = child_totals.get("total_value", 0) or 0
                 child_return = child_totals.get("return_percent", 0) or 0
-                if child_invested > 0 and child_return > 0:
-                    total_weighted_return += child_return * child_invested
+                child_return_on_invested = child_totals.get("return_percent_on_invested", 0) or 0
+                
+                if child_value > 0:
+                    # Учитываем даже если доходность 0%, так как это влияет на среднюю
+                    total_weighted_return += child_return * child_value
+                    total_value_for_return += child_value
+                
+                if child_invested > 0:
+                    # Учитываем даже если доходность 0%, так как это влияет на среднюю
+                    total_weighted_return_on_invested += child_return_on_invested * child_invested
                     total_invested_for_return += child_invested
             
             # Пересчитываем средневзвешенную доходность
-            if total_invested_for_return > 0:
-                totals["return_percent"] = total_weighted_return / total_invested_for_return
+            if total_value_for_return > 0:
+                totals["return_percent"] = total_weighted_return / total_value_for_return
             else:
                 totals["return_percent"] = 0
+            
+            if total_invested_for_return > 0:
+                totals["return_percent_on_invested"] = total_weighted_return_on_invested / total_invested_for_return
+            else:
+                totals["return_percent_on_invested"] = 0
 
             # Пересчитываем net_cashflow
             totals["net_cashflow"] = (

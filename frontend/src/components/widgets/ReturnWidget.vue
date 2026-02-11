@@ -7,6 +7,10 @@ const props = defineProps({
     type: Number,
     default: 0
   },
+  returnPercentOnInvested: {
+    type: Number,
+    default: 0
+  },
   totalValue: {
     type: Number,
     default: 0
@@ -25,25 +29,12 @@ const formattedReturnPercent = computed(() => {
   }).format((props.returnPercent || 0) / 100)
 })
 
-// Процент на вложенный капитал
-// Доходность на вложенный = обычная доходность * (капитал / вложенный капитал)
-// return_percent приходит как процент (15 для 15%)
-const returnOnInvestedPercent = computed(() => {
-  if (!props.totalInvested || props.totalInvested === 0) return 0
-  if (!props.totalValue || props.totalValue === 0) return 0
-  
-  // return_percent уже в процентах (15 для 15%)
-  // Умножаем на отношение капитала к вложенному капиталу
-  const ratio = props.totalValue / props.totalInvested
-  return props.returnPercent * ratio
-})
-
 const formattedReturnOnInvestedPercent = computed(() => {
   return new Intl.NumberFormat('ru-RU', {
     style: 'percent',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  }).format(returnOnInvestedPercent.value / 100)
+  }).format((props.returnPercentOnInvested || 0) / 100)
 })
 </script>
 
@@ -62,14 +53,20 @@ const formattedReturnOnInvestedPercent = computed(() => {
     </div>
 
     <div class="capital-value-with-change">
-      <Tooltip content="Среднегодовая доходность всех активов в портфеле" position="top">
+      <Tooltip content="Средневзвешенная годовая доходность всех активов в портфеле (на основе текущей стоимости активов и средней дивидендной доходности за 5 лет).
+      Учитывается только дивидендная и купонная доходность" position="top">
         <div class="capital-values">
           {{ formattedReturnPercent }}
         </div>
       </Tooltip>
     </div>
 
-    <p>{{ formattedReturnOnInvestedPercent }} на вложенный капитал</p>
+    <p>
+      <Tooltip content="Средневзвешенная годовая доходность на основе средней цены покупки активов" position="top">
+        <span>{{ formattedReturnOnInvestedPercent }}</span>
+      </Tooltip>
+      на вложенный капитал
+    </p>
   </div>
 </template>
 
@@ -101,4 +98,5 @@ const formattedReturnOnInvestedPercent = computed(() => {
 .capital-values {
   cursor: help;
 }
+
 </style>

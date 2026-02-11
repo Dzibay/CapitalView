@@ -12,7 +12,6 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 MOEX_BONDIZATION_URL = "https://iss.moex.com/iss/securities/{ticker}/bondization.json"
-MOEX_COUPONS_URL = "https://iss.moex.com/iss/securities/{ticker}/coupons.json"
 
 
 async def fetch_bond_payouts_from_moex(session, ticker: str):

@@ -145,28 +145,16 @@ asset_yields AS (
     -- Расчет доходности актива
     CASE 
       WHEN LOWER(COALESCE(at.name, '')) LIKE '%bond%' OR LOWER(COALESCE(at.name, '')) LIKE '%облига%' THEN
+        -- Для облигаций используем купонную доходность
         CASE 
-          WHEN COALESCE(apf.curr_price, 0) > 0 AND a.properties->>'coupon_percent' IS NOT NULL THEN
-            -- Годовая доходность облигации = (купонный процент * номинал * частота) / текущая цена * 100
-            -- coupon_percent уже в процентах (например, 7.5 означает 7.5%)
-            CASE 
-              WHEN a.properties->>'face_value' IS NOT NULL AND CAST(a.properties->>'face_value' AS numeric) > 0 THEN
-                -- Если есть номинал: (coupon_percent / 100 * face_value * frequency) / current_price * 100
-                (
-                  CAST(a.properties->>'coupon_percent' AS numeric) / 100.0 * 
-                  CAST(a.properties->>'face_value' AS numeric) * 
-                  COALESCE(NULLIF(CAST(a.properties->>'coupon_frequency' AS numeric), 0), 2) / 
-                  COALESCE(apf.curr_price, 1)
-                ) * 100
-              ELSE
-                -- Если номинала нет, используем текущую цену как базу (предполагаем номинал = текущая цена)
-                -- coupon_percent * frequency (это уже процент годовой доходности при номинале = текущей цене)
-                CAST(a.properties->>'coupon_percent' AS numeric) *
-                COALESCE(NULLIF(CAST(a.properties->>'coupon_frequency' AS numeric), 0), 2)
-            END
+          WHEN a.properties->>'coupon_percent' IS NOT NULL THEN
+            -- Купонная доходность уже записана как годовая в процентах
+            -- coupon_percent уже в процентах (например, 7.5 означает 7.5% годовых)
+            CAST(a.properties->>'coupon_percent' AS numeric)
           ELSE 0
         END
       ELSE
+        -- Для акций используем среднегодовой дивиденд за последние 5 лет
         CASE 
           WHEN COALESCE(apf.curr_price, 0) > 0 
           THEN (
@@ -650,6 +638,20 @@ SELECT json_agg(
         WHERE pa.portfolio_id = p.id
       ),
       'return_percent', (
+        SELECT CASE 
+          WHEN SUM(ay.quantity * ay.current_price * ay.currency_rate / ay.leverage) > 0
+          THEN (
+            SUM(
+              (ay.quantity * ay.current_price * ay.currency_rate / ay.leverage) *
+              (ay.asset_yield / 100.0)
+            ) / SUM(ay.quantity * ay.current_price * ay.currency_rate / ay.leverage)
+          ) * 100
+          ELSE 0
+        END
+        FROM asset_yields ay
+        WHERE ay.portfolio_id = p.id
+      ),
+      'return_percent_on_invested', (
         SELECT CASE 
           WHEN SUM(ay.quantity * ay.average_price * ay.currency_rate / ay.leverage) > 0
           THEN (

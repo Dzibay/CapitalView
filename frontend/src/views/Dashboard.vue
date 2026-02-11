@@ -191,6 +191,7 @@ const returnData = computed(() => {
   if (selectedPortfolioAnalytics.value?.totals) {
     return {
       returnPercent: selectedPortfolioAnalytics.value.totals.return_percent || 0,
+      returnPercentOnInvested: selectedPortfolioAnalytics.value.totals.return_percent_on_invested || 0,
       totalValue: selectedPortfolioAnalytics.value.totals.total_value || 0,
       totalInvested: selectedPortfolioAnalytics.value.totals.total_invested || 0
     }
@@ -199,12 +200,14 @@ const returnData = computed(() => {
   if (selectedPortfolio.value?.analytics) {
     return {
       returnPercent: selectedPortfolio.value.analytics.return_percent || 0,
+      returnPercentOnInvested: selectedPortfolio.value.analytics.return_percent_on_invested || 0,
       totalValue: selectedPortfolio.value.analytics.total_value || selectedPortfolio.value.total_value || 0,
       totalInvested: selectedPortfolio.value.analytics.total_invested || selectedPortfolio.value.total_invested || 0
     }
   }
   return {
     returnPercent: 0,
+    returnPercentOnInvested: 0,
     totalValue: parsedDashboard.value?.totalAmount || 0,
     totalInvested: parsedDashboard.value?.investedAmount || 0
   }
@@ -249,6 +252,7 @@ const returnData = computed(() => {
       <ReturnWidget 
         class="small-widget"
         :return-percent="returnData.returnPercent"
+        :return-percent-on-invested="returnData.returnPercentOnInvested"
         :total-value="returnData.totalValue"
         :total-invested="returnData.totalInvested"
       />
