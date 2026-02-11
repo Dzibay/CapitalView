@@ -60,6 +60,12 @@ async def process_group(session, url, type_name, existing_assets, type_map):
     i_INSTRID = cols.index("INSTRID") if "INSTRID" in cols else None
     i_FACEVALUE = cols.index("FACEVALUE") if "FACEVALUE" in cols else None
     i_MATDATE = cols.index("MATDATE") if "MATDATE" in cols else None
+    
+    # Индексы для полей облигаций
+    i_COUPONVALUE = cols.index("COUPONVALUE") if "COUPONVALUE" in cols else None
+    i_COUPONPERCENT = cols.index("COUPONPERCENT") if "COUPONPERCENT" in cols else None
+    i_COUPONPERIOD = cols.index("COUPONPERIOD") if "COUPONPERIOD" in cols else None
+    i_ISSUESIZE = cols.index("ISSUESIZE") if "ISSUESIZE" in cols else None
 
     inserted = 0
     updated = 0
@@ -78,12 +84,32 @@ async def process_group(session, url, type_name, existing_assets, type_map):
         }
 
         if type_name == "Облигация":
+            # Извлекаем значения купона и размера выпуска
+            coupon_value = r[i_COUPONVALUE] if i_COUPONVALUE is not None and r[i_COUPONVALUE] is not None else None
+            coupon_percent = r[i_COUPONPERCENT] if i_COUPONPERCENT is not None and r[i_COUPONPERCENT] is not None else None
+            coupon_period = r[i_COUPONPERIOD] if i_COUPONPERIOD is not None and r[i_COUPONPERIOD] is not None else None
+            issue_size = r[i_ISSUESIZE] if i_ISSUESIZE is not None and r[i_ISSUESIZE] is not None else None
+            
+            # Вычисляем частоту купонов на основе периода (в днях)
+            # 182 дня = 2 раза в год, 91 день = 4 раза в год, 365 дней = 1 раз в год
+            coupon_frequency = None
+            if coupon_period is not None:
+                try:
+                    period_days = float(coupon_period)
+                    if period_days > 0:
+                        # Округляем до ближайшего целого значения частоты в год
+                        coupon_frequency = round(365 / period_days, 1)
+                except (ValueError, TypeError):
+                    pass
+            
             props.update({
                 "mat_date": r[i_MATDATE] if i_MATDATE is not None else None,
                 "face_value": r[i_FACEVALUE] if i_FACEVALUE is not None else None,
-                "coupon_value": None,
-                "coupon_percent": None,
-                "coupon_frequency": None,
+                "coupon_value": coupon_value,
+                "coupon_percent": coupon_percent,
+                "coupon_frequency": coupon_frequency,
+                "coupon_period": coupon_period,  # Сохраняем также период в днях
+                "issue_size": issue_size,
             })
 
         asset_type_id = type_map.get(type_name)
