@@ -3,23 +3,55 @@ import { ref, watch, defineEmits } from 'vue';
 
 const props = defineProps({
   show: { type: Boolean, required: true },
-  title: { type: String, default: '' },
   targetAmount: { type: Number, default: 0 },
+  monthlyContribution: { type: Number, default: 0 },
+  annualReturn: { type: Number, default: 0 },
+  useInflation: { type: Boolean, default: false },
+  inflationRate: { type: Number, default: 7.5 },
 });
 
 const emits = defineEmits(['close', 'save']);
 
-const newTitle = ref(props.title);
 const newTargetAmount = ref(props.targetAmount);
+const newMonthlyContribution = ref(props.monthlyContribution || 0);
+// Если annualReturn не задан, оставляем пустым для placeholder
+const newAnnualReturn = ref(props.annualReturn || '');
+const newUseInflation = ref(props.useInflation !== undefined && props.useInflation !== null ? props.useInflation : false);
+const newInflationRate = ref(props.inflationRate !== undefined && props.inflationRate !== null ? props.inflationRate : 7.5);
+
+// Отладочная информация при инициализации
+console.log('[EditGoalModal] Initialized with:', {
+  useInflation: props.useInflation,
+  inflationRate: props.inflationRate,
+  newUseInflation: newUseInflation.value,
+  newInflationRate: newInflationRate.value
+})
 
 // Обновляем локальные значения, если пропсы меняются
-watch(() => props.title, (val) => newTitle.value = val);
 watch(() => props.targetAmount, (val) => newTargetAmount.value = val);
+watch(() => props.monthlyContribution, (val) => {
+  newMonthlyContribution.value = val || 0
+});
+watch(() => props.annualReturn, (val) => {
+  // Если значение не задано, оставляем пустым для placeholder
+  newAnnualReturn.value = val || ''
+});
+watch(() => props.useInflation, (val) => {
+  console.log('[EditGoalModal] useInflation watch:', val, 'type:', typeof val)
+  newUseInflation.value = val !== undefined && val !== null ? Boolean(val) : false
+}, { immediate: true });
+watch(() => props.inflationRate, (val) => {
+  console.log('[EditGoalModal] inflationRate watch:', val, 'type:', typeof val)
+  newInflationRate.value = val !== undefined && val !== null ? Number(val) : 7.5
+}, { immediate: true });
 
 function save() {
   emits('save', {
-    title: newTitle.value,
-    targetAmount: Number(newTargetAmount.value)
+    targetAmount: Number(newTargetAmount.value),
+    monthlyContribution: Number(newMonthlyContribution.value) || 0,
+    annualReturn: newAnnualReturn.value ? Number(newAnnualReturn.value) : null,
+    useInflation: newUseInflation.value,
+    inflationRate: Number(newInflationRate.value) || 7.5
   });
 }
 </script>
@@ -40,19 +72,69 @@ function save() {
       <form @submit.prevent="save" class="form-content">
         <div class="form-section">
           <label class="form-label">
-            <span class="label-icon">📝</span>
-            Название цели
+            <span class="label-icon">💰</span>
+            Целевой капитал (RUB)
           </label>
-          <input v-model="newTitle" type="text" class="form-input" />
+          <input v-model="newTargetAmount" type="number" min="0" step="0.01" class="form-input" />
         </div>
 
         <div class="form-section">
-          <div class="section-divider"></div>
           <label class="form-label">
-            <span class="label-icon">💰</span>
-            Сумма цели (RUB)
+            <span class="label-icon">📈</span>
+            Ежемесячные пополнения (RUB)
           </label>
-          <input v-model="newTargetAmount" type="number" min="0" step="0.01" class="form-input" />
+          <input v-model="newMonthlyContribution" type="number" min="0" step="0.01" class="form-input" placeholder="0" />
+          <p class="form-hint">Сумма, которую вы планируете добавлять каждый месяц</p>
+        </div>
+
+        <div class="form-section">
+          <label class="form-label">
+            <span class="label-icon">📊</span>
+            Годовая доходность (%)
+          </label>
+          <input 
+            v-model="newAnnualReturn" 
+            type="number" 
+            min="0" 
+            max="100" 
+            step="0.01" 
+            class="form-input" 
+            :placeholder="props.annualReturn ? props.annualReturn.toFixed(2) + '%' : 'Автоматически из портфеля'" 
+          />
+          <p class="form-hint">Ожидаемая годовая доходность. По умолчанию используется доходность вашего портфеля</p>
+        </div>
+
+        <div class="form-section">
+          <div class="checkbox-wrapper">
+            <label class="checkbox-label">
+              <input 
+                v-model="newUseInflation" 
+                type="checkbox" 
+                class="checkbox-input"
+              />
+              <span class="checkbox-custom"></span>
+              <span class="checkbox-text">
+                <span class="label-icon">📈</span>
+                Учитывать инфляцию
+              </span>
+            </label>
+            <p class="form-hint">Целевая сумма будет ежегодно увеличиваться на уровень инфляции</p>
+          </div>
+          
+          <div v-if="newUseInflation" class="inflation-input-wrapper">
+            <label class="form-label">
+              <span class="label-icon">💹</span>
+              Уровень инфляции (%)
+            </label>
+            <input 
+              v-model="newInflationRate" 
+              type="number" 
+              min="0" 
+              max="100" 
+              step="0.1" 
+              class="form-input" 
+            />
+          </div>
         </div>
 
         <div class="form-actions">
@@ -291,5 +373,73 @@ function save() {
 .btn-icon {
   font-size: 14px;
   font-weight: 700;
+}
+
+.form-hint {
+  margin: 6px 0 0 0;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.checkbox-wrapper {
+  margin-top: 4px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.checkbox-custom {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.checkbox-input:checked + .checkbox-custom {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.checkbox-input:checked + .checkbox-custom::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 5px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.inflation-input-wrapper {
+  margin-top: 12px;
+  padding-left: 30px;
 }
 </style>

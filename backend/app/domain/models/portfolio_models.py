@@ -40,6 +40,10 @@ class UpdatePortfolioDescriptionRequest(BaseModel):
     capital_target_value: Optional[float] = Field(None, ge=0, description="Значение цели по капиталу")
     capital_target_deadline: Optional[Union[datetime, str]] = Field(None, description="Срок достижения цели")
     capital_target_currency: Optional[str] = Field("RUB", description="Валюта цели")
+    monthly_contribution: Optional[float] = Field(None, ge=0, description="Ежемесячные пополнения")
+    annual_return: Optional[float] = Field(None, ge=0, le=100, description="Годовая доходность в процентах")
+    use_inflation: Optional[bool] = Field(None, description="Учитывать инфляцию")
+    inflation_rate: Optional[float] = Field(None, ge=0, le=100, description="Уровень инфляции в процентах")
     
     @field_validator('capital_target_deadline', mode='before')
     @classmethod

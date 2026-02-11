@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue'
 import BaseChart from './BaseChart.vue'
 
 const props = defineProps({
@@ -20,7 +21,7 @@ const props = defineProps({
   }
 })
 
-const chartData = {
+const chartData = computed(() => ({
   labels: props.labels,
   datasets: props.datasets.map(dataset => ({
     ...dataset,
@@ -30,9 +31,9 @@ const chartData = {
     pointBorderWidth: dataset.pointBorderWidth ?? 2,
     fill: dataset.fill ?? false
   }))
-}
+}))
 
-const chartOptions = {
+const chartOptions = computed(() => ({
   scales: {
     x: {
       grid: { display: false },
@@ -81,7 +82,7 @@ const chartOptions = {
       } : {}
     }
   }
-}
+}))
 </script>
 
 <template>

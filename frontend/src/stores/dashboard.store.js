@@ -105,7 +105,31 @@ export const useDashboardStore = defineStore('dashboard', {
     updatePortfolio(portfolioId, updates) {
       const portfolio = this.portfolios.find(p => p.id === portfolioId)
       if (portfolio) {
-        Object.assign(portfolio, updates)
+        console.log('[DashboardStore] updatePortfolio called:', {
+          portfolioId,
+          updates,
+          currentPortfolio: portfolio
+        })
+        
+        // Если обновляется description, нужно правильно его слить
+        if (updates.description) {
+          portfolio.description = {
+            ...(portfolio.description || {}),
+            ...updates.description
+          }
+          console.log('[DashboardStore] description updated:', portfolio.description)
+        }
+        
+        // Обновляем остальные поля
+        Object.keys(updates).forEach(key => {
+          if (key !== 'description') {
+            portfolio[key] = updates[key]
+          }
+        })
+        
+        console.log('[DashboardStore] portfolio after update:', portfolio)
+      } else {
+        console.warn('[DashboardStore] Portfolio not found:', portfolioId)
       }
     },
 

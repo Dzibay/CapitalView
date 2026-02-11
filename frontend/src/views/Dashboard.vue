@@ -139,14 +139,33 @@ const goalData = computed(() => {
   if (!selectedPortfolio.value) return null
 
   const desc = selectedPortfolio.value.description || {} // если пустой, используем пустой объект
-  return {
+  
+  const result = {
     portfolioId: selectedPortfolio.value.id,
     title: desc.capital_target_name || desc.text || 'Цель не задана',
     targetAmount: desc.capital_target_value || 0,
     currentAmount: selectedPortfolio.value.total_value || 0,
     deadline: desc.capital_target_deadline || null,
-    currency: desc.capital_target_currency || 'RUB'
+    currency: desc.capital_target_currency || 'RUB',
+    monthlyContribution: desc.monthly_contribution || 0,
+    annualReturn: desc.annual_return || 0,
+    useInflation: desc.use_inflation || desc.useInflation || false,
+    use_inflation: desc.use_inflation || desc.useInflation || false,
+    inflationRate: desc.inflation_rate || desc.inflationRate || 7.5,
+    inflation_rate: desc.inflation_rate || desc.inflationRate || 7.5
   }
+  
+  // Отладочная информация
+  if (import.meta.env.DEV) {
+    console.log('[GoalProgressWidget] goalData computed:', {
+      description: desc,
+      result: result,
+      useInflation: result.useInflation,
+      inflationRate: result.inflationRate
+    })
+  }
+  
+  return result
 })
 
 // Расчет годовых дивидендов: процент доходности * сумма портфеля
@@ -263,6 +282,7 @@ const returnData = computed(() => {
         class="goal-widget"
         :goal-data="goalData"
         :onSaveGoal="portfoliosStore.updatePortfolioGoal"
+        :default-return-percent="returnData.returnPercent"
       />
     </div>
   </PageLayout>

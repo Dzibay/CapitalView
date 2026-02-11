@@ -58,7 +58,9 @@ def get_user_portfolios_with_assets_and_history(user_id: str):
 
 def update_portfolio_description(portfolio_id: int, text: str = None, capital_target_name: str = None,
                                  capital_target_value: float = None, capital_target_deadline: str = None,
-                                 capital_target_currency: str = "RUB"):
+                                 capital_target_currency: str = "RUB", monthly_contribution: float = None,
+                                 annual_return: float = None, use_inflation: bool = None,
+                                 inflation_rate: float = None):
     # Получаем текущее описание
     portfolio = table_select("portfolios", select="description", filters={"id": portfolio_id})
     desc = portfolio[0].get("description") or {}
@@ -73,6 +75,14 @@ def update_portfolio_description(portfolio_id: int, text: str = None, capital_ta
         desc["capital_target_deadline"] = capital_target_deadline
     if capital_target_currency is not None:
         desc["capital_target_currency"] = capital_target_currency
+    if monthly_contribution is not None:
+        desc["monthly_contribution"] = monthly_contribution
+    if annual_return is not None:
+        desc["annual_return"] = annual_return
+    if use_inflation is not None:
+        desc["use_inflation"] = use_inflation
+    if inflation_rate is not None:
+        desc["inflation_rate"] = inflation_rate
 
     # Обновляем запись
     return table_update("portfolios", {"description": desc}, filters={"id": portfolio_id})

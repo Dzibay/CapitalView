@@ -132,7 +132,11 @@ async def update_portfolio_description_route(
         capital_target_name=data.capital_target_name,
         capital_target_value=data.capital_target_value,
         capital_target_deadline=data.capital_target_deadline,
-        capital_target_currency=data.capital_target_currency
+        capital_target_currency=data.capital_target_currency,
+        monthly_contribution=data.monthly_contribution,
+        annual_return=data.annual_return,
+        use_inflation=data.use_inflation,
+        inflation_rate=data.inflation_rate
     )
     
     return success_response(
