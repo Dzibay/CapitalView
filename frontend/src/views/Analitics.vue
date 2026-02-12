@@ -51,25 +51,15 @@ watch(
   { immediate: true }
 )
 
-// Безопасная загрузка аналитики
+// Безопасная загрузка аналитики (теперь аналитика приходит вместе с dashboard)
 async function safeLoadAnalytics() {
   if (isLoadingAnalytics.value) return
   try {
     isLoadingAnalytics.value = true
-    await transactionsStore.loadAnalytics()
-
-    await nextTick()
-    watch(
-      () => dashboardStore.analytics,
-      async (newAnalytics) => {
-        if (Array.isArray(newAnalytics) && newAnalytics.length > 0) {
-          await updateSelectedAnalytics()
-        }
-      },
-      { immediate: true, once: true, deep: true }
-    )
+    // Аналитика уже загружена вместе с dashboard, просто обновляем выбранную
+    await updateSelectedAnalytics()
   } catch (err) {
-    console.error('❌ Ошибка при загрузке аналитики:', err)
+    console.error('❌ Ошибка при обработке аналитики:', err)
   } finally {
     isLoadingAnalytics.value = false
   }
@@ -178,7 +168,7 @@ const profitWidgetData = computed(() => {
   }
   return {
     totalAmount: selectedPortfolio.value.total_value || 0,
-    totalProfit: selectedPortfolio.value.analytics?.total_profit || 0,
+    totalProfit: selectedPortfolio.value.analytics?.totals?.total_profit || selectedPortfolio.value.analytics?.total_profit || 0,
     monthlyChange: selectedPortfolio.value.monthly_change || 0,
     investedAmount: selectedPortfolio.value.total_invested || 0,
     analytics: selectedPortfolio.value.analytics || {}

@@ -48,9 +48,22 @@ export const useDashboardStore = defineStore('dashboard', {
         
         if (data?.data) {
           this.portfolios = data.data.portfolios || []
-          // Транзакции не загружаем при инициализации - они загружаются в фоне отдельным запросом
-          // this.transactions = data.data.transactions || []
+          // Транзакции теперь приходят вместе с dashboard
+          this.transactions = data.data.transactions || []
+          this.transactionsLoaded = true
           this.referenceData = data.data.referenceData || {}
+          
+          // Аналитика теперь приходит в полном формате из get_user_portfolios_analytics
+          // Она уже в правильном формате с totals, monthly_flow, monthly_payouts, asset_distribution, etc.
+          // Извлекаем аналитику из портфелей
+          this.analytics = (data.data.portfolios || [])
+            .filter(p => p.analytics && Object.keys(p.analytics).length > 0)
+            .map(p => ({
+              portfolio_id: p.id,
+              portfolio_name: p.name,
+              ...p.analytics  // Распаковываем всю аналитику (totals, monthly_flow, monthly_payouts, etc.)
+            }))
+          this.analyticsLoaded = true
         }
         
         this.lastFetch = Date.now()

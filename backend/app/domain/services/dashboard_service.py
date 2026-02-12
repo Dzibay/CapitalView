@@ -2,10 +2,9 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from time import time
 import copy
-from app.domain.services.portfolio_service import get_user_portfolios_with_assets_and_history
 from app.domain.services.reference_service import get_reference_data_cached
 from app.domain.services.user_service import get_user_by_email
-from app.domain.services.broker_connections_service import get_user_portfolio_connections
+from app.infrastructure.database.supabase_service import rpc
 from app.core.logging import get_logger
 from app.utils.date import normalize_date_to_day_string
 
@@ -130,16 +129,19 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     portfolio_name = portfolio.get("name", "N/A")
 
     # 2️⃣ Аналитика текущего портфеля (если есть)
+    # Агрегация массивов аналитики будет сделана через get_user_portfolios_analytics
+    # Здесь только суммируем totals для расчета total_value и total_invested
     analytics = portfolio.get("analytics") or {}
+    totals = analytics.get("totals") or {}
     combined_analytics = {
-        "realized_pl": float(analytics.get("realized_pl", 0)),
-        "unrealized_pl": float(analytics.get("unrealized_pl", 0)),
-        "dividends": float(analytics.get("dividends", 0)),
-        "coupons": float(analytics.get("coupons", 0)),
-        "commissions": float(analytics.get("commissions", 0)),
-        "taxes": float(analytics.get("taxes", 0)),
-        "inflow": float((analytics.get("cash_flow") or {}).get("inflow", 0)),
-        "outflow": float((analytics.get("cash_flow") or {}).get("outflow", 0)),
+        "realized_pl": float(totals.get("realized_pl", analytics.get("realized_pl", 0))),
+        "unrealized_pl": float(totals.get("unrealized_pl", analytics.get("unrealized_pl", 0))),
+        "dividends": float(totals.get("dividends", analytics.get("dividends", 0))),
+        "coupons": float(totals.get("coupons", analytics.get("coupons", 0))),
+        "commissions": float(totals.get("commissions", analytics.get("commissions", 0))),
+        "taxes": float(totals.get("taxes", analytics.get("taxes", 0))),
+        "inflow": float(totals.get("inflow", (analytics.get("cash_flow") or {}).get("inflow", 0))),
+        "outflow": float(totals.get("outflow", (analytics.get("cash_flow") or {}).get("outflow", 0))),
     }
 
     # 3️⃣ Рекурсивно добавляем данные дочерних портфелей
@@ -255,14 +257,20 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
                     existing_by_portfolio_asset[portfolio_asset_id] = ca_copy
 
         # 4️⃣ Аналитика — суммирование
-        combined_analytics["realized_pl"] += child_analytics.get("realized_pl", 0)
-        combined_analytics["unrealized_pl"] += child_analytics.get("unrealized_pl", 0)
-        combined_analytics["dividends"] += child_analytics.get("dividends", 0)
-        combined_analytics["coupons"] += child_analytics.get("coupons", 0)
-        combined_analytics["commissions"] += child_analytics.get("commissions", 0)
-        combined_analytics["taxes"] += child_analytics.get("taxes", 0)
-        combined_analytics["inflow"] += child_analytics.get("inflow", 0)
-        combined_analytics["outflow"] += child_analytics.get("outflow", 0)
+        # child_analytics может быть dict (старый формат) или содержать totals (новый формат)
+        child_totals = child_analytics.get("totals", {}) if isinstance(child_analytics, dict) else {}
+        if not child_totals and isinstance(child_analytics, dict):
+            # Если totals нет, используем прямые поля (старый формат)
+            child_totals = child_analytics
+        
+        combined_analytics["realized_pl"] += float(child_totals.get("realized_pl", 0) or 0)
+        combined_analytics["unrealized_pl"] += float(child_totals.get("unrealized_pl", 0) or 0)
+        combined_analytics["dividends"] += float(child_totals.get("dividends", 0) or 0)
+        combined_analytics["coupons"] += float(child_totals.get("coupons", 0) or 0)
+        combined_analytics["commissions"] += float(child_totals.get("commissions", 0) or 0)
+        combined_analytics["taxes"] += float(child_totals.get("taxes", 0) or 0)
+        combined_analytics["inflow"] += float(child_totals.get("inflow", 0) or 0)
+        combined_analytics["outflow"] += float(child_totals.get("outflow", 0) or 0)
 
     # 5️⃣ После объединения активов — пересчёт общей стоимости
     total_value = sum(
@@ -320,22 +328,54 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     portfolio["history"] = aggregated_history
     portfolio["asset_allocation"] = calculate_asset_allocation(combined_assets)
 
-    portfolio["analytics"] = {
-        "total_value": total_value,
-        "total_invested": total_invested,
-        "realized_pl": combined_analytics["realized_pl"],
-        "unrealized_pl": combined_analytics["unrealized_pl"],
-        "dividends": combined_analytics["dividends"],
-        "coupons": combined_analytics["coupons"],
-        "commissions": combined_analytics["commissions"],
-        "taxes": combined_analytics["taxes"],
-        "total_profit": total_profit,
-        "return_percent": return_percent,
-        "cash_flow": {
+    # Сохраняем аналитику из SQL (полная структура с totals, monthly_flow, etc.)
+    # Если аналитика уже есть в портфеле (из get_user_portfolios_analytics), используем её
+    # Иначе создаем базовую структуру
+    if portfolio.get("analytics") and isinstance(portfolio.get("analytics"), dict):
+        # Обновляем totals в существующей аналитике
+        if "totals" not in portfolio["analytics"]:
+            portfolio["analytics"]["totals"] = {}
+        portfolio["analytics"]["totals"].update({
+            "total_value": total_value,
+            "total_invested": total_invested,
+            "realized_pl": combined_analytics["realized_pl"],
+            "unrealized_pl": combined_analytics["unrealized_pl"],
+            "dividends": combined_analytics["dividends"],
+            "coupons": combined_analytics["coupons"],
+            "commissions": combined_analytics["commissions"],
+            "taxes": combined_analytics["taxes"],
+            "total_profit": total_profit,
+            "return_percent": return_percent,
             "inflow": combined_analytics["inflow"],
             "outflow": combined_analytics["outflow"],
+        })
+        
+        # Массивы аналитики будут обновлены через get_user_portfolios_analytics
+    else:
+        # Создаем базовую структуру, если аналитики нет
+        portfolio["analytics"] = {
+            "totals": {
+                "total_value": total_value,
+                "total_invested": total_invested,
+                "realized_pl": combined_analytics["realized_pl"],
+                "unrealized_pl": combined_analytics["unrealized_pl"],
+                "dividends": combined_analytics["dividends"],
+                "coupons": combined_analytics["coupons"],
+                "commissions": combined_analytics["commissions"],
+                "taxes": combined_analytics["taxes"],
+                "total_profit": total_profit,
+                "return_percent": return_percent,
+                "inflow": combined_analytics["inflow"],
+                "outflow": combined_analytics["outflow"],
+            },
+            "monthly_flow": [],
+            "monthly_payouts": [],
+            "asset_distribution": [],
+            "payouts_by_asset": [],
+            "future_payouts": [],
+            "asset_returns": [],
+            "operations_breakdown": []
         }
-    }
 
     # Возвращаем combined_history (неагрегированную) для родительского портфеля
     return total_value, total_invested, combined_assets, combined_history, combined_analytics
@@ -414,38 +454,96 @@ def calculate_monthly_change(history):
         return 0
 
 
+def _normalize_analytics(analytics):
+    """Нормализует аналитику: заменяет null на пустые массивы для полей-массивов."""
+    if not analytics or not isinstance(analytics, dict):
+        return analytics
+    
+    # Поля, которые должны быть массивами, а не null
+    array_fields = [
+        'monthly_flow', 'monthly_payouts', 'asset_distribution',
+        'payouts_by_asset', 'future_payouts', 'asset_returns',
+        'operations_breakdown'
+    ]
+    
+    for field in array_fields:
+        if field in analytics and analytics[field] is None:
+            analytics[field] = []
+    
+    return analytics
+
+
 async def get_dashboard_data(user_email: str):
+    """
+    Оптимизированная функция получения данных дашборда.
+    Использует единый SQL запрос для всех данных + правильную агрегацию аналитики.
+    """
     user = get_user_by_email(user_email)
     if not user:
         return None
 
     user_id = user['id']
     time1 = time()
-    # Получаем всё сразу из PostgreSQL
-    portfolios = get_user_portfolios_with_assets_and_history(user_id) or []
-    logger.debug(f'SQL RPC: {time() - time1:.2f} сек')
+    
+    # Один SQL запрос получает все данные: портфели, активы, историю, аналитику, транзакции, connections
+    data = rpc("get_dashboard_data_complete", {"p_user_id": user_id})
+    logger.debug(f'SQL RPC (complete): {time() - time1:.2f} сек')
+    
+    if not data:
+        return {
+            "portfolios": [],
+            "transactions": [],
+            "referenceData": get_reference_data_cached()
+        }
+    
+    portfolios = data.get("portfolios", []) or []
+    transactions = data.get("transactions", []) or []
+    
+    # Нормализуем аналитику: заменяем null на пустые массивы
+    for portfolio in portfolios:
+        if portfolio.get("analytics"):
+            portfolio["analytics"] = _normalize_analytics(portfolio["analytics"])
+    
+    # Объединяем дочерние портфели и пересчитываем суммы (активы, история)
     time1 = time()
-
-    # ⬇️ подмешиваем connection к каждому портфелю
-    time1 = time()
-    connections_by_pid = get_user_portfolio_connections(user_id)  # читает user_broker_connections
-    for p in portfolios:
-        p["connection"] = connections_by_pid.get(p["id"])
-    logger.debug(f'Соединения: {time() - time1:.2f} сек')
-
-    # === 1️⃣ Объединяем дочерние портфели и пересчитываем суммы ===
     portfolios = build_portfolio_hierarchy(portfolios)
     logger.debug(f'Иерархия: {time() - time1:.2f} сек')
-
-    time1 = time()
-    reference_data = get_reference_data_cached()
-    logger.debug(f'Reference data: {time() - time1:.2f} сек')
     
-    # Транзакции не загружаем при инициализации - они загружаются в фоне отдельным запросом
-    transactions = []
-
+    # Получаем правильно агрегированную аналитику через analytics_service
+    # Это гарантирует правильную агрегацию дочерних портфелей
     time1 = time()
+    from app.domain.services.analytics_service import get_user_portfolios_analytics
+    import asyncio
+    aggregated_analytics = await get_user_portfolios_analytics(user_id)
+    logger.debug(f'Аналитика (агрегированная): {time() - time1:.2f} сек')
+    
+    # Создаем map аналитики по portfolio_id для быстрого доступа
+    analytics_by_portfolio_id = {a["portfolio_id"]: a for a in aggregated_analytics}
+    
+    # Обновляем аналитику в портфелях правильными агрегированными данными
+    # И добавляем total_profit, если его нет
+    for portfolio in portfolios:
+        portfolio_id = portfolio.get("id")
+        if portfolio_id in analytics_by_portfolio_id:
+            portfolio["analytics"] = analytics_by_portfolio_id[portfolio_id]
+            
+            # Убеждаемся, что total_profit рассчитан в totals
+            if portfolio.get("analytics") and portfolio["analytics"].get("totals"):
+                totals = portfolio["analytics"]["totals"]
+                if "total_profit" not in totals or totals.get("total_profit") is None:
+                    # Рассчитываем total_profit как сумму всех компонентов прибыли
+                    total_profit = (
+                        float(totals.get("realized_pl", 0) or 0) +
+                        float(totals.get("unrealized_pl", 0) or 0) +
+                        float(totals.get("dividends", 0) or 0) +
+                        float(totals.get("coupons", 0) or 0) +
+                        float(totals.get("commissions", 0) or 0) +
+                        float(totals.get("taxes", 0) or 0)
+                    )
+                    totals["total_profit"] = total_profit
+    
     # Обрабатываем историю и считаем динамику
+    time1 = time()
     for p in portfolios:
         hist = p.get('history')
         if not isinstance(hist, list):
@@ -473,5 +571,5 @@ async def get_dashboard_data(user_email: str):
     return {
         "portfolios": portfolios,
         "transactions": transactions,
-        "referenceData": reference_data
+        "referenceData": get_reference_data_cached()  # Из кеша (загружено при старте)
     }

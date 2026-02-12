@@ -615,6 +615,9 @@ SELECT json_agg(
       'coupons',      COALESCE(t.total_coupons,0),
       'commissions',  COALESCE(t.total_commissions,0),
       'taxes',        COALESCE(t.total_taxes,0),
+      'realized_pl',  COALESCE((get_portfolio_analytics(p.id, p_user_id)->>'realized_pl')::numeric, 0),
+      'unrealized_pl', COALESCE((get_portfolio_analytics(p.id, p_user_id)->>'unrealized_pl')::numeric, 0),
+      'total_profit', COALESCE((get_portfolio_analytics(p.id, p_user_id)->>'total_profit')::numeric, 0),
       'net_cashflow',
         COALESCE(t.total_inflow,0)
       + COALESCE(t.total_dividends,0)

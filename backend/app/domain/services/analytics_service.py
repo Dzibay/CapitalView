@@ -433,6 +433,16 @@ async def get_user_portfolios_analytics(user_id: str):
                 totals.get("inflow", 0) + totals.get("dividends", 0) + totals.get("coupons", 0)
                 - totals.get("outflow", 0) - totals.get("commissions", 0) - totals.get("taxes", 0)
             )
+            
+            # Рассчитываем total_profit как сумму всех компонентов прибыли
+            totals["total_profit"] = (
+                totals.get("realized_pl", 0) +
+                totals.get("unrealized_pl", 0) +
+                totals.get("dividends", 0) +
+                totals.get("coupons", 0) +
+                totals.get("commissions", 0) +
+                totals.get("taxes", 0)
+            )
 
             # записываем объединённые данные
             analytics_map[parent_id]["totals"] = dict(totals)

@@ -75,6 +75,10 @@ async def startup_event():
     logger.info("🚀 CapitalView API starting up...")
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     logger.info(f"Log level: {Config.LOG_LEVEL}")
+    
+    # Инициализация справочных данных при старте
+    from app.domain.services.reference_service import init_reference_data
+    init_reference_data()
 
 
 @app.on_event("shutdown")

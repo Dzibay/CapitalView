@@ -43,12 +43,14 @@ const formatCurrency = (value) => {
 
 const profitBreakdown = computed(() => {
   const analytics = props.analytics || {}
-  const realized = analytics.realized_pl || 0
-  const unrealized = analytics.unrealized_pl || 0
-  const dividends = analytics.dividends || 0
-  const coupons = analytics.coupons || 0
-  const commissions = analytics.commissions || 0
-  const taxes = analytics.taxes || 0
+  const totals = analytics.totals || {}
+  // Поддерживаем оба формата: новый (totals) и старый (прямые поля)
+  const realized = totals.realized_pl ?? analytics.realized_pl ?? 0
+  const unrealized = totals.unrealized_pl ?? analytics.unrealized_pl ?? 0
+  const dividends = totals.dividends ?? analytics.dividends ?? 0
+  const coupons = totals.coupons ?? analytics.coupons ?? 0
+  const commissions = totals.commissions ?? analytics.commissions ?? 0
+  const taxes = totals.taxes ?? analytics.taxes ?? 0
   
   return {
     realized,
@@ -70,7 +72,7 @@ const profitBreakdownTooltip = computed(() => {
   if (b.dividends !== 0) parts.push(`Дивиденды: ${formatCurrency(b.dividends)}`)
   if (b.coupons !== 0) parts.push(`Купоны: ${formatCurrency(b.coupons)}`)
   if (b.commissions !== 0) parts.push(`Комиссии: ${formatCurrency(Math.abs(b.commissions))} (уменьшают прибыль)`)
-  if (b.taxes !== 0) parts.push(`Налоги: ${formatCurrency(Math.abs(b.taxes))} (уменьшают прибыль)`)
+  if (b.taxes !== 0) parts.push(`Налоги: ${formatCurrency(b.taxes)}`)
   
   if (parts.length === 0) return 'Прибыль: 0 ₽'
   
