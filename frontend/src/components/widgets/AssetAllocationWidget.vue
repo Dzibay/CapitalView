@@ -116,6 +116,7 @@ watch(() => props.assetAllocation, () => {
   position: relative;
   width: 300px;
   height: 300px;
+  margin-top: 1rem;
 }
 
 .chart-center {

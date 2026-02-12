@@ -201,10 +201,50 @@ const renderChart = (aggr) => {
   const minValue = allValues.length > 0 ? Math.min(...allValues) : 0
   const maxValue = allValues.length > 0 ? Math.max(...allValues) : 100
   
-  // Если есть значения ниже нуля, нижняя граница динамически подстраивается
-  // Если все значения выше или равны нулю, нижняя граница = 0
-  const yMin = minValue < 0 ? getNiceMin(minValue) : 0
-  const yMax = getNiceMax(maxValue)
+  // Вычисляем диапазон значений
+  const range = maxValue - minValue
+  
+  // Для коротких периодов (месяц) используем адаптивную шкалу
+  // Если диапазон мал относительно значений, используем более точную шкалу
+  let yMin, yMax
+  
+  if (props.period === '1M' && range > 0 && range < maxValue * 0.1) {
+    // Для месяца с малыми изменениями используем шкалу, основанную на диапазоне
+    // Добавляем запас 15% сверху и снизу для лучшей визуализации
+    const padding = range * 0.15
+    const adjustedMin = minValue - padding
+    const adjustedMax = maxValue + padding
+    
+    // Округляем до "красивых" значений, но с учетом малого диапазона
+    const rangeOrder = Math.floor(Math.log10(range))
+    let step
+    if (rangeOrder < 0) {
+      step = Math.pow(10, rangeOrder) * 5
+    } else if (rangeOrder === 0) {
+      step = 1
+    } else if (rangeOrder === 1) {
+      step = 10
+    } else if (rangeOrder === 2) {
+      step = 100
+    } else if (rangeOrder === 3) {
+      step = 1000
+    } else {
+      step = Math.pow(10, rangeOrder - 1) * 5
+    }
+    
+    yMin = Math.floor(adjustedMin / step) * step
+    yMax = Math.ceil(adjustedMax / step) * step
+    
+    // Убеждаемся, что min не меньше реального минимума, а max не больше реального максимума
+    if (yMin > minValue) yMin = Math.floor(minValue / step) * step
+    if (yMax < maxValue) yMax = Math.ceil(maxValue / step) * step
+  } else {
+    // Для длинных периодов используем стандартную логику
+    // Если есть значения ниже нуля, нижняя граница динамически подстраивается
+    // Если все значения выше или равны нулю, нижняя граница = 0
+    yMin = minValue < 0 ? getNiceMin(minValue) : 0
+    yMax = getNiceMax(maxValue)
+  }
 
   const datasets = props.chartData.datasets.map((ds, i) => {
     const base = {

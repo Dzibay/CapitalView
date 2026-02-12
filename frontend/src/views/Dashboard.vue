@@ -291,7 +291,7 @@ const recentTransactions = computed(() => {
       </WidgetContainer>
       
       <!-- Большой виджет PortfolioChartWidget -->
-      <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-large)">
+      <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-xlarge)">
         <PortfolioChartWidget 
           :chartData="parsedDashboard.portfolioChart"
         />

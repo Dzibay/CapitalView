@@ -240,7 +240,7 @@ const profitChartData = computed(() => {
       </WidgetContainer>
 
       <!-- Виджет распределения активов и виджет динамики прибыли -->
-      <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-large)">
+      <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-xlarge)">
         <PortfolioChartWidget 
           :chart-data="portfolioChartData"
         />
