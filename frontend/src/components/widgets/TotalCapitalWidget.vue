@@ -88,7 +88,6 @@ const tooltipText = computed(() => {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  cursor: help;
 }
 
 .value-change.positive {

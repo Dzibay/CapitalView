@@ -145,7 +145,6 @@ const profitBreakdownTooltip = computed(() => {
 }
 
 .value-change {
-  cursor: help;
   display: flex;
   align-items: center;
   gap: 0.25rem;
@@ -177,9 +176,5 @@ const profitBreakdownTooltip = computed(() => {
 }
 .profit-percent.negative {
   color: var(--negativeColor);
-}
-
-.capital-values {
-  cursor: help;
 }
 </style>

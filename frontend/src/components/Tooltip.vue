@@ -164,6 +164,7 @@ onUnmounted(() => {
 .tooltip-wrapper {
   display: inline-block;
   position: relative;
+  cursor: help;
 }
 
 .tooltip {

@@ -65,10 +65,6 @@ const formattedMonthlyAverage = computed(() => {
   padding-bottom: 0.2rem;
 }
 
-.capital-values {
-  cursor: help;
-}
-
 .value-change.positive {
   color: var(--positiveColor);
 }

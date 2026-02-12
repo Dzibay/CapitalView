@@ -51,7 +51,7 @@ const formattedReturnOnInvestedPercent = computed(() => {
       </Tooltip>
     </div>
 
-    <p>
+    <p class>
       <Tooltip content="Средневзвешенная годовая доходность на основе средней цены покупки активов" position="top">
         <span>{{ formattedReturnOnInvestedPercent }}</span>
       </Tooltip>
@@ -75,9 +75,4 @@ const formattedReturnOnInvestedPercent = computed(() => {
 .value-change.negative {
   color: var(--negativeColor);
 }
-
-.capital-values {
-  cursor: help;
-}
-
 </style>
