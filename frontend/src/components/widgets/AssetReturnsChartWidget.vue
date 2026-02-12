@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import BaseChart from '../charts/BaseChart.vue'
+import Widget from './Widget.vue'
 
 const props = defineProps({
   assetReturns: {
@@ -397,19 +398,15 @@ const percentPlugin = {
 </script>
 
 <template>
-  <div class="widget">
-    <div class="widget-header">
-      <div class="widget-title">
-        <h2>Прибыльность активов</h2>
-        <button class="help-icon" title="Справка">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
-            <path d="M8 11V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <circle cx="8" cy="5" r="0.5" fill="currentColor"/>
-          </svg>
-        </button>
-      </div>
-      
+  <Widget title="Прибыльность активов">
+    <template #header>
+      <button class="help-icon" title="Справка">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M8 11V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="8" cy="5" r="0.5" fill="currentColor"/>
+        </svg>
+      </button>
       <div class="widget-controls">
         <div class="display-mode-toggle">
           <button
@@ -439,7 +436,7 @@ const percentPlugin = {
           </div>
         </div>
       </div>
-    </div>
+    </template>
 
     <div class="chart-container">
       <BaseChart
@@ -454,40 +451,11 @@ const percentPlugin = {
         <p>Нет данных о доходности активов</p>
       </div>
     </div>
-  </div>
+  </Widget>
 </template>
 
 <style scoped>
-.widget {
-  background-color: #fff;
-  padding: var(--spacing);
-  border-radius: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  width: 100%;
-}
-
-.widget-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.widget-title {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.widget-title h2 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #111827;
-  margin: 0;
-}
+/* Убраны стили .widget, .widget-header, .widget-title - теперь используется компонент Widget */
 
 .help-icon {
   display: flex;

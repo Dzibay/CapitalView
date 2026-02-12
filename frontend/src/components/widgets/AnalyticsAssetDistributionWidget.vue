@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import DoughnutChart from '../charts/DoughnutChart.vue'
+import Widget from './Widget.vue'
 
 const props = defineProps({
   assetDistribution: {
@@ -59,18 +60,15 @@ const rightColumnAssets = computed(() => {
 </script>
 
 <template>
-  <div class="widget">
-    <div class="widget-header">
-      <div class="widget-title">
-        <h2>Все активы</h2>
-        <button class="help-icon" title="Справка">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
-            <path d="M8 11V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            <circle cx="8" cy="5" r="0.5" fill="currentColor"/>
-          </svg>
-        </button>
-      </div>
+  <Widget title="Все активы">
+    <template #header>
+      <button class="help-icon" title="Справка">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M8 11V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="8" cy="5" r="0.5" fill="currentColor"/>
+        </svg>
+      </button>
       <button class="filter-button" title="Фильтр по вложениям">
         <span>По вложениям</span>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -79,7 +77,7 @@ const rightColumnAssets = computed(() => {
           <circle cx="8" cy="5" r="0.5" fill="currentColor"/>
         </svg>
       </button>
-    </div>
+    </template>
 
     <div v-if="assetDistribution && assetDistribution.length" class="allocation-container">
       <div class="chart-section">
@@ -138,40 +136,11 @@ const rightColumnAssets = computed(() => {
     <div v-else class="empty-state">
       <p>Нет данных о распределении активов</p>
     </div>
-  </div>
+  </Widget>
 </template>
 
 <style scoped>
-.widget {
-  background-color: #fff;
-  padding: var(--spacing);
-  border-radius: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  width: 100%;
-}
-
-.widget-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.widget-title {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.widget-title h2 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #111827;
-  margin: 0;
-}
+/* Убраны стили .widget, .widget-header, .widget-title - теперь используется компонент Widget */
 
 .help-icon {
   display: flex;

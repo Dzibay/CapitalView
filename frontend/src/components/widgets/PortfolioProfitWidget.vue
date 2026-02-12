@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import Tooltip from '../Tooltip.vue';
 import Widget from './Widget.vue';
+import ValueChange from './ValueChange.vue';
 
 const props = defineProps({
   totalAmount: { type: Number, required: true },
@@ -107,20 +108,10 @@ const profitBreakdownTooltip = computed(() => {
         </div>
       </Tooltip>
       <Tooltip :content="`Изменение прибыли за последний месяц составляет ${formattedMonthlyGrowthPercent}`" position="top">
-        <div 
-          class="value-change" 
-          :class="{ 'positive': monthlyGrowthPercent >= 0, 'negative': monthlyGrowthPercent < 0 }"
-        >
-          <span class="arrow-icon" :class="{ 'up': monthlyGrowthPercent >= 0, 'down': monthlyGrowthPercent < 0 }">
-            <svg v-if="monthlyGrowthPercent >= 0" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="18 15 12 9 6 15"></polyline>
-            </svg>
-            <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </span>
-          <span>{{ formattedMonthlyGrowthPercent }}</span>
-        </div>
+        <ValueChange 
+          :value="monthlyGrowthPercent" 
+          format="percent"
+        />
       </Tooltip>
     </div>
     <p>
@@ -136,40 +127,12 @@ const profitBreakdownTooltip = computed(() => {
 </template>
 
 <style scoped>
-
 .capital-value-with-change {
   margin: 15px 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
-.value-change {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.value-change.positive {
-  color: var(--positiveColor);
-}
-.value-change.negative {
-  color: var(--negativeColor);
-}
-
-.arrow-icon {
-  display: flex;
-  align-items: center;
-}
-
-.arrow-icon.up {
-  color: var(--positiveColor);
-}
-
-.arrow-icon.down {
-  color: var(--negativeColor);
-}
-
 
 .profit-percent.positive {
   color: var(--positiveColor);

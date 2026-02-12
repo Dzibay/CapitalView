@@ -64,11 +64,4 @@ const formattedMonthlyAverage = computed(() => {
   line-height: 1;
   padding-bottom: 0.2rem;
 }
-
-.value-change.positive {
-  color: var(--positiveColor);
-}
-.value-change.negative {
-  color: var(--negativeColor);
-}
 </style>

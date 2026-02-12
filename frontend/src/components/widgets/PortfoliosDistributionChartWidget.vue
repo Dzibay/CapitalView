@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import DoughnutChart from '../charts/DoughnutChart.vue'
+import Widget from './Widget.vue'
 
 const props = defineProps({
   portfolios: {
@@ -89,12 +90,7 @@ const total = computed(() => {
 </script>
 
 <template>
-  <div class="widget">
-    <div class="widget-title">
-      <div class="widget-title-icon-rect"></div>
-      <h2>Распределение портфелей</h2>
-    </div>
-
+  <Widget title="Распределение портфелей">
     <div v-if="portfolioValues && portfolioValues.length" class="allocation-container">
       <div class="chart-section">
         <DoughnutChart
@@ -129,42 +125,11 @@ const total = computed(() => {
     <div v-else class="empty-state">
       <p>Нет данных о распределении портфелей</p>
     </div>
-  </div>
+  </Widget>
 </template>
 
 <style scoped>
-.widget {
-  background-color: #fff;
-  padding: var(--spacing);
-  border-radius: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  width: 100%;
-  min-width: 0;
-}
-
-.widget-title {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-}
-
-.widget-title-icon-rect {
-  padding: 5px;
-  width: 25px;
-  height: 25px;
-  border-radius: 6px;
-  background-color: #F6F6F6;
-}
-
-.widget-title h2 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #111827;
-  margin: 0;
-}
+/* Убраны стили .widget, .widget-title - теперь используется компонент Widget */
 
 .allocation-container {
   display: flex;

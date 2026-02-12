@@ -68,11 +68,4 @@ const formattedReturnOnInvestedPercent = computed(() => {
   justify-content: space-between;
   align-items: center;
 }
-
-.value-change.positive {
-  color: var(--positiveColor);
-}
-.value-change.negative {
-  color: var(--negativeColor);
-}
 </style>

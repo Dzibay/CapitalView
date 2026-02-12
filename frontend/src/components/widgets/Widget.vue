@@ -1,9 +1,6 @@
 <script setup>
-defineProps({
-  title: {
-    type: String,
-    required: true
-  }
+const props = defineProps({
+  title: { type: String, required: true }
 })
 </script>
 
@@ -32,6 +29,7 @@ defineProps({
   display: flex;
   flex-direction: column;
   width: 100%;
+  height: 100%;
 }
 
 .widget-header {

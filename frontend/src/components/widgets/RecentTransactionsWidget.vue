@@ -1,18 +1,13 @@
 <script setup>
-defineProps({
-  transactions: { type: Array, required: true },
-});
+import Widget from './Widget.vue'
+
+const props = defineProps({
+  transactions: { type: Array, required: true }
+})
 </script>
 
 <template>
-  <div class="widget">
-
-    <div class="widget-title">
-      <div class="widget-title-icon-rect">
-
-      </div>
-      <h2>Последние операции</h2>
-    </div>
+  <Widget title="Последние операции">
     <ul class="transactions-list">
       <li v-for="tx in transactions.slice(0, 4)" :key="tx.id" class="transaction-item">
         <div class="tx-info">
@@ -27,18 +22,10 @@ defineProps({
         </div>
       </li>
     </ul>
-  </div>
+  </Widget>
 </template>
 
 <style scoped>
-.widget {
-    grid-row: span 2;
-    grid-column: span 1;
-    background-color: #fff; 
-    border-radius: 12px; 
-    padding: 1.5rem; 
-    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-}
 .transactions-list { 
     list-style: none; 
     padding: 0; 

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import BarChart from '../charts/BarChart.vue'
+import Widget from './Widget.vue'
 
 const props = defineProps({
   monthlyFlow: {
@@ -72,12 +73,8 @@ const chartDatasets = computed(() => {
 </script>
 
 <template>
-  <div class="widget">
-    <div class="widget-header">
-      <div class="widget-title">
-        <div class="widget-title-icon-rect"></div>
-        <h2>Месячные потоки</h2>
-      </div>
+  <Widget title="Месячные потоки">
+    <template #header>
       <div class="chart-controls">
         <label class="control-checkbox inflow">
           <input 
@@ -107,7 +104,7 @@ const chartDatasets = computed(() => {
           <span class="checkbox-label">Разница</span>
         </label>
       </div>
-    </div>
+    </template>
     <div class="chart-container">
       <BarChart
         v-if="monthlyFlow && monthlyFlow.length > 0 && chartDatasets.length > 0"
@@ -124,34 +121,11 @@ const chartDatasets = computed(() => {
         <p>Нет данных о месячных потоках</p>
       </div>
     </div>
-  </div>
+  </Widget>
 </template>
 
 <style scoped>
-.widget {
-  background-color: #fff;
-  padding: var(--spacing);
-  border-radius: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: 100%;
-}
-
-.widget-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.widget-title {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-}
+/* Убраны стили .widget, .widget-header, .widget-title - теперь используется компонент Widget */
 
 .widget-title-icon-rect {
   padding: 5px;

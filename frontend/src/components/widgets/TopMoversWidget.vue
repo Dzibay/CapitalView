@@ -1,6 +1,8 @@
 <script setup>
 import { computed } from 'vue'
 import { getCurrencySymbol } from '../../utils/currencySymbols.js'
+import Widget from './Widget.vue'
+import ValueChange from './ValueChange.vue'
 
 const props = defineProps({
   assets: { type: Array, required: true },
@@ -31,12 +33,7 @@ const topAssets = computed(() => {
 </script>
 
 <template>
-  <div class="widget">
-    <div class="widget-title">
-      <div class="widget-title-icon-rect"></div>
-      <h2 class="widget-title">{{ title }}</h2>
-    </div>
-
+  <Widget :title="title">
     <ul class="assets-list">
       <li v-for="asset in topAssets" :key="asset.asset_id" class="asset-item">
         <div class="asset-info">
@@ -49,31 +46,24 @@ const topAssets = computed(() => {
             {{ asset.total_value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
             {{ getCurrencySymbol(asset.currency_ticker) }}
           </span>
-          <span
-            class="value-change"
-            :class="asset.change_percent >= 0 ? 'positive' : 'negative'"
-          >
-            {{ asset.change_percent >= 0 ? '+' : '' }}
-            {{ asset.change_percent.toFixed(2) }}%
-            ({{ asset.change_value >= 0 ? '+' : '' }}
-            {{ asset.change_value.toFixed(2) }}
-            {{ getCurrencySymbol(asset.currency_ticker) }})
-          </span>
+          <div class="value-change-wrapper">
+            <ValueChange 
+              :value="asset.change_percent" 
+              format="percent"
+            />
+            <span class="value-change-currency">
+              ({{ asset.change_value >= 0 ? '+' : '' }}
+              {{ asset.change_value.toFixed(2) }}
+              {{ getCurrencySymbol(asset.currency_ticker) }})
+            </span>
+          </div>
         </div>
       </li>
     </ul>
-  </div>
+  </Widget>
 </template>
 
 <style scoped>
-.widget {
-  grid-row: span 2;
-  grid-column: span 1;
-  background-color: #fff; 
-  border-radius: 12px; 
-  padding: 1.5rem; 
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-}
 .assets-list { 
   list-style: none;
 }
@@ -101,6 +91,17 @@ const topAssets = computed(() => {
 .value { 
   display: block; 
   font-weight: 400; 
+}
+.value-change-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+.value-change-currency {
+  font-size: 0.875rem;
+  color: #6b7280;
 }
 
 </style>

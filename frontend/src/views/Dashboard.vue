@@ -20,8 +20,10 @@ import PortfolioProfitWidget from '../components/widgets/PortfolioProfitWidget.v
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 import DividendsWidget from '../components/widgets/DividendsWidget.vue'
 import ReturnWidget from '../components/widgets/ReturnWidget.vue'
+import AssetAllocationWidget from '../components/widgets/AssetAllocationWidget.vue'
 import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWidget.vue'
 import MonthlyPayoutsChartWidget from '../components/widgets/MonthlyPayoutsChartWidget.vue'
+import WidgetContainer from '../components/widgets/WidgetContainer.vue'
 
 const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
@@ -186,6 +188,14 @@ const calculatedAnnualDividends = computed(() => {
   return 0
 })
 
+// Данные для AssetAllocationWidget
+const assetAllocationData = computed(() => {
+  if (!selectedPortfolio.value) {
+    return { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
+  }
+  return selectedPortfolio.value.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
+})
+
 // Данные для ReturnWidget
 const returnData = computed(() => {
   // Используем данные из аналитики, если доступны
@@ -251,66 +261,78 @@ const recentTransactions = computed(() => {
 
     <div class="widgets-grid">
       <!-- 4 маленьких виджета вверху -->
-      <TotalCapitalWidget 
-        class="small-widget"
-        :total-amount="parsedDashboard.totalAmount"
-        :invested-amount="parsedDashboard.investedAmount" 
-      />
-      <PortfolioProfitWidget 
-        class="small-widget"
-        :total-amount="parsedDashboard.totalAmount" 
-        :total-profit="selectedPortfolio.analytics?.total_profit || 0" 
-        :monthly-change="parsedDashboard.monthlyChange"
-        :invested-amount="parsedDashboard.investedAmount"
-        :analytics="selectedPortfolio.analytics || {}"
-      />
-      <DividendsWidget 
-        class="small-widget"
-        :annual-dividends="calculatedAnnualDividends"
-      />
-      <ReturnWidget 
-        class="small-widget"
-        :return-percent="returnData.returnPercent"
-        :return-percent-on-invested="returnData.returnPercentOnInvested"
-        :total-value="returnData.totalValue"
-        :total-invested="returnData.totalInvested"
-      />
+      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+        <TotalCapitalWidget 
+          :total-amount="parsedDashboard.totalAmount"
+          :invested-amount="parsedDashboard.investedAmount"
+        />
+      </WidgetContainer>
+      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+        <PortfolioProfitWidget 
+          :total-amount="parsedDashboard.totalAmount" 
+          :total-profit="selectedPortfolio.analytics?.total_profit || 0" 
+          :monthly-change="parsedDashboard.monthlyChange"
+          :invested-amount="parsedDashboard.investedAmount"
+          :analytics="selectedPortfolio.analytics || {}"
+        />
+      </WidgetContainer>
+      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+        <DividendsWidget 
+          :annual-dividends="calculatedAnnualDividends"
+        />
+      </WidgetContainer>
+      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+        <ReturnWidget 
+          :return-percent="returnData.returnPercent"
+          :return-percent-on-invested="returnData.returnPercentOnInvested"
+          :total-value="returnData.totalValue"
+          :total-invested="returnData.totalInvested"
+        />
+      </WidgetContainer>
       
       <!-- Большой виджет PortfolioChartWidget -->
-      <PortfolioChartWidget 
-        class="large-chart"
-        :chartData="parsedDashboard.portfolioChart" 
-      />
+      <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-large)">
+        <PortfolioChartWidget 
+          :chartData="parsedDashboard.portfolioChart"
+        />
+      </WidgetContainer>
+      <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+        <AssetAllocationWidget
+          :assetAllocation="assetAllocationData"
+        />
+      </WidgetContainer>
       
-      <!-- Три виджета в ряд: Топ роста, Топ падений, Последние операции -->
-      <TopMoversWidget
-        class="movers-widget"
-        title="Топ роста за день"
-        :assets="selectedPortfolio.combined_assets || []"
-        direction="up"
-      />
-      <TopMoversWidget
-        class="movers-widget"
-        title="Топ падений за день"
-        :assets="selectedPortfolio.combined_assets || []"
-        direction="down"
-      />
-      <RecentTransactionsWidget
-        class="transactions-widget"
-        :transactions="recentTransactions"
-      />
-      
-      <!-- Два виджета в ряд: Выплаты по месяцам и Цели -->
-      <MonthlyPayoutsChartWidget 
-        class="payouts-widget"
-        :monthly-payouts="monthlyPayouts" 
-      />
-      <GoalProgressWidget 
-        class="goal-widget"
-        :goal-data="goalData"
-        :onSaveGoal="portfoliosStore.updatePortfolioGoal"
-        :default-return-percent="returnData.returnPercent"
-      />
+      <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+        <TopMoversWidget
+          title="Топ роста за день"
+          :assets="selectedPortfolio.combined_assets || []"
+          direction="up"
+        />
+      </WidgetContainer>
+      <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+        <TopMoversWidget
+          title="Топ падений за день"
+          :assets="selectedPortfolio.combined_assets || []"
+          direction="down"
+        />
+      </WidgetContainer>
+      <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+        <RecentTransactionsWidget
+          :transactions="recentTransactions"
+        />
+      </WidgetContainer>
+      <WidgetContainer :gridColumn="6" minHeight="var(--widget-height-medium)">
+        <MonthlyPayoutsChartWidget 
+          :monthly-payouts="monthlyPayouts"
+        />
+      </WidgetContainer>
+      <WidgetContainer :gridColumn="6" minHeight="var(--widget-height-medium)">
+        <GoalProgressWidget 
+          :goal-data="goalData"
+          :onSaveGoal="portfoliosStore.updatePortfolioGoal"
+          :default-return-percent="returnData.returnPercent"
+        />
+      </WidgetContainer>
     </div>
   </PageLayout>
 
@@ -325,54 +347,10 @@ const recentTransactions = computed(() => {
   grid-auto-rows: min-content;
 }
 
-/* 4 маленьких виджета вверху */
-.small-widget {
-  grid-column: span 3;
-  min-height: 150px;
-}
-
-/* Большой виджет PortfolioChartWidget */
-.large-chart {
-  grid-column: 1 / -1;
-  min-height: 500px;
-}
-
-/* Три виджета в ряд: Топ роста, Топ падений, Последние операции */
-.movers-widget,
-.transactions-widget {
-  grid-column: span 4;
-  min-height: 300px;
-}
-
-/* Два виджета в ряд: Выплаты по месяцам и Цели */
-.payouts-widget,
-.goal-widget {
-  grid-column: span 6;
-  min-height: 300px;
-}
-
 /* Адаптивность для планшетов */
 @media (max-width: 1200px) {
   .widgets-grid {
     grid-template-columns: repeat(6, 1fr);
-  }
-  
-  .small-widget {
-    grid-column: span 3;
-  }
-  
-  .large-chart {
-    grid-column: 1 / -1;
-  }
-  
-  .movers-widget,
-  .transactions-widget {
-    grid-column: span 2;
-  }
-  
-  .payouts-widget,
-  .goal-widget {
-    grid-column: span 3;
   }
 }
 
@@ -380,15 +358,6 @@ const recentTransactions = computed(() => {
 @media (max-width: 768px) {
   .widgets-grid {
     grid-template-columns: 1fr;
-  }
-  
-  .small-widget,
-  .large-chart,
-  .movers-widget,
-  .transactions-widget,
-  .payouts-widget,
-  .goal-widget {
-    grid-column: span 1;
   }
 }
 </style>

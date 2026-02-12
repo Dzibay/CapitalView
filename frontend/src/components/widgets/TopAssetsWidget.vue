@@ -1,5 +1,7 @@
 <script setup>
 import { computed } from 'vue'
+import Widget from './Widget.vue'
+import ValueChange from './ValueChange.vue'
 
 const props = defineProps({
   assets: { type: Array, required: true },
@@ -14,11 +16,7 @@ const topAssets = computed(() =>
 </script>
 
 <template>
-  <div class="widget">
-    <div class="widget-title">
-      <div class="widget-title-icon-rect"></div>
-      <h2 class="widget-title">Лучшие активы</h2>
-    </div>
+  <Widget title="Лучшие активы">
 
     <ul class="assets-list">
       <li v-for="asset in topAssets" :key="asset.asset_id" class="asset-item">
@@ -31,28 +29,19 @@ const topAssets = computed(() =>
           <span class="value">
             {{ (asset.last_price * asset.quantity).toFixed(2) }} ₽
           </span>
-          <span
-            class="value-change"
-            :class="asset.profit_rub >= 0 ? 'positive' : 'negative'"
-          >
-            {{ asset.profit_rub >= 0 ? '+' : '' }}{{ asset.profit_rub.toFixed(2) }} ₽
-          </span>
+          <ValueChange 
+            :value="asset.profit_rub" 
+            :is-positive="asset.profit_rub >= 0"
+            format="currency"
+            :show-arrow="false"
+          />
         </div>
       </li>
     </ul>
-  </div>
+  </Widget>
 </template>
 
-
 <style scoped>
-.widget {
-  grid-row: span 2;
-  grid-column: span 1;
-  background-color: #fff; 
-  border-radius: 12px; 
-  padding: 1.5rem; 
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-}
 .assets-list { 
   list-style: none;
 }

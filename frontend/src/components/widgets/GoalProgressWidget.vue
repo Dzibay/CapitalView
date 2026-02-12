@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import EditGoalModal from '../modals/EditGoalModal.vue'
 import GoalProgressChart from '../charts/GoalProgressChart.vue'
+import Widget from './Widget.vue'
 
 const props = defineProps({
   goalData: { type: Object, required: true },
@@ -362,14 +363,8 @@ const formatAmountShort = (value) => {
 </script>
 
 <template>
-  <div class="widget">
-    <div class="widget-title">
-      <div class="widget-title-icon-rect">
-        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-        </svg>
-      </div>
-      <h2 class="widget-title">Прогноз достижения цели</h2>
+  <Widget title="Прогноз достижения цели">
+    <template #header>
       <button @click="openModal" class="edit-button">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -377,7 +372,7 @@ const formatAmountShort = (value) => {
         </svg>
         Изменить цель
       </button>
-    </div>
+    </template>
 
     <template v-if="hasGoal">
       <!-- Информация о цели с круговым прогрессом -->
@@ -454,47 +449,11 @@ const formatAmountShort = (value) => {
       @close="showModal = false"
       @save="saveGoal"
     />
-  </div>
+  </Widget>
 </template>
 
 <style scoped>
-.widget {
-  grid-row: span 1;
-  grid-column: span 1;
-  display: flex;
-  flex-direction: column;
-  background-color: #fff;
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-  min-height: 0;
-}
-
-.widget-title {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.widget-title-icon-rect {
-  padding: 5px;
-  width: 25px;
-  height: 25px;
-  border-radius: 6px;
-  background-color: #F6F6F6;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.widget-title h2 {
-  font-size: 1rem;
-  font-weight: 400;
-  color: #6B7280;
-  margin: 0;
-  flex: 1;
-}
+/* Убраны стили .widget, .widget-title - теперь используется компонент Widget */
 
 .edit-button {
   background: #f3f4f6;

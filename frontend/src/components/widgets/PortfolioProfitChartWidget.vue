@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import MultiLineChart from '../MultiLineChart.vue'
+import Widget from './Widget.vue'
+import ValueChange from './ValueChange.vue'
 
 // --------------------------------------------------------------
 // ПРОПСЫ
@@ -92,32 +94,8 @@ watch(() => props.chartData, () => {
 </script>
 
 <template>
-  <div class="widget">
-    <div class="capital-header">
-      <div class="capital-info">
-
-        <div class="widget-title">
-          <div class="widget-title-icon-rect"></div>
-          <h2>Динамика прибыли</h2>
-        </div>
-
-        <p class="capital-values" style="margin-top: 15px;">
-          {{ formatCurrency(startValue) }} → {{ formatCurrency(endValue) }}
-        </p>
-
-        <div class="capital-growth">
-          <p>Прибыль: {{ formatCurrency(profitAbs) }}</p>
-          <p
-            class="value-change"
-            :class="profitAbs >= 0 ? 'positive' : 'negative'"
-            style="margin-left: 30px;"
-          >
-            {{ profitAbs >= 0 ? '+' : '' }}{{ profitPercent }}%
-          </p>
-        </div>
-
-      </div>
-
+  <Widget title="Динамика прибыли">
+    <template #header>
       <div class="capital-filters">
         <button
           v-for="period in ['1M','1Y','All']"
@@ -128,6 +106,21 @@ watch(() => props.chartData, () => {
           {{ period === '1M' ? 'Месяц' : period === '1Y' ? 'Год' : 'Все время' }}
         </button>
       </div>
+    </template>
+
+    <div class="capital-info">
+      <p class="capital-values" style="margin-top: 15px;">
+        {{ formatCurrency(startValue) }} → {{ formatCurrency(endValue) }}
+      </p>
+
+      <div class="capital-growth">
+        <p>Прибыль: {{ formatCurrency(profitAbs) }}</p>
+        <ValueChange 
+          :value="profitPercent" 
+          :is-positive="profitAbs >= 0"
+          format="percent"
+        />
+      </div>
     </div>
 
     <div class="chart-wrapper">
@@ -137,35 +130,19 @@ watch(() => props.chartData, () => {
         :formatCurrency="formatCurrency"
       />
     </div>
-  </div>
+  </Widget>
 </template>
 
 <style scoped>
-.widget {
-  grid-row: span 3;
-  grid-column: span 3;
-  background-color: #fff;
-  padding: var(--spacing);
-  border-radius: 14px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.capital-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+/* Убраны стили .widget, .capital-header - теперь используется компонент Widget */
+.capital-info {
   margin-bottom: 1rem;
-  flex-wrap: wrap;
 }
-
-.capital-info { max-width: 60%; }
 
 .capital-growth {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
 }
 
 .capital-filters {

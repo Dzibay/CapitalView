@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, DoughnutController } from 'chart.js'
+import Widget from './Widget.vue'
 
 ChartJS.register(Title, Tooltip, Legend, ArcElement, DoughnutController)
 
@@ -82,12 +83,7 @@ watch(() => props.assetAllocation, () => {
 </script>
 
 <template>
-  <div class="widget">
-    <div class="widget-title">
-      <div class="widget-title-icon-rect"></div>
-      <h2>Распределение активов</h2>
-    </div>
-
+  <Widget title="Распределение активов">
     <div v-if="assetAllocation && assetAllocation.labels" class="allocation-container">
       <div class="chart-wrapper">
         <Doughnut :data="chartData" :options="chartOptions" />
@@ -105,23 +101,10 @@ watch(() => props.assetAllocation, () => {
         </div>
       </div>
     </div>
-  </div>
+  </Widget>
 </template>
 
 <style scoped>
-.widget {
-  grid-row: span 3;
-  grid-column: span 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  background-color: #fff;
-  padding: var(--spacing);
-  border-radius: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  width: 100%;
-  max-width: 600px;
-}
 
 .allocation-container {
   display: flex;

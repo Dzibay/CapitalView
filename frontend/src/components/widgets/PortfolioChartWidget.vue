@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import MultiLineChart from '../MultiLineChart.vue'   // подключаем новый компонент
+import Widget from './Widget.vue'
+import ValueChange from './ValueChange.vue'
 
 const props = defineProps({
   chartData: {
@@ -166,31 +168,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="widget">
-    <div class="capital-header">
-      <div class="capital-info">
-
-        <div class="widget-title">
-          <div class="widget-title-icon-rect"></div>
-          <h2>Динамика капитала</h2>
-        </div>
-
-        <p class="capital-values" style="margin-top: 15px;">
-          {{ formatCurrency(startValue) }} → {{ formatCurrency(endValue) }}
-        </p>
-
-        <div class="capital-growth">
-          <p>Прирост: {{ formatCurrency(growthAmount) }}</p>
-          <p 
-            class="value-change" 
-            :class="growthAmount >= 0 ? 'positive' : 'negative'"
-            style="margin-left: 30px;"
-          >
-            {{ growthAmount >= 0 ? '+' : '' }}{{ growthPercent }}%
-          </p>
-        </div>
-      </div>
-
+  <Widget title="Динамика капитала">
+    <template #header>
       <!-- Фильтры периодов -->
       <div class="capital-filters">
         <button
@@ -202,6 +181,21 @@ onMounted(() => {
           {{ period === '1M' ? 'Месяц' : period === '1Y' ? 'Год' : 'Все время' }}
         </button>
       </div>
+    </template>
+
+    <div class="capital-info">
+      <p class="capital-values" style="margin-top: 15px;">
+        {{ formatCurrency(startValue) }} → {{ formatCurrency(endValue) }}
+      </p>
+
+      <div class="capital-growth">
+        <p>Прирост: {{ formatCurrency(growthAmount) }}</p>
+        <ValueChange 
+          :value="growthPercent" 
+          :is-positive="growthAmount >= 0"
+          format="percent"
+        />
+      </div>
     </div>
 
     <!-- График -->
@@ -212,32 +206,17 @@ onMounted(() => {
         :formatCurrency="formatCurrency"
       />
     </div>
-  </div>
+  </Widget>
 </template>
 
 <style scoped>
-.widget {
-  grid-row: span 3;
-  grid-column: span 3;
-  background-color: #fff;
-  padding: var(--spacing);
-  border-radius: 14px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-.capital-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+.capital-info {
   margin-bottom: 1rem;
-  flex-wrap: wrap;
 }
-.capital-info { max-width: 60%; }
 .capital-growth {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
 }
 .capital-filters {
   display: flex;
@@ -262,5 +241,9 @@ onMounted(() => {
   color: #5478EA;
   font-weight: 600;
 }
-.chart-wrapper { flex: 1; position: relative; }
+.chart-wrapper { 
+  flex: 1; 
+  position: relative; 
+  min-height: 0; /* Позволяет графику правильно сжиматься */
+}
 </style>

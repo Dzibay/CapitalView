@@ -7,6 +7,19 @@ html {
   --sidebarWidth : 260px;
   --sidebarWidthCollapsed: 80px;
   
+  /* ============================================
+     РАЗМЕРЫ ВИДЖЕТОВ - УДОБНОЕ РЕДАКТИРОВАНИЕ
+     ============================================
+     Измените значения ниже, чтобы настроить размеры всех виджетов на страницах Dashboard и Analytics.
+     Все виджеты автоматически используют эти переменные.
+  */
+  
+  /* Высоты виджетов - используются через пропсы minHeight */
+  --widget-height-small: 150px;        /* Маленькие виджеты (TotalCapital, Profit, Dividends, Return) */
+  --widget-height-medium: 300px;       /* Средние виджеты (TopMovers, Transactions, Payouts, Goals) */
+  --widget-height-large: 400px;        /* Большие графики (PortfolioChart, ProfitChart) - НОРМАЛИЗОВАНО */
+  --widget-height-xlarge: 500px;        /* Очень большие графики (используется редко) */
+  
   /* Цветовая палитра сайта */
   --positiveColor: #1CBD88;
   --negativeColor: #EF4444;
@@ -130,26 +143,5 @@ h2, p {
   color: #000;
 }
 
-.value-change {
-  font-size: 0.875rem;
-  font-weight: 400;
-}
-.value-change.positive {
-  color: var(--positiveColor);
-}
-.value-change.negative {
-  color: var(--negativeColor);
-}
-
-.widget-title {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-}
-.widget-title-icon-rect {
-  padding: 5px;
-  width: 25px;
-  height: 25px;
-  border-radius: 6px;
-  background-color: #F6F6F6;
-}
+/* Стили для value-change теперь в компоненте ValueChange.vue */
+/* Стили для widget-title теперь в компоненте Widget.vue */
