@@ -21,7 +21,7 @@ const monthlyAverage = computed(() => {
     :main-value="annualDividends"
     main-value-format="currency"
     main-value-tooltip="Среднегодовые дивиденды всех активов в портфеле"
-    secondary-text=" в год"
+    main-value-suffix=" в год"
     :secondary-value="monthlyAverage"
     secondary-format="currency"
     secondary-text-suffix=" в месяц"

@@ -67,6 +67,21 @@ const props = defineProps({
     type: String,
     default: 'right',
     validator: (value) => ['right', 'below'].includes(value)
+  },
+  // Суффикс для вторичного текста (например, " в месяц")
+  secondaryTextSuffix: {
+    type: String,
+    default: null
+  },
+  // Подсказка для вторичного значения
+  secondaryTooltip: {
+    type: String,
+    default: null
+  },
+  // Суффикс для основного значения (например, " в год")
+  mainValueSuffix: {
+    type: String,
+    default: null
   }
 })
 
@@ -159,8 +174,8 @@ const computedChangeIsPositive = computed(() => {
           <div v-else class="main-value">
             {{ formattedMainValue }}
           </div>
-          <span v-if="secondaryText && changePosition !== 'below' && !formattedSecondaryValue" class="main-value-suffix">
-            {{ secondaryText }}
+          <span v-if="(mainValueSuffix || (secondaryText && changePosition !== 'below' && !formattedSecondaryValue))" class="main-value-suffix">
+            {{ mainValueSuffix || secondaryText }}
           </span>
         </div>
         
@@ -185,28 +200,31 @@ const computedChangeIsPositive = computed(() => {
       </div>
       
       <!-- Вторичный текст -->
-      <p v-if="(secondaryText && (changePosition === 'below' || formattedSecondaryValue)) || formattedSecondaryValue" class="secondary-text">
+      <p v-if="secondaryText || formattedSecondaryValue" class="secondary-text">
         <Tooltip 
-          v-if="secondaryValue !== null && secondaryValue !== undefined && (secondaryTooltip || (changeTooltip && changePosition === 'below'))"
-          :content="secondaryTooltip || changeTooltip" 
+          v-if="secondaryValue !== null && secondaryValue !== undefined && secondaryTooltip"
+          :content="secondaryTooltip" 
           position="top"
         >
+          <span v-if="secondaryText && formattedSecondaryValue && secondaryText.includes(':')">{{ secondaryText }}</span>
           <span 
             v-if="formattedSecondaryValue !== null"
             :class="secondaryClass"
           >
             {{ formattedSecondaryValue }}
           </span>
-          <span v-else-if="changePosition === 'below'">{{ secondaryText }}</span>
+          <span v-if="secondaryText && formattedSecondaryValue && !secondaryText.includes(':')">{{ secondaryText }}</span>
         </Tooltip>
         <template v-else>
+          <span v-if="secondaryText && formattedSecondaryValue && secondaryText.includes(':')">{{ secondaryText }}</span>
           <span 
             v-if="formattedSecondaryValue !== null"
             :class="secondaryClass"
           >
             {{ formattedSecondaryValue }}
           </span>
-          <span v-else-if="changePosition === 'below'">{{ secondaryText }}</span>
+          <span v-if="secondaryText && formattedSecondaryValue && !secondaryText.includes(':')">{{ secondaryText }}</span>
+          <span v-else-if="secondaryText && !formattedSecondaryValue">{{ secondaryText }}</span>
         </template>
         <span v-if="secondaryTextSuffix && formattedSecondaryValue">{{ secondaryTextSuffix }}</span>
       </p>
@@ -218,7 +236,6 @@ const computedChangeIsPositive = computed(() => {
 .stat-card-content {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
 }
 
 .main-value-row {
@@ -226,7 +243,6 @@ const computedChangeIsPositive = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
 }
 
 .stat-card-content.change-below .main-value-row {
@@ -253,13 +269,15 @@ const computedChangeIsPositive = computed(() => {
   color: #6b7280;
   line-height: 1;
   padding-bottom: 0.2rem;
+  margin: 0;
 }
 
 .secondary-text {
   margin: 0;
+  margin-top: 0;
   font-size: 1rem;
   color: #6b7280;
-  line-height: 1.5;
+  line-height: 1.2;
 }
 
 .secondary-text .positive {

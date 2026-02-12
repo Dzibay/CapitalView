@@ -37,7 +37,7 @@ const tooltipText = computed(() => {
     :change-value="profitPercent"
     :change-is-positive="profitPercent >= 0"
     :change-tooltip="tooltipText"
-    secondary-text="Инвестировано:"
+    secondary-text="Инвестировано: "
     :secondary-value="investedAmount"
     secondary-format="currency"
   />
