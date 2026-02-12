@@ -7,7 +7,7 @@ import { usePortfoliosStore } from '../stores/portfolios.store'
 import { useTransactionsStore } from '../stores/transactions.store'
 
 // Компоненты
-import LoadingState from '../components/LoadingState.vue'
+import LoadingState from '../components/base/LoadingState.vue'
 import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
 

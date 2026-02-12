@@ -18,9 +18,10 @@ import ContextMenu from '../components/ContextMenu.vue';
 import { useExpandedState } from '../composables/useExpandedState';
 import { useModals } from '../composables/useModal';
 import { usePortfolio } from '../composables/usePortfolio';
-import LoadingState from '../components/LoadingState.vue';
+import LoadingState from '../components/base/LoadingState.vue';
 import PageLayout from '../components/PageLayout.vue';
 import PageHeader from '../components/PageHeader.vue';
+import Checkbox from '../components/base/Checkbox.vue';
 
 const selectedAsset = ref(null);
 
@@ -247,14 +248,11 @@ const handleMoveAsset = (asset) => {
       subtitle="Управление портфелями и активами"
     >
       <template #actions>
-        <label class="filter-checkbox">
-          <input 
-            type="checkbox" 
-            v-model="showSoldAssets"
-            class="checkbox-input"
-          />
-          <span class="checkbox-label">Показать проданные активы</span>
-        </label>
+        <Checkbox 
+          v-model="showSoldAssets" 
+          label="Показать проданные активы"
+          variant="filter"
+        />
       </template>
     </PageHeader>
 
@@ -658,36 +656,4 @@ const handleMoveAsset = (asset) => {
   margin-top: 0;
 }
 
-.filter-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-  font-size: 14px;
-  color: #374151;
-  padding: 8px 12px;
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  transition: all 0.2s ease;
-}
-
-.filter-checkbox:hover {
-  background: #f9fafb;
-  border-color: #d1d5db;
-}
-
-.checkbox-input {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: #2563eb;
-  flex-shrink: 0;
-}
-
-.checkbox-label {
-  font-weight: 500;
-  white-space: nowrap;
-}
 </style>

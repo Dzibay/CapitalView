@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
-import LoadingState from '../components/LoadingState.vue'
+import LoadingState from '../components/base/LoadingState.vue'
 import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
 

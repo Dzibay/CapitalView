@@ -63,7 +63,7 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
-import CustomSelect from '../CustomSelect.vue'
+import CustomSelect from '../base/CustomSelect.vue'
 
 const props = defineProps({
   portfolios: Array, // список портфелей для выбора родителя

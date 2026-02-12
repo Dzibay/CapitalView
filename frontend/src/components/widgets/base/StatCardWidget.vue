@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import Widget from './Widget.vue'
 import ValueChange from './ValueChange.vue'
-import Tooltip from '../../Tooltip.vue'
+import Tooltip from '../../base/Tooltip.vue'
 import { formatCurrency } from '../../../utils/formatCurrency'
 
 const props = defineProps({

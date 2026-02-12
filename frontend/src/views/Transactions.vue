@@ -6,7 +6,7 @@ import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/ContextMenu.vue'
 import operationsService from '../services/operationsService'
-import CustomSelect from '../components/CustomSelect.vue'
+import CustomSelect from '../components/base/CustomSelect.vue'
 import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
 

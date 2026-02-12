@@ -5,6 +5,7 @@ import Widget from '../base/Widget.vue'
 import DisplayModeToggle from '../base/DisplayModeToggle.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
 import EmptyState from '../base/EmptyState.vue'
+import Checkbox from '../../base/Checkbox.vue'
 
 const props = defineProps({
   assetReturns: {
@@ -15,6 +16,7 @@ const props = defineProps({
 
 const selectedPeriod = ref('All') // 'All', '1Y', '1M'
 const displayMode = ref('percent') // 'percent' или 'currency'
+const showSoldAssets = ref(false) // Отображать проданные активы
 
 const periodOptions = [
   { value: 'All', label: 'Все время' },
@@ -92,11 +94,19 @@ const getPeriodData = (asset) => {
   }
 }
 
+// Функция для определения, является ли актив проданным
+const isSoldAsset = (asset) => {
+  const periodData = getPeriodData(asset)
+  // Актив считается проданным, если current_value = 0 (current_quantity = 0)
+  return (periodData.current_value || 0) === 0
+}
+
 // Сохраняем отсортированные активы для использования в tooltip
 const sortedAssetsData = computed(() => {
-  // Явно используем selectedPeriod и displayMode для отслеживания зависимостей
+  // Явно используем selectedPeriod, displayMode и showSoldAssets для отслеживания зависимостей
   const period = selectedPeriod.value
   const mode = displayMode.value
+  const showSold = showSoldAssets.value
   const assetReturns = props.assetReturns || []
   
   if (!Array.isArray(assetReturns) || assetReturns.length === 0) {
@@ -107,9 +117,15 @@ const sortedAssetsData = computed(() => {
   const assetsWithPeriodData = [...assetReturns]
     .map(asset => ({
       ...asset,
-      periodData: getPeriodData(asset)
+      periodData: getPeriodData(asset),
+      isSold: isSoldAsset(asset)
     }))
     .filter(asset => {
+      // Если не показываем проданные активы, исключаем их
+      if (!showSold && asset.isSold) {
+        return false
+      }
+      
       // Исключаем активы с нулевым итоговым показателем в зависимости от режима отображения
       if (mode === 'currency') {
         // В режиме валюты фильтруем по total_return
@@ -136,6 +152,23 @@ const sortedAssetsData = computed(() => {
       return returnB - returnA
     }
   })
+})
+
+// Вычисляем динамическую высоту графика на основе количества активов
+const chartHeight = computed(() => {
+  const assetCount = sortedAssetsData.value.length
+  if (assetCount === 0) {
+    return '500px' // Минимальная высота
+  }
+  
+  // Минимальная высота на один актив (включая отступы)
+  const minHeightPerAsset = 17
+  // Минимальная общая высота
+  const minTotalHeight = 400
+  // Вычисляем высоту: количество активов * высота на актив, но не меньше минимума
+  const calculatedHeight = Math.max(minTotalHeight, assetCount * minHeightPerAsset)
+  
+  return `${calculatedHeight}px`
 })
 
 const chartData = computed(() => {
@@ -215,6 +248,7 @@ const chartOptions = computed(() => {
         padding: 12,
         cornerRadius: 8,
         displayColors: true,
+        z: 1000, // Увеличиваем z-index для tooltip, чтобы он был поверх текста на графике
         callbacks: {
           title: (context) => {
             return context[0].label || ''
@@ -335,6 +369,7 @@ const chartOptions = computed(() => {
 })
 
 // Плагин для отображения процентов/валюты справа от баров
+// Скрываем текст при наведении, чтобы не перекрывать tooltip
 const percentPlugin = {
   id: 'percentPlugin',
   afterDraw: (chart) => {
@@ -342,6 +377,10 @@ const percentPlugin = {
     const chartArea = chart.chartArea
     
     if (!chartArea) return
+    
+    // Проверяем, активен ли tooltip
+    const tooltip = chart.tooltip
+    const isTooltipActive = tooltip && tooltip.opacity > 0
     
     ctx.save()
     ctx.textAlign = 'left'
@@ -370,6 +409,14 @@ const percentPlugin = {
       if (value !== undefined && value !== null) {
         const x = bar.x
         const y = bar.y
+        
+        // Если tooltip активен и это тот же элемент, не рисуем текст
+        if (isTooltipActive && tooltip.dataPoints && tooltip.dataPoints.length > 0) {
+          const tooltipIndex = tooltip.dataPoints[0].dataIndex
+          if (tooltipIndex === index) {
+            return // Пропускаем отрисовку текста для элемента с активным tooltip
+          }
+        }
         
         // Определяем текст в зависимости от режима отображения
         let text
@@ -403,27 +450,21 @@ const percentPlugin = {
 <template>
   <Widget title="Прибыльность активов">
     <template #header>
-      <button class="help-icon" title="Справка">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M8 11V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <circle cx="8" cy="5" r="0.5" fill="currentColor"/>
-        </svg>
-      </button>
       <div class="widget-controls">
+        <Checkbox v-model="showSoldAssets" label="Отображать проданные" />
         <DisplayModeToggle v-model="displayMode" />
         <PeriodFilters v-model="selectedPeriod" :periods="periodOptions" />
       </div>
     </template>
 
-    <div class="chart-container">
+    <div class="chart-container" :style="{ minHeight: chartHeight }">
       <BaseChart
         v-if="chartData.labels && chartData.labels.length > 0"
         type="bar"
         :data="chartData"
         :options="chartOptions"
         :plugins="[percentPlugin]"
-        height="500px"
+        :height="chartHeight"
       />
       <EmptyState v-else message="Нет данных о доходности активов" />
     </div>
@@ -431,24 +472,6 @@ const percentPlugin = {
 </template>
 
 <style scoped>
-.help-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: transparent;
-  color: #6b7280;
-  cursor: pointer;
-  padding: 0;
-  transition: color 0.2s;
-}
-
-.help-icon:hover {
-  color: #111827;
-}
-
 .widget-controls {
   display: flex;
   align-items: center;
@@ -457,7 +480,7 @@ const percentPlugin = {
 }
 
 .chart-container {
-  min-height: 500px;
   position: relative;
+  width: 100%;
 }
 </style>

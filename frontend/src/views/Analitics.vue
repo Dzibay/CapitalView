@@ -5,7 +5,7 @@ import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import { useTransactionsStore } from '../stores/transactions.store'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
-import LoadingState from '../components/LoadingState.vue'
+import LoadingState from '../components/base/LoadingState.vue'
 import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
 
@@ -257,7 +257,7 @@ const profitChartData = computed(() => {
       </WidgetContainer>
 
       <!-- Виджет динамики прибыли -->
-      <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-large)">
+      <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-xlarge)">
         <PortfolioProfitChartWidget 
           :chartData="profitChartData"
         />

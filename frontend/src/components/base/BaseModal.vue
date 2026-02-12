@@ -236,9 +236,3 @@ watch(() => props.isOpen, (isOpen) => {
   opacity: 0;
 }
 </style>
-
-
-
-
-
-

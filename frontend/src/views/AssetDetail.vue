@@ -16,8 +16,8 @@ import {
   OperationsListWidget, 
   AssetPayoutsListWidget 
 } from '../components/widgets/lists'
-import CustomSelect from '../components/CustomSelect.vue'
-import LoadingState from '../components/LoadingState.vue'
+import CustomSelect from '../components/base/CustomSelect.vue'
+import LoadingState from '../components/base/LoadingState.vue'
 import assetsService from '../services/assetsService'
 import operationsService from '../services/operationsService'
 import PageLayout from '../components/PageLayout.vue'

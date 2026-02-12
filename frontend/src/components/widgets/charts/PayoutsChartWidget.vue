@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import BarChart from '../../charts/BarChart.vue'
-import CustomSelect from '../../CustomSelect.vue'
+import CustomSelect from '../../base/CustomSelect.vue'
 import Widget from '../base/Widget.vue'
 
 const props = defineProps({

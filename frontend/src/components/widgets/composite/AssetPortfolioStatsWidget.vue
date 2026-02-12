@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
-import CustomSelect from '../../CustomSelect.vue'
+import CustomSelect from '../../base/CustomSelect.vue'
 import { formatCurrency } from '../../../utils/formatCurrency'
 import ValueChange from '../base/ValueChange.vue'
 

@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-import CustomSelect from '../CustomSelect.vue'
+import CustomSelect from '../base/CustomSelect.vue'
 
 const props = defineProps({
   asset: Object,
