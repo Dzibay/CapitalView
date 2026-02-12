@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import MultiLineChart from '../components/MultiLineChart.vue'
-import ChartControls from '../components/ChartControls.vue'
+import PeriodFilters from '../components/widgets/PeriodFilters.vue'
+import CustomSelect from '../components/CustomSelect.vue'
 import LoadingState from '../components/LoadingState.vue'
 import assetsService from '../services/assetsService'
 import PageLayout from '../components/PageLayout.vue'
@@ -23,6 +24,12 @@ const assetInfo = ref(null)
 const priceHistory = ref([])
 const selectedPeriod = ref('All')
 const selectedChartType = ref('position') // 'position' | 'quantity' | 'price'
+
+const chartTypeOptions = [
+  { value: 'position', label: 'Стоимость позиции' },
+  { value: 'quantity', label: 'Количество' },
+  { value: 'price', label: 'Цена единицы' }
+]
 
 // Получаем информацию о портфеле из dashboardStore для расчета вклада
 const portfolios = computed(() => dashboardStore.portfolios ?? [])
@@ -526,18 +533,31 @@ watch(() => route.params.id, () => {
       <div class="chart-section">
         <div class="section-header">
           <h2>История актива</h2>
-          <ChartControls
-            :chartType="selectedChartType"
-            :period="selectedPeriod"
-            @update:chartType="selectedChartType = $event"
-            @update:period="selectedPeriod = $event"
-          />
+          <div class="chart-controls">
+            <CustomSelect
+              :modelValue="selectedChartType"
+              :options="chartTypeOptions"
+              label="ТИП ГРАФИКА"
+              placeholder="Выберите тип графика"
+              :show-empty-option="false"
+              option-label="label"
+              option-value="value"
+              :min-width="'200px'"
+              :flex="'none'"
+              @update:modelValue="selectedChartType = $event"
+            />
+            <PeriodFilters 
+              :modelValue="selectedPeriod" 
+              @update:modelValue="selectedPeriod = $event"
+            />
+          </div>
         </div>
         <div class="chart-container">
           <MultiLineChart 
             v-if="chartData.labels.length" 
             :chartData="chartData" 
             :period="selectedPeriod"
+            :chartType="selectedChartType"
             :formatCurrency="chartFormatter"
           />
           <div v-else class="no-chart-data">Нет данных для отображения графика</div>
@@ -701,6 +721,8 @@ watch(() => route.params.id, () => {
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+  margin-top: 0.5rem; /* Маленький отступ между названием актива и мета-информацией */
+  margin-bottom: 1.5rem; /* Большой отступ между текстом и графиком */
 }
 
 .ticker {
@@ -786,6 +808,13 @@ watch(() => route.params.id, () => {
   font-size: 1.25rem;
   font-weight: 600;
   color: #111827;
+}
+
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 

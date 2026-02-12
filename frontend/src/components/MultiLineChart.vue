@@ -23,6 +23,10 @@ const props = defineProps({
     type: String,
     default: "All"
   },
+  chartType: {
+    type: String,
+    default: null // 'position' | 'quantity' | 'price' или null
+  },
   formatCurrency: {
     type: Function,
     default: (x) => x
@@ -204,11 +208,17 @@ const renderChart = (aggr) => {
   // Вычисляем диапазон значений
   const range = maxValue - minValue
   
-  // Для коротких периодов (месяц) используем адаптивную шкалу
+  // Для коротких периодов (месяц) или графика цены единицы используем адаптивную шкалу
   // Если диапазон мал относительно значений, используем более точную шкалу
   let yMin, yMax
   
-  if (props.period === '1M' && range > 0 && range < maxValue * 0.1) {
+  // Применяем адаптивную шкалу для периода "месяц" с малыми изменениями
+  const shouldUseAdaptiveScale = 
+    props.period === '1M' && 
+    range > 0 && 
+    range < maxValue * 0.1
+  
+  if (shouldUseAdaptiveScale) {
     // Для месяца с малыми изменениями используем шкалу, основанную на диапазоне
     // Добавляем запас 15% сверху и снизу для лучшей визуализации
     const padding = range * 0.15

@@ -2,6 +2,9 @@
 import { computed, ref } from 'vue'
 import BaseChart from '../charts/BaseChart.vue'
 import Widget from './Widget.vue'
+import DisplayModeToggle from './DisplayModeToggle.vue'
+import PeriodFilters from './PeriodFilters.vue'
+import EmptyState from './EmptyState.vue'
 
 const props = defineProps({
   assetReturns: {
@@ -14,9 +17,9 @@ const selectedPeriod = ref('All') // 'All', '1Y', '1M'
 const displayMode = ref('percent') // 'percent' или 'currency'
 
 const periodOptions = [
-  { key: 'All', label: 'Все время' },
-  { key: '1Y', label: 'Год' },
-  { key: '1M', label: 'Месяц' }
+  { value: 'All', label: 'Все время' },
+  { value: '1Y', label: 'Год' },
+  { value: '1M', label: 'Месяц' }
 ]
 
 const formatPercent = (value, withSign = true) => {
@@ -408,33 +411,8 @@ const percentPlugin = {
         </svg>
       </button>
       <div class="widget-controls">
-        <div class="display-mode-toggle">
-          <button
-            @click="displayMode = 'percent'"
-            :class="['mode-toggle-btn', { active: displayMode === 'percent' }]"
-          >
-            %
-          </button>
-          <button
-            @click="displayMode = 'currency'"
-            :class="['mode-toggle-btn', { active: displayMode === 'currency' }]"
-          >
-            ₽
-          </button>
-        </div>
-        
-        <div class="period-controls">
-          <div class="capital-filters">
-            <button
-              v-for="option in periodOptions"
-              :key="option.key"
-              @click="selectedPeriod = option.key"
-              :class="['filter-btn', { active: selectedPeriod === option.key }]"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-        </div>
+        <DisplayModeToggle v-model="displayMode" />
+        <PeriodFilters v-model="selectedPeriod" :periods="periodOptions" />
       </div>
     </template>
 
@@ -447,16 +425,12 @@ const percentPlugin = {
         :plugins="[percentPlugin]"
         height="500px"
       />
-      <div v-else class="empty-state">
-        <p>Нет данных о доходности активов</p>
-      </div>
+      <EmptyState v-else message="Нет данных о доходности активов" />
     </div>
   </Widget>
 </template>
 
 <style scoped>
-/* Убраны стили .widget, .widget-header, .widget-title - теперь используется компонент Widget */
-
 .help-icon {
   display: flex;
   align-items: center;
@@ -482,109 +456,8 @@ const percentPlugin = {
   flex-wrap: wrap;
 }
 
-.display-mode-toggle {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  background: #f3f4f6;
-  padding: 4px;
-  border-radius: 8px;
-}
-
-.mode-toggle-btn {
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s, color 0.2s;
-  color: #6b7280;
-  min-width: 40px;
-}
-
-.mode-toggle-btn:hover {
-  background-color: #e5e7eb;
-  color: #111827;
-}
-
-.mode-toggle-btn.active {
-  background-color: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  color: #5478EA;
-  font-weight: 600;
-}
-
-.period-controls {
-  display: flex;
-  align-items: center;
-}
-
-.capital-filters {
-  display: flex;
-  background-color: #f3f4f6;
-  padding: 0.25rem;
-  border-radius: 8px;
-  gap: 0.25rem;
-}
-
-.filter-btn {
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  padding: 0.5rem 0.9rem;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background-color 0.2s, color 0.2s;
-  color: #6b7280;
-}
-
-.filter-btn:hover {
-  background-color: #e5e7eb;
-}
-
-.filter-btn.active {
-  background-color: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  color: #5478EA;
-  font-weight: 600;
-}
-
 .chart-container {
   min-height: 500px;
   position: relative;
-}
-
-.empty-state {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: #6b7280;
-  font-size: 14px;
-  background: white;
-  z-index: 10;
-}
-
-.empty-state p {
-  margin: 0;
-}
-
-@media (max-width: 768px) {
-  .widget-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  
-  .period-selector {
-    width: 100%;
-  }
 }
 </style>

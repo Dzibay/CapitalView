@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import MultiLineChart from '../MultiLineChart.vue'
 import Widget from './Widget.vue'
 import ValueChange from './ValueChange.vue'
+import PeriodFilters from './PeriodFilters.vue'
 
 // --------------------------------------------------------------
 // ПРОПСЫ
@@ -96,16 +97,7 @@ watch(() => props.chartData, () => {
 <template>
   <Widget title="Динамика прибыли">
     <template #header>
-      <div class="capital-filters">
-        <button
-          v-for="period in ['1M','1Y','All']"
-          :key="period"
-          @click="selectedPeriod = period"
-          :class="['filter-btn', { active: selectedPeriod === period }]"
-        >
-          {{ period === '1M' ? 'Месяц' : period === '1Y' ? 'Год' : 'Все время' }}
-        </button>
-      </div>
+      <PeriodFilters v-model="selectedPeriod" />
     </template>
 
     <div class="capital-info">
@@ -145,40 +137,8 @@ watch(() => props.chartData, () => {
   gap: 1rem;
 }
 
-.capital-filters {
-  display: flex;
-  background-color: #f3f4f6;
-  padding: 0.25rem;
-  border-radius: 8px;
-  gap: 0.25rem;
-}
-
-.filter-btn {
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  padding: 0.5rem 0.9rem;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-
-.filter-btn.active {
-  background-color: #fff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  color: #5478EA;
-  font-weight: 600;
-}
-
 .chart-wrapper {
   flex: 1;
   position: relative;
-}
-
-.value-change.positive {
-  color: #10b981;
-}
-
-.value-change.negative {
-  color: #ef4444;
 }
 </style>
