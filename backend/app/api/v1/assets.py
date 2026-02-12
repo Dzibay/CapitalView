@@ -143,8 +143,8 @@ async def get_portfolio_asset_info_route(
     portfolio_asset_id: int,
     user: dict = Depends(get_current_user)
 ):
-    """Получение информации о портфельном активе."""
-    result = get_portfolio_asset_info(portfolio_asset_id)
+    """Получение информации о портфельном активе (оптимизированная версия)."""
+    result = get_portfolio_asset_info(portfolio_asset_id, user["id"])
     
     if not result.get("success"):
         status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
@@ -186,3 +186,20 @@ async def move_asset_route(
         data=result,
         message="Актив успешно перемещен в другой портфель"
     )
+
+
+@router.get("/{asset_id}/portfolios")
+async def get_asset_in_all_portfolios_route(
+    asset_id: int,
+    user: dict = Depends(get_current_user)
+):
+    """Получение информации об активе во всех портфелях пользователя."""
+    result = get_asset_in_all_portfolios(asset_id, user["id"])
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=result.get("error", "Ошибка при получении информации об активе в портфелях")
+        )
+    
+    return success_response(data=result)

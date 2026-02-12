@@ -22,7 +22,7 @@ import DividendsWidget from '../components/widgets/DividendsWidget.vue'
 import ReturnWidget from '../components/widgets/ReturnWidget.vue'
 import AssetAllocationWidget from '../components/widgets/AssetAllocationWidget.vue'
 import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWidget.vue'
-import MonthlyPayoutsChartWidget from '../components/widgets/MonthlyPayoutsChartWidget.vue'
+import PayoutsChartWidget from '../components/widgets/PayoutsChartWidget.vue'
 import WidgetContainer from '../components/widgets/WidgetContainer.vue'
 
 const authStore = useAuthStore()
@@ -322,8 +322,10 @@ const recentTransactions = computed(() => {
         />
       </WidgetContainer>
       <WidgetContainer :gridColumn="6" minHeight="var(--widget-height-medium)">
-        <MonthlyPayoutsChartWidget 
-          :monthly-payouts="monthlyPayouts"
+        <PayoutsChartWidget 
+          title="Полученные выплаты по месяцам"
+          :payouts="monthlyPayouts"
+          mode="past"
         />
       </WidgetContainer>
       <WidgetContainer :gridColumn="6" minHeight="var(--widget-height-medium)">

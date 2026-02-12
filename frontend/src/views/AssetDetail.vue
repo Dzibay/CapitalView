@@ -8,8 +8,17 @@ import PeriodFilters from '../components/widgets/PeriodFilters.vue'
 import CustomSelect from '../components/CustomSelect.vue'
 import LoadingState from '../components/LoadingState.vue'
 import assetsService from '../services/assetsService'
+import operationsService from '../services/operationsService'
 import PageLayout from '../components/PageLayout.vue'
-import PageHeader from '../components/PageHeader.vue'
+import WidgetContainer from '../components/widgets/WidgetContainer.vue'
+import AssetPortfolioStatsWidget from '../components/widgets/AssetPortfolioStatsWidget.vue'
+import AssetBasicInfoWidget from '../components/widgets/AssetBasicInfoWidget.vue'
+import AssetPortfolioContributionWidget from '../components/widgets/AssetPortfolioContributionWidget.vue'
+import AssetProfitLossWidget from '../components/widgets/AssetProfitLossWidget.vue'
+import ValueChange from '../components/widgets/ValueChange.vue'
+import Widget from '../components/widgets/Widget.vue'
+import OperationsListWidget from '../components/widgets/OperationsListWidget.vue'
+import AssetPayoutsListWidget from '../components/widgets/AssetPayoutsListWidget.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,8 +31,12 @@ const portfolioAssetId = computed(() => parseInt(route.params.id))
 const isLoading = ref(false)
 const assetInfo = ref(null)
 const priceHistory = ref([])
+const assetInAllPortfolios = ref([])
+const selectedPortfolioId = ref(null)
 const selectedPeriod = ref('All')
 const selectedChartType = ref('position') // 'position' | 'quantity' | 'price'
+const cashOperations = ref([]) // Полученные выплаты из cash_operations
+const portfolioTransactions = ref({}) // Транзакции для каждого portfolio_asset_id
 
 const chartTypeOptions = [
   { value: 'position', label: 'Стоимость позиции' },
@@ -49,7 +62,21 @@ const portfolioAsset = computed(() => {
   return null
 })
 
-// Загрузка информации о портфельном активе
+// Опции для выбора портфеля
+const portfolioOptions = computed(() => {
+  return assetInAllPortfolios.value.map(p => ({
+    value: p.portfolio_id,
+    label: p.portfolio_name
+  }))
+})
+
+// Выбранный портфель из списка всех портфелей
+const selectedPortfolioAsset = computed(() => {
+  if (!selectedPortfolioId.value) return assetInAllPortfolios.value[0] || null
+  return assetInAllPortfolios.value.find(p => p.portfolio_id === selectedPortfolioId.value) || assetInAllPortfolios.value[0] || null
+})
+
+// Загрузка информации о портфельном активе (оптимизированная версия)
 async function loadAssetInfo() {
   if (!portfolioAssetId.value) return
   
@@ -59,15 +86,96 @@ async function loadAssetInfo() {
     if (result.success && result.portfolio_asset) {
       assetInfo.value = result.portfolio_asset
       
-      // Загружаем историю цен, если есть asset_id
-      if (result.portfolio_asset.asset_id) {
+      // Получаем информацию о портфелях из того же запроса
+      if (result.portfolios) {
+        assetInAllPortfolios.value = result.portfolios
+        // Устанавливаем первый портфель как выбранный по умолчанию
+        if (result.portfolios.length > 0 && !selectedPortfolioId.value) {
+          selectedPortfolioId.value = result.portfolios[0].portfolio_id
+        }
+        
+        // Сохраняем транзакции для текущего portfolio_asset_id
+        if (result.portfolio_asset.transactions) {
+          portfolioTransactions.value[portfolioAssetId.value] = result.portfolio_asset.transactions
+        }
+        
+        // Загружаем транзакции для всех портфелей
+        await loadTransactionsForAllPortfolios(result.portfolios)
+      }
+      
+      // Используем историю цен из основного запроса (если есть)
+      if (result.portfolio_asset.price_history && result.portfolio_asset.price_history.length > 0) {
+        priceHistory.value = result.portfolio_asset.price_history
+      } else if (result.portfolio_asset.asset_id) {
+        // Если истории нет в основном запросе, загружаем отдельно (для больших объемов данных)
         await loadPriceHistory(result.portfolio_asset.asset_id)
       }
+      
+      // Загружаем полученные выплаты из cash_operations
+      await loadReceivedPayouts()
     }
   } catch (error) {
     console.error('Ошибка при загрузке информации об активе:', error)
   } finally {
     isLoading.value = false
+  }
+}
+
+// Загрузка транзакций для всех портфелей
+async function loadTransactionsForAllPortfolios(portfolios) {
+  // Транзакции уже загружены для текущего portfolio_asset_id
+  // Для других портфелей нужно загружать отдельно, но это требует дополнительных запросов
+  // Пока используем транзакции из основного запроса
+  // Для каждого портфеля загружаем транзакции, если они еще не загружены
+  for (const portfolio of portfolios) {
+    const portfolioAssetId = portfolio.portfolio_asset_id
+    if (portfolioAssetId && !portfolioTransactions.value[portfolioAssetId]) {
+      // Загружаем транзакции для этого portfolio_asset_id
+      try {
+        const result = await assetsService.getPortfolioAssetInfo(portfolioAssetId)
+        if (result.success && result.portfolio_asset?.transactions) {
+          portfolioTransactions.value[portfolioAssetId] = result.portfolio_asset.transactions
+        }
+      } catch (error) {
+        console.error(`Ошибка при загрузке транзакций для portfolio_asset_id ${portfolioAssetId}:`, error)
+      }
+    }
+  }
+}
+
+// Загрузка полученных выплат из cash_operations
+async function loadReceivedPayouts() {
+  if (!selectedPortfolioId.value || !assetInfo.value?.asset_id) return
+  
+  try {
+    const response = await operationsService.getOperations({
+      portfolio_id: selectedPortfolioId.value,
+      limit: 1000
+    })
+    
+    // API возвращает { success: true, data: { operations: [...] } }
+    // operationsService.getOperations уже обрабатывает это и возвращает массив
+    const operations = Array.isArray(response) ? response : []
+    
+    if (operations && Array.isArray(operations)) {
+      // Фильтруем только выплаты (Dividend, Coupon) для данного актива
+      const assetId = assetInfo.value.asset_id
+      cashOperations.value = operations.filter(op => {
+        const opType = op.operation_type || op.type || ''
+        const isPayout = opType === 'Дивиденды' || opType === 'Купоны' || 
+                        opType === 'Dividend' || opType === 'Coupon' ||
+                        opType.toLowerCase().includes('dividend') || 
+                        opType.toLowerCase().includes('coupon') ||
+                        opType.toLowerCase().includes('дивиденд') || 
+                        opType.toLowerCase().includes('купон')
+        return isPayout && op.asset_id === assetId
+      })
+    } else {
+      cashOperations.value = []
+    }
+  } catch (error) {
+    console.error('Ошибка при загрузке полученных выплат:', error)
+    cashOperations.value = []
   }
 }
 
@@ -83,13 +191,37 @@ async function loadPriceHistory(assetId) {
   }
 }
 
-// Находим первую дату транзакции
+// Транзакции для выбранного портфеля
+const selectedPortfolioTransactions = computed(() => {
+  if (!selectedPortfolioAsset.value) {
+    return assetInfo.value?.transactions || []
+  }
+  
+  const selectedPortfolioAssetId = selectedPortfolioAsset.value.portfolio_asset_id
+  
+  // Используем транзакции из кэша, если они есть
+  if (portfolioTransactions.value[selectedPortfolioAssetId]) {
+    return portfolioTransactions.value[selectedPortfolioAssetId]
+  }
+  
+  // Если выбранный портфель совпадает с текущим, используем транзакции из запроса
+  if (selectedPortfolioAssetId === portfolioAssetId.value) {
+    return assetInfo.value?.transactions || []
+  }
+  
+  // Для других портфелей возвращаем пустой массив
+  // TODO: добавить загрузку транзакций для выбранного portfolio_asset_id
+  return []
+})
+
+// Находим первую дату транзакции для выбранного портфеля
 const firstTransactionDate = computed(() => {
-  if (!assetInfo.value?.transactions || !assetInfo.value.transactions.length) {
+  const transactions = selectedPortfolioTransactions.value
+  if (!transactions || !transactions.length) {
     return null
   }
   
-  const dates = assetInfo.value.transactions
+  const dates = transactions
     .map(tx => new Date(tx.transaction_date))
     .filter(d => !isNaN(d.getTime()))
   
@@ -101,13 +233,14 @@ const firstTransactionDate = computed(() => {
   return firstDate.toISOString().split('T')[0]
 })
 
-// Вычисляем накопленное количество на каждую дату
+// Вычисляем накопленное количество на каждую дату для выбранного портфеля
 const quantityByDate = computed(() => {
-  if (!assetInfo.value?.transactions || !priceHistory.value?.length) {
+  const transactions = selectedPortfolioTransactions.value
+  if (!transactions || !priceHistory.value?.length) {
     return {}
   }
   
-  const transactions = [...assetInfo.value.transactions]
+  const txList = [...transactions]
     .map(tx => ({
       ...tx,
       date: new Date(tx.transaction_date).toISOString().split('T')[0]
@@ -118,17 +251,18 @@ const quantityByDate = computed(() => {
   let cumulativeQuantity = 0
   
   // Вычисляем накопленное количество для каждой даты из истории цен
-  const priceDates = [...new Set(priceHistory.value.map(p => p.trade_date))].sort()
+  // Нормализуем даты из истории цен
+  const priceDates = [...new Set(priceHistory.value.map(p => {
+    const date = new Date(p.trade_date)
+    date.setHours(0, 0, 0, 0)
+    return date.toISOString().split('T')[0]
+  }))].sort()
   
   let txIndex = 0
-  for (const priceDate of priceDates) {
-    const priceDateObj = new Date(priceDate)
-    priceDateObj.setHours(0, 0, 0, 0)
-    const priceDateStr = priceDateObj.toISOString().split('T')[0]
-    
+  for (const priceDateStr of priceDates) {
     // Применяем все транзакции до и включая эту дату
-    while (txIndex < transactions.length) {
-      const tx = transactions[txIndex]
+    while (txIndex < txList.length) {
+      const tx = txList[txIndex]
       const txDateStr = tx.date
       
       // Сравниваем даты как строки
@@ -145,21 +279,21 @@ const quantityByDate = computed(() => {
       txIndex++
     }
     
-    quantityMap[priceDate] = Math.max(0, cumulativeQuantity) // Не даем уйти в минус
+    quantityMap[priceDateStr] = Math.max(0, cumulativeQuantity) // Не даем уйти в минус
   }
   
   return quantityMap
 })
 
-// Формирование данных для графика
+// Формирование данных для графика (зависит от выбранного портфеля)
 const chartData = computed(() => {
-  if (!priceHistory.value || !priceHistory.value.length || !portfolioAsset.value) {
+  if (!priceHistory.value || !priceHistory.value.length || !selectedPortfolioAsset.value) {
     return { labels: [], datasets: [] }
   }
 
-  const asset = portfolioAsset.value.asset
+  const asset = selectedPortfolioAsset.value
   const leverage = asset.leverage || 1
-  const currencyRate = asset.currency_rate_to_rub || 1
+  const currencyRate = asset.currency_rate_to_rub || portfolioAsset.value?.asset.currency_rate_to_rub || 1
 
   // Фильтруем историю цен с первой транзакции только для графиков стоимости позиции и количества
   // Для графика цены единицы актива показываем полную историю
@@ -187,8 +321,17 @@ const chartData = computed(() => {
     // График стоимости позиции
     const quantities = quantityByDate.value
     const data = labels.map(date => {
-      const qty = quantities[date] || 0
-      const price = filteredPrices.find(p => p.trade_date === date)?.price || 0
+      // Нормализуем дату для поиска в quantityMap
+      const dateObj = new Date(date)
+      dateObj.setHours(0, 0, 0, 0)
+      const normalizedDate = dateObj.toISOString().split('T')[0]
+      
+      const qty = quantities[normalizedDate] || 0
+      const price = filteredPrices.find(p => {
+        const pDate = new Date(p.trade_date)
+        pDate.setHours(0, 0, 0, 0)
+        return pDate.toISOString().split('T')[0] === normalizedDate
+      })?.price || 0
       return (qty * price / leverage) * currencyRate
     })
     
@@ -200,7 +343,14 @@ const chartData = computed(() => {
     }]
   } else if (selectedChartType.value === 'quantity') {
     // График количества актива
-    const data = labels.map(date => quantityByDate.value[date] || 0)
+    const quantities = quantityByDate.value
+    const data = labels.map(date => {
+      // Нормализуем дату для поиска в quantityMap
+      const dateObj = new Date(date)
+      dateObj.setHours(0, 0, 0, 0)
+      const normalizedDate = dateObj.toISOString().split('T')[0]
+      return quantities[normalizedDate] || 0
+    })
     
     datasets = [{
       label: 'Количество актива',
@@ -253,39 +403,86 @@ const rootPortfolio = computed(() => {
   return portfolios.value.find(p => !p.parent_portfolio_id) || null
 })
 
-// Расчет вклада в портфель
-const portfolioContribution = computed(() => {
-  if (!portfolioAsset.value) return null
+// Расчет роста цены для выбранного портфеля
+const selectedPriceGrowth = computed(() => {
+  if (!selectedPortfolioAsset.value) return null
   
-  const { asset, portfolio } = portfolioAsset.value
-  const assetValue = (asset.quantity * (asset.last_price || 0) / (asset.leverage || 1)) * (asset.currency_rate_to_rub || 1)
-  const portfolioValue = portfolio.total_value || 0
+  const asset = selectedPortfolioAsset.value
+  const currentPrice = asset.last_price || 0
+  const averagePrice = asset.average_price || 0
   
-  if (portfolioValue === 0) return null
+  if (averagePrice === 0) return null
   
-  // Расчет доли в корневом портфеле "Все активы"
-  const rootValue = rootPortfolio.value?.total_value || 0
-  const percentageInRoot = rootValue > 0 ? (assetValue / rootValue) * 100 : null
+  const percent = ((currentPrice - averagePrice) / averagePrice) * 100
   
   return {
-    percentage: (assetValue / portfolioValue) * 100,
-    assetValue,
-    portfolioValue,
-    rootPortfolioValue: rootValue,
-    percentageInRoot
+    percent,
+    isPositive: percent >= 0
   }
 })
 
-// Расчет прибыли/убытка
-const profitLoss = computed(() => {
-  if (!portfolioAsset.value) return null
+// Расчет общей прибыли для выбранного портфеля
+const selectedTotalProfit = computed(() => {
+  if (!selectedProfitLoss.value) return null
   
-  const asset = portfolioAsset.value.asset
+  const unrealized = selectedProfitLoss.value.profit
+  const realized = realizedProfit.value
+  const payoutAmount = receivedPayouts.value
+  const total = unrealized + realized + payoutAmount
+  
+  return {
+    unrealized,
+    realized,
+    payouts: payoutAmount,
+    total,
+    isProfit: total >= 0
+  }
+})
+
+// Полученные выплаты (из cash_operations)
+const receivedPayouts = computed(() => {
+  return receivedPayoutsTotal.value
+})
+
+// Расчет доли в корневом портфеле для выбранного портфеля
+const selectedPortfolioPercentageInRoot = computed(() => {
+  if (!selectedPortfolioAsset.value) return null
+  
+  const rootValue = rootPortfolio.value?.total_value || 0
+  const assetValue = selectedPortfolioAsset.value.asset_value || 0
+  
+  if (rootValue === 0) return null
+  
+  return (assetValue / rootValue) * 100
+})
+
+// Изменение цены за день в процентах для выбранного портфеля
+const selectedPriceChangePercent = computed(() => {
+  if (!selectedPortfolioAsset.value || !selectedPortfolioAsset.value.last_price) return 0
+  
+  const lastPrice = selectedPortfolioAsset.value.last_price
+  const dailyChange = selectedPortfolioAsset.value.daily_change || 0
+  
+  if (lastPrice === 0) return 0
+  
+  // Вычисляем процент изменения
+  const previousPrice = lastPrice - dailyChange
+  if (previousPrice === 0) return 0
+  
+  return (dailyChange / previousPrice) * 100
+})
+
+// Расчет прибыли/убытка для выбранного портфеля
+const selectedProfitLoss = computed(() => {
+  if (!selectedPortfolioAsset.value) return null
+  
+  const asset = selectedPortfolioAsset.value
   const currentPrice = asset.last_price || 0
   const averagePrice = asset.average_price || 0
   const quantity = asset.quantity || 0
   const leverage = asset.leverage || 1
-  const currencyRate = asset.currency_rate_to_rub || 1
+  // Используем курс из данных портфеля или из основного актива
+  const currencyRate = asset.currency_rate_to_rub || portfolioAsset.value?.asset.currency_rate_to_rub || 1
 
   const invested = (quantity * averagePrice / leverage) * currencyRate
   const currentValue = (quantity * currentPrice / leverage) * currencyRate
@@ -301,12 +498,17 @@ const profitLoss = computed(() => {
   }
 })
 
-// Расчет выплат (дивиденды + купоны) из cash_operations
+// Расчет прибыли/убытка (для обратной совместимости)
+const profitLoss = computed(() => {
+  return selectedProfitLoss.value
+})
+
+// Расчет выплат (дивиденды + купоны) из asset_payouts (все выплаты актива)
 const payouts = computed(() => {
   if (!assetInfo.value) return null
   
-  // Получаем историю выплат из cash_operations (типы 3 = дивиденды, 4 = купоны)
-  // assetInfo.value уже является portfolio_asset после loadAssetInfo()
+  // Получаем все выплаты из asset_payouts (не только полученные)
+  // Данные приходят из бэкенда как 'payouts' (преобразовано из 'all_payouts')
   const payoutHistory = assetInfo.value.payouts || []
   
   let dividends = 0
@@ -314,15 +516,15 @@ const payouts = computed(() => {
   
   // Суммируем выплаты по типам
   payoutHistory.forEach(payout => {
-    const payoutType = payout.type // 3 = дивиденды, 4 = купоны
-    const amount = Number(payout.amount || 0)
+    const payoutType = payout.type // 'dividend' или 'coupon' (строка)
+    const value = Number(payout.value || 0)
     
-    if (payoutType === 3) {
-      // Дивиденды
-      dividends += amount
-    } else if (payoutType === 4) {
-      // Купоны
-      coupons += amount
+    // Определяем тип выплаты
+    const typeLower = (payoutType || '').toLowerCase()
+    if (typeLower.includes('dividend') || typeLower.includes('дивиденд')) {
+      dividends += value
+    } else if (typeLower.includes('coupon') || typeLower.includes('купон')) {
+      coupons += value
     }
   })
   
@@ -336,14 +538,11 @@ const payouts = computed(() => {
   }
 })
 
-// Расчет прибыли от продаж (realized P&L)
+// Расчет прибыли от продаж (realized P&L) для выбранного портфеля
 const realizedProfit = computed(() => {
-  if (!assetInfo.value?.transactions) return 0
-  
-  const transactions = assetInfo.value.transactions || []
+  const transactions = selectedPortfolioTransactions.value || []
   
   // Суммируем realized_pnl из транзакций продажи, если есть
-  // Или вычисляем из разницы цен продажи и покупки
   let totalRealized = 0
   
   for (const tx of transactions) {
@@ -352,14 +551,9 @@ const realizedProfit = computed(() => {
       : (tx.transaction_type?.toLowerCase() === 'sell' ? 2 : 1)
     
     // Если это продажа и есть realized_pnl
-    if (txType === 2 && tx.realized_pnl) {
+    if (txType === 2 && tx.realized_pnl !== undefined && tx.realized_pnl !== null) {
       totalRealized += Number(tx.realized_pnl) || 0
     }
-  }
-  
-  // Если в данных актива есть realized_pl, используем его
-  if (portfolioAsset.value?.asset?.realized_pl !== undefined) {
-    return Number(portfolioAsset.value.asset.realized_pl) || 0
   }
   
   return totalRealized
@@ -401,13 +595,26 @@ const totalProfit = computed(() => {
   }
 })
 
-// Объединенный список операций (транзакции + выплаты)
+// Полученные выплаты из cash_operations
+const receivedPayoutsList = computed(() => {
+  return cashOperations.value || []
+})
+
+// Сумма полученных выплат
+const receivedPayoutsTotal = computed(() => {
+  return receivedPayoutsList.value.reduce((sum, op) => {
+    return sum + (Number(op.amount) || 0)
+  }, 0)
+})
+
+// Список операций (транзакции + полученные выплаты) для выбранного портфеля
 const allOperations = computed(() => {
   const operations = []
   
-  // Добавляем транзакции
-  if (assetInfo.value?.transactions) {
-    assetInfo.value.transactions.forEach(tx => {
+  // Добавляем транзакции для выбранного портфеля
+  const transactions = selectedPortfolioTransactions.value
+  if (transactions && transactions.length > 0) {
+    transactions.forEach(tx => {
       operations.push({
         id: `tx_${tx.id}`,
         type: 'transaction',
@@ -420,20 +627,27 @@ const allOperations = computed(() => {
     })
   }
   
-  // Добавляем выплаты
-  if (payouts.value?.history) {
-    payouts.value.history.forEach(payout => {
-      operations.push({
-        id: `payout_${payout.id}`,
-        type: 'payout',
-        date: payout.date,
-        operationType: payout.type, // 3 = дивиденды, 4 = купоны
-        quantity: null,
-        price: null,
-        amount: payout.amount || 0
-      })
+  // Добавляем полученные выплаты из cash_operations для выбранного портфеля
+  receivedPayoutsList.value.forEach(op => {
+    // Определяем тип операции для выплаты
+    let operationType = 0
+    const opType = (op.operation_type || '').toLowerCase()
+    if (opType.includes('dividend') || opType.includes('дивиденд')) {
+      operationType = 3 // Дивиденды
+    } else if (opType.includes('coupon') || opType.includes('купон')) {
+      operationType = 4 // Купоны
+    }
+    
+    operations.push({
+      id: `payout_${op.cash_operation_id || op.id}`,
+      type: 'payout',
+      date: op.operation_date || op.date,
+      operationType: operationType,
+      quantity: null,
+      price: null,
+      amount: Number(op.amount) || 0
     })
-  }
+  })
   
   // Сортируем по дате (от новых к старым)
   return operations.sort((a, b) => {
@@ -451,6 +665,42 @@ const formatCurrency = (value) => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(value || 0)
+}
+
+// Сортировка выплат
+const sortedPayouts = computed(() => {
+  if (!payouts.value?.history) return []
+  return [...payouts.value.history].sort((a, b) => {
+    const dateA = new Date(a.payment_date || 0)
+    const dateB = new Date(b.payment_date || 0)
+    return dateB - dateA
+  })
+})
+
+// Функции для выплат
+const getPayoutTypeLabel = (type) => {
+  if (typeof type === 'string') {
+    const t = type.toLowerCase()
+    if (t.includes('див') || t.includes('dividend')) return 'Дивиденды'
+    if (t.includes('купон') || t.includes('coupon')) return 'Купоны'
+    if (t.includes('аморт') || t.includes('amortization')) return 'Амортизация'
+  }
+  return 'Выплата'
+}
+
+const getPayoutTypeClass = (type) => {
+  if (typeof type === 'string') {
+    const t = type.toLowerCase()
+    if (t.includes('див') || t.includes('dividend')) return 'dividend'
+    if (t.includes('купон') || t.includes('coupon')) return 'coupon'
+    if (t.includes('аморт') || t.includes('amortization')) return 'amortization'
+  }
+  return 'other'
+}
+
+const formatPayoutDate = (date) => {
+  if (!date) return '-'
+  return new Date(date).toLocaleDateString('ru-RU')
 }
 
 // Нормализация типа операции (как на странице Transactions)
@@ -505,6 +755,20 @@ onMounted(() => {
 watch(() => route.params.id, () => {
   loadAssetInfo()
 }, { immediate: false })
+
+// Отслеживание изменений выбранного портфеля
+watch(selectedPortfolioId, async (newPortfolioId) => {
+  if (newPortfolioId && assetInfo.value?.asset_id) {
+    await loadReceivedPayouts()
+  }
+})
+
+// Обработчик изменения портфеля
+async function handlePortfolioChange(portfolioId) {
+  selectedPortfolioId.value = portfolioId
+  // Загружаем выплаты для нового портфеля
+  await loadReceivedPayouts()
+}
 </script>
 
 <template>
@@ -512,170 +776,161 @@ watch(() => route.params.id, () => {
     <LoadingState v-if="isLoading || uiStore.loading" message="Загрузка данных об активе..." />
 
     <PageLayout v-else-if="assetInfo && portfolioAsset">
-      <PageHeader :title="portfolioAsset.asset.name">
-        <template #actions>
-          <button class="btn-back" @click="router.back()">
-            ← Назад
-          </button>
-        </template>
-      </PageHeader>
-      
-      <div class="asset-meta-header">
-        <span class="ticker">{{ portfolioAsset.asset.ticker }}</span>
-        <span v-if="portfolioAsset.asset.leverage && portfolioAsset.asset.leverage > 1" class="badge-leverage">
-          ×{{ portfolioAsset.asset.leverage }}
-        </span>
-        <span class="portfolio-name">Портфель: {{ portfolioAsset.portfolio.name }}</span>
-      </div>
-
-
-      <!-- График -->
-      <div class="chart-section">
-        <div class="section-header">
-          <h2>История актива</h2>
-          <div class="chart-controls">
-            <CustomSelect
-              :modelValue="selectedChartType"
-              :options="chartTypeOptions"
-              label="ТИП ГРАФИКА"
-              placeholder="Выберите тип графика"
-              :show-empty-option="false"
-              option-label="label"
-              option-value="value"
-              :min-width="'200px'"
-              :flex="'none'"
-              @update:modelValue="selectedChartType = $event"
-            />
-            <PeriodFilters 
-              :modelValue="selectedPeriod" 
-              @update:modelValue="selectedPeriod = $event"
-            />
-          </div>
-        </div>
-        <div class="chart-container">
-          <MultiLineChart 
-            v-if="chartData.labels.length" 
-            :chartData="chartData" 
-            :period="selectedPeriod"
-            :chartType="selectedChartType"
-            :formatCurrency="chartFormatter"
+      <!-- Заголовок: кнопка назад слева, выбор портфеля справа -->
+      <div class="asset-header">
+        <button class="btn-back" @click="router.back()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+          Назад
+        </button>
+        <div class="header-portfolio-selector">
+          <CustomSelect
+            :modelValue="selectedPortfolioId || (assetInAllPortfolios[0]?.portfolio_id)"
+            :options="portfolioOptions"
+            label=""
+            placeholder="Выберите портфель"
+            :show-empty-option="false"
+            option-label="label"
+            option-value="value"
+            :min-width="'200px'"
+            :flex="'none'"
+            @update:modelValue="handlePortfolioChange"
           />
-          <div v-else class="no-chart-data">Нет данных для отображения графика</div>
         </div>
       </div>
 
-      <!-- Статистика -->
-      <div class="stats-section">
-        <!-- Основная информация об активе -->
-        <div class="stat-card">
-          <h3>Основная информация</h3>
-          <div class="stat-item">
-            <span class="stat-label">Количество:</span>
-            <span class="stat-value">{{ portfolioAsset.asset.quantity }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Средняя цена:</span>
-            <span class="stat-value">{{ portfolioAsset.asset.average_price?.toFixed(2) || '-' }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Текущая цена:</span>
-            <span class="stat-value">{{ portfolioAsset.asset.last_price?.toFixed(2) || '-' }}</span>
-          </div>
-          <div class="stat-item" v-if="priceGrowth">
-            <span class="stat-label">Рост цены:</span>
-            <span class="stat-value" :class="priceGrowth.isPositive ? 'profit' : 'loss'">
-              {{ priceGrowth.isPositive ? '+' : '' }}{{ priceGrowth.percent.toFixed(2) }}%
+      <!-- Длинный блок: название актива, тикер, стоимость и изменение -->
+      <div class="asset-overview-block">
+        <div class="asset-main-info">
+          <h1 class="asset-name">{{ portfolioAsset.asset.name }}</h1>
+          <div class="asset-meta">
+            <span class="meta-item">{{ portfolioAsset.asset.ticker }}</span>
+            <span v-if="portfolioAsset.asset.leverage && portfolioAsset.asset.leverage > 1" class="meta-item">
+              ×{{ portfolioAsset.asset.leverage }}
             </span>
           </div>
         </div>
-
-        <!-- Статистика портфеля -->
-        <div class="stat-card">
-          <h3>Вклад в портфель</h3>
-          <div class="stat-item">
-            <span class="stat-label">Общая стоимость портфеля:</span>
-            <span class="stat-value">{{ formatCurrency(portfolioContribution?.portfolioValue || 0) }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Стоимость актива:</span>
-            <span class="stat-value">{{ formatCurrency(portfolioContribution?.assetValue || 0) }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Доля в портфеле:</span>
-            <span class="stat-value">{{ portfolioContribution?.percentage?.toFixed(2) || '0.00' }}%</span>
-          </div>
-          <div class="stat-item" v-if="portfolioContribution?.percentageInRoot !== null && portfolioContribution?.percentageInRoot !== undefined">
-            <span class="stat-label">Доля в портфеле "Все активы":</span>
-            <span class="stat-value">{{ portfolioContribution.percentageInRoot.toFixed(2) }}%</span>
+        <div class="asset-price-info">
+          <div class="price-main">{{ selectedPortfolioAsset?.last_price?.toFixed(2) || portfolioAsset.asset.last_price?.toFixed(2) || '-' }}</div>
+          <div v-if="selectedPortfolioAsset?.daily_change !== undefined && selectedPortfolioAsset.daily_change !== 0" class="price-change">
+            <ValueChange 
+              :value="selectedPriceChangePercent" 
+              :isPositive="selectedPortfolioAsset.daily_change >= 0"
+              format="percent"
+            />
+            <span class="price-change-currency">
+              ({{ selectedPortfolioAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(selectedPortfolioAsset.daily_change) }})
+            </span>
           </div>
         </div>
+      </div>
+
+      <!-- График и описание актива -->
+      <div class="widgets-grid">
+        <!-- График -->
+        <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-large)">
+          <div class="chart-widget">
+            <div class="section-header">
+              <h2 class="section-title">История актива</h2>
+              <div class="chart-controls">
+                <CustomSelect
+                  :modelValue="selectedChartType"
+                  :options="chartTypeOptions"
+                  label="ТИП ГРАФИКА"
+                  placeholder="Выберите тип графика"
+                  :show-empty-option="false"
+                  option-label="label"
+                  option-value="value"
+                  :min-width="'200px'"
+                  :flex="'none'"
+                  @update:modelValue="selectedChartType = $event"
+                />
+                <PeriodFilters 
+                  :modelValue="selectedPeriod" 
+                  @update:modelValue="selectedPeriod = $event"
+                />
+              </div>
+            </div>
+            <div class="chart-container">
+              <MultiLineChart 
+                v-if="chartData.labels.length" 
+                :chartData="chartData" 
+                :period="selectedPeriod"
+                :chartType="selectedChartType"
+                :formatCurrency="chartFormatter"
+              />
+              <div v-else class="no-chart-data">Нет данных для отображения графика</div>
+            </div>
+          </div>
+        </WidgetContainer>
+
+        <!-- Описание актива (заглушка) -->
+        <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-large)">
+          <Widget title="Описание актива">
+            <div class="asset-description-placeholder">
+              <p>Описание актива будет здесь</p>
+            </div>
+          </Widget>
+        </WidgetContainer>
+      </div>
+
+      <!-- Блоки показателей (три отдельных виджета) -->
+      <div class="widgets-grid">
+        <!-- Основная информация -->
+        <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+          <AssetBasicInfoWidget
+            :quantity="selectedPortfolioAsset?.quantity || 0"
+            :averagePrice="selectedPortfolioAsset?.average_price || 0"
+            :lastPrice="selectedPortfolioAsset?.last_price || 0"
+            :priceGrowth="selectedPriceGrowth"
+          />
+        </WidgetContainer>
+
+        <!-- Вклад в портфель -->
+        <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+          <AssetPortfolioContributionWidget
+            :portfolioValue="selectedPortfolioAsset?.portfolio_total_value || 0"
+            :assetValue="selectedPortfolioAsset?.asset_value || 0"
+            :percentageInPortfolio="selectedPortfolioAsset?.percentage_in_portfolio || 0"
+            :percentageInRoot="selectedPortfolioPercentageInRoot"
+          />
+        </WidgetContainer>
 
         <!-- Прибыль и убытки -->
-        <div class="stat-card">
-          <h3>Прибыль и убытки</h3>
-          <div class="stat-item">
-            <span class="stat-label">Инвестировано:</span>
-            <span class="stat-value">{{ formatCurrency(profitLoss?.invested || 0) }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Текущая стоимость:</span>
-            <span class="stat-value">{{ formatCurrency(profitLoss?.currentValue || 0) }}</span>
-          </div>
-          <div class="stat-item" :class="profitLoss?.isProfit ? 'profit' : 'loss'">
-            <span class="stat-label">Нереализованная прибыль:</span>
-            <span class="stat-value">
-              {{ profitLoss?.isProfit ? '+' : '' }}{{ formatCurrency(profitLoss?.profit || 0) }}
-            </span>
-          </div>
-          <div class="stat-item" v-if="realizedProfit !== 0" :class="realizedProfit >= 0 ? 'profit' : 'loss'">
-            <span class="stat-label">Прибыль от продаж:</span>
-            <span class="stat-value">
-              {{ realizedProfit >= 0 ? '+' : '' }}{{ formatCurrency(realizedProfit) }}
-            </span>
-          </div>
-          <div class="stat-item profit" v-if="payouts && payouts.total > 0">
-            <span class="stat-label">Получено выплат:</span>
-            <span class="stat-value">{{ formatCurrency(payouts.total || 0) }}</span>
-          </div>
-          <div class="stat-item" v-if="totalProfit" :class="totalProfit.isProfit ? 'profit' : 'loss'">
-            <span class="stat-label">Общая прибыль:</span>
-            <span class="stat-value">
-              {{ totalProfit.isProfit ? '+' : '' }}{{ formatCurrency(totalProfit.total) }}
-            </span>
-          </div>
-        </div>
+        <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+          <AssetProfitLossWidget
+            :invested="selectedProfitLoss?.invested || 0"
+            :currentValue="selectedProfitLoss?.currentValue || 0"
+            :profit="selectedProfitLoss?.profit || 0"
+            :isProfit="selectedProfitLoss?.isProfit || false"
+            :realizedProfit="realizedProfit"
+            :receivedPayouts="receivedPayouts"
+            :totalProfit="selectedTotalProfit?.total || 0"
+            :isTotalProfit="selectedTotalProfit?.isProfit || false"
+          />
+        </WidgetContainer>
       </div>
 
-      <!-- Транзакции и Выплаты -->
-      <div v-if="allOperations.length > 0" class="transactions-section">
-        <h2>Операции</h2>
-        <div class="transactions-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Дата</th>
-                <th>Тип</th>
-                <th>Количество</th>
-                <th>Цена</th>
-                <th>Сумма</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="op in allOperations" :key="op.id">
-                <td>{{ new Date(op.date).toLocaleDateString('ru-RU') }}</td>
-                <td>
-                  <span :class="['badge', 'badge-' + normalizeType(op.operationType, op.type)]">
-                    {{ getOperationTypeLabel(op) }}
-                  </span>
-                </td>
-                <td>{{ op.quantity !== null && op.quantity !== undefined ? op.quantity : '-' }}</td>
-                <td>{{ op.price !== null && op.price !== undefined ? op.price.toFixed(2) : '-' }}</td>
-                <td>{{ formatCurrency(op.amount || 0) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <!-- Операции (транзакции + полученные выплаты) -->
+      <div class="widgets-grid">
+        <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
+          <OperationsListWidget
+            title="Операции"
+            :operations="allOperations"
+            :get-operation-type-label="getOperationTypeLabel"
+            :get-operation-type-class="(op) => normalizeType(op.operationType, op.type)"
+          />
+        </WidgetContainer>
       </div>
+
+      <!-- Полная история выплат -->
+      <div class="widgets-grid">
+        <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
+          <AssetPayoutsListWidget :payouts="payouts?.history || []" />
+        </WidgetContainer>
+      </div>
+
     </PageLayout>
 
     <div v-else class="error-state">
@@ -691,6 +946,36 @@ watch(() => route.params.id, () => {
   background: #f8fafc;
 }
 
+.widgets-grid {
+  display: grid;
+  gap: var(--spacing);
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-rows: min-content;
+  margin-top: 2rem;
+}
+
+@media (max-width: 1200px) {
+  .widgets-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .widgets-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-widget {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .error-state {
   display: flex;
   flex-direction: column;
@@ -701,47 +986,170 @@ watch(() => route.params.id, () => {
 }
 
 
+/* Заголовок */
+.asset-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+}
+
+.header-portfolio-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .btn-back {
-  padding: 0.5rem 1rem;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: transparent;
+  border: none;
+  border-radius: 0.375rem;
   cursor: pointer;
   font-size: 0.875rem;
+  color: #6b7280;
   transition: all 0.2s;
 }
 
 .btn-back:hover {
   background: #f3f4f6;
-  border-color: #d1d5db;
+  color: #111827;
 }
 
-.asset-meta-header {
+/* Длинный блок: название актива, тикер, стоимость и изменение */
+.asset-overview-block {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  margin-bottom: 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.asset-main-info {
+  flex: 1;
+  min-width: 200px;
+}
+
+.asset-name {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 0.5rem 0;
+  line-height: 1.3;
+}
+
+.asset-meta {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 1rem;
   flex-wrap: wrap;
-  margin-top: 0.5rem; /* Маленький отступ между названием актива и мета-информацией */
-  margin-bottom: 1.5rem; /* Большой отступ между текстом и графиком */
 }
 
-.ticker {
-  font-size: 1.125rem;
+.meta-item {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.asset-price-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.price-main {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.2;
+}
+
+.price-change {
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.price-change-currency {
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 400;
+  color: #6B7280;
+  margin: 0;
+}
+
+.metrics-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  height: 100%;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0.5rem 0;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.stat-item:last-child {
+  border-bottom: none;
+}
+
+.stat-item.profit .stat-value {
+  color: var(--positiveColor, #1CBD88);
+}
+
+.stat-item.loss .stat-value {
+  color: var(--negativeColor, #EF4444);
+}
+
+.stat-label {
+  color: #6b7280;
+  font-size: 0.875rem;
+  flex: 1;
+}
+
+.stat-value {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #111827;
+  text-align: right;
+}
+
+.portfolio-name {
+  font-size: 0.875rem;
   color: #6b7280;
   font-weight: 500;
 }
 
-.badge-leverage {
-  padding: 0.25rem 0.5rem;
-  background: #dbeafe;
-  color: #1e40af;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.portfolio-name {
-  color: #6b7280;
+.asset-description-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 200px;
+  color: #9ca3af;
   font-size: 0.875rem;
 }
 
@@ -792,6 +1200,7 @@ watch(() => route.params.id, () => {
   border: 1px solid #e5e7eb;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   margin-bottom: 2rem;
+  margin-top: 0;
 }
 
 .section-header {
@@ -803,11 +1212,20 @@ watch(() => route.params.id, () => {
   gap: 1rem;
 }
 
-.section-header h2 {
+.section-header h2,
+.section-header .section-title {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #111827;
+  font-size: 1rem;
+  font-weight: 400;
+  color: #6B7280;
+}
+
+.transactions-section h2,
+.payouts-section h2 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1rem;
+  font-weight: 400;
+  color: #6B7280;
 }
 
 .chart-controls {
@@ -831,64 +1249,13 @@ watch(() => route.params.id, () => {
   color: #6b7280;
 }
 
-.stats-section {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.stat-card {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 0.75rem;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.stat-card h3 {
-  margin: 0 0 1rem 0;
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: #111827;
-}
-
-.stat-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid #f3f4f6;
-}
-
-.stat-item:last-child {
-  border-bottom: none;
-}
-
-.stat-item.profit .stat-value {
-  color: var(--positiveColor, #1CBD88);
-}
-
-.stat-item.loss .stat-value {
-  color: var(--negativeColor, #EF4444);
-}
-
-.stat-label {
-  color: #6b7280;
-  font-size: 0.875rem;
-}
-
-.stat-value {
-  display: flex;
-  font-weight: 600;
-  color: #111827;
-}
 
 .transactions-section {
   background: white;
   padding: 1.5rem;
-  border-radius: 0.75rem;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  margin-top: 2rem;
 }
 
 .transactions-section h2 {
@@ -917,6 +1284,46 @@ watch(() => route.params.id, () => {
 }
 
 .transactions-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #f3f4f6;
+  color: #111827;
+}
+
+/* История выплат (в стиле таблицы операций) */
+.payouts-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  margin-top: 2rem;
+}
+
+.payouts-section h2 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.payouts-table {
+  overflow-x: auto;
+}
+
+.payouts-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.payouts-table th {
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 2px solid #e5e7eb;
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.payouts-table td {
   padding: 0.75rem;
   border-bottom: 1px solid #f3f4f6;
   color: #111827;
@@ -977,13 +1384,23 @@ watch(() => route.params.id, () => {
   background: #2563eb;
 }
 
+@media (max-width: 1200px) {
+  .widgets-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
   .content-wrapper {
     padding: 1rem;
   }
 
-  .info-cards {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  .asset-name {
+    font-size: 1.5rem;
+  }
+
+  .widgets-grid {
+    grid-template-columns: 1fr;
   }
 
   .section-header {

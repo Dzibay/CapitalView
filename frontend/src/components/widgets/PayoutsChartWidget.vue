@@ -5,9 +5,19 @@ import CustomSelect from '../CustomSelect.vue'
 import Widget from './Widget.vue'
 
 const props = defineProps({
-  futurePayouts: {
+  title: {
+    type: String,
+    default: 'Выплаты по месяцам'
+  },
+  payouts: {
     type: Array,
     default: () => []
+  },
+  // 'past' для полученных выплат, 'future' для будущих
+  mode: {
+    type: String,
+    default: 'past',
+    validator: (value) => ['past', 'future'].includes(value)
   }
 })
 
@@ -30,19 +40,14 @@ const groupingOptions = [
 
 // Фирменные цвета для типов выплат
 const payoutColors = {
-  // Дивиденды - синий
   dividends: '#2563eb',
   dividendsAlpha: 'rgba(37, 99, 235, 0.85)',
   dividendsHover: '#1d4ed8',
   dividendsDark: '#1e40af',
-  
-  // Купоны - голубой/cyan
   coupons: '#06b6d4',
   couponsAlpha: 'rgba(6, 182, 212, 0.85)',
   couponsHover: '#0891b2',
   couponsDark: '#0e7490',
-  
-  // Амортизации - оранжевый
   amortizations: '#fb923c',
   amortizationsAlpha: 'rgba(251, 146, 60, 0.85)',
   amortizationsHover: '#f97316',
@@ -61,50 +66,49 @@ const formatMoney = (value) => {
   return `${num} ₽`
 }
 
-// Форматирование для отображения суммы
 const formatMoneyFull = (value) => {
   return new Intl.NumberFormat('ru-RU', {
     style: 'currency',
     currency: 'RUB',
-    maximumFractionDigits: 0
+    minimumFractionDigits: props.mode === 'past' ? 2 : 0,
+    maximumFractionDigits: props.mode === 'past' ? 2 : 0
   }).format(value || 0)
-}
-
-// Форматирование меток месяцев
-const formatMonthLabel = (monthStr) => {
-  if (!monthStr) return ''
-  try {
-    const [year, month] = monthStr.split('-')
-    if (!year || !month) return monthStr
-    
-    const date = new Date(parseInt(year), parseInt(month) - 1)
-    const monthName = date.toLocaleString('ru-RU', { month: 'long' })
-    const shortYear = year.slice(-2)
-    return `${monthName} ${shortYear}`
-  } catch (e) {
-    return monthStr
-  }
 }
 
 // Фильтрация и группировка данных
 const filteredPayouts = computed(() => {
-  if (!props.futurePayouts || !Array.isArray(props.futurePayouts) || props.futurePayouts.length === 0) {
+  if (!props.payouts || !Array.isArray(props.payouts) || props.payouts.length === 0) {
     return []
   }
   
   const periodMonths = parseInt(selectedPeriod.value) || 12
   const today = new Date()
-  const cutoffDate = new Date(today)
-  cutoffDate.setMonth(today.getMonth() + periodMonths)
+  today.setHours(0, 0, 0, 0)
   
-  // Фильтруем по периоду (будущие выплаты)
-  let filtered = props.futurePayouts.filter(fp => {
-    if (!fp || !fp.month) return false
+  let cutoffDate = new Date(today)
+  
+  if (props.mode === 'past') {
+    // Для прошлых выплат: от сегодня назад
+    cutoffDate.setMonth(today.getMonth() - periodMonths)
+  } else {
+    // Для будущих выплат: от сегодня вперед
+    cutoffDate.setMonth(today.getMonth() + periodMonths)
+  }
+  
+  // Фильтруем по периоду
+  let filtered = props.payouts.filter(p => {
+    if (!p || !p.month) return false
     try {
-      const [year, month] = fp.month.split('-')
+      const [year, month] = p.month.split('-')
       if (!year || !month) return false
       const payoutDate = new Date(parseInt(year), parseInt(month) - 1)
-      return payoutDate >= today && payoutDate <= cutoffDate
+      payoutDate.setHours(0, 0, 0, 0)
+      
+      if (props.mode === 'past') {
+        return payoutDate >= cutoffDate && payoutDate <= today
+      } else {
+        return payoutDate >= today && payoutDate <= cutoffDate
+      }
     } catch (e) {
       return false
     }
@@ -113,10 +117,10 @@ const filteredPayouts = computed(() => {
   // Группировка по кварталам, если выбрано
   if (selectedGrouping.value === 'quarter') {
     const grouped = {}
-    filtered.forEach(fp => {
-      if (!fp.month) return
+    filtered.forEach(p => {
+      if (!p.month) return
       try {
-        const [year, month] = fp.month.split('-')
+        const [year, month] = p.month.split('-')
         const quarter = Math.floor((parseInt(month) - 1) / 3) + 1
         const key = `${year}-Q${quarter}`
         
@@ -129,9 +133,9 @@ const filteredPayouts = computed(() => {
           }
         }
         
-        grouped[key].dividends += fp.dividends || 0
-        grouped[key].coupons += fp.coupons || 0
-        grouped[key].amortizations += fp.amortizations || 0
+        grouped[key].dividends += Number(p.dividends) || 0
+        grouped[key].coupons += Number(p.coupons) || 0
+        grouped[key].amortizations += Number(p.amortizations) || 0
       } catch (e) {
         // Игнорируем ошибки
       }
@@ -145,16 +149,15 @@ const filteredPayouts = computed(() => {
   return filtered
 })
 
-// Общая сумма будущих выплат
+// Общая сумма выплат
 const totalPayouts = computed(() => {
-  return filteredPayouts.value.reduce((sum, fp) => {
-    return sum + (Number(fp.dividends) || 0) + (Number(fp.coupons) || 0) + (Number(fp.amortizations) || 0)
+  return filteredPayouts.value.reduce((sum, p) => {
+    return sum + (Number(p.dividends) || 0) + (Number(p.coupons) || 0) + (Number(p.amortizations) || 0)
   }, 0)
 })
 
 const chartLabels = computed(() => {
-  // Передаем исходные даты, BarChart будет форматировать их адаптивно
-  return filteredPayouts.value.map(fp => fp.month) || []
+  return filteredPayouts.value.map(p => p.month) || []
 })
 
 const chartDatasets = computed(() => {
@@ -164,8 +167,8 @@ const chartDatasets = computed(() => {
   
   const datasets = []
   
-  // Дивиденды - синий
-  const dividends = filteredPayouts.value.map(fp => Number(fp.dividends) || 0)
+  // Дивиденды
+  const dividends = filteredPayouts.value.map(p => Number(p.dividends) || 0)
   const dividendsSum = dividends.reduce((a, b) => a + b, 0)
   datasets.push({
     label: 'Дивиденды',
@@ -179,8 +182,8 @@ const chartDatasets = computed(() => {
     totalSum: dividendsSum
   })
   
-  // Купоны - голубой/cyan
-  const coupons = filteredPayouts.value.map(fp => Number(fp.coupons) || 0)
+  // Купоны
+  const coupons = filteredPayouts.value.map(p => Number(p.coupons) || 0)
   const couponsSum = coupons.reduce((a, b) => a + b, 0)
   datasets.push({
     label: 'Купоны',
@@ -194,8 +197,8 @@ const chartDatasets = computed(() => {
     totalSum: couponsSum
   })
   
-  // Амортизации - оранжевый
-  const amortizations = filteredPayouts.value.map(fp => Number(fp.amortizations) || 0)
+  // Амортизации
+  const amortizations = filteredPayouts.value.map(p => Number(p.amortizations) || 0)
   const amortizationsSum = amortizations.reduce((a, b) => a + b, 0)
   datasets.push({
     label: 'Амортизации',
@@ -209,17 +212,14 @@ const chartDatasets = computed(() => {
     totalSum: amortizationsSum
   })
   
-  // Сортируем по сумме значений (от меньших к большим)
+  // Сортируем по сумме значений
   const sorted = datasets.sort((a, b) => a.totalSum - b.totalSum)
   
-  // Применяем borderRadius только к верхнему слою для каждого столбца отдельно
+  // Применяем borderRadius только к верхнему слою
   sorted.forEach((dataset, datasetIndex) => {
     const borderRadiusArray = dataset.data.map((value, dataIndex) => {
-      if (value === 0) {
-        return 0
-      }
+      if (value === 0) return 0
       
-      // Проверяем, есть ли ненулевые значения выше этого слоя для данного столбца
       let hasValueAbove = false
       for (let i = datasetIndex + 1; i < sorted.length; i++) {
         if (sorted[i].data[dataIndex] > 0) {
@@ -228,15 +228,9 @@ const chartDatasets = computed(() => {
         }
       }
       
-      // Если нет значений выше, это верхний слой - скругляем сверху
-      if (!hasValueAbove) {
-        return 8
-      }
-      
-      return 0
+      return hasValueAbove ? 0 : 8
     })
     
-    // Проверяем, все ли значения одинаковые
     const firstValue = borderRadiusArray[0]
     const allSame = borderRadiusArray.every(br => br === firstValue)
     
@@ -252,7 +246,6 @@ const chartDatasets = computed(() => {
         dataset.borderRadius = 0
       }
     } else {
-      // Если разные, используем функцию для динамического скругления
       dataset.borderRadius = (ctx) => {
         const index = ctx.dataIndex
         const radius = borderRadiusArray[index] || 0
@@ -274,7 +267,7 @@ const chartDatasets = computed(() => {
 </script>
 
 <template>
-  <Widget title="График будущих выплат">
+  <Widget :title="title">
     <template #header>
       <CustomSelect
         v-model="selectedPeriod"
@@ -313,7 +306,7 @@ const chartDatasets = computed(() => {
         height="300px"
       />
       <div v-else class="empty-state">
-        <p>Нет данных о будущих выплатах</p>
+        <p>{{ mode === 'past' ? 'Нет данных о выплатах' : 'Нет данных о будущих выплатах' }}</p>
       </div>
     </div>
   </Widget>
@@ -342,6 +335,7 @@ const chartDatasets = computed(() => {
 .chart-container {
   height: 300px;
   position: relative;
+  margin-top: 0.5rem;
 }
 
 .empty-state {
@@ -364,4 +358,3 @@ const chartDatasets = computed(() => {
   margin: 0;
 }
 </style>
-

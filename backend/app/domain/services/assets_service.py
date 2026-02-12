@@ -463,57 +463,75 @@ def get_asset_price_history(asset_id: int, start_date: str = None, end_date: str
         return {"success": False, "error": str(e)}
 
 
-def get_portfolio_asset_info(portfolio_asset_id: int):
+def get_portfolio_asset_info(portfolio_asset_id: int, user_id: str):
     """
-    Получает детальную информацию о портфельном активе.
+    Получает детальную информацию о портфельном активе (оптимизированная версия).
+    Использует единый SQL запрос для получения всей информации.
+    
+    Args:
+        portfolio_asset_id: ID портфельного актива
+        user_id: ID пользователя (обязательный параметр)
     """
     try:
-        # Получаем метаданные портфельного актива
-        asset_meta = rpc("get_portfolio_asset_meta", {"p_portfolio_asset_id": portfolio_asset_id})
+        if not user_id:
+            return {"success": False, "error": "user_id обязателен для получения информации об активе"}
         
-        if not asset_meta:
+        # Используем оптимизированную функцию для получения всей информации за один запрос
+        # Включаем историю цен с лимитом для начальной загрузки (можно загрузить больше отдельно)
+        result = rpc("get_portfolio_asset_detail", {
+            "p_portfolio_asset_id": portfolio_asset_id,
+            "p_user_id": user_id,
+            "p_include_price_history": True,
+            "p_price_history_limit": 1000  # Лимит для начальной загрузки
+        })
+        
+        if not result:
             return {"success": False, "error": "Портфельный актив не найден"}
         
-        # Обрабатываем результат: может быть словарь (если одна запись) или список
-        if isinstance(asset_meta, dict):
-            portfolio_asset = asset_meta
-        elif isinstance(asset_meta, list) and len(asset_meta) > 0:
-            portfolio_asset = asset_meta[0]
-        else:
-            return {"success": False, "error": f"Некорректный формат данных актива: {type(asset_meta)}"}
+        # Извлекаем данные из результата
+        portfolio_asset_data = result.get("portfolio_asset")
+        if not portfolio_asset_data:
+            return {"success": False, "error": "Данные портфельного актива не найдены"}
         
-        asset_id = portfolio_asset.get("asset_id")
-        portfolio_id = portfolio_asset.get("portfolio_id")
+        # Формируем результат в том же формате, что и раньше
+        portfolio_asset = {
+            "id": portfolio_asset_data.get("portfolio_asset_id"),
+            "asset_id": portfolio_asset_data.get("asset_id"),
+            "portfolio_id": portfolio_asset_data.get("portfolio_id"),
+            "quantity": portfolio_asset_data.get("quantity"),
+            "leverage": portfolio_asset_data.get("leverage"),
+            "average_price": portfolio_asset_data.get("average_price"),
+            "last_price": portfolio_asset_data.get("last_price"),
+            "daily_change": portfolio_asset_data.get("daily_change"),
+            "currency_ticker": portfolio_asset_data.get("currency_ticker"),
+            "currency_rate_to_rub": portfolio_asset_data.get("currency_rate_to_rub"),
+            "name": portfolio_asset_data.get("asset_name"),
+            "ticker": portfolio_asset_data.get("ticker"),
+            "type": portfolio_asset_data.get("asset_type"),
+            "transactions": result.get("transactions", []),
+            "transactions_count": len(result.get("transactions", [])),
+            "payouts": result.get("all_payouts", []),  # Все выплаты из asset_payouts
+            "payouts_count": len(result.get("all_payouts", [])),
+            "price_history": result.get("price_history", [])  # История цен из того же запроса
+        }
         
-        # Получаем транзакции по этому активу
-        transactions = table_select(
-            "transactions",
-            select="*",
-            filters={"portfolio_asset_id": portfolio_asset_id},
-            order={"column": "transaction_date", "desc": True}
-        )
+        # Добавляем информацию о портфелях
+        portfolios_data = result.get("portfolios", [])
+        for portfolio in portfolios_data:
+            portfolio_total = portfolio.get("portfolio_total_value", 0)
+            asset_value = portfolio.get("asset_value", 0)
+            if portfolio_total > 0:
+                portfolio["percentage_in_portfolio"] = round((asset_value / portfolio_total) * 100, 2)
+            else:
+                portfolio["percentage_in_portfolio"] = 0
         
-        portfolio_asset["transactions"] = transactions
-        portfolio_asset["transactions_count"] = len(transactions)
-        
-        # Получаем выплаты (дивиденды и купоны) из cash_operations
-        # Тип 3 = дивиденды, тип 4 = купоны
-        payouts = []
-        if asset_id:
-            payout_operations = table_select(
-                "cash_operations",
-                select="*",
-                filters={"portfolio_id": portfolio_id, "asset_id": asset_id},
-                in_filters={"type": [3, 4]},  # 3 = дивиденды, 4 = купоны
-                order={"column": "date", "desc": True}
-            )
-            payouts = payout_operations or []
-        
-        portfolio_asset["payouts"] = payouts
-        portfolio_asset["payouts_count"] = len(payouts)
-        
-        return {"success": True, "portfolio_asset": portfolio_asset}
+        return {
+            "success": True,
+            "portfolio_asset": portfolio_asset,
+            "portfolios": portfolios_data  # Добавляем информацию о портфелях в ответ
+        }
     except Exception as e:
+        logger.error(f"Ошибка при получении информации о портфельном активе: {e}")
         return {"success": False, "error": str(e)}
 
 

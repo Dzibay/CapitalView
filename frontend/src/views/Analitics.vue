@@ -10,9 +10,8 @@ import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
 
 // Виджеты
-import MonthlyPayoutsChartWidget from '../components/widgets/MonthlyPayoutsChartWidget.vue'
+import PayoutsChartWidget from '../components/widgets/PayoutsChartWidget.vue'
 import PayoutsByAssetChartWidget from '../components/widgets/PayoutsByAssetChartWidget.vue'
-import FuturePayoutsChartWidget from '../components/widgets/FuturePayoutsChartWidget.vue'
 import PortfoliosDistributionChartWidget from '../components/widgets/PortfoliosDistributionChartWidget.vue'
 import AnalyticsAssetDistributionWidget from '../components/widgets/AnalyticsAssetDistributionWidget.vue'
 import MonthlyFlowChartWidget from '../components/widgets/MonthlyFlowChartWidget.vue'
@@ -268,14 +267,18 @@ const profitChartData = computed(() => {
       </WidgetContainer>
 
       <WidgetContainer :gridColumn="6" minHeight="var(--widget-height-medium)">
-        <MonthlyPayoutsChartWidget 
-          :monthly-payouts="selectedPortfolioAnalytics.monthly_payouts || []"
+        <PayoutsChartWidget 
+          title="Полученные выплаты по месяцам"
+          :payouts="selectedPortfolioAnalytics.monthly_payouts || []"
+          mode="past"
         />
       </WidgetContainer>
 
       <WidgetContainer :gridColumn="6" minHeight="var(--widget-height-medium)">
-        <FuturePayoutsChartWidget 
-          :future-payouts="selectedPortfolioAnalytics.future_payouts || []"
+        <PayoutsChartWidget 
+          title="График будущих выплат"
+          :payouts="selectedPortfolioAnalytics.future_payouts || []"
+          mode="future"
         />
       </WidgetContainer>
 
