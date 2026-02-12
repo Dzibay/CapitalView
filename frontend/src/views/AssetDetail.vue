@@ -4,21 +4,23 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import MultiLineChart from '../components/MultiLineChart.vue'
-import PeriodFilters from '../components/widgets/PeriodFilters.vue'
+import { 
+  PeriodFilters, 
+  WidgetContainer, 
+  MetricsWidget, 
+  ValueChange, 
+  Widget 
+} from '../components/widgets/base'
+import { AssetPortfolioStatsWidget } from '../components/widgets/composite'
+import { 
+  OperationsListWidget, 
+  AssetPayoutsListWidget 
+} from '../components/widgets/lists'
 import CustomSelect from '../components/CustomSelect.vue'
 import LoadingState from '../components/LoadingState.vue'
 import assetsService from '../services/assetsService'
 import operationsService from '../services/operationsService'
 import PageLayout from '../components/PageLayout.vue'
-import WidgetContainer from '../components/widgets/WidgetContainer.vue'
-import AssetPortfolioStatsWidget from '../components/widgets/AssetPortfolioStatsWidget.vue'
-import AssetBasicInfoWidget from '../components/widgets/AssetBasicInfoWidget.vue'
-import AssetPortfolioContributionWidget from '../components/widgets/AssetPortfolioContributionWidget.vue'
-import AssetProfitLossWidget from '../components/widgets/AssetProfitLossWidget.vue'
-import ValueChange from '../components/widgets/ValueChange.vue'
-import Widget from '../components/widgets/Widget.vue'
-import OperationsListWidget from '../components/widgets/OperationsListWidget.vue'
-import AssetPayoutsListWidget from '../components/widgets/AssetPayoutsListWidget.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -447,14 +449,83 @@ const receivedPayouts = computed(() => {
 // Расчет доли в корневом портфеле для выбранного портфеля
 const selectedPortfolioPercentageInRoot = computed(() => {
   if (!selectedPortfolioAsset.value) return null
-  
+
   const rootValue = rootPortfolio.value?.total_value || 0
   const assetValue = selectedPortfolioAsset.value.asset_value || 0
-  
+
   if (rootValue === 0) return null
-  
+
   return (assetValue / rootValue) * 100
 })
+
+// Computed properties для виджетов метрик
+const basicInfoItems = computed(() => {
+  const result = [
+    { label: 'Количество', value: selectedPortfolioAsset.value?.quantity || 0, format: 'number' },
+    { label: 'Средняя цена', value: selectedPortfolioAsset.value?.average_price || 0, format: 'number' },
+    { label: 'Текущая цена', value: selectedPortfolioAsset.value?.last_price || 0, format: 'number' }
+  ]
+  
+  if (selectedPriceGrowth.value) {
+    result.push({
+      label: 'Рост цены',
+      value: selectedPriceGrowth.value.percent,
+      format: 'percent',
+      isPositive: selectedPriceGrowth.value.isPositive,
+      showValueChange: true
+    })
+  }
+  
+  return result
+})
+
+const contributionItems = computed(() => {
+  const result = [
+    { label: 'Общая стоимость портфеля', value: selectedPortfolioAsset.value?.portfolio_total_value || 0, format: 'currency' },
+    { label: 'Стоимость актива', value: selectedPortfolioAsset.value?.asset_value || 0, format: 'currency' },
+    { label: 'Доля в портфеле', value: selectedPortfolioAsset.value?.percentage_in_portfolio || 0, format: 'number', suffix: '%' }
+  ]
+  
+  if (selectedPortfolioPercentageInRoot.value !== null && selectedPortfolioPercentageInRoot.value !== undefined) {
+    result.push({
+      label: 'Доля в портфеле "Все активы"',
+      value: selectedPortfolioPercentageInRoot.value,
+      format: 'number',
+      suffix: '%'
+    })
+  }
+  
+  return result
+})
+
+const profitLossItems = computed(() => [
+  { label: 'Инвестировано', value: selectedProfitLoss.value?.invested || 0, format: 'currency' },
+  { label: 'Текущая стоимость', value: selectedProfitLoss.value?.currentValue || 0, format: 'currency' },
+  { 
+    label: 'Нереализованная прибыль', 
+    value: selectedProfitLoss.value?.profit || 0, 
+    format: 'currency',
+    isPositive: selectedProfitLoss.value?.isProfit || false
+  },
+  { 
+    label: 'Прибыль от продаж', 
+    value: realizedProfit.value || 0, 
+    format: 'currency',
+    isPositive: realizedProfit.value >= 0
+  },
+  { 
+    label: 'Получено выплат', 
+    value: receivedPayouts.value || 0, 
+    format: 'currency',
+    colorClass: 'profit'
+  },
+  { 
+    label: 'Общая прибыль', 
+    value: selectedTotalProfit.value?.total || 0, 
+    format: 'currency',
+    isPositive: selectedTotalProfit.value?.isProfit || false
+  }
+])
 
 // Изменение цены за день в процентах для выбранного портфеля
 const selectedPriceChangePercent = computed(() => {
@@ -879,36 +950,17 @@ async function handlePortfolioChange(portfolioId) {
       <div class="widgets-grid">
         <!-- Основная информация -->
         <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <AssetBasicInfoWidget
-            :quantity="selectedPortfolioAsset?.quantity || 0"
-            :averagePrice="selectedPortfolioAsset?.average_price || 0"
-            :lastPrice="selectedPortfolioAsset?.last_price || 0"
-            :priceGrowth="selectedPriceGrowth"
-          />
+          <MetricsWidget title="Основная информация" :items="basicInfoItems" />
         </WidgetContainer>
 
         <!-- Вклад в портфель -->
         <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <AssetPortfolioContributionWidget
-            :portfolioValue="selectedPortfolioAsset?.portfolio_total_value || 0"
-            :assetValue="selectedPortfolioAsset?.asset_value || 0"
-            :percentageInPortfolio="selectedPortfolioAsset?.percentage_in_portfolio || 0"
-            :percentageInRoot="selectedPortfolioPercentageInRoot"
-          />
+          <MetricsWidget title="Вклад в портфель" :items="contributionItems" />
         </WidgetContainer>
 
         <!-- Прибыль и убытки -->
         <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <AssetProfitLossWidget
-            :invested="selectedProfitLoss?.invested || 0"
-            :currentValue="selectedProfitLoss?.currentValue || 0"
-            :profit="selectedProfitLoss?.profit || 0"
-            :isProfit="selectedProfitLoss?.isProfit || false"
-            :realizedProfit="realizedProfit"
-            :receivedPayouts="receivedPayouts"
-            :totalProfit="selectedTotalProfit?.total || 0"
-            :isTotalProfit="selectedTotalProfit?.isProfit || false"
-          />
+          <MetricsWidget title="Прибыль и убытки" :items="profitLossItems" />
         </WidgetContainer>
       </div>
 

@@ -10,19 +10,23 @@ import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
 
 // Виджеты
-import PayoutsChartWidget from '../components/widgets/PayoutsChartWidget.vue'
-import PayoutsByAssetChartWidget from '../components/widgets/PayoutsByAssetChartWidget.vue'
-import PortfoliosDistributionChartWidget from '../components/widgets/PortfoliosDistributionChartWidget.vue'
-import AnalyticsAssetDistributionWidget from '../components/widgets/AnalyticsAssetDistributionWidget.vue'
-import MonthlyFlowChartWidget from '../components/widgets/MonthlyFlowChartWidget.vue'
-import PortfolioChartWidget from '../components/widgets/PortfolioChartWidget.vue'
-import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
-import ReturnWidget from '../components/widgets/ReturnWidget.vue'
-import DividendsWidget from '../components/widgets/DividendsWidget.vue'
-import AssetReturnsChartWidget from '../components/widgets/AssetReturnsChartWidget.vue'
-import PortfolioProfitWidget from '../components/widgets/PortfolioProfitWidget.vue'
-import PortfolioProfitChartWidget from '../components/widgets/PortfolioProfitChartWidget.vue'
-import WidgetContainer from '../components/widgets/WidgetContainer.vue'
+import { 
+  TotalCapitalWidget, 
+  PortfolioProfitWidget, 
+  DividendsWidget, 
+  ReturnWidget 
+} from '../components/widgets/stats'
+import { 
+  PayoutsChartWidget,
+  PayoutsByAssetChartWidget,
+  PortfoliosDistributionChartWidget,
+  AnalyticsAssetDistributionWidget,
+  MonthlyFlowChartWidget,
+  PortfolioChartWidget,
+  AssetReturnsChartWidget,
+  PortfolioProfitChartWidget
+} from '../components/widgets/charts'
+import { WidgetContainer } from '../components/widgets/base'
 
 // Используем stores
 const authStore = useAuthStore()

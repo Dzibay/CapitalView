@@ -12,18 +12,24 @@ import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
 
 // Виджеты
-import TotalCapitalWidget from '../components/widgets/TotalCapitalWidget.vue'
-import GoalProgressWidget from '../components/widgets/GoalProgressWidget.vue'
-import PortfolioChartWidget from '../components/widgets/PortfolioChartWidget.vue'
-import TopMoversWidget from '../components/widgets/TopMoversWidget.vue'
-import PortfolioProfitWidget from '../components/widgets/PortfolioProfitWidget.vue'
+import { 
+  TotalCapitalWidget, 
+  PortfolioProfitWidget, 
+  DividendsWidget, 
+  ReturnWidget 
+} from '../components/widgets/stats'
+import { GoalProgressWidget } from '../components/widgets/composite'
+import { 
+  PortfolioChartWidget, 
+  AssetAllocationWidget, 
+  PayoutsChartWidget 
+} from '../components/widgets/charts'
+import { 
+  TopMoversWidget, 
+  RecentTransactionsWidget 
+} from '../components/widgets/lists'
+import { WidgetContainer } from '../components/widgets/base'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
-import DividendsWidget from '../components/widgets/DividendsWidget.vue'
-import ReturnWidget from '../components/widgets/ReturnWidget.vue'
-import AssetAllocationWidget from '../components/widgets/AssetAllocationWidget.vue'
-import RecentTransactionsWidget from '../components/widgets/RecentTransactionsWidget.vue'
-import PayoutsChartWidget from '../components/widgets/PayoutsChartWidget.vue'
-import WidgetContainer from '../components/widgets/WidgetContainer.vue'
 
 const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
