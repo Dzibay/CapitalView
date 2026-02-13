@@ -95,11 +95,11 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Функция для полного обновления таблицы (использует оптимизированный запрос)
-CREATE OR REPLACE FUNCTION refresh_asset_latest_prices_table()
+CREATE OR REPLACE FUNCTION refresh_asset_latest_prices()
 RETURNS VOID AS $$
 BEGIN
     -- Используем оптимизированный запрос из asset_latest_prices_full_optimized.sql
-    INSERT INTO asset_latest_prices_full_table (
+    INSERT INTO asset_latest_prices_full (
         asset_id,
         today_price,
         today_date,
@@ -251,7 +251,7 @@ $$ LANGUAGE plpgsql;
 -- 1. НЕ создавайте триггер, если у вас есть массовые операции
 -- 2. Обновляйте таблицу вручную после массовых операций через:
 --    - update_asset_latest_prices_batch() для нескольких активов
---    - refresh_asset_latest_prices_table() для всех активов
+--    - refresh_asset_latest_prices() для всех активов
 -- 3. Используйте триггер ТОЛЬКО если у вас нет массовых операций
 
 CREATE OR REPLACE FUNCTION trigger_update_asset_latest_price()

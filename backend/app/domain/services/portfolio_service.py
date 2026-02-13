@@ -729,7 +729,7 @@ async def import_broker_portfolio(
             try:
                 # Supabase автоматически преобразует Python dict/list в jsonb
                 # Передаем список транзакций напрямую
-                result = await rpc_async("batch_insert_transactions_with_fifo", {
+                result = await rpc_async("apply_transactions_batch", {
                     "p_transactions": new_tx_sorted
                 })
                 

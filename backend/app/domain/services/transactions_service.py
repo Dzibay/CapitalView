@@ -2,7 +2,7 @@
 Доменный сервис для работы с транзакциями.
 Перенесено из app/services/transactions_service.py
 """
-from app.infrastructure.database.supabase_service import table_select, table_insert, table_delete, table_update, rpc
+from app.infrastructure.database.supabase_service import table_select, table_insert, rpc
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -162,18 +162,10 @@ def update_transaction(
         if old_pa:
             old_portfolio_id = old_pa[0].get("portfolio_id")
     
-    # 2️⃣ Удаляем старую транзакцию (это пересчитает FIFO)
-    # Используем RPC для безопасного удаления
-    try:
-        delete_result = rpc("delete_transaction", {"p_transaction_id": transaction_id})
-        if delete_result is False:
-            raise Exception("Ошибка при удалении транзакции")
-    except Exception as e:
-        # Если RPC функции нет, удаляем напрямую
-        table_delete("transactions", {"id": transaction_id})
-        # Пересчитываем portfolio_asset
-        if old_portfolio_asset_id:
-            rpc("update_portfolio_asset", {"pa_id": old_portfolio_asset_id})
+    # 2️⃣ Удаляем старую транзакцию через RPC (пересчитывает FIFO)
+    delete_result = rpc("delete_transaction", {"p_transaction_id": transaction_id})
+    if delete_result is False:
+        raise Exception("Ошибка при удалении транзакции")
     
     # 3️⃣ Создаем новую транзакцию с обновленными данными
     new_tx_id = create_transaction(
@@ -257,68 +249,16 @@ def update_transaction(
 def delete_transaction(transaction_id: int):
     """
     Удаляет транзакцию и пересчитывает связанные данные.
+    SQL функция delete_transaction выполняет:
+    - Удаление транзакции
+    - Пересчет FIFO лотов
+    - Обновление portfolio_asset
+    - Обновление истории портфеля
     """
-    from datetime import datetime
+    # Вызываем RPC функцию, которая выполняет все необходимые операции
+    delete_result = rpc("delete_transaction", {"p_transaction_id": transaction_id})
     
-    # 1️⃣ Получаем информацию о транзакции
-    existing_tx = table_select(
-        "transactions",
-        select="portfolio_asset_id, transaction_date",
-        filters={"id": transaction_id},
-        limit=1
-    )
-    
-    if not existing_tx:
-        raise Exception(f"Транзакция {transaction_id} не найдена")
-    
-    portfolio_asset_id = existing_tx[0].get("portfolio_asset_id")
-    transaction_date = existing_tx[0].get("transaction_date")
-    
-    # Получаем portfolio_id
-    portfolio_id = None
-    if portfolio_asset_id:
-        pa = table_select(
-            "portfolio_assets",
-            select="portfolio_id",
-            filters={"id": portfolio_asset_id},
-            limit=1
-        )
-        if pa:
-            portfolio_id = pa[0].get("portfolio_id")
-    
-    # 2️⃣ Удаляем транзакцию
-    try:
-        delete_result = rpc("delete_transaction", {"p_transaction_id": transaction_id})
-        if delete_result is False:
-            raise Exception("Ошибка при удалении транзакции")
-    except Exception as e:
-        # Если RPC функции нет, удаляем напрямую
-        table_delete("transactions", {"id": transaction_id})
-    
-    # 3️⃣ Пересчитываем portfolio_asset
-    if portfolio_asset_id:
-        rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
-    
-    # 4️⃣ Обновляем историю портфеля с даты транзакции
-    if portfolio_id and transaction_date:
-        # Преобразуем дату транзакции в формат YYYY-MM-DD
-        if isinstance(transaction_date, str):
-            from_date = transaction_date[:10] if 'T' in transaction_date else transaction_date
-        elif hasattr(transaction_date, 'date'):
-            from_date = transaction_date.date().isoformat()
-        else:
-            from_date = str(transaction_date)[:10]
-        
-        try:
-            rpc("update_portfolio_positions_from_date", {
-                "p_portfolio_id": portfolio_id,
-                "p_from_date": from_date
-            })
-            rpc("update_portfolio_values_from_date", {
-                "p_portfolio_id": portfolio_id,
-                "p_from_date": from_date
-            })
-        except Exception as e:
-            logger.warning(f"Ошибка при обновлении истории портфеля {portfolio_id}: {e}", exc_info=True)
+    if delete_result is False:
+        raise Exception(f"Ошибка при удалении транзакции {transaction_id}")
     
     return True

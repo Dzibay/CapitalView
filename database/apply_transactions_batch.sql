@@ -31,7 +31,7 @@
 -- 4. Продажи обрабатываются по одной с проверкой количества
 -- 5. Денежные операции создаются автоматически через триггер
 
-CREATE OR REPLACE FUNCTION batch_insert_transactions_with_fifo(
+CREATE OR REPLACE FUNCTION apply_transactions_batch(
     p_transactions jsonb
 )
 RETURNS jsonb

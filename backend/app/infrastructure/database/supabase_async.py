@@ -46,11 +46,6 @@ async def rpc_async(*args, **kwargs):
     return await asyncio.to_thread(supabase_service.rpc, *args, **kwargs)
 
 
-async def refresh_materialized_view_async(name: str, concurrently: bool = False):
-    """Асинхронная обертка для refresh_materialized_view."""
-    return await asyncio.to_thread(supabase_service.refresh_materialized_view, name, concurrently)
-
-
 # ===================================================
 # АСИНХРОННЫЕ ОБЕРТКИ ДЛЯ RPC ФУНКЦИЙ
 # ===================================================
