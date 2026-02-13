@@ -1,8 +1,15 @@
-declare
+CREATE OR REPLACE FUNCTION update_portfolio_asset_positions_from_date(
+    p_portfolio_asset_id bigint,
+    p_from_date date DEFAULT '0001-01-01'
+)
+RETURNS boolean
+LANGUAGE plpgsql
+AS $$
+DECLARE
     v_portfolio_id bigint;
     v_base_qty numeric := 0;
     v_base_inv numeric := 0;
-begin
+BEGIN
     select pa.portfolio_id
       into v_portfolio_id
     from portfolio_assets pa
@@ -101,5 +108,10 @@ begin
     from calc c
     join last_tx_in_day d on d.tx_date = c.tx_date and d.max_rn = c.rn;
 
-    return true;
-end;
+    RETURN true;
+END;
+$$;
+
+-- Комментарий к функции
+COMMENT ON FUNCTION update_portfolio_asset_positions_from_date(bigint, date) IS 
+'Пересчитывает позиции portfolio_asset начиная с указанной даты. Использует рекурсивный CTE для расчета накопительных значений.';

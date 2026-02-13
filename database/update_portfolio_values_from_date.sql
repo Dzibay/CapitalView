@@ -1,38 +1,64 @@
-declare
+CREATE OR REPLACE FUNCTION update_portfolio_values_from_date(
+    p_portfolio_id bigint,
+    p_from_date date DEFAULT '0001-01-01'
+)
+RETURNS boolean
+LANGUAGE plpgsql
+AS $$
+DECLARE
     v_base_realized numeric := 0;
     v_base_payouts  numeric := 0;
-begin
+    v_asset_ids bigint[];
+BEGIN
     ------------------------------------------------------------------
-    -- 0. BASELINE (строго из первичных данных)
+    -- 0. Получаем список активов портфеля (для оптимизации price_ranges)
+    -- КРИТИЧНО: это позволяет фильтровать asset_prices только по нужным активам
     ------------------------------------------------------------------
-    select
+    SELECT array_agg(DISTINCT asset_id)
+    INTO v_asset_ids
+    FROM portfolio_assets
+    WHERE portfolio_id = p_portfolio_id
+      AND asset_id IS NOT NULL;
+    
+    -- Если нет активов, просто очищаем и выходим
+    IF v_asset_ids IS NULL OR array_length(v_asset_ids, 1) IS NULL THEN
+        DELETE FROM portfolio_daily_values
+        WHERE portfolio_id = p_portfolio_id
+          AND report_date >= p_from_date;
+        RETURN true;
+    END IF;
+
+    ------------------------------------------------------------------
+    -- 1. BASELINE (строго из первичных данных)
+    ------------------------------------------------------------------
+    SELECT
         coalesce(sum(t.realized_pnl),0)
-    into v_base_realized
-    from transactions t
-    join portfolio_assets pa on pa.id = t.portfolio_asset_id
-    where pa.portfolio_id = p_portfolio_id
-      and t.transaction_type = 2
-      and t.transaction_date::date < p_from_date;
+    INTO v_base_realized
+    FROM transactions t
+    JOIN portfolio_assets pa on pa.id = t.portfolio_asset_id
+    WHERE pa.portfolio_id = p_portfolio_id
+      AND t.transaction_type = 2
+      AND t.transaction_date::date < p_from_date;
 
-    select
+    SELECT
         coalesce(sum(co.amount),0)
-    into v_base_payouts
-    from cash_operations co
-    where co.portfolio_id = p_portfolio_id
-      and co.type in (3,4,8)
-      and co.date::date < p_from_date;
+    INTO v_base_payouts
+    FROM cash_operations co
+    WHERE co.portfolio_id = p_portfolio_id
+      AND co.type IN (3,4,8)
+      AND co.date::date < p_from_date;
 
     ------------------------------------------------------------------
-    -- 1. Чистим только пересчитываемый диапазон
+    -- 2. Чистим только пересчитываемый диапазон
     ------------------------------------------------------------------
-    delete from portfolio_daily_values
-    where portfolio_id = p_portfolio_id
-      and report_date >= p_from_date;
+    DELETE FROM portfolio_daily_values
+    WHERE portfolio_id = p_portfolio_id
+      AND report_date >= p_from_date;
 
     ------------------------------------------------------------------
-    -- 2. Основной расчёт
+    -- 3. Основной расчёт (оптимизированный)
     ------------------------------------------------------------------
-    insert into portfolio_daily_values (
+    INSERT INTO portfolio_daily_values (
         portfolio_id,
         report_date,
         total_value,
@@ -41,150 +67,153 @@ begin
         total_realized,
         total_pnl
     )
-    with
+    WITH
     ------------------------------------------------------------------
-    -- Даты
+    -- Даты (оптимизировано: только если есть позиции)
     ------------------------------------------------------------------
-    dates as (
-        select generate_series(
+    dates AS (
+        SELECT generate_series(
             greatest(
                 p_from_date,
-                (
-                    select min(tx_date)
-                    from portfolio_daily_positions
-                    where portfolio_id = p_portfolio_id
-                )
+                COALESCE((
+                    SELECT min(tx_date)
+                    FROM portfolio_daily_positions
+                    WHERE portfolio_id = p_portfolio_id
+                ), p_from_date)
             ),
             current_date,
             interval '1 day'
-        )::date as report_date
+        )::date AS report_date
     ),
 
     ------------------------------------------------------------------
-    -- Диапазоны позиций
+    -- Диапазоны позиций (с индексом должно быть быстро)
     ------------------------------------------------------------------
-    pos_ranges as (
-        select
+    pos_ranges AS (
+        SELECT
             pdp.portfolio_asset_id,
-            pdp.tx_date as valid_from,
+            pdp.tx_date AS valid_from,
             coalesce(
-                lead(pdp.tx_date) over (
-                    partition by pdp.portfolio_asset_id
-                    order by pdp.tx_date
+                lead(pdp.tx_date) OVER (
+                    PARTITION BY pdp.portfolio_asset_id
+                    ORDER BY pdp.tx_date
                 ),
                 current_date + 1
-            ) as valid_to,
+            ) AS valid_to,
             pdp.quantity,
             pdp.average_price
-        from portfolio_daily_positions pdp
-        where pdp.portfolio_id = p_portfolio_id
+        FROM portfolio_daily_positions pdp
+        WHERE pdp.portfolio_id = p_portfolio_id
     ),
 
     ------------------------------------------------------------------
     -- Позиции на каждую активную дату
     ------------------------------------------------------------------
-    daily_positions as (
-        select
+    daily_positions AS (
+        SELECT
             d.report_date,
             pa.asset_id,
-            pa.leverage::numeric as leverage,
-            coalesce(pr.quantity,0) as quantity,
-            coalesce(pr.average_price,0) as average_price
-        from dates d
-        join portfolio_assets pa on pa.portfolio_id = p_portfolio_id
-        left join pos_ranges pr
-          on pr.portfolio_asset_id = pa.id
-         and d.report_date >= pr.valid_from
-         and d.report_date <  pr.valid_to
+            pa.leverage::numeric AS leverage,
+            coalesce(pr.quantity,0) AS quantity,
+            coalesce(pr.average_price,0) AS average_price
+        FROM dates d
+        JOIN portfolio_assets pa ON pa.portfolio_id = p_portfolio_id
+        LEFT JOIN pos_ranges pr
+          ON pr.portfolio_asset_id = pa.id
+         AND d.report_date >= pr.valid_from
+         AND d.report_date <  pr.valid_to
     ),
 
     ------------------------------------------------------------------
-    -- Цены (последняя цена на дату)
+    -- Цены (ОПТИМИЗИРОВАНО: только для активов портфеля!)
+    -- КРИТИЧНО: фильтруем asset_prices только по нужным активам
+    -- Это может ускорить запрос в 10-100 раз для больших таблиц
     ------------------------------------------------------------------
-    price_ranges as (
-        select
+    price_ranges AS (
+        SELECT
             asset_id,
             price::numeric,
-            trade_date::date as valid_from,
+            trade_date::date AS valid_from,
             coalesce(
-                lead(trade_date::date) over (
-                    partition by asset_id
-                    order by trade_date::date
+                lead(trade_date::date) OVER (
+                    PARTITION BY asset_id
+                    ORDER BY trade_date::date
                 ),
                 current_date + 1
-            ) as valid_to
-        from asset_prices
+            ) AS valid_to
+        FROM asset_prices
+        WHERE asset_id = ANY(v_asset_ids)  -- КРИТИЧНО: фильтруем только нужные активы!
     ),
 
     ------------------------------------------------------------------
     -- Реализованная прибыль (дневная)
     ------------------------------------------------------------------
-    realized_daily as (
-        select
-            t.transaction_date::date as report_date,
-            sum(t.realized_pnl)::numeric as realized_day
-        from transactions t
-        join portfolio_assets pa on pa.id = t.portfolio_asset_id
-        where pa.portfolio_id = p_portfolio_id
-          and t.transaction_type = 2
-          and t.transaction_date::date >= p_from_date
-        group by 1
+    realized_daily AS (
+        SELECT
+            t.transaction_date::date AS report_date,
+            sum(t.realized_pnl)::numeric AS realized_day
+        FROM transactions t
+        JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
+        WHERE pa.portfolio_id = p_portfolio_id
+          AND t.transaction_type = 2
+          AND t.transaction_date::date >= p_from_date
+        GROUP BY 1
     ),
 
-    realized_cum as (
-        select
+    realized_cum AS (
+        SELECT
             d.report_date,
             v_base_realized
-            + sum(coalesce(r.realized_day,0)) over (
-                order by d.report_date
-            ) as total_realized
-        from dates d
-        left join realized_daily r
-               on r.report_date = d.report_date
+            + sum(coalesce(r.realized_day,0)) OVER (
+                ORDER BY d.report_date
+            ) AS total_realized
+        FROM dates d
+        LEFT JOIN realized_daily r
+               ON r.report_date = d.report_date
     ),
 
     ------------------------------------------------------------------
     -- Выплаты (дневные)
     ------------------------------------------------------------------
-    payouts_daily as (
-        select
-            co.date::date as report_date,
-            sum(co.amount)::numeric as payout_day
-        from cash_operations co
-        where co.portfolio_id = p_portfolio_id
-          and co.type in (3,4,8)
-          and co.date::date >= p_from_date
-        group by 1
+    payouts_daily AS (
+        SELECT
+            co.date::date AS report_date,
+            sum(co.amount)::numeric AS payout_day
+        FROM cash_operations co
+        WHERE co.portfolio_id = p_portfolio_id
+          AND co.type IN (3,4,8)
+          AND co.date::date >= p_from_date
+        GROUP BY 1
     ),
 
-    payouts_cum as (
-        select
+    payouts_cum AS (
+        SELECT
             d.report_date,
             v_base_payouts
-            + sum(coalesce(p.payout_day,0)) over (
-                order by d.report_date
-            ) as total_payouts
-        from dates d
-        left join payouts_daily p
-               on p.report_date = d.report_date
+            + sum(coalesce(p.payout_day,0)) OVER (
+                ORDER BY d.report_date
+            ) AS total_payouts
+        FROM dates d
+        LEFT JOIN payouts_daily p
+               ON p.report_date = d.report_date
     )
 
     ------------------------------------------------------------------
     -- Финальный агрегат
     ------------------------------------------------------------------
-    select
+    SELECT
         p_portfolio_id,
         dp.report_date,
         sum(
             dp.quantity
             * coalesce(cp.price,0)
             / nullif(dp.leverage,0)
-        ) as total_value,
+        ) AS total_value,
         sum(
             dp.quantity
             * dp.average_price
             / nullif(dp.leverage,0)
-        ) as total_invested,
+        ) AS total_invested,
         pc.total_payouts,
         rc.total_realized,
         sum(
@@ -198,18 +227,23 @@ begin
             / nullif(dp.leverage,0)
         )
         + pc.total_payouts
-        + rc.total_realized as total_pnl
-    from daily_positions dp
-    left join price_ranges cp
-      on cp.asset_id = dp.asset_id
-     and dp.report_date >= cp.valid_from
-     and dp.report_date <  cp.valid_to
-    left join realized_cum rc on rc.report_date = dp.report_date
-    left join payouts_cum  pc on pc.report_date = dp.report_date
-    group by
+        + rc.total_realized AS total_pnl
+    FROM daily_positions dp
+    LEFT JOIN price_ranges cp
+      ON cp.asset_id = dp.asset_id
+     AND dp.report_date >= cp.valid_from
+     AND dp.report_date <  cp.valid_to
+    LEFT JOIN realized_cum rc ON rc.report_date = dp.report_date
+    LEFT JOIN payouts_cum  pc ON pc.report_date = dp.report_date
+    GROUP BY
         dp.report_date,
         rc.total_realized,
         pc.total_payouts;
     
-    return true;
-end;
+    RETURN true;
+END;
+$$;
+
+-- Комментарий к функции
+COMMENT ON FUNCTION update_portfolio_values_from_date(bigint, date) IS 
+'Оптимизированная версия: фильтрует price_ranges только по активам портфеля, что значительно ускоряет выполнение для больших таблиц asset_prices.';
