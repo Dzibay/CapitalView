@@ -299,10 +299,97 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
         combined_analytics["taxes"]
     )
 
-    return_percent = (
-        total_profit / total_invested
-        if total_invested > 0 else 0
-    )
+    # 6️⃣ Пересчёт доходностей для родительских портфелей
+    # Для портфелей без дочерних используем значения из аналитики напрямую
+    # Для родительских портфелей доходности должны быть средневзвешенными значениями дочерних портфелей
+    if len(child_data_list) == 0:
+        # Портфель без дочерних - используем значения из аналитики
+        return_percent = float(totals.get("return_percent", 0) or 0)
+        return_percent_on_invested = float(totals.get("return_percent_on_invested", 0) or 0)
+    else:
+        # Портфель с дочерними - пересчитываем как средневзвешенную
+        # return_percent - взвешенная по текущей стоимости
+        # return_percent_on_invested - взвешенная по вложенному капиталу
+        total_weighted_return = 0.0
+        total_value_for_return = 0.0
+        total_weighted_return_on_invested = 0.0
+        total_invested_for_return = 0.0
+        
+        # Добавляем данные текущего портфеля (если есть активы в самом портфеле)
+        current_portfolio_return = float(totals.get("return_percent", 0) or 0)
+        current_portfolio_return_on_invested = float(totals.get("return_percent_on_invested", 0) or 0)
+        
+        # Вычитаем инвестированную сумму дочерних портфелей, чтобы получить только собственные активы
+        # Используем данные из portfolio_map, которые уже обновлены рекурсивно
+        children_invested_sum = 0.0
+        children_value_sum = 0.0
+        for child_data in child_data_list:
+            child_id = child_data["child"]["id"]
+            child_portfolio = portfolio_map.get(child_id)
+            if child_portfolio:
+                children_invested_sum += float(child_portfolio.get("total_invested", child_data["invested"]) or 0)
+                children_value_sum += float(child_portfolio.get("total_value", child_data["value"]) or 0)
+            else:
+                children_invested_sum += float(child_data["invested"])
+                children_value_sum += float(child_data["value"])
+        
+        own_invested = max(0, total_invested - children_invested_sum)
+        own_value = max(0, total_value - children_value_sum)
+        
+        if own_value > 0:
+            total_weighted_return += current_portfolio_return * own_value
+            total_value_for_return += own_value
+        
+        if own_invested > 0:
+            total_weighted_return_on_invested += current_portfolio_return_on_invested * own_invested
+            total_invested_for_return += own_invested
+        
+        # Собираем данные из дочерних портфелей для расчета средневзвешенной доходности
+        # Используем данные из portfolio_map, которые уже обновлены рекурсивно
+        for child_data in child_data_list:
+            child_id = child_data["child"]["id"]
+            child_portfolio = portfolio_map.get(child_id)
+            
+            # Используем аналитику из portfolio_map, которая уже обновлена рекурсивно
+            if child_portfolio and child_portfolio.get("analytics"):
+                child_analytics = child_portfolio["analytics"]
+                child_totals = child_analytics.get("totals", {}) if isinstance(child_analytics, dict) else {}
+            else:
+                # Fallback на данные из child_data
+                child_analytics = child_data["analytics"]
+                child_totals = child_analytics.get("totals", {}) if isinstance(child_analytics, dict) else {}
+                if not child_totals and isinstance(child_analytics, dict):
+                    child_totals = child_analytics
+            
+            # Используем значения из portfolio_map, которые уже обновлены
+            if child_portfolio:
+                child_value = float(child_portfolio.get("total_value", child_data["value"]) or 0)
+                child_invested = float(child_portfolio.get("total_invested", child_data["invested"]) or 0)
+            else:
+                child_value = float(child_data["value"])
+                child_invested = float(child_data["invested"])
+            
+            child_return = float(child_totals.get("return_percent", 0) or 0)
+            child_return_on_invested = float(child_totals.get("return_percent_on_invested", 0) or 0)
+            
+            if child_value > 0:
+                total_weighted_return += child_return * child_value
+                total_value_for_return += child_value
+            
+            if child_invested > 0:
+                total_weighted_return_on_invested += child_return_on_invested * child_invested
+                total_invested_for_return += child_invested
+        
+        # Пересчитываем средневзвешенную доходность
+        if total_value_for_return > 0:
+            return_percent = total_weighted_return / total_value_for_return
+        else:
+            return_percent = 0
+        
+        if total_invested_for_return > 0:
+            return_percent_on_invested = total_weighted_return_on_invested / total_invested_for_return
+        else:
+            return_percent_on_invested = 0
 
     # 7️⃣ Сохраняем результат в текущем портфеле
     portfolio["total_value"] = round(total_value, 2)
@@ -346,6 +433,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
             "taxes": combined_analytics["taxes"],
             "total_profit": total_profit,
             "return_percent": return_percent,
+            "return_percent_on_invested": return_percent_on_invested,
             "inflow": combined_analytics["inflow"],
             "outflow": combined_analytics["outflow"],
         })
@@ -365,6 +453,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
                 "taxes": combined_analytics["taxes"],
                 "total_profit": total_profit,
                 "return_percent": return_percent,
+                "return_percent_on_invested": return_percent_on_invested,
                 "inflow": combined_analytics["inflow"],
                 "outflow": combined_analytics["outflow"],
             },
