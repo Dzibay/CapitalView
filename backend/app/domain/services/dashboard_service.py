@@ -504,43 +504,27 @@ async def get_dashboard_data(user_email: str):
         if portfolio.get("analytics"):
             portfolio["analytics"] = _normalize_analytics(portfolio["analytics"])
     
-    # Объединяем дочерние портфели и пересчитываем суммы (активы, история)
+    # Объединяем дочерние портфели и пересчитываем суммы (активы, история, аналитика)
+    # Аналитика уже приходит из get_dashboard_data_complete и агрегируется в build_portfolio_hierarchy
     time1 = time()
     portfolios = build_portfolio_hierarchy(portfolios)
     logger.debug(f'Иерархия: {time() - time1:.2f} сек')
     
-    # Получаем правильно агрегированную аналитику через analytics_service
-    # Это гарантирует правильную агрегацию дочерних портфелей
-    time1 = time()
-    from app.domain.services.analytics_service import get_user_portfolios_analytics
-    import asyncio
-    aggregated_analytics = await get_user_portfolios_analytics(user_id)
-    logger.debug(f'Аналитика (агрегированная): {time() - time1:.2f} сек')
-    
-    # Создаем map аналитики по portfolio_id для быстрого доступа
-    analytics_by_portfolio_id = {a["portfolio_id"]: a for a in aggregated_analytics}
-    
-    # Обновляем аналитику в портфелях правильными агрегированными данными
-    # И добавляем total_profit, если его нет
+    # Убеждаемся, что total_profit рассчитан в totals для всех портфелей
     for portfolio in portfolios:
-        portfolio_id = portfolio.get("id")
-        if portfolio_id in analytics_by_portfolio_id:
-            portfolio["analytics"] = analytics_by_portfolio_id[portfolio_id]
-            
-            # Убеждаемся, что total_profit рассчитан в totals
-            if portfolio.get("analytics") and portfolio["analytics"].get("totals"):
-                totals = portfolio["analytics"]["totals"]
-                if "total_profit" not in totals or totals.get("total_profit") is None:
-                    # Рассчитываем total_profit как сумму всех компонентов прибыли
-                    total_profit = (
-                        float(totals.get("realized_pl", 0) or 0) +
-                        float(totals.get("unrealized_pl", 0) or 0) +
-                        float(totals.get("dividends", 0) or 0) +
-                        float(totals.get("coupons", 0) or 0) +
-                        float(totals.get("commissions", 0) or 0) +
-                        float(totals.get("taxes", 0) or 0)
-                    )
-                    totals["total_profit"] = total_profit
+        if portfolio.get("analytics") and portfolio["analytics"].get("totals"):
+            totals = portfolio["analytics"]["totals"]
+            if "total_profit" not in totals or totals.get("total_profit") is None:
+                # Рассчитываем total_profit как сумму всех компонентов прибыли
+                total_profit = (
+                    float(totals.get("realized_pl", 0) or 0) +
+                    float(totals.get("unrealized_pl", 0) or 0) +
+                    float(totals.get("dividends", 0) or 0) +
+                    float(totals.get("coupons", 0) or 0) +
+                    float(totals.get("commissions", 0) or 0) +
+                    float(totals.get("taxes", 0) or 0)
+                )
+                totals["total_profit"] = total_profit
     
     # Обрабатываем историю и считаем динамику
     time1 = time()
