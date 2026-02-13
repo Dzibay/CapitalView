@@ -73,7 +73,19 @@ def get_supabase_client():
         # Если инициализация не удалась, пробуем напрямую
         Config.validate()
         from supabase import create_client
-        _supabase_global = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
+        from supabase.lib.client_options import SyncClientOptions
+        from supabase_auth import SyncMemoryStorage
+        from httpx import Timeout
+        
+        # Используем те же таймауты
+        timeout = Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0)
+        options = SyncClientOptions(
+            postgrest_client_timeout=timeout,
+            storage_client_timeout=30,
+            function_client_timeout=30,
+            storage=SyncMemoryStorage()  # Обязательный параметр для синхронного клиента
+        )
+        _supabase_global = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY, options=options)
         return _supabase_global
 
 @retry_on_connection_error
@@ -191,18 +203,3 @@ def table_select_with_neq(table: str, select: str = "*", filters: dict = None, n
     
     return q.execute().data
 
-@retry_on_connection_error
-def refresh_materialized_view(view_name: str, concurrently: bool = False):
-    """
-    Обновляет материализованное представление в базе данных Supabase.
-    """
-    supabase = get_supabase_client()
-
-    sql = f"REFRESH MATERIALIZED VIEW {'CONCURRENTLY ' if concurrently else ''}{view_name};"
-    try:
-        supabase.rpc("exec_sql", {"query": sql}).execute()
-        logger.info(f"Материализованное представление {view_name} обновлено")
-        return {"success": True}
-    except Exception as e:
-        logger.error(f"Ошибка при обновлении {view_name}: {type(e).__name__}: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}

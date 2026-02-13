@@ -76,9 +76,9 @@ async def startup_event():
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     logger.info(f"Log level: {Config.LOG_LEVEL}")
     
-    # Инициализация справочных данных при старте
-    from app.domain.services.reference_service import init_reference_data
-    init_reference_data()
+    # Инициализация справочных данных при старте (асинхронно с таймаутом)
+    from app.domain.services.reference_service import init_reference_data_async
+    await init_reference_data_async()
 
 
 @app.on_event("shutdown")
