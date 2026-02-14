@@ -21,3 +21,8 @@ class AuthResponse(BaseModel):
     access_token: str = Field(..., description="JWT токен доступа")
     user: dict = Field(default=None, description="Данные пользователя")
 
+
+class UpdateProfileRequest(BaseModel):
+    """Модель запроса обновления профиля."""
+    name: str = Field(None, description="Имя пользователя")
+    email: EmailStr = Field(None, description="Email пользователя")

@@ -3,9 +3,9 @@ API endpoints для аутентификации.
 Версия 1.
 """
 from fastapi import APIRouter, HTTPException, Depends
-from app.domain.services.user_service import create_user, get_user_by_email
+from app.domain.services.user_service import create_user, get_user_by_email, update_user
 from app.extensions import bcrypt
-from app.domain.models.auth_models import RegisterRequest, LoginRequest
+from app.domain.models.auth_models import RegisterRequest, LoginRequest, UpdateProfileRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.utils.response import success_response
 from app.utils.jwt import create_access_token
@@ -73,3 +73,39 @@ async def check_token(user: dict = Depends(get_current_user)):
         },
         message="Token valid"
     )
+
+
+@router.put("/profile")
+async def update_profile(
+    data: UpdateProfileRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Обновление профиля пользователя."""
+    try:
+        updated_user = update_user(
+            user_id=user["id"],
+            name=data.name,
+            email=data.email
+        )
+        
+        if not updated_user:
+            raise HTTPException(
+                status_code=HTTPStatus.NOT_FOUND,
+                detail="Пользователь не найден"
+            )
+        
+        return success_response(
+            data={
+                "user": {
+                    "id": updated_user["id"],
+                    "email": updated_user["email"],
+                    "name": updated_user.get("name")
+                }
+            },
+            message="Профиль успешно обновлен"
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=str(e)
+        )

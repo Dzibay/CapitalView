@@ -7,6 +7,7 @@ export const API_ENDPOINTS = {
     REGISTER: '/auth/register',
     LOGIN: '/auth/login',
     CHECK_TOKEN: '/auth/check-token',
+    UPDATE_PROFILE: '/auth/profile',
   },
   DASHBOARD: {
     BASE: '/dashboard/',
