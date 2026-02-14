@@ -51,6 +51,8 @@ DECLARE
     v_error_text text;
     v_tx_item jsonb;
     v_tx_date timestamp without time zone;  -- Для преобразования даты в timestamp
+    v_buy_op_type_id bigint;
+    v_sell_op_type_id bigint;
 BEGIN
     -- Проверяем входные данные
     IF p_transactions IS NULL OR jsonb_array_length(p_transactions) = 0 THEN
@@ -320,6 +322,46 @@ BEGIN
                     );
             END;
         END LOOP;
+    END IF;
+
+    -- ========================================================================
+    -- 3. БАТЧ-СОЗДАНИЕ CASH_OPERATIONS (оптимизация для массового импорта)
+    -- ========================================================================
+    -- Отключаем триггер для батч-вставки, чтобы избежать дублирования
+    -- Создаем cash_operations батчем для лучшей производительности
+    -- Затем включаем триггер обратно
+    
+    -- Получаем ID типов операций один раз (если есть вставленные транзакции)
+    IF array_length(v_tx_ids, 1) > 0 THEN
+        SELECT id INTO v_buy_op_type_id FROM operations_type WHERE name = 'Buy' LIMIT 1;
+        SELECT id INTO v_sell_op_type_id FROM operations_type WHERE name = 'Sell' LIMIT 1;
+        
+        -- Создаем cash_operations батчем для всех вставленных транзакций
+        INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id)
+        SELECT
+            t.user_id,
+            pa.portfolio_id,
+            CASE 
+                WHEN t.transaction_type = 1 THEN v_buy_op_type_id
+                WHEN t.transaction_type = 2 THEN v_sell_op_type_id
+            END,
+            CASE 
+                WHEN t.transaction_type = 1 THEN -(t.price * t.quantity)
+                WHEN t.transaction_type = 2 THEN (t.price * t.quantity)
+            END,
+            47, -- RUB
+            t.transaction_date,
+            t.id,
+            pa.asset_id
+        FROM transactions t
+        JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
+        WHERE t.id = ANY(v_tx_ids)
+          AND t.transaction_type IN (1, 2)  -- Только Buy и Sell
+          AND NOT EXISTS (
+              SELECT 1 
+              FROM cash_operations co 
+              WHERE co.transaction_id = t.id
+          );
     END IF;
 
     -- Удаляем временную таблицу

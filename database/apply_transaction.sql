@@ -1,4 +1,3 @@
-drop function apply_transaction;
 create or replace function apply_transaction(
   p_user_id uuid,
   p_portfolio_asset_id bigint,
@@ -15,6 +14,11 @@ declare
   v_remaining numeric;
   v_realized numeric := 0;
   v_portfolio_id bigint;
+  v_asset_id bigint;
+  v_buy_op_type_id bigint;
+  v_sell_op_type_id bigint;
+  v_op_type_id bigint;
+  v_cash_amount numeric;
   lot record;
 begin
   ------------------------------------------------------------------
@@ -120,7 +124,47 @@ begin
   end if;
 
   ------------------------------------------------------------------
-  -- 4. Пересчёты
+  -- 4. Создаём денежную операцию для транзакции
+  ------------------------------------------------------------------
+  -- Получаем asset_id из portfolio_assets
+  SELECT asset_id INTO v_asset_id
+  FROM portfolio_assets
+  WHERE id = p_portfolio_asset_id;
+  
+  -- Получаем ID типов операций
+  SELECT id INTO v_buy_op_type_id FROM operations_type WHERE name = 'Buy' LIMIT 1;
+  SELECT id INTO v_sell_op_type_id FROM operations_type WHERE name = 'Sell' LIMIT 1;
+  
+  -- Определяем тип операции и сумму
+  IF p_transaction_type = 1 THEN
+    v_op_type_id := v_buy_op_type_id;
+    v_cash_amount := -(p_price * p_quantity);
+  ELSIF p_transaction_type = 2 THEN
+    v_op_type_id := v_sell_op_type_id;
+    v_cash_amount := (p_price * p_quantity);
+  END IF;
+  
+  -- Создаем cash_operation только если тип определен и её еще нет
+  IF v_op_type_id IS NOT NULL THEN
+    INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id)
+    SELECT
+      p_user_id,
+      v_portfolio_id,
+      v_op_type_id,
+      v_cash_amount,
+      47, -- RUB
+      p_transaction_date,
+      v_tx_id,
+      v_asset_id
+    WHERE NOT EXISTS (
+      SELECT 1 
+      FROM cash_operations 
+      WHERE transaction_id = v_tx_id
+    );
+  END IF;
+
+  ------------------------------------------------------------------
+  -- 5. Пересчёты
   ------------------------------------------------------------------
   perform update_portfolio_asset_positions_from_date(
     p_portfolio_asset_id,
