@@ -1,6 +1,8 @@
 <script setup>
 import { ref } from 'vue'
-import CustomSelect from '../CustomSelect.vue'
+import { Upload } from 'lucide-vue-next'
+import { Button } from '../base'
+import CustomSelect from '../base/CustomSelect.vue'
 
 const props = defineProps({
   onImport: Function,
@@ -100,13 +102,15 @@ const handleImport = async () => {
         <div v-if="error" class="error">{{ error }}</div>
 
         <div class="form-actions">
-          <button type="button" class="btn btn-secondary" @click="$emit('close')" :disabled="loading">
+          <Button variant="secondary" type="button" @click="$emit('close')" :disabled="loading">
             Отмена
-          </button>
-          <button type="submit" class="btn btn-primary" :disabled="loading">
-            <span class="btn-icon">📥</span>
+          </Button>
+          <Button variant="primary" type="submit" :disabled="loading" :loading="loading">
+            <template #icon>
+              <Upload :size="16" />
+            </template>
             Импортировать
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -326,63 +330,4 @@ const handleImport = async () => {
   border-top: 1px solid #f3f4f6;
 }
 
-.btn {
-  padding: 10px 18px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  letter-spacing: -0.01em;
-}
-
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-  box-shadow: 0 2px 4px rgba(59,130,246,0.2);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #2563eb;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59,130,246,0.3);
-}
-
-.btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.btn-primary:disabled {
-  background: #9ca3af;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.btn-secondary {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #e5e7eb;
-  transform: translateY(-1px);
-}
-
-.btn-secondary:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.btn-secondary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-icon {
-  font-size: 14px;
-  font-weight: 700;
-}
 </style>

@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useDashboardStore } from '../stores/dashboard.store';
 import { useUIStore } from '../stores/ui.store';
 import { useAssetsStore } from '../stores/assets.store';
 import { usePortfoliosStore } from '../stores/portfolios.store';
 import { useTransactionsStore } from '../stores/transactions.store';
 import { useImportTasksStore } from '../stores/importTasks.store';
+import { Plus, FolderPlus, Upload, RefreshCw } from 'lucide-vue-next';
 import AddAssetModal from "../components/modals/AddAssetModal.vue";
 import AddTransactionModal from "../components/modals/AddTransactionModal.vue";
 import AddPriceModal from "../components/modals/AddPriceModal.vue";
@@ -18,7 +19,10 @@ import ContextMenu from '../components/ContextMenu.vue';
 import { useExpandedState } from '../composables/useExpandedState';
 import { useModals } from '../composables/useModal';
 import { usePortfolio } from '../composables/usePortfolio';
-import LoadingState from '../components/LoadingState.vue';
+import { Button, ToggleSwitch } from '../components/base';
+import LoadingState from '../components/base/LoadingState.vue';
+import PageLayout from '../components/PageLayout.vue';
+import PageHeader from '../components/PageHeader.vue';
 
 const selectedAsset = ref(null);
 
@@ -132,6 +136,29 @@ const { modals, open: openModal, close: closeModal } = useModals([
 // ID текущей задачи импорта
 const currentImportTaskId = ref(null);
 
+// Фильтр для показа проданных активов (с сохранением в localStorage)
+const SHOW_SOLD_ASSETS_KEY = 'showSoldAssets';
+const showSoldAssets = ref(false);
+
+onMounted(() => {
+  try {
+    const stored = localStorage.getItem(SHOW_SOLD_ASSETS_KEY);
+    if (stored !== null) {
+      showSoldAssets.value = stored === '1' || stored === 'true';
+    }
+  } catch (e) {
+    // localStorage может быть недоступен, просто игнорируем
+  }
+});
+
+watch(showSoldAssets, (value) => {
+  try {
+    localStorage.setItem(SHOW_SOLD_ASSETS_KEY, value ? '1' : '0');
+  } catch (e) {
+    // игнорируем ошибки записи в localStorage
+  }
+});
+
 
 // Используем композабл для работы с портфелями
 // Передаем computed ref для dashboardData из store
@@ -216,30 +243,48 @@ const handleMoveAsset = (asset) => {
 </script>
 
 <template>
-  <div class="dashboard-container">
-    <div class="content-wrapper">
-      
-      <div class="action-bar">
-        <h1 class="page-title">Мои Активы</h1>
+  <PageLayout>
+    <PageHeader 
+      title="Мои Активы"
+      subtitle="Управление портфелями и активами"
+    >
+      <template #actions>
+        <ToggleSwitch 
+          v-model="showSoldAssets" 
+          label="Показать проданные активы"
+        />
+      </template>
+      <template #menu>
         <div class="buttons-group">
-          <button class="btn btn-primary" @click="openModal('addAsset')">
-            <span class="icon">➕</span>
-            <span>Добавить актив</span>
-          </button>
-          <button class="btn btn-secondary" @click="openModal('addPortfolio')">
-            <span class="icon">📁</span>
-            <span>Создать портфель</span>
-          </button>
+          <Button variant="primary" @click="openModal('addAsset')">
+            <template #icon>
+              <Plus :size="16" />
+            </template>
+            Добавить актив
+          </Button>
+          <Button variant="secondary" @click="openModal('addPortfolio')">
+            <template #icon>
+              <FolderPlus :size="16" />
+            </template>
+            Создать портфель
+          </Button>
           <div class="divider-vertical"></div>
-          <button class="btn btn-outline" @click="openModal('import')">
-            <span class="icon">📥</span>
-            <span>Импорт</span>
-          </button>
-          <button class="btn btn-ghost" @click="refreshPortfolios" title="Обновить портфели">
-            <span class="icon">🔄</span>
-          </button>
+          <div class="button-group-unified">
+            <Button variant="outline" @click="openModal('import')" class="btn-group-left">
+              <template #icon>
+                <Upload :size="16" />
+              </template>
+              Импорт
+            </Button>
+            <Button variant="outline" @click="refreshPortfolios" icon-only title="Обновить портфели" class="btn-group-right btn-refresh">
+              <template #icon>
+                <RefreshCw :size="16" />
+              </template>
+            </Button>
+          </div>
         </div>
-      </div>
+      </template>
+    </PageHeader>
 
       <AddAssetModal v-if="modals.addAsset" @close="closeModal('addAsset')" :onSave="addAsset" :referenceData="parsedDashboard.reference" :portfolios="parsedDashboard.portfolios"/>
       <AddPortfolioModal v-if="modals.addPortfolio" @close="closeModal('addPortfolio')" :onSave="addPortfolio" :portfolios="parsedDashboard.portfolios"/>
@@ -290,17 +335,20 @@ const handleMoveAsset = (asset) => {
         <div class="empty-icon">📂</div>
         <h3>У вас пока нет портфелей</h3>
         <p>Создайте первый портфель, чтобы начать отслеживать активы</p>
-        <button class="btn btn-primary empty-btn" @click="openModal('addPortfolio')">
-          <span class="icon">📁</span>
-          <span>Создать портфель</span>
-        </button>
+        <Button variant="primary" @click="openModal('addPortfolio')" class="empty-btn">
+          <template #icon>
+            <FolderPlus :size="16" />
+          </template>
+          Создать портфель
+        </Button>
       </div>
 
-      <div v-else class="tree-wrapper">
+      <div v-else class="assets-content">
         <PortfolioTree
           :portfolios="parsedDashboard.portfolioTree"
           :expandedPortfolios="expandedPortfolios"
           :updatingPortfolios="updatingPortfolios"
+          :showSoldAssets="showSoldAssets"
           @togglePortfolio="togglePortfolio"
           @clearPortfolio="clearPortfolio"
           @deletePortfolio="deletePortfolio"
@@ -319,57 +367,10 @@ const handleMoveAsset = (asset) => {
           @moveAsset="handleMoveAsset"
         />
       </div>
-    </div>
-  </div>
+  </PageLayout>
 </template>
 
 <style scoped>
-/* Base Layout */
-.dashboard-container {
-  min-height: 100vh;
-  padding: 32px 20px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: #1f2937;
-}
-
-.content-wrapper {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-/* Action Bar */
-.action-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 32px;
-  padding: 0;
-  background: transparent;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 768px) {
-  .action-bar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-  }
-  
-  .buttons-group {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #111827;
-  margin: 0;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-}
 
 .buttons-group {
   display: flex;
@@ -388,96 +389,38 @@ const handleMoveAsset = (asset) => {
   flex-shrink: 0;
 }
 
-/* Buttons */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 38px;
-  padding: 0 16px;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 10px;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  position: relative;
-  overflow: hidden;
+/* Button groups */
+.button-group-unified {
+  display: flex;
+  gap: 0;
 }
 
-.btn-primary {
-  background: #2563eb;
-  color: white;
-  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+.button-group-unified :deep(.btn-group-left) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
 }
 
-.btn-primary:hover {
-  background: #1d4ed8;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+.button-group-unified :deep(.btn-group-right) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 1px solid #e5e7eb;
 }
 
-.btn-primary:active {
-  transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+.button-group-unified :deep(.btn-group-left:hover) {
+  border-right-color: #527de5;
 }
 
-.btn-secondary {
-  background: white;
-  color: #374151;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+.button-group-unified :deep(.btn-group-right:hover) {
+  border-left-color: #527de5;
 }
 
-.btn-secondary:hover {
-  background: #f9fafb;
-  border-color: #d1d5db;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+.btn-refresh :deep(.btn-icon svg) {
+  transition: transform 0.2s ease;
 }
 
-.btn-secondary:active {
-  transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.btn-outline {
-  background: transparent;
-  border: 1px solid #e5e7eb;
-  color: #6b7280;
-}
-
-.btn-outline:hover {
-  border-color: #2563eb;
-  color: #2563eb;
-  background: #f0f9ff;
-  transform: translateY(-1px);
-}
-
-.btn-outline:active {
-  transform: translateY(0);
-  background: #e0f2fe;
-}
-
-.btn-ghost {
-  background: transparent;
-  color: #6b7280;
-  padding: 0 12px;
-  width: 38px;
-  border-radius: 10px;
-}
-
-.btn-ghost:hover {
-  background: #f9fafb;
-  color: #2563eb;
-  transform: translateY(-1px) rotate(90deg);
-}
-
-.btn-ghost:active {
-  transform: translateY(0) rotate(90deg);
+.btn-refresh:hover :deep(.btn-icon svg) {
+  transform: rotate(180deg);
 }
 
 /* Индикатор активных задач импорта */
@@ -582,13 +525,6 @@ const handleMoveAsset = (asset) => {
   font-weight: 500;
 }
 
-.icon {
-  font-size: 15px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
 /* Empty State */
 
@@ -616,4 +552,9 @@ const handleMoveAsset = (asset) => {
 .empty-btn {
   margin-top: 8px;
 }
+
+.assets-content {
+  margin-top: 0;
+}
+
 </style>

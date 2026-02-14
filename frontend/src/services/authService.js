@@ -42,6 +42,19 @@ export const authService = {
         }
     },
 
+    async updateProfile(name, email) {
+        const data = {};
+        if (name !== undefined && name !== null) {
+            data.name = name;
+        }
+        if (email !== undefined && email !== null) {
+            data.email = email;
+        }
+        
+        const res = await apiClient.put(API_ENDPOINTS.AUTH.UPDATE_PROFILE, data);
+        return res.data;
+    },
+
     logout() {
         localStorage.removeItem('access_token');
     },

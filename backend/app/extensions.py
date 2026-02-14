@@ -1,45 +1,44 @@
 """
-Инициализация расширений Flask.
-Все расширения создаются здесь и инициализируются в create_app.
+Инициализация расширений для FastAPI.
 """
 from flask_bcrypt import Bcrypt
-from flask_jwt_extended import JWTManager
-from flask_cors import CORS
 from supabase import create_client, Client as SupabaseClient
+from supabase.lib.client_options import SyncClientOptions
+from supabase_auth import SyncMemoryStorage
+from httpx import Timeout
 from app.config import Config
 
-# Инициализация расширений
+# Bcrypt для хеширования паролей
 bcrypt = Bcrypt()
-jwt = JWTManager()
-cors = CORS()
 
-# Supabase клиент (инициализируется при создании приложения)
+# Supabase клиент (инициализируется при импорте)
 supabase: SupabaseClient = None
 
+# Таймауты для Supabase клиента
+SUPABASE_TIMEOUT = Timeout(
+    connect=10.0,  # Таймаут подключения: 10 секунд
+    read=30.0,     # Таймаут чтения: 30 секунд
+    write=10.0,    # Таймаут записи: 10 секунд
+    pool=5.0       # Таймаут пула соединений: 5 секунд
+)
 
-def init_extensions(app=None):
-    """Инициализирует все расширения Flask."""
-    if app:
-        # Bcrypt для хеширования паролей
-        bcrypt.init_app(app)
-        
-        # JWT для аутентификации
-        jwt.init_app(app)
-        
-        # CORS для кросс-доменных запросов
-        cors.init_app(
-            app,
-            origins=Config.CORS_ORIGINS,
-            supports_credentials=Config.CORS_SUPPORTS_CREDENTIALS,
-            resources={r"/*": {"origins": "*"}},
-            methods=Config.CORS_METHODS,
-        )
-    
-    # Supabase клиент
+
+def init_extensions():
+    """Инициализирует все расширения для FastAPI."""
     global supabase
     if not supabase:
         Config.validate()
-        supabase = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
-    
-    return app
+        # Создаем клиент с таймаутами
+        # Для синхронного клиента нужно использовать SyncClientOptions с storage
+        options = SyncClientOptions(
+            postgrest_client_timeout=SUPABASE_TIMEOUT,
+            storage_client_timeout=30,
+            function_client_timeout=30,
+            storage=SyncMemoryStorage()  # Обязательный параметр для синхронного клиента
+        )
+        supabase = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY, options=options)
+    return supabase
 
+
+# Инициализируем при импорте
+init_extensions()

@@ -1,5 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { X } from 'lucide-vue-next'
+import { Button } from '../base'
 import taskService from '../../services/taskService'
 import { useImportTasksStore } from '../../stores/importTasks.store'
 
@@ -255,20 +257,20 @@ const statusColor = {
       </div>
 
       <div class="modal-actions">
-        <button 
+        <Button 
           v-if="status === 'pending' || status === 'processing'"
-          class="btn btn-secondary" 
+          variant="secondary" 
           @click="cancelTask"
         >
           Отменить
-        </button>
-        <button 
+        </Button>
+        <Button 
           v-else
-          class="btn btn-primary" 
+          variant="primary" 
           @click="handleClose"
         >
           Закрыть
-        </button>
+        </Button>
       </div>
     </div>
   </div>
@@ -465,23 +467,6 @@ const statusColor = {
   gap: 6px;
 }
 
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-}
-
-.btn-primary:hover {
-  background: #2563eb;
-}
-
-.btn-secondary {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.btn-secondary:hover {
-  background: #e5e7eb;
-}
 
 .close-btn {
   background: #f3f4f6;

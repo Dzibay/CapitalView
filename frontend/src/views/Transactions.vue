@@ -6,7 +6,10 @@ import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/ContextMenu.vue'
 import operationsService from '../services/operationsService'
-import CustomSelect from '../components/CustomSelect.vue'
+import transactionsService from '../services/transactionsService'
+import CustomSelect from '../components/base/CustomSelect.vue'
+import PageLayout from '../components/PageLayout.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 // Используем stores вместо inject
 const dashboardStore = useDashboardStore()
@@ -16,14 +19,40 @@ const transactionsStore = useTransactionsStore()
 const viewMode = ref('transactions') // 'transactions' или 'operations'
 const operations = ref([])
 const isLoadingOperations = ref(false)
+const isLoadingTransactions = ref(false)
 
 const transactions = computed(() => dashboardStore.transactions || [])
 
-// Загружаем транзакции при открытии страницы, если они еще не загружены
-onMounted(async () => {
-  if (!dashboardStore.transactionsLoaded) {
-    await transactionsStore.preloadTransactions()
+// Загрузка всех транзакций
+const loadTransactions = async () => {
+  if (isLoadingTransactions.value) return
+  
+  try {
+    isLoadingTransactions.value = true
+    const response = await transactionsService.getTransactions({ limit: 2000 })
+    const transactionsList = response?.transactions || response || []
+    // Нормализуем данные: добавляем id если есть только transaction_id
+    const normalizedTransactions = transactionsList.map(tx => ({
+      ...tx,
+      id: tx.id || tx.transaction_id,
+      transaction_id: tx.transaction_id || tx.id,
+      transaction_type: tx.transaction_type || tx.transaction_type_name
+    }))
+    // Обновляем транзакции в store
+    dashboardStore.transactions = normalizedTransactions
+    dashboardStore.transactionsLoaded = true
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.error('Ошибка загрузки транзакций:', err)
+    }
+  } finally {
+    isLoadingTransactions.value = false
   }
+}
+
+// Загружаем все транзакции при открытии страницы
+onMounted(async () => {
+  await loadTransactions()
 })
 
 // Загрузка операций
@@ -629,41 +658,44 @@ const transactionsSummary = computed(() => {
 </script>
 
 <template>
-  <div class="transactions-page">
-    <div class="page-layout">
-      <div class="main-content">
-        <div class="header-row">
-          <h1 class="page-title">История транзакций</h1>
-          <div class="header-actions">
-            <div class="view-mode-switcher">
-              <button 
-                class="btn btn-ghost" 
-                :class="{ active: viewMode === 'transactions' }"
-                @click="viewMode = 'transactions'"
-              >
-                Транзакции
-              </button>
-              <button 
-                class="btn btn-ghost" 
-                :class="{ active: viewMode === 'operations' }"
-                @click="viewMode = 'operations'"
-              >
-                Операции
-              </button>
-            </div>
-            <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
-              <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
-              <button @click="deleteSelected" class="btn btn-danger-soft">
-                Удалить выбранные
-              </button>
-            </div>
+  <PageLayout>
+    <PageHeader title="История транзакций">
+      <template #actions>
+        <div class="header-actions">
+          <div class="view-mode-switcher">
+            <button 
+              class="btn btn-ghost" 
+              :class="{ active: viewMode === 'transactions' }"
+              @click="viewMode = 'transactions'"
+            >
+              Транзакции
+            </button>
+            <button 
+              class="btn btn-ghost" 
+              :class="{ active: viewMode === 'operations' }"
+              @click="viewMode = 'operations'"
+            >
+              Операции
+            </button>
+          </div>
+          <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
+            <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
+            <button @click="deleteSelected" class="btn btn-danger-soft">
+              Удалить выбранные
+            </button>
           </div>
         </div>
+      </template>
+    </PageHeader>
+
+    <div class="transactions-content">
+      <div class="main-content">
 
         <div style="display: flex; gap: 20px;">
           <div class="card">
           <div class="toolbar">
             <div class="filters-top">
+          <!-- Поиск по активу -->
           <div v-if="viewMode === 'transactions'" class="asset-search-wrapper">
             <span class="select-label">Актив</span>
             <span class="input-icon">🔍</span>
@@ -681,6 +713,28 @@ const transactionsSummary = computed(() => {
                 <span v-if="getAssetMeta(a)" class="meta-ticker">{{ getAssetMeta(a).ticker }}</span>
               </li>
               <li v-if="filteredAssetsList.length === 0" class="asset-empty">
+                <span style="display: block; margin-bottom: 4px;">🔍</span>
+                Ничего не найдено
+              </li>
+            </ul>
+          </div>
+          
+          <div v-if="viewMode === 'operations'" class="asset-search-wrapper">
+            <span class="select-label">Актив</span>
+            <span class="input-icon">🔍</span>
+            <input
+              type="text"
+              v-model="assetSearch"
+              placeholder="Поиск актива"
+              class="form-input"
+            />
+            <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
+            
+            <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
+              <li v-for="a in filteredOperationsAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
+                <span v-html="highlightMatch(a)" />
+              </li>
+              <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">
                 <span style="display: block; margin-bottom: 4px;">🔍</span>
                 Ничего не найдено
               </li>
@@ -708,31 +762,8 @@ const transactionsSummary = computed(() => {
             />
           </div>
           
-          <!-- Поиск по активу для операций -->
-          <div v-if="viewMode === 'operations'" class="asset-search-wrapper">
-            <span class="select-label">Актив</span>
-            <span class="input-icon">🔍</span>
-            <input
-              type="text"
-              v-model="assetSearch"
-              placeholder="Поиск актива"
-              class="form-input"
-            />
-            <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
-            
-            <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
-              <li v-for="a in filteredOperationsAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
-                <span v-html="highlightMatch(a)" />
-              </li>
-              <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">
-                <span style="display: block; margin-bottom: 4px;">🔍</span>
-                Ничего не найдено
-              </li>
-            </ul>
-          </div>
-          
           <button @click="resetFilters" class="btn btn-ghost reset-btn" title="Сбросить фильтры">
-             ↺
+            <span class="reset-icon">↺</span>
           </button>
             </div>
 
@@ -984,24 +1015,17 @@ const transactionsSummary = computed(() => {
       @editTransaction="handleEditTransaction"
       @deleteTransaction="handleDeleteTransaction"
     />
-  </div>
-  
+  </PageLayout>
 </template>
 
 <style scoped>
 /* --- Layout & Typography --- */
-.transactions-page {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 32px 20px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: #1f2937;
-}
-
-.page-layout {
+.transactions-content {
   display: flex;
   gap: 24px;
   align-items: flex-start;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1f2937;
 }
 
 .main-content {
@@ -1014,20 +1038,6 @@ const transactionsSummary = computed(() => {
   flex-shrink: 0;
   position: sticky;
   top: 24px;
-}
-
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  margin: 0;
-  color: #111827;
 }
 
 .header-actions {
@@ -1260,10 +1270,16 @@ const transactionsSummary = computed(() => {
   background: #f3f4f6;
   color: #1f2937;
   border-color: #d1d5db;
-  transform: rotate(90deg);
 }
 .reset-btn:active {
-  transform: rotate(90deg) scale(0.95);
+  transform: scale(0.95);
+}
+.reset-icon {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+.reset-btn:hover .reset-icon {
+  transform: rotate(-90deg);
 }
 .clear-btn {
   position: absolute;
@@ -1432,8 +1448,18 @@ const transactionsSummary = computed(() => {
 }
 .badge-buy { background: #dcfce7; color: #166534; }
 .badge-sell { background: #fee2e2; color: #991b1b; }
-.badge-dividend { background: #dbeafe; color: #1e40af; }
-.badge-coupon { background: #f3e8ff; color: #6b21a8; }
+.badge-dividend { 
+  background: rgba(37, 99, 235, 0.1); 
+  color: var(--payout-dividends, #2563eb); 
+}
+.badge-coupon { 
+  background: rgba(6, 182, 212, 0.1); 
+  color: var(--payout-coupons, #06b6d4); 
+}
+.badge-amortization {
+  background: rgba(251, 146, 60, 0.1);
+  color: var(--payout-amortizations, #fb923c);
+}
 .badge-other { background: #f3f4f6; color: #4b5563; }
 .badge-deposit { background: #ccfbf1; color: #0f766e; }
 .badge-withdraw { background: #ffedd5; color: #9a3412; }

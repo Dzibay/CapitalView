@@ -48,9 +48,22 @@ export const useDashboardStore = defineStore('dashboard', {
         
         if (data?.data) {
           this.portfolios = data.data.portfolios || []
-          // Транзакции не загружаем при инициализации - они загружаются в фоне отдельным запросом
-          // this.transactions = data.data.transactions || []
+          // Транзакции теперь приходят вместе с dashboard
+          this.transactions = data.data.transactions || []
+          this.transactionsLoaded = true
           this.referenceData = data.data.referenceData || {}
+          
+          // Аналитика теперь приходит в полном формате из get_user_portfolios_analytics
+          // Она уже в правильном формате с totals, monthly_flow, monthly_payouts, asset_distribution, etc.
+          // Извлекаем аналитику из портфелей
+          this.analytics = (data.data.portfolios || [])
+            .filter(p => p.analytics && Object.keys(p.analytics).length > 0)
+            .map(p => ({
+              portfolio_id: p.id,
+              portfolio_name: p.name,
+              ...p.analytics  // Распаковываем всю аналитику (totals, monthly_flow, monthly_payouts, etc.)
+            }))
+          this.analyticsLoaded = true
         }
         
         this.lastFetch = Date.now()
@@ -105,7 +118,31 @@ export const useDashboardStore = defineStore('dashboard', {
     updatePortfolio(portfolioId, updates) {
       const portfolio = this.portfolios.find(p => p.id === portfolioId)
       if (portfolio) {
-        Object.assign(portfolio, updates)
+        console.log('[DashboardStore] updatePortfolio called:', {
+          portfolioId,
+          updates,
+          currentPortfolio: portfolio
+        })
+        
+        // Если обновляется description, нужно правильно его слить
+        if (updates.description) {
+          portfolio.description = {
+            ...(portfolio.description || {}),
+            ...updates.description
+          }
+          console.log('[DashboardStore] description updated:', portfolio.description)
+        }
+        
+        // Обновляем остальные поля
+        Object.keys(updates).forEach(key => {
+          if (key !== 'description') {
+            portfolio[key] = updates[key]
+          }
+        })
+        
+        console.log('[DashboardStore] portfolio after update:', portfolio)
+      } else {
+        console.warn('[DashboardStore] Portfolio not found:', portfolioId)
       }
     },
 

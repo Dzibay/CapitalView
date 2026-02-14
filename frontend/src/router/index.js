@@ -8,6 +8,7 @@ import AssetDetail from '../views/AssetDetail.vue';
 import Transactions from '../views/Transactions.vue';
 import Analitics from '../views/Analitics.vue';
 import Dividends from '../views/Dividends.vue';
+import Settings from '../views/Settings.vue';
 import { authService } from '../services/authService';
 
 const routes = [
@@ -27,7 +28,8 @@ const routes = [
       { path: '/assets', component: Assets },
       { path: '/assets/:id', component: AssetDetail, props: true },
       { path: '/transactions', component: Transactions},
-      { path: '/dividends', component: Dividends}
+      { path: '/dividends', component: Dividends},
+      { path: '/settings', component: Settings}
     ]
   }
 ]

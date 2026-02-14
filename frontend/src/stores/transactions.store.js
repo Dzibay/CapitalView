@@ -63,36 +63,19 @@ export const useTransactionsStore = defineStore('transactions', {
     },
 
     async preloadTransactions() {
+      // Транзакции теперь загружаются вместе с dashboard
+      // Эта функция оставлена для обратной совместимости, но не делает ничего
       const dashboardStore = useDashboardStore()
-      
       if (dashboardStore.transactionsLoaded) return
-      
-      try {
-        const response = await transactionsService.getTransactions({})
-        // API возвращает объект с полем transactions
-        const transactions = response?.transactions || response || []
-        dashboardStore.addTransactions(transactions)
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          console.error("Ошибка фоновой загрузки транзакций:", err)
-        }
-      }
+      // Если транзакции еще не загружены, они будут загружены при следующем fetchDashboard
     },
 
     async loadAnalytics() {
+      // Аналитика теперь загружается вместе с dashboard
+      // Эта функция оставлена для обратной совместимости, но не делает ничего
       const dashboardStore = useDashboardStore()
-      
       if (dashboardStore.analyticsLoaded) return
-
-      try {
-        const res = await analyticsService.getAnalytics()
-        const analyticsArray = Array.isArray(res?.analytics) ? res.analytics : []
-        dashboardStore.addAnalytics(analyticsArray)
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          console.error("❌ Ошибка загрузки аналитики:", err)
-        }
-      }
+      // Если аналитика еще не загружена, она будет загружена при следующем fetchDashboard
     }
   }
 })

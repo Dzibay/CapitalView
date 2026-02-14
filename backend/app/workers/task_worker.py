@@ -9,15 +9,16 @@ import time
 from typing import Optional
 from datetime import datetime
 
-from app.services.task_service import (
+from app.domain.services.task_service import (
     get_next_pending_task,
     update_task_status,
     TaskStatus
 )
-from app.services.portfolio_service import import_broker_portfolio
-from app.services.user_service import get_user_by_id
-from app.services.broker_connections_service import upsert_broker_connection
+from app.domain.services.portfolio_service import import_broker_portfolio
+from app.domain.services.user_service import get_user_by_id
+from app.domain.services.broker_connections_service import upsert_broker_connection
 from app.constants import BrokerID
+from app.infrastructure.database.supabase_async import table_select_async, table_insert_async
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ async def process_import_task(task: dict) -> bool:
         broker_id_int = int(broker_id) if isinstance(broker_id, str) else broker_id
         
         if broker_id_int == BrokerID.TINKOFF:
-            from app.services.integrations.tinkoff_import import get_tinkoff_portfolio
+            from app.infrastructure.external.brokers.tinkoff import get_tinkoff_portfolio
             broker_data = get_tinkoff_portfolio(broker_token, 365)
         else:
             raise Exception(f"Импорт для брокера {broker_id_int} не реализован")
@@ -84,20 +85,49 @@ async def process_import_task(task: dict) -> bool:
                 progress=40,
                 progress_message="Создание портфеля..."
             )
-            from app.services.portfolio_service import get_user_portfolio_parent
+            from app.domain.services.portfolio_service import get_user_portfolio_parent
+            
             user_root_portfolio = await get_user_portfolio_parent(user_email)
-            from app.services.supabase_service import table_insert
-            new_portfolio = {
-                "user_id": user_id,
-                "parent_portfolio_id": user_root_portfolio["id"],
-                "name": portfolio_name or f"Портфель {broker_id}",
-                "description": f"Импорт из брокера {broker_id} — {datetime.utcnow().isoformat()}",
-            }
-            res = table_insert("portfolios", new_portfolio)
-            if not res:
-                raise Exception("Ошибка при создании портфеля")
-            portfolio_id = res[0]["id"]
-            logger.info(f"Создан новый портфель id={portfolio_id}")
+            parent_portfolio_id = user_root_portfolio["id"]
+            portfolio_name_final = portfolio_name or f"Портфель {broker_id}"
+            
+            # Проверяем, не существует ли уже портфель с таким именем (защита от race condition)
+            existing = await table_select_async(
+                "portfolios",
+                select="id",
+                filters={"parent_portfolio_id": parent_portfolio_id, "name": portfolio_name_final}
+            )
+            
+            if existing:
+                # Портфель уже существует (возможно, создан другой параллельной задачей)
+                portfolio_id = existing[0]["id"]
+                logger.info(f"Портфель '{portfolio_name_final}' уже существует, используем id={portfolio_id}")
+            else:
+                # Портфель не существует, создаем новый
+                new_portfolio = {
+                    "user_id": user_id,
+                    "parent_portfolio_id": parent_portfolio_id,
+                    "name": portfolio_name_final,
+                    "description": f"Импорт из брокера {broker_id} — {datetime.utcnow().isoformat()}",
+                }
+                res = await table_insert_async("portfolios", new_portfolio)
+                
+                if res:
+                    portfolio_id = res[0]["id"]
+                    logger.info(f"Создан новый портфель id={portfolio_id}")
+                else:
+                    # Вставка не удалась, возможно портфель был создан другой задачей
+                    # Проверяем повторно (race condition)
+                    existing_retry = await table_select_async(
+                        "portfolios",
+                        select="id",
+                        filters={"parent_portfolio_id": parent_portfolio_id, "name": portfolio_name_final}
+                    )
+                    if existing_retry:
+                        portfolio_id = existing_retry[0]["id"]
+                        logger.info(f"Портфель '{portfolio_name_final}' создан другой задачей, используем id={portfolio_id}")
+                    else:
+                        raise Exception(f"Ошибка при создании портфеля '{portfolio_name_final}'")
         else:
             update_task_status(
                 task_id,
@@ -114,7 +144,7 @@ async def process_import_task(task: dict) -> bool:
             progress_message="Импорт транзакций и операций..."
         )
         
-        result = await import_broker_portfolio(user_email, portfolio_id, broker_data)
+        result = await import_broker_portfolio(user_email, portfolio_id, broker_data, broker_id_int)
         
         # Обновляем соединение с брокером
         update_task_status(
@@ -151,7 +181,7 @@ async def process_import_task(task: dict) -> bool:
             logger.info(f"Повторная попытка {new_retry_count}/{MAX_RETRIES} для задачи {task_id}")
             
             # Обновляем retry_count и возвращаем задачу в pending
-            from app.services.supabase_service import table_update
+            from app.infrastructure.database.supabase_service import table_update
             table_update(
                 "import_tasks",
                 {"retry_count": new_retry_count, "status": TaskStatus.PENDING.value},
@@ -192,7 +222,8 @@ async def worker_loop():
                 task = get_next_pending_task()
                 
                 if task:
-                    print(task)
+                    task = task[0]
+                    logger.debug(f"Найдена задача: {task}")
                     task_id = task["task_id"]
                     logger.info(f"Найдена задача {task_id}, начинаем обработку")
                     

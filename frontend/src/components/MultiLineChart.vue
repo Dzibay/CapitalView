@@ -23,6 +23,10 @@ const props = defineProps({
     type: String,
     default: "All"
   },
+  chartType: {
+    type: String,
+    default: null // 'position' | 'quantity' | 'price' или null
+  },
   formatCurrency: {
     type: Function,
     default: (x) => x
@@ -201,10 +205,56 @@ const renderChart = (aggr) => {
   const minValue = allValues.length > 0 ? Math.min(...allValues) : 0
   const maxValue = allValues.length > 0 ? Math.max(...allValues) : 100
   
-  // Если есть значения ниже нуля, нижняя граница динамически подстраивается
-  // Если все значения выше или равны нулю, нижняя граница = 0
-  const yMin = minValue < 0 ? getNiceMin(minValue) : 0
-  const yMax = getNiceMax(maxValue)
+  // Вычисляем диапазон значений
+  const range = maxValue - minValue
+  
+  // Для коротких периодов (месяц) или графика цены единицы используем адаптивную шкалу
+  // Если диапазон мал относительно значений, используем более точную шкалу
+  let yMin, yMax
+  
+  // Применяем адаптивную шкалу для периода "месяц" с малыми изменениями
+  const shouldUseAdaptiveScale = 
+    props.period === '1M' && 
+    range > 0 && 
+    range < maxValue * 0.1
+  
+  if (shouldUseAdaptiveScale) {
+    // Для месяца с малыми изменениями используем шкалу, основанную на диапазоне
+    // Добавляем запас 15% сверху и снизу для лучшей визуализации
+    const padding = range * 0.15
+    const adjustedMin = minValue - padding
+    const adjustedMax = maxValue + padding
+    
+    // Округляем до "красивых" значений, но с учетом малого диапазона
+    const rangeOrder = Math.floor(Math.log10(range))
+    let step
+    if (rangeOrder < 0) {
+      step = Math.pow(10, rangeOrder) * 5
+    } else if (rangeOrder === 0) {
+      step = 1
+    } else if (rangeOrder === 1) {
+      step = 10
+    } else if (rangeOrder === 2) {
+      step = 100
+    } else if (rangeOrder === 3) {
+      step = 1000
+    } else {
+      step = Math.pow(10, rangeOrder - 1) * 5
+    }
+    
+    yMin = Math.floor(adjustedMin / step) * step
+    yMax = Math.ceil(adjustedMax / step) * step
+    
+    // Убеждаемся, что min не меньше реального минимума, а max не больше реального максимума
+    if (yMin > minValue) yMin = Math.floor(minValue / step) * step
+    if (yMax < maxValue) yMax = Math.ceil(maxValue / step) * step
+  } else {
+    // Для длинных периодов используем стандартную логику
+    // Если есть значения ниже нуля, нижняя граница динамически подстраивается
+    // Если все значения выше или равны нулю, нижняя граница = 0
+    yMin = minValue < 0 ? getNiceMin(minValue) : 0
+    yMax = getNiceMax(maxValue)
+  }
 
   const datasets = props.chartData.datasets.map((ds, i) => {
     const base = {
@@ -254,6 +304,18 @@ const renderChart = (aggr) => {
     existingChart.destroy()
   }
 
+  // Получаем цвета из CSS переменных
+  const getCSSVariable = (varName) => {
+    if (typeof window !== 'undefined') {
+      return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#6b7280'
+    }
+    return '#6b7280'
+  }
+  
+  const axisText = getCSSVariable('--axis-text') || '#6b7280'
+  const axisTextLight = getCSSVariable('--axis-text-light') || '#9ca3af'
+  const axisGrid = getCSSVariable('--axis-grid') || '#e5e7eb'
+
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
@@ -269,30 +331,104 @@ const renderChart = (aggr) => {
         y: {
           min: yMin,
           max: yMax,
-          ticks: {
-            callback: v => (v >= 1000 ? v / 1000 + 'k' : v),
-            color: '#9ca3af',
-            padding: 10
+          grid: {
+            color: axisGrid,
+            drawBorder: false,
+            lineWidth: 1,
+            drawTicks: false,
+            tickLength: 0
           },
-          grid: { color: '#e5e7eb', borderDash: [5, 5], drawBorder: false }
+          border: {
+            display: false
+          },
+          ticks: {
+            callback: v => {
+              const absValue = Math.abs(v)
+              if (absValue >= 1000) {
+                const kValue = v / 1000
+                const formatted = Math.abs(kValue) % 1 === 0 
+                  ? kValue.toFixed(0) 
+                  : kValue.toFixed(1)
+                return `${formatted}K`
+              }
+              return v.toString()
+            },
+            color: axisTextLight,
+            font: {
+              size: 12,
+              family: 'Inter, system-ui, sans-serif',
+              weight: '500'
+            },
+            padding: 12,
+            stepSize: null,
+            maxTicksLimit: 8
+          }
         },
 
         x: {
           type: 'category',
+          grid: {
+            display: false,
+            drawBorder: false
+          },
+          border: {
+            display: false
+          },
           ticks: {
-            color: '#9ca3af',
+            color: axisText,
+            font: {
+              size: 12,
+              family: 'Inter, system-ui, sans-serif',
+              weight: '500'
+            },
             autoSkip: false,
             maxRotation: 0,
             minRotation: 0,
+            padding: 12,
             callback: function (value, index) {
               const labels = this.chart.data.labels
               if (!labels || index >= labels.length) return ''
-              const d = new Date(labels[index])
-              const prev = index > 0 ? new Date(labels[index - 1]) : null
-              const first = new Date(labels[0])
-              const last = new Date(labels[labels.length - 1])
+              
+              let d
+              try {
+                d = new Date(labels[index])
+                if (isNaN(d.getTime())) return ''
+              } catch (e) {
+                return ''
+              }
+              
+              const prev = index > 0 ? (() => {
+                try {
+                  const prevDate = new Date(labels[index - 1])
+                  return isNaN(prevDate.getTime()) ? null : prevDate
+                } catch {
+                  return null
+                }
+              })() : null
+              
+              const first = (() => {
+                try {
+                  const firstDate = new Date(labels[0])
+                  return isNaN(firstDate.getTime()) ? null : firstDate
+                } catch {
+                  return null
+                }
+              })()
+              
+              const last = (() => {
+                try {
+                  const lastDate = new Date(labels[labels.length - 1])
+                  return isNaN(lastDate.getTime()) ? null : lastDate
+                } catch {
+                  return null
+                }
+              })()
+              
+              if (!first || !last) return ''
+              
               const totalDays = (last - first) / 86400000
 
+              // Старая логика форматирования подписей
               if (totalDays <= 45) {
                 const step = Math.ceil(labels.length / 45) || 1
                 if (index === 0) return d.getDate()

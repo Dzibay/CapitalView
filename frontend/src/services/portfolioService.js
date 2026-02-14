@@ -24,16 +24,27 @@ export default {
     return res.data;
   },
 
-  async updatePortfolioGoal(portfolioId, { title, targetAmount }) {
+  async updatePortfolioGoal(portfolioId, { title, targetAmount, monthlyContribution, annualReturn, useInflation, inflationRate }) {
     const payload = {
-      text: title,
-      capital_target_name: title,
-      capital_target_value: targetAmount
+      text: title || '',
+      capital_target_name: title || '',
+      capital_target_value: targetAmount,
+      monthly_contribution: monthlyContribution,
+      annual_return: annualReturn,
+      use_inflation: useInflation || false,
+      inflation_rate: inflationRate || 7.5
     };
 
+    console.log('[PortfolioService] updatePortfolioGoal payload:', payload);
+
     const response = await apiClient.post(API_ENDPOINTS.PORTFOLIO.DESCRIPTION(portfolioId), payload);
+    
+    console.log('[PortfolioService] updatePortfolioGoal response:', response.data);
+    
     if (response.data.success) {
-      return response.data.description;
+      const result = response.data.description;
+      console.log('[PortfolioService] updatePortfolioGoal result:', result);
+      return result;
     } else {
       throw new Error(response.data.error || 'Ошибка при обновлении цели');
     }

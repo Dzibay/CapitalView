@@ -50,11 +50,13 @@
         </div>
 
         <div class="form-actions">
-          <button type="button" class="btn btn-secondary" @click="$emit('close')">Отмена</button>
-          <button type="submit" class="btn btn-primary">
-            <span class="btn-icon">✓</span>
+          <Button variant="secondary" type="button" @click="$emit('close')">Отмена</Button>
+          <Button variant="primary" type="submit" :loading="saving">
+            <template #icon>
+              <Check :size="16" />
+            </template>
             Добавить портфель
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -63,7 +65,9 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
-import CustomSelect from '../CustomSelect.vue'
+import { Check } from 'lucide-vue-next'
+import { Button } from '../base'
+import CustomSelect from '../base/CustomSelect.vue'
 
 const props = defineProps({
   portfolios: Array, // список портфелей для выбора родителя
@@ -297,54 +301,5 @@ const submitForm = async () => {
   padding-top: 16px;
   margin-top: 8px;
   border-top: 1px solid #f3f4f6;
-}
-
-.btn {
-  padding: 10px 18px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  letter-spacing: -0.01em;
-}
-
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-  box-shadow: 0 2px 4px rgba(59,130,246,0.2);
-}
-
-.btn-primary:hover {
-  background: #2563eb;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59,130,246,0.3);
-}
-
-.btn-primary:active {
-  transform: translateY(0);
-}
-
-.btn-secondary {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.btn-secondary:hover {
-  background: #e5e7eb;
-  transform: translateY(-1px);
-}
-
-.btn-secondary:active {
-  transform: translateY(0);
-}
-
-.btn-icon {
-  font-size: 14px;
-  font-weight: 700;
 }
 </style>

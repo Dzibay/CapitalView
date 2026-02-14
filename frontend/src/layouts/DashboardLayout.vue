@@ -28,19 +28,11 @@ onMounted(async () => {
       return
     }
     
-    // Загружаем данные dashboard (без транзакций)
+    // Загружаем данные dashboard (теперь включает транзакции и аналитику)
     await dashboardStore.fetchDashboard()
     
     // Инициализируем выбранный портфель
     uiStore.initSelectedPortfolioId(dashboardStore.portfolios)
-    
-    // Загружаем транзакции в фоне после отображения сайта
-    await nextTick()
-    transactionsStore.preloadTransactions().catch(err => {
-      if (import.meta.env.DEV) {
-        console.error('Ошибка фоновой загрузки транзакций:', err)
-      }
-    })
   } catch (err) {
     if (import.meta.env.DEV) {
       console.error('Ошибка при загрузке данных:', err)

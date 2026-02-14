@@ -105,27 +105,64 @@ export const usePortfoliosStore = defineStore('portfolios', {
       }
     },
 
-    async updatePortfolioGoal({ portfolioId, title, targetAmount }) {
+    async updatePortfolioGoal({ portfolioId, title, targetAmount, monthlyContribution, annualReturn, useInflation, inflationRate }) {
       try {
-        const res = await portfolioService.updatePortfolioGoal(portfolioId, { title, targetAmount })
+        console.log('[PortfoliosStore] updatePortfolioGoal called:', {
+          portfolioId,
+          title,
+          targetAmount,
+          monthlyContribution,
+          annualReturn,
+          useInflation,
+          inflationRate
+        })
+        
+        const res = await portfolioService.updatePortfolioGoal(portfolioId, { 
+          title, 
+          targetAmount, 
+          monthlyContribution, 
+          annualReturn,
+          useInflation,
+          inflationRate
+        })
+        
+        console.log('[PortfoliosStore] updatePortfolioGoal response:', res)
+        
         if (!res) throw new Error('Ошибка при обновлении цели')
 
         const updated = res[0]
+        console.log('[PortfoliosStore] updated portfolio data:', updated)
+        console.log('[PortfoliosStore] updated.description:', updated.description)
+        
         const dashboardStore = useDashboardStore()
         
         // Оптимистичное обновление
-        dashboardStore.updatePortfolio(portfolioId, {
-          description: updated.description,
+        // Обновляем description с учетом инфляции
+        const updatedDescription = {
+          ...updated.description,
+          use_inflation: updated.use_inflation !== undefined ? updated.use_inflation : (updated.description?.use_inflation || false),
+          inflation_rate: updated.inflation_rate !== undefined ? updated.inflation_rate : (updated.description?.inflation_rate || 7.5)
+        }
+        
+        const updateData = {
+          description: updatedDescription,
           capital_target_name: updated.capital_target_name,
           capital_target_value: updated.capital_target_value,
           capital_target_currency: updated.capital_target_currency
+        }
+        
+        console.log('[PortfoliosStore] updating portfolio with:', {
+          updateData,
+          updatedDescription,
+          use_inflation: updatedDescription.use_inflation,
+          inflation_rate: updatedDescription.inflation_rate
         })
+        
+        dashboardStore.updatePortfolio(portfolioId, updateData)
         
         return updated
       } catch (err) {
-        if (import.meta.env.DEV) {
-          console.error('Ошибка обновления цели портфеля:', err)
-        }
+        console.error('[PortfoliosStore] Ошибка обновления цели портфеля:', err)
         throw err
       }
     }
