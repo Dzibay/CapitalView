@@ -173,8 +173,8 @@ watch(route, () => {
   --sidebar-item-hover-bg: #1d1b31;
   --sidebar-text-color: #d1d5db;
   --sidebar-text-color-hover: #ffffff;
-  --sidebar-primary: hsl(245, 58%, 58%);
-  --sidebar-primary-gradient: linear-gradient(135deg, hsl(245, 58%, 58%), hsl(280, 60%, 55%));
+  --sidebar-primary: #527de5;
+  --sidebar-primary-gradient: linear-gradient(135deg, #527de5, #6b91ea);
   --sidebar-accent: hsl(245, 58%, 96%);
 }
 
