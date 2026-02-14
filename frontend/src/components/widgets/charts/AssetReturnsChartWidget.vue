@@ -5,7 +5,7 @@ import Widget from '../base/Widget.vue'
 import DisplayModeToggle from '../base/DisplayModeToggle.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
 import EmptyState from '../base/EmptyState.vue'
-import Checkbox from '../../base/Checkbox.vue'
+import ToggleSwitch from '../../base/ToggleSwitch.vue'
 
 const props = defineProps({
   assetReturns: {
@@ -451,7 +451,7 @@ const percentPlugin = {
   <Widget title="Прибыльность активов">
     <template #header>
       <div class="widget-controls">
-        <Checkbox v-model="showSoldAssets" label="Отображать проданные" />
+        <ToggleSwitch v-model="showSoldAssets" label="Отображать проданные" />
         <DisplayModeToggle v-model="displayMode" />
         <PeriodFilters v-model="selectedPeriod" :periods="periodOptions" />
       </div>

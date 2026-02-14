@@ -142,8 +142,8 @@ const chartData = computed(() => {
       borderSkipped: dataset.borderSkipped ?? false,
       maxBarThickness: dataset.maxBarThickness ?? 50,
       barThickness: dataset.barThickness ?? undefined,
-      categoryPercentage: props.stacked ? 0.8 : 0.6,
-      barPercentage: props.stacked ? 0.9 : 0.7
+      categoryPercentage: dataset.categoryPercentage ?? (props.stacked ? 0.8 : 0.6),
+      barPercentage: dataset.barPercentage ?? (props.stacked ? 0.9 : 0.7)
     }))
   }
 })

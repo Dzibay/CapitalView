@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import BarChart from '../../charts/BarChart.vue'
 import Widget from '../base/Widget.vue'
+import ToggleSwitch from '../../base/ToggleSwitch.vue'
 
 const props = defineProps({
   monthlyFlow: {
@@ -33,12 +34,14 @@ const chartDatasets = computed(() => {
     datasets.push({
       label: 'Приток',
       data: props.monthlyFlow?.map(m => m.inflow || 0) || [],
-      backgroundColor: 'rgba(16, 185, 129, 0.85)',
-      borderColor: '#10b981',
-      borderWidth: 2,
-      hoverBackgroundColor: '#10b981',
-      hoverBorderColor: '#059669',
-      borderRadius: 8
+      backgroundColor: 'rgba(16, 185, 129, 0.9)',
+      borderColor: 'transparent',
+      borderWidth: 0,
+      hoverBackgroundColor: 'rgba(16, 185, 129, 1)',
+      hoverBorderColor: 'transparent',
+      borderRadius: 6,
+      categoryPercentage: 0.8,
+      barPercentage: 0.95
     })
   }
   
@@ -46,25 +49,29 @@ const chartDatasets = computed(() => {
     datasets.push({
       label: 'Отток',
       data: props.monthlyFlow?.map(m => m.outflow || 0) || [],
-      backgroundColor: 'rgba(239, 68, 68, 0.85)',
-      borderColor: '#ef4444',
-      borderWidth: 2,
-      hoverBackgroundColor: '#ef4444',
-      hoverBorderColor: '#dc2626',
-      borderRadius: 8
+      backgroundColor: 'rgba(239, 68, 68, 0.9)',
+      borderColor: 'transparent',
+      borderWidth: 0,
+      hoverBackgroundColor: 'rgba(239, 68, 68, 1)',
+      hoverBorderColor: 'transparent',
+      borderRadius: 6,
+      categoryPercentage: 0.8,
+      barPercentage: 0.95
     })
   }
   
   if (showDifference.value) {
     datasets.push({
-      label: 'Разница',
+      label: 'Чистый приток',
       data: props.monthlyFlow?.map(m => (m.inflow || 0) + (m.outflow || 0)) || [],
-      backgroundColor: 'rgba(59, 130, 246, 0.85)',
-      borderColor: '#3b82f6',
-      borderWidth: 2,
-      hoverBackgroundColor: '#3b82f6',
-      hoverBorderColor: '#2563eb',
-      borderRadius: 8
+      backgroundColor: 'rgba(59, 130, 246, 0.9)',
+      borderColor: 'transparent',
+      borderWidth: 0,
+      hoverBackgroundColor: 'rgba(59, 130, 246, 1)',
+      hoverBorderColor: 'transparent',
+      borderRadius: 6,
+      categoryPercentage: 0.8,
+      barPercentage: 0.95
     })
   }
   
@@ -76,33 +83,24 @@ const chartDatasets = computed(() => {
   <Widget title="Месячные потоки">
     <template #header>
       <div class="chart-controls">
-        <label class="control-checkbox inflow">
-          <input 
-            type="checkbox" 
-            v-model="showInflow"
-            class="checkbox-input"
-          />
-          <span class="checkbox-custom"></span>
-          <span class="checkbox-label">Приток</span>
-        </label>
-        <label class="control-checkbox outflow">
-          <input 
-            type="checkbox" 
-            v-model="showOutflow"
-            class="checkbox-input"
-          />
-          <span class="checkbox-custom"></span>
-          <span class="checkbox-label">Отток</span>
-        </label>
-        <label class="control-checkbox difference">
-          <input 
-            type="checkbox" 
-            v-model="showDifference"
-            class="checkbox-input"
-          />
-          <span class="checkbox-custom"></span>
-          <span class="checkbox-label">Разница</span>
-        </label>
+        <ToggleSwitch 
+          v-model="showInflow"
+          label="Приток"
+          active-color="#10b981"
+          hover-color="#059669"
+        />
+        <ToggleSwitch 
+          v-model="showOutflow"
+          label="Отток"
+          active-color="#ef4444"
+          hover-color="#dc2626"
+        />
+        <ToggleSwitch 
+          v-model="showDifference"
+          label="Чистый приток"
+          active-color="#3b82f6"
+          hover-color="#2563eb"
+        />
       </div>
     </template>
     <div class="chart-container">
@@ -144,91 +142,9 @@ const chartDatasets = computed(() => {
 
 .chart-controls {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
   flex-wrap: wrap;
-}
-
-.control-checkbox {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.checkbox-input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.checkbox-custom {
-  position: relative;
-  width: 20px;
-  height: 20px;
-  border: 2px solid #d1d5db;
-  border-radius: 4px;
-  background: #fff;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.control-checkbox:hover .checkbox-custom {
-  border-color: #9ca3af;
-  background: #f9fafb;
-}
-
-.checkbox-input:checked + .checkbox-custom {
-  background: #3b82f6;
-  border-color: #3b82f6;
-}
-
-.checkbox-input:checked + .checkbox-custom::after {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: 2px;
-  width: 5px;
-  height: 10px;
-  border: solid white;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
-
-.checkbox-label {
-  font-size: 14px;
-  color: #4b5563;
-  font-weight: 500;
-  transition: color 0.2s;
-  padding-left: 0;
-}
-
-.control-checkbox:hover .checkbox-label {
-  color: #111827;
-}
-
-.checkbox-input:checked ~ .checkbox-label {
-  color: #111827;
-  font-weight: 600;
-}
-
-/* Цветовые индикаторы для каждого типа */
-.control-checkbox.inflow .checkbox-input:checked + .checkbox-custom {
-  background: #10b981;
-  border-color: #10b981;
-}
-
-.control-checkbox.outflow .checkbox-input:checked + .checkbox-custom {
-  background: #ef4444;
-  border-color: #ef4444;
-}
-
-.control-checkbox.difference .checkbox-input:checked + .checkbox-custom {
-  background: #3b82f6;
-  border-color: #3b82f6;
 }
 
 .chart-container {

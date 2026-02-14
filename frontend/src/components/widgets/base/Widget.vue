@@ -1,6 +1,7 @@
 <script setup>
 const props = defineProps({
-  title: { type: String, required: true }
+  title: { type: String, required: true },
+  compact: { type: Boolean, default: false }
 })
 </script>
 
@@ -16,7 +17,9 @@ const props = defineProps({
       </div>
     </div>
     
-    <slot />
+    <div class="widget-content" :class="{ 'widget-content--compact': compact }">
+      <slot />
+    </div>
   </div>
 </template>
 
@@ -67,5 +70,17 @@ const props = defineProps({
   font-weight: 400;
   color: #6B7280;
   margin: 0;
+}
+
+.widget-content {
+  margin-top: 1.0rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.widget-content--compact {
+  margin-top: 0;
 }
 </style>

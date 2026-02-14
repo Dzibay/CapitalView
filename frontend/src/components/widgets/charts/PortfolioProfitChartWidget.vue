@@ -37,6 +37,56 @@ const endValue = ref(0)
 const profitAbs = ref(0)
 const profitPercent = ref(0)
 
+// Функция для фильтрации данных по периоду (аналогично MultiLineChart)
+function filterDataByPeriod(labels, data, period) {
+  if (!labels || !labels.length || !data || !data.length) return { labels: [], data: [] }
+  
+  const today = new Date()
+  const normalizeDate = (date) => {
+    const d = new Date(date)
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+  
+  const parseDate = (d) => normalizeDate(new Date(d))
+  
+  const points = labels.map((label, index) => ({
+    date: parseDate(label),
+    value: data[index]
+  })).sort((a, b) => a.date - b.date)
+  
+  if (!points.length) return { labels: [], data: [] }
+  
+  const firstPoint = points[0]?.date
+  let firstDate
+  
+  if (period === '1M') {
+    firstDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30)
+  } else if (period === '1Y') {
+    firstDate = new Date(today.getFullYear(), today.getMonth() - 11, 1)
+  } else {
+    firstDate = firstPoint ? new Date(firstPoint) : new Date(today)
+  }
+  
+  firstDate = normalizeDate(firstDate)
+  const lastDate = normalizeDate(today)
+  
+  const filteredPoints = points.filter(p => {
+    const pointDate = normalizeDate(p.date)
+    return pointDate >= firstDate && pointDate <= lastDate
+  })
+  
+  if (filteredPoints.length === 0) {
+    // Если нет точек в периоде, возвращаем пустые массивы
+    return { labels: [], data: [] }
+  }
+  
+  return {
+    labels: filteredPoints.map(p => p.date.toISOString().split("T")[0]),
+    data: filteredPoints.map(p => p.value)
+  }
+}
+
 const updateStats = (data) => {
   if (!data || !data.length) {
     startValue.value = 0
@@ -49,7 +99,7 @@ const updateStats = (data) => {
   startValue.value = data[0]
   endValue.value = data[data.length - 1]
   
-  // Абсолютное изменение за весь период данных
+  // Абсолютное изменение за период
   profitAbs.value = endValue.value - startValue.value
   
   // Процент изменения относительно начальной точки
@@ -71,9 +121,6 @@ const formattedChartData = computed(() => {
   // Берем готовый PnL из данных
   const pnlData = props.chartData.data_pnl
 
-  // Обновляем статистику в шапке (на основе полных данных)
-  updateStats(pnlData)
-
   return {
     labels: props.chartData.labels,
     datasets: [
@@ -87,10 +134,34 @@ const formattedChartData = computed(() => {
   }
 })
 
+// Вычисляем отфильтрованные данные для статистики
+const filteredDataForStats = computed(() => {
+  if (!props.chartData?.labels?.length || !props.chartData?.data_pnl) {
+    return []
+  }
+  
+  const filtered = filterDataByPeriod(
+    props.chartData.labels,
+    props.chartData.data_pnl,
+    selectedPeriod.value
+  )
+  
+  return filtered.data
+})
+
+// Обновляем статистику при изменении периода или данных
+watch([filteredDataForStats, selectedPeriod], () => {
+  updateStats(filteredDataForStats.value)
+}, { immediate: true })
+
 // Следим за изменениями входящих данных
 watch(() => props.chartData, () => {
-  const pnlData = props.chartData?.data_pnl || []
-  updateStats(pnlData)
+  const filtered = filterDataByPeriod(
+    props.chartData?.labels || [],
+    props.chartData?.data_pnl || [],
+    selectedPeriod.value
+  )
+  updateStats(filtered.data)
 }, { deep: true })
 </script>
 
@@ -101,7 +172,7 @@ watch(() => props.chartData, () => {
     </template>
 
     <div class="capital-info">
-      <p class="capital-values" style="margin-top: 15px;">
+      <p class="capital-values" style="margin-top: 0;">
         {{ formatCurrency(startValue) }} → {{ formatCurrency(endValue) }}
       </p>
 
@@ -128,7 +199,7 @@ watch(() => props.chartData, () => {
 <style scoped>
 /* Убраны стили .widget, .capital-header - теперь используется компонент Widget */
 .capital-info {
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .capital-growth {
@@ -140,5 +211,6 @@ watch(() => props.chartData, () => {
 .chart-wrapper {
   flex: 1;
   position: relative;
+  min-height: 0;
 }
 </style>

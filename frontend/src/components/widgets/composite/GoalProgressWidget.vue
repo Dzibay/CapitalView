@@ -611,7 +611,6 @@ const formatAmountShort = (value) => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  margin-top: 0.75rem;
   position: relative;
 }
 

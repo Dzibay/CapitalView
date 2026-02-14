@@ -154,7 +154,7 @@ const computedChangeIsPositive = computed(() => {
 </script>
 
 <template>
-  <Widget :title="title">
+  <Widget :title="title" compact>
     <div 
       class="stat-card-content"
       :class="{ 'change-below': changePosition === 'below' }"

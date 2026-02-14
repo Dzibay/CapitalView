@@ -175,7 +175,7 @@ onMounted(() => {
     </template>
 
     <div class="capital-info">
-      <p class="capital-values" style="margin-top: 15px;">
+      <p class="capital-values" style="margin-top: 0;">
         {{ formatCurrency(startValue) }} → {{ formatCurrency(endValue) }}
       </p>
 
@@ -202,7 +202,7 @@ onMounted(() => {
 
 <style scoped>
 .capital-info {
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 .capital-growth {
   display: flex;

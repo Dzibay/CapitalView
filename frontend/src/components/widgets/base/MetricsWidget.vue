@@ -80,7 +80,6 @@ const formatValue = (item) => {
   flex-direction: column;
   gap: 0.75rem;
   height: 100%;
-  margin-top: 1rem;
 }
 
 .stat-item {

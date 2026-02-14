@@ -335,7 +335,6 @@ const chartDatasets = computed(() => {
 .chart-container {
   height: 300px;
   position: relative;
-  margin-top: 0.5rem;
 }
 
 .empty-state {

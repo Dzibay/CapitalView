@@ -38,14 +38,14 @@ const hoveredItem = ref(null);
 // Структура меню с сегментацией
 const menuSections = ref([
   {
-    title: 'MENU',
+    title: 'МЕНЮ',
     items: [
       { name: 'Дашборд', link: '/dashboard', icon: LayoutDashboard },
       { name: 'Аналитика', link: '/analitics', icon: BarChart3 },
     ]
   },
   {
-    title: 'FINANCIAL',
+    title: 'ФИНАНСЫ',
     items: [
       { name: 'Активы', link: '/assets', icon: Briefcase },
       { name: 'Дивиденды', link: '/dividends', icon: Coins },
@@ -53,7 +53,7 @@ const menuSections = ref([
     ]
   },
   {
-    title: 'TOOLS',
+    title: 'ДОПОЛНИТЕЛЬНО',
     items: [
       { name: 'Настройки', link: '/settings', icon: Settings },
     ]
