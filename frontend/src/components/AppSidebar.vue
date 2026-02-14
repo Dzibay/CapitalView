@@ -260,13 +260,13 @@ watch(route, () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 20px -4px hsla(245, 58%, 58%, 0.4);
+  box-shadow: 0 6px 20px -4px rgba(82, 125, 229, 0.4);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .logo-wrapper:hover {
   transform: rotate(180deg) scale(1.1);
-  box-shadow: 0 8px 24px -4px hsla(245, 58%, 58%, 0.5);
+  box-shadow: 0 8px 24px -4px rgba(82, 125, 229, 0.5);
 }
 
 .logo-icon {

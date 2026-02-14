@@ -5,8 +5,13 @@
         <h1>{{ title }}</h1>
         <h2 v-if="subtitle">{{ subtitle }}</h2>
       </div>
-      <div v-if="$slots.actions" class="page-header-actions">
-        <slot name="actions" />
+      <div v-if="$slots.actions || $slots.menu" class="page-header-right">
+        <div v-if="$slots.actions" class="page-header-actions">
+          <slot name="actions" />
+        </div>
+        <div v-if="$slots.menu" class="page-header-menu">
+          <slot name="menu" />
+        </div>
       </div>
     </div>
   </div>
@@ -32,7 +37,7 @@ defineProps({
 
 .page-header-content {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
@@ -54,10 +59,23 @@ defineProps({
   margin-top: 0.25rem;
 }
 
+.page-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .page-header-actions {
   display: flex;
   align-items: center;
   gap: 1rem;
+}
+
+.page-header-menu {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 @media (max-width: 768px) {
@@ -66,7 +84,18 @@ defineProps({
     align-items: flex-start;
   }
   
+  .page-header-right {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  
   .page-header-actions {
+    width: 100%;
+  }
+  
+  .page-header-menu {
     width: 100%;
   }
 }

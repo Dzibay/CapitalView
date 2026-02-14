@@ -19,11 +19,10 @@ import ContextMenu from '../components/ContextMenu.vue';
 import { useExpandedState } from '../composables/useExpandedState';
 import { useModals } from '../composables/useModal';
 import { usePortfolio } from '../composables/usePortfolio';
-import { Button } from '../components/base';
+import { Button, ToggleSwitch } from '../components/base';
 import LoadingState from '../components/base/LoadingState.vue';
 import PageLayout from '../components/PageLayout.vue';
 import PageHeader from '../components/PageHeader.vue';
-import Checkbox from '../components/base/Checkbox.vue';
 
 const selectedAsset = ref(null);
 
@@ -250,44 +249,42 @@ const handleMoveAsset = (asset) => {
       subtitle="Управление портфелями и активами"
     >
       <template #actions>
-        <Checkbox 
+        <ToggleSwitch 
           v-model="showSoldAssets" 
           label="Показать проданные активы"
-          variant="filter"
         />
       </template>
-    </PageHeader>
-
-    <div class="assets-menu">
-      <div class="buttons-group">
-        <Button variant="primary" @click="openModal('addAsset')">
-          <template #icon>
-            <Plus :size="16" />
-          </template>
-          Добавить актив
-        </Button>
-        <Button variant="secondary" @click="openModal('addPortfolio')">
-          <template #icon>
-            <FolderPlus :size="16" />
-          </template>
-          Создать портфель
-        </Button>
-        <div class="divider-vertical"></div>
-        <div class="button-group-unified">
-          <Button variant="outline" @click="openModal('import')" class="btn-group-left">
+      <template #menu>
+        <div class="buttons-group">
+          <Button variant="primary" @click="openModal('addAsset')">
             <template #icon>
-              <Upload :size="16" />
+              <Plus :size="16" />
             </template>
-            Импорт
+            Добавить актив
           </Button>
-          <Button variant="outline" @click="refreshPortfolios" icon-only title="Обновить портфели" class="btn-group-right btn-refresh">
+          <Button variant="secondary" @click="openModal('addPortfolio')">
             <template #icon>
-              <RefreshCw :size="16" />
+              <FolderPlus :size="16" />
             </template>
+            Создать портфель
           </Button>
+          <div class="divider-vertical"></div>
+          <div class="button-group-unified">
+            <Button variant="outline" @click="openModal('import')" class="btn-group-left">
+              <template #icon>
+                <Upload :size="16" />
+              </template>
+              Импорт
+            </Button>
+            <Button variant="outline" @click="refreshPortfolios" icon-only title="Обновить портфели" class="btn-group-right btn-refresh">
+              <template #icon>
+                <RefreshCw :size="16" />
+              </template>
+            </Button>
+          </div>
         </div>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
       <AddAssetModal v-if="modals.addAsset" @close="closeModal('addAsset')" :onSave="addAsset" :referenceData="parsedDashboard.reference" :portfolios="parsedDashboard.portfolios"/>
       <AddPortfolioModal v-if="modals.addPortfolio" @close="closeModal('addPortfolio')" :onSave="addPortfolio" :portfolios="parsedDashboard.portfolios"/>
@@ -554,15 +551,6 @@ const handleMoveAsset = (asset) => {
 
 .empty-btn {
   margin-top: 8px;
-}
-
-/* Assets Menu */
-.assets-menu {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
 }
 
 .assets-content {
