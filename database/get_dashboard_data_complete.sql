@@ -154,7 +154,7 @@ portfolio_analytics_final AS (
     FROM portfolio_analytics_map
 ),
 
--- 7. Последние транзакции (лимит 100)
+-- 7. Последние транзакции (по 5 для каждого портфеля)
 recent_transactions AS (
     SELECT jsonb_agg(
         jsonb_build_object(
@@ -162,6 +162,7 @@ recent_transactions AS (
             'transaction_id', tx.id,
             'portfolio_asset_id', tx.portfolio_asset_id,
             'portfolio_id', tx.portfolio_id,
+            'portfolio_name', tx.portfolio_name,
             'asset_id', tx.asset_id,
             'asset_name', tx.asset_name,
             'ticker', tx.ticker,
@@ -177,6 +178,7 @@ recent_transactions AS (
             t.id,
             pa.id AS portfolio_asset_id,
             pa.portfolio_id,
+            pb.name AS portfolio_name,
             a.id AS asset_id,
             a.name AS asset_name,
             a.ticker,
@@ -187,14 +189,14 @@ recent_transactions AS (
             END AS transaction_type_name,
             t.price,
             t.quantity,
-            t.transaction_date
+            t.transaction_date,
+            ROW_NUMBER() OVER (PARTITION BY pa.portfolio_id ORDER BY t.transaction_date DESC) AS rn
         FROM transactions t
         JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
         JOIN portfolios_base pb ON pb.id = pa.portfolio_id
         JOIN assets a ON a.id = pa.asset_id
-        ORDER BY t.transaction_date DESC
-        LIMIT 100
     ) tx
+    WHERE tx.rn <= 5
 )
 
 -- 8. Финальная сборка результата

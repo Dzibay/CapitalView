@@ -6,6 +6,7 @@ import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/ContextMenu.vue'
 import operationsService from '../services/operationsService'
+import transactionsService from '../services/transactionsService'
 import CustomSelect from '../components/base/CustomSelect.vue'
 import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
@@ -18,14 +19,40 @@ const transactionsStore = useTransactionsStore()
 const viewMode = ref('transactions') // 'transactions' или 'operations'
 const operations = ref([])
 const isLoadingOperations = ref(false)
+const isLoadingTransactions = ref(false)
 
 const transactions = computed(() => dashboardStore.transactions || [])
 
-// Загружаем транзакции при открытии страницы, если они еще не загружены
-onMounted(async () => {
-  if (!dashboardStore.transactionsLoaded) {
-    await transactionsStore.preloadTransactions()
+// Загрузка всех транзакций
+const loadTransactions = async () => {
+  if (isLoadingTransactions.value) return
+  
+  try {
+    isLoadingTransactions.value = true
+    const response = await transactionsService.getTransactions({ limit: 2000 })
+    const transactionsList = response?.transactions || response || []
+    // Нормализуем данные: добавляем id если есть только transaction_id
+    const normalizedTransactions = transactionsList.map(tx => ({
+      ...tx,
+      id: tx.id || tx.transaction_id,
+      transaction_id: tx.transaction_id || tx.id,
+      transaction_type: tx.transaction_type || tx.transaction_type_name
+    }))
+    // Обновляем транзакции в store
+    dashboardStore.transactions = normalizedTransactions
+    dashboardStore.transactionsLoaded = true
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.error('Ошибка загрузки транзакций:', err)
+    }
+  } finally {
+    isLoadingTransactions.value = false
   }
+}
+
+// Загружаем все транзакции при открытии страницы
+onMounted(async () => {
+  await loadTransactions()
 })
 
 // Загрузка операций
