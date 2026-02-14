@@ -91,9 +91,17 @@ async function loadAssetInfo() {
       // Получаем информацию о портфелях из того же запроса
       if (result.portfolios) {
         assetInAllPortfolios.value = result.portfolios
-        // Устанавливаем первый портфель как выбранный по умолчанию
+        // Устанавливаем портфель, в котором находится актив, как выбранный по умолчанию
         if (result.portfolios.length > 0 && !selectedPortfolioId.value) {
-          selectedPortfolioId.value = result.portfolios[0].portfolio_id
+          // Используем portfolio_id из portfolio_asset, если он есть в списке портфелей
+          const assetPortfolioId = result.portfolio_asset.portfolio_id
+          const portfolioExists = result.portfolios.find(p => p.portfolio_id === assetPortfolioId)
+          if (portfolioExists) {
+            selectedPortfolioId.value = assetPortfolioId
+          } else {
+            // Если портфель не найден в списке, используем первый
+            selectedPortfolioId.value = result.portfolios[0].portfolio_id
+          }
         }
         
         // Сохраняем транзакции для текущего portfolio_asset_id
@@ -819,11 +827,15 @@ const getOperationTypeLabel = (op) => {
 
 // Загрузка при монтировании
 onMounted(() => {
+  // Прокручиваем страницу в начало
+  window.scrollTo(0, 0)
   loadAssetInfo()
 })
 
 // Отслеживание изменений route.params.id
 watch(() => route.params.id, () => {
+  // Прокручиваем страницу в начало при изменении актива
+  window.scrollTo(0, 0)
   loadAssetInfo()
 }, { immediate: false })
 
