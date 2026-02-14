@@ -25,24 +25,24 @@ html {
   --negativeColor: #EF4444;
   
   /* Основные цвета - совмещены с frontend-newDesign */
-  --primary: hsl(245, 58%, 58%);
-  --primary-hover: hsl(245, 58%, 52%);
-  --primary-light: hsl(245, 58%, 65%);
-  --primary-lighter: hsl(245, 58%, 72%);
-  --primary-dark: hsl(245, 58%, 48%);
+  --primary: #527de5;
+  --primary-hover: #4568d4;
+  --primary-light: #6b91ea;
+  --primary-lighter: #84a4ef;
+  --primary-dark: #3f6ac3;
   
   /* Альтернативный primary для совместимости */
-  --primary-blue: #2563eb;
-  --primary-blue-hover: #1d4ed8;
+  --primary-blue: #527de5;
+  --primary-blue-hover: #4568d4;
   
-  --secondary: hsl(280, 60%, 55%);
-  --secondary-hover: hsl(280, 60%, 50%);
-  --secondary-light: hsl(280, 60%, 62%);
-  --secondary-lighter: hsl(280, 60%, 70%);
-  --secondary-dark: hsl(280, 60%, 45%);
+  --secondary: #527de5;
+  --secondary-hover: #4568d4;
+  --secondary-light: #6b91ea;
+  --secondary-lighter: #84a4ef;
+  --secondary-dark: #3f6ac3;
   
   /* Градиент для акцентов */
-  --primary-gradient: linear-gradient(135deg, hsl(245, 58%, 58%), hsl(280, 60%, 55%));
+  --primary-gradient: linear-gradient(135deg, #527de5, #6b91ea);
   
   /* Семантические цвета */
   --success: #1CBD88;
@@ -61,8 +61,8 @@ html {
   --danger-dark: #dc2626;
   
   /* Цвета для графиков - совмещены с frontend-newDesign */
-  --chart-primary: hsl(245, 58%, 58%);
-  --chart-primary-alpha: hsla(245, 58%, 58%, 0.85);
+  --chart-primary: #527de5;
+  --chart-primary-alpha: rgba(82, 125, 229, 0.85);
   --chart-secondary: hsl(152, 60%, 42%);
   --chart-secondary-alpha: hsla(152, 60%, 42%, 0.85);
   --chart-tertiary: hsl(280, 60%, 55%);
