@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router';
 import { authService } from '../services/authService.js';
 
@@ -14,33 +14,10 @@ const emit = defineEmits(['toggle-sidebar'])
 const router = useRouter();
 
 const sidebar = ref(false)
-const showMenu = ref(false)
-const profileRef = ref(null)
 
 const handleToggle = () => {
   emit('toggle-sidebar');
   sidebar.value = !sidebar.value
-};
-
-// закрытие меню при клике вне
-const handleClickOutside = (event) => {
-  if (profileRef.value && !profileRef.value.contains(event.target)) {
-    showMenu.value = false
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
-onBeforeUnmount(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
-
-
-const logout = () => {
-  showMenu.value = false
-  authService.logout();
-  router.push('/login');
 };
 </script>
 
@@ -52,20 +29,11 @@ const logout = () => {
       </svg>
     </button>
 
-    <div v-if="user" class="user-profile" ref="profileRef" @click="showMenu = !showMenu">
+    <div v-if="user" class="user-profile">
       <img src="https://cdn-icons-png.flaticon.com/512/6998/6998058.png " alt="User Avatar" class="avatar">
       <div class="user-info">
         <span class="user-name">{{ user.name }}</span>
         <span class="user-email">{{ user.email }}</span>
-      </div>
-
-      <!-- Выпадающее меню -->
-      <div v-if="showMenu" class="dropdown-menu">
-        <button class="dropdown-item">Профиль</button>
-        <button class="dropdown-item">Настройки</button>
-        <button class="dropdown-item">Справка</button>
-        <hr class="dropdown-separator" />
-        <button class="dropdown-item logout" @click.stop="logout">Выйти</button>
       </div>
     </div>
   </header>
@@ -105,11 +73,9 @@ header.sidebarOff {
   background-color: #f3f4f6;
 }
 .user-profile {
-  position: relative;
   display: flex;
   gap: calc(var(--spacing) / 2);
   align-items: center;
-  cursor: pointer;
 }
 .avatar {
   width: 40px;
@@ -128,41 +94,5 @@ header.sidebarOff {
 .user-email {
   font-size: 0.875rem;
   color: #6b7280;
-}
-
-/* Выпадающее меню */
-.dropdown-menu {
-  position: absolute;
-  top: 55px;
-  right: 0;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.1);
-  display: flex;
-  flex-direction: column;
-  width: 180px;
-  overflow: hidden;
-  z-index: 2000;
-}
-.dropdown-item {
-  text-align: left;
-  padding: 0.75rem 1rem;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 0.95rem;
-  transition: background 0.2s;
-}
-.dropdown-item:hover {
-  background-color: #f3f4f6;
-}
-.dropdown-item.logout {
-  color: #dc2626;
-}
-.dropdown-separator {
-  border: none;
-  height: 1px;
-  background: #e5e7eb;
-  margin: 0;
 }
 </style>
