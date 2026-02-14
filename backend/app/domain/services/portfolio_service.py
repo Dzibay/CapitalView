@@ -838,16 +838,9 @@ async def import_broker_portfolio(
             else:
                 from_date_str = str(min_date)[:10]
             
-            # Обновляем FIFO (только если есть транзакции, т.к. FIFO связан с транзакциями)
-            if min_tx_date and failed_count == 0:
-                try:
-                    await rpc_async("rebuild_fifo_for_portfolio", {"p_portfolio_id": portfolio_id})
-                except Exception as e:
-                    error_msg = str(e)
-                    if "Not enough quantity" in error_msg or "P0001" in str(e):
-                        logger.warning(f'Ошибка обновления FIFO: {error_msg}')
-                    else:
-                        logger.warning(f'Ошибка обновления FIFO: {error_msg}')
+            # Примечание: rebuild_fifo_for_portfolio НЕ нужен, т.к. apply_transactions_batch
+            # уже создает FIFO-лоты правильно для покупок и обрабатывает продажи корректно.
+            # Rebuild удалил бы существующие лоты, что проблематично при инкрементальном импорте.
             
             # Обновляем позиции и значения
             try:

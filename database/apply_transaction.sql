@@ -19,6 +19,8 @@ declare
   v_sell_op_type_id bigint;
   v_op_type_id bigint;
   v_cash_amount numeric;
+  v_tx_after integer;
+  v_needs_rebuild boolean := false;
   lot record;
 begin
   ------------------------------------------------------------------
@@ -34,6 +36,24 @@ begin
       'Portfolio not found for portfolio_asset_id=%',
       p_portfolio_asset_id;
   end if;
+
+  ------------------------------------------------------------------
+  -- 0.5. Проверяем, не нарушает ли новая транзакция порядок FIFO
+  ------------------------------------------------------------------
+  -- FIFO должен быть пересчитан, если новая транзакция вставляется
+  -- между существующими транзакциями (есть транзакции после неё)
+  -- Это нужно, чтобы продажи использовали правильные лоты в правильном порядке
+  SELECT 
+    COUNT(*) FILTER (WHERE transaction_date::date > p_transaction_date::date) AS tx_after
+  INTO v_tx_after
+  FROM transactions
+  WHERE portfolio_asset_id = p_portfolio_asset_id;
+  
+  -- Пересчитываем FIFO если есть транзакции после новой
+  -- (новая вставляется между существующими или раньше всех)
+  IF v_tx_after > 0 THEN
+    v_needs_rebuild := true;
+  END IF;
 
   ------------------------------------------------------------------
   -- 1. Создаём транзакцию
@@ -59,69 +79,73 @@ begin
   returning id into v_tx_id;
 
   ------------------------------------------------------------------
-  -- 2. BUY → FIFO-лот
+  -- 2. Обрабатываем FIFO
   ------------------------------------------------------------------
-  if p_transaction_type = 1 then
-    insert into fifo_lots (
-      portfolio_asset_id,
-      remaining_qty,
-      price,
-      created_at
-    )
-    values (
-      p_portfolio_asset_id,
-      p_quantity,
-      p_price,
-      p_transaction_date
-    );
+  IF v_needs_rebuild THEN
+    -- Если новая транзакция нарушает порядок - пересчитываем FIFO для всех транзакций
+    PERFORM rebuild_fifo_for_portfolio_asset(p_portfolio_asset_id);
+  ELSE
+    -- Обычная обработка: создаем лот для покупки или обрабатываем продажу
+    IF p_transaction_type = 1 THEN
+      -- BUY → FIFO-лот
+      insert into fifo_lots (
+        portfolio_asset_id,
+        remaining_qty,
+        price,
+        created_at
+      )
+      values (
+        p_portfolio_asset_id,
+        p_quantity,
+        p_price,
+        p_transaction_date
+      );
+    ELSIF p_transaction_type = 2 THEN
+      -- SELL → FIFO
+      v_remaining := p_quantity;
 
-  ------------------------------------------------------------------
-  -- 3. SELL → FIFO
-  ------------------------------------------------------------------
-  elsif p_transaction_type = 2 then
-    v_remaining := p_quantity;
+      for lot in
+        select *
+        from fifo_lots
+        where portfolio_asset_id = p_portfolio_asset_id
+          and remaining_qty > 0
+        order by created_at, id
+        for update
+      loop
+        exit when v_remaining <= 0;
 
-    for lot in
-      select *
-      from fifo_lots
-      where portfolio_asset_id = p_portfolio_asset_id
-        and remaining_qty > 0
-      order by created_at, id
-      for update
-    loop
-      exit when v_remaining <= 0;
+        if lot.remaining_qty <= v_remaining then
+          v_realized := v_realized +
+            lot.remaining_qty * (p_price - lot.price);
 
-      if lot.remaining_qty <= v_remaining then
-        v_realized := v_realized +
-          lot.remaining_qty * (p_price - lot.price);
+          v_remaining := v_remaining - lot.remaining_qty;
 
-        v_remaining := v_remaining - lot.remaining_qty;
+          update fifo_lots
+          set remaining_qty = 0
+          where id = lot.id;
+        else
+          v_realized := v_realized +
+            v_remaining * (p_price - lot.price);
 
-        update fifo_lots
-        set remaining_qty = 0
-        where id = lot.id;
-      else
-        v_realized := v_realized +
-          v_remaining * (p_price - lot.price);
+          update fifo_lots
+          set remaining_qty = lot.remaining_qty - v_remaining
+          where id = lot.id;
 
-        update fifo_lots
-        set remaining_qty = lot.remaining_qty - v_remaining
-        where id = lot.id;
+          v_remaining := 0;
+        end if;
+      end loop;
 
-        v_remaining := 0;
+      if v_remaining > 0 then
+        raise exception
+          'Not enough quantity to sell (portfolio_asset_id=%)',
+          p_portfolio_asset_id;
       end if;
-    end loop;
 
-    if v_remaining > 0 then
-      raise exception
-        'Not enough quantity to sell (portfolio_asset_id=%)',
-        p_portfolio_asset_id;
-    end if;
-
-    update transactions
-    set realized_pnl = v_realized
-    where id = v_tx_id;
-  end if;
+      update transactions
+      set realized_pnl = v_realized
+      where id = v_tx_id;
+    END IF;
+  END IF;
 
   ------------------------------------------------------------------
   -- 4. Создаём денежную операцию для транзакции
