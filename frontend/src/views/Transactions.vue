@@ -695,6 +695,7 @@ const transactionsSummary = computed(() => {
           <div class="card">
           <div class="toolbar">
             <div class="filters-top">
+          <!-- Поиск по активу -->
           <div v-if="viewMode === 'transactions'" class="asset-search-wrapper">
             <span class="select-label">Актив</span>
             <span class="input-icon">🔍</span>
@@ -712,6 +713,28 @@ const transactionsSummary = computed(() => {
                 <span v-if="getAssetMeta(a)" class="meta-ticker">{{ getAssetMeta(a).ticker }}</span>
               </li>
               <li v-if="filteredAssetsList.length === 0" class="asset-empty">
+                <span style="display: block; margin-bottom: 4px;">🔍</span>
+                Ничего не найдено
+              </li>
+            </ul>
+          </div>
+          
+          <div v-if="viewMode === 'operations'" class="asset-search-wrapper">
+            <span class="select-label">Актив</span>
+            <span class="input-icon">🔍</span>
+            <input
+              type="text"
+              v-model="assetSearch"
+              placeholder="Поиск актива"
+              class="form-input"
+            />
+            <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
+            
+            <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
+              <li v-for="a in filteredOperationsAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
+                <span v-html="highlightMatch(a)" />
+              </li>
+              <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">
                 <span style="display: block; margin-bottom: 4px;">🔍</span>
                 Ничего не найдено
               </li>
@@ -737,29 +760,6 @@ const transactionsSummary = computed(() => {
               empty-option-text="Все типы"
               @change="applyFilter"
             />
-          </div>
-          
-          <!-- Поиск по активу для операций -->
-          <div v-if="viewMode === 'operations'" class="asset-search-wrapper">
-            <span class="select-label">Актив</span>
-            <span class="input-icon">🔍</span>
-            <input
-              type="text"
-              v-model="assetSearch"
-              placeholder="Поиск актива"
-              class="form-input"
-            />
-            <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
-            
-            <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
-              <li v-for="a in filteredOperationsAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
-                <span v-html="highlightMatch(a)" />
-              </li>
-              <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">
-                <span style="display: block; margin-bottom: 4px;">🔍</span>
-                Ничего не найдено
-              </li>
-            </ul>
           </div>
           
           <button @click="resetFilters" class="btn btn-ghost reset-btn" title="Сбросить фильтры">
