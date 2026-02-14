@@ -763,7 +763,7 @@ const transactionsSummary = computed(() => {
           </div>
           
           <button @click="resetFilters" class="btn btn-ghost reset-btn" title="Сбросить фильтры">
-             ↺
+            <span class="reset-icon">↺</span>
           </button>
             </div>
 
@@ -1270,10 +1270,16 @@ const transactionsSummary = computed(() => {
   background: #f3f4f6;
   color: #1f2937;
   border-color: #d1d5db;
-  transform: rotate(90deg);
 }
 .reset-btn:active {
-  transform: rotate(90deg) scale(0.95);
+  transform: scale(0.95);
+}
+.reset-icon {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+.reset-btn:hover .reset-icon {
+  transform: rotate(-90deg);
 }
 .clear-btn {
   position: absolute;
