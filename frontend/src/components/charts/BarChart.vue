@@ -27,6 +27,10 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  xAxisRotation: {
+    type: Number,
+    default: 0
+  },
   totals: {
     type: Array,
     default: () => []
@@ -136,15 +140,42 @@ const totalsPlugin = computed(() => {
 const chartData = computed(() => {
   return {
     labels: props.labels,
-    datasets: props.datasets.map(dataset => ({
-      ...dataset,
-      borderRadius: dataset.borderRadius ?? (props.stacked ? 0 : 10),
-      borderSkipped: dataset.borderSkipped ?? false,
-      maxBarThickness: dataset.maxBarThickness ?? 50,
-      barThickness: dataset.barThickness ?? undefined,
-      categoryPercentage: dataset.categoryPercentage ?? (props.stacked ? 0.8 : 0.6),
-      barPercentage: dataset.barPercentage ?? (props.stacked ? 0.9 : 0.7)
-    }))
+    datasets: props.datasets.map(dataset => {
+      // Если borderRadius не задан явно, используем функцию для определения закругления
+      // в зависимости от знака значения (положительное - сверху, отрицательное - снизу)
+      let borderRadius = dataset.borderRadius
+      if (borderRadius === undefined || borderRadius === null) {
+        borderRadius = (ctx) => {
+          const value = ctx.parsed.y
+          // Если значение отрицательное, закругляем нижние углы
+          if (value < 0) {
+            return {
+              topLeft: 0,
+              topRight: 0,
+              bottomLeft: 6,
+              bottomRight: 6
+            }
+          }
+          // Если значение положительное или 0, закругляем верхние углы
+          return {
+            topLeft: 6,
+            topRight: 6,
+            bottomLeft: 0,
+            bottomRight: 0
+          }
+        }
+      }
+      
+      return {
+        ...dataset,
+        borderRadius,
+        borderSkipped: dataset.borderSkipped ?? false,
+        maxBarThickness: dataset.maxBarThickness ?? 50,
+        barThickness: dataset.barThickness ?? undefined,
+        categoryPercentage: dataset.categoryPercentage ?? (props.stacked ? 0.8 : 0.6),
+        barPercentage: dataset.barPercentage ?? (props.stacked ? 0.9 : 0.7)
+      }
+    })
   }
 })
 
@@ -277,9 +308,9 @@ const chartOptions = computed(() => {
             weight: '500'
           },
           padding: 12,
-          maxRotation: 0,
-          minRotation: 0,
-          autoSkip: true,
+          maxRotation: props.xAxisRotation,
+          minRotation: props.xAxisRotation,
+          autoSkip: props.xAxisRotation > 0 ? false : true,
           maxTicksLimit: undefined,
           callback: function(value, index) {
             const labels = this.chart.data.labels

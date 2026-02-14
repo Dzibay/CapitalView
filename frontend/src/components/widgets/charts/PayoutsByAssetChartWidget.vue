@@ -34,32 +34,34 @@ const props = defineProps({
 })
 
 const chartLabels = computed(() => {
-  const topAssets = props.payoutsByAsset?.slice(0, 10) || []
+  const topAssets = (props.payoutsByAsset || []).slice(0, 10)
   return topAssets.map(a => a.asset_ticker || a.asset_name || 'Unknown')
 })
 
 const chartDatasets = computed(() => {
-  const topAssets = props.payoutsByAsset?.slice(0, 10) || []
+  const topAssets = (props.payoutsByAsset || []).slice(0, 10)
   return [
     {
       label: 'Дивиденды',
       data: topAssets.map(a => a.total_dividends || 0),
       backgroundColor: payoutColors.dividendsAlpha,
-      borderColor: payoutColors.dividends,
-      borderWidth: 2,
+      borderColor: 'transparent',
+      borderWidth: 0,
       hoverBackgroundColor: payoutColors.dividendsHover,
-      hoverBorderColor: payoutColors.dividendsDark,
-      borderRadius: 8
+      hoverBorderColor: 'transparent',
+      categoryPercentage: 0.8,
+      barPercentage: 0.95
     },
     {
       label: 'Купоны',
       data: topAssets.map(a => a.total_coupons || 0),
       backgroundColor: payoutColors.couponsAlpha,
-      borderColor: payoutColors.coupons,
-      borderWidth: 2,
+      borderColor: 'transparent',
+      borderWidth: 0,
       hoverBackgroundColor: payoutColors.couponsHover,
-      hoverBorderColor: payoutColors.couponsDark,
-      borderRadius: 8
+      hoverBorderColor: 'transparent',
+      categoryPercentage: 0.8,
+      barPercentage: 0.95
     }
   ]
 })
@@ -74,6 +76,7 @@ const chartDatasets = computed(() => {
         :datasets="chartDatasets"
         :stacked="true"
         :format-value="formatMoney"
+        :x-axis-rotation="45"
         height="300px"
       />
       <EmptyState v-else message="Нет данных о выплатах по активам" />

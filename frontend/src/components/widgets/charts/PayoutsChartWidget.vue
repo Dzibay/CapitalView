@@ -215,7 +215,7 @@ const chartDatasets = computed(() => {
   // Сортируем по сумме значений
   const sorted = datasets.sort((a, b) => a.totalSum - b.totalSum)
   
-  // Применяем borderRadius только к верхнему слою
+  // Применяем borderRadius только к верхнему слою (без закругления снизу)
   sorted.forEach((dataset, datasetIndex) => {
     const borderRadiusArray = dataset.data.map((value, dataIndex) => {
       if (value === 0) return 0
@@ -228,7 +228,7 @@ const chartDatasets = computed(() => {
         }
       }
       
-      return hasValueAbove ? 0 : 8
+      return hasValueAbove ? 0 : 6
     })
     
     const firstValue = borderRadiusArray[0]

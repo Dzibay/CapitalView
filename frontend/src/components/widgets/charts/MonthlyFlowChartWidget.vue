@@ -39,7 +39,6 @@ const chartDatasets = computed(() => {
       borderWidth: 0,
       hoverBackgroundColor: 'rgba(16, 185, 129, 1)',
       hoverBorderColor: 'transparent',
-      borderRadius: 6,
       categoryPercentage: 0.8,
       barPercentage: 0.95
     })
@@ -54,7 +53,6 @@ const chartDatasets = computed(() => {
       borderWidth: 0,
       hoverBackgroundColor: 'rgba(239, 68, 68, 1)',
       hoverBorderColor: 'transparent',
-      borderRadius: 6,
       categoryPercentage: 0.8,
       barPercentage: 0.95
     })
@@ -69,7 +67,6 @@ const chartDatasets = computed(() => {
       borderWidth: 0,
       hoverBackgroundColor: 'rgba(59, 130, 246, 1)',
       hoverBorderColor: 'transparent',
-      borderRadius: 6,
       categoryPercentage: 0.8,
       barPercentage: 0.95
     })
