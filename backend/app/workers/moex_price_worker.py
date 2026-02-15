@@ -123,40 +123,52 @@ async def update_asset_history(
     last_date = last_date_map.get(asset_id)
     # Если даты нет в словаре, значит её нет в БД (первое обновление)
 
+    # Преобразуем last_date в date для передачи в функцию
+    start_date_for_query = None
+    if last_date:
+        # Используем normalize_date из utils.date для парсинга
+        parsed_date = normalize_date(last_date)
+        if parsed_date:
+            # Для замены последних 5 цен запрашиваем начиная с даты на 5 дней раньше последней
+            # Это позволит заменить последние 5 цен
+            start_date_for_query = parsed_date - timedelta(days=5)
+
     async with sem:
         # Получаем историю цен
-        prices = await get_price_moex_history(session, ticker)
+        if start_date_for_query:
+            # Запрашиваем цены начиная с даты на 5 дней раньше последней (для замены последних 5)
+            prices = await get_price_moex_history(session, ticker, start_date=start_date_for_query)
+        else:
+            # Для первого обновления запрашиваем всю историю начиная с 2000 года
+            # Функция get_price_moex_history сама начнет с 2000 года, если start_date не указан
+            prices = await get_price_moex_history(session, ticker)
 
     if not prices:
         return False, None, []
 
-    # Фильтруем цены: берем только те, что после последней известной даты
+    # Фильтруем цены: берем те, что >= даты на 5 дней раньше последней (чтобы заменить последние 5 цен)
+    # Последние цены могут быть некорректными, так как берутся из дневной торговой сессии
     new_prices_data = []
     if last_date:
-        # Преобразуем last_date в date для сравнения
-        try:
-            if isinstance(last_date, str):
-                last_dt = datetime.strptime(last_date[:10], "%Y-%m-%d").date()
-            elif isinstance(last_date, date):
-                last_dt = last_date
-            else:
-                last_dt = datetime.strptime(str(last_date)[:10], "%Y-%m-%d").date()
+        # Преобразуем last_date в date для сравнения используя normalize_date
+        last_dt = normalize_date(last_date)
+        
+        if last_dt:
+            # Вычисляем дату на 5 дней раньше последней для замены последних 5 цен
+            replace_from_date = last_dt - timedelta(days=5)
             
-            # Фильтруем только новые цены (строго больше, чтобы не дублировать последнюю)
+            # Фильтруем цены >= даты на 5 дней раньше последней (включая последние 5 для замены)
+            # Это позволяет заменить последние 5 цен, если они были некорректными
             for trade_date, close_price in prices:
-                try:
-                    price_date = datetime.strptime(trade_date[:10], "%Y-%m-%d").date()
-                    if price_date > last_dt:
-                        new_prices_data.append({
-                            "asset_id": asset_id,
-                            "price": close_price,
-                            "trade_date": trade_date
-                        })
-                except (ValueError, AttributeError):
-                    # Если ошибка парсинга, пропускаем эту цену
-                    continue
-        except (ValueError, AttributeError, TypeError):
-            # Если ошибка парсинга last_date, берем все цены
+                price_date = normalize_date(trade_date)
+                if price_date and price_date >= replace_from_date:
+                    new_prices_data.append({
+                        "asset_id": asset_id,
+                        "price": close_price,
+                        "trade_date": trade_date
+                    })
+        else:
+            # Если не удалось распарсить last_date, берем все цены
             new_prices_data = [
                 {
                     "asset_id": asset_id,
@@ -166,7 +178,7 @@ async def update_asset_history(
                 for trade_date, close_price in prices
             ]
     else:
-        # Если нет последней даты, берем все цены (первое обновление)
+        # Если нет последней даты, берем все цены (первое обновление - вся история)
         new_prices_data = [
             {
                 "asset_id": asset_id,
@@ -223,9 +235,8 @@ async def get_portfolios_with_assets(asset_date_map: Dict[int, str]) -> Dict[int
             asset_date = asset_date_map[asset_id]
             # Преобразуем в date для сравнения
             if isinstance(asset_date, str):
-                try:
-                    asset_date = datetime.strptime(asset_date[:10], "%Y-%m-%d").date()
-                except (ValueError, AttributeError):
+                asset_date = normalize_date(asset_date)
+                if not asset_date:
                     continue
             elif not isinstance(asset_date, date):
                 continue
@@ -469,7 +480,7 @@ async def process_today_price(
     insert_date = today if trading else None
 
     if not trading:
-        prev_dt = datetime.strptime(prev_date, "%Y-%m-%d").date() if prev_date else None
+        prev_dt = normalize_date(prev_date) if prev_date else None
         yesterday = now_msk.date() - timedelta(days=1)
 
         if prev_dt and prev_dt < yesterday:
@@ -499,6 +510,11 @@ async def update_today_prices() -> int:
     trading = is_moex_trading_time()
 
     logger.info(f"🕓 Обновление сегодняшних цен ({now.strftime('%H:%M')} МСК), торговая: {trading}")
+    
+    # Если торговая сессия закрыта, пропускаем обновление
+    if not trading:
+        logger.info("ℹ️ Торговая сессия закрыта, обновление цен пропущено")
+        return 0
 
     # Получаем все MOEX активы
     async with db_sem:
