@@ -92,7 +92,13 @@ async def get_price_moex_history(
     """
     end = date.today()
     if start_date:
-        start = start_date
+        # Убеждаемся что start_date это date объект, а не datetime
+        if isinstance(start_date, datetime):
+            start = start_date.date()
+        elif isinstance(start_date, date):
+            start = start_date
+        else:
+            start = date.today()
     else:
         # Если дата не указана, начинаем с 2000 года для полной истории
         start = date(2000, 1, 1)
@@ -132,13 +138,10 @@ async def get_price_moex_history(
                     is_timeout = "timeout" in str(e).lower() or "Timeout" in type(e).__name__
                     delay_base = 3 if is_timeout else 2
                     delay = min(delay_base * (2 ** attempt), 15)
-                    logger.debug(f"Таймаут при запросе истории для {ticker} ({batch_start} - {batch_end}), повтор через {delay}с")
                     await asyncio.sleep(delay)
                     continue
-                logger.warning(f"Не удалось получить историю для {ticker} ({batch_start} - {batch_end}) после {MAX_RETRIES} попыток")
                 return []
             except Exception as e:
-                logger.debug(f"Ошибка при запросе истории для {ticker} ({batch_start} - {batch_end}): {e}")
                 return []
         
         return []
@@ -165,12 +168,30 @@ async def get_price_moex_history(
                 # Или переходим к следующему периоду
                 last_date_str = batch_prices[-1][0]
                 try:
-                    last_date = datetime.strptime(last_date_str[:10], "%Y-%m-%d").date()
+                    # Парсим дату, убеждаемся что это date объект
+                    if isinstance(last_date_str, str):
+                        # Извлекаем только дату (первые 10 символов)
+                        date_part = last_date_str[:10]
+                        parsed_dt = datetime.strptime(date_part, "%Y-%m-%d")
+                        last_date = parsed_dt.date()  # Преобразуем в date
+                    else:
+                        # Если это уже date/datetime объект
+                        if isinstance(last_date_str, datetime):
+                            last_date = last_date_str.date()
+                        elif isinstance(last_date_str, date):
+                            last_date = last_date_str
+                        else:
+                            raise ValueError(f"Неожиданный тип даты: {type(last_date_str)}")
+                    
                     # Переходим к следующему дню после последней полученной даты
                     current_start = last_date + timedelta(days=1)
-                except (ValueError, AttributeError):
+                    if not isinstance(current_start, date):
+                        current_start = current_start.date() if hasattr(current_start, 'date') else date.today()
+                except (ValueError, AttributeError, TypeError):
                     # Если не удалось распарсить дату, переходим к следующему периоду
                     current_start = batch_end + timedelta(days=1)
+                    if isinstance(current_start, datetime):
+                        current_start = current_start.date()
             else:
                 # Если данных нет, переходим к следующему периоду
                 current_start = batch_end + timedelta(days=1)
@@ -184,6 +205,8 @@ async def get_price_moex_history(
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
     for result in results:
+        if isinstance(result, Exception):
+            continue
         if isinstance(result, list) and result:
             return result
     

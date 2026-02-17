@@ -1,40 +1,47 @@
 """
-Worker для обновления цен MOEX.
+Worker для обновления цен криптовалют.
 
-При запуске обновляет всю историю цен всех активов MOEX,
-затем каждые 15 минут обновляет сегодняшние цены.
+При запуске обновляет всю историю цен всех криптовалютных активов,
+затем каждые 10 минут обновляет сегодняшние цены.
 """
 import asyncio
 import aiohttp
-import pytz
+import json
 import logging
-from datetime import datetime, timedelta, time, date
+from datetime import datetime, timedelta, date
 from typing import Optional, Dict, List, Tuple
 from tqdm.asyncio import tqdm_asyncio
 
 from app.infrastructure.database.supabase_async import db_select, db_rpc
-from app.infrastructure.external.moex.client import create_moex_session
-from app.infrastructure.external.moex.price_service import get_price_moex_history, get_price_moex
-from app.utils.date import parse_date as normalize_date, normalize_date_to_string as format_date
+from app.infrastructure.external.crypto.price_service import get_price_crypto_history, get_price_crypto, get_prices_crypto_batch
+from app.utils.date import parse_date as normalize_date, normalize_date_to_string
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 # Настройки параллелизма
-MAX_PARALLEL = 30  # безопасно для MOEX API
-MAX_DB_PARALLEL = 10  # ограничение для запросов к БД (избегаем перегрузки соединений)
-sem = asyncio.Semaphore(MAX_PARALLEL)  # для MOEX API запросов
+# CoinGecko имеет строгие rate limits (free tier: ~10-50 запросов/минуту)
+MAX_PARALLEL = 3  # Уменьшено для избежания rate limit (429)
+MAX_DB_PARALLEL = 10  # ограничение для запросов к БД
+sem = asyncio.Semaphore(MAX_PARALLEL)  # для CoinGecko API запросов
 db_sem = asyncio.Semaphore(MAX_DB_PARALLEL)  # для запросов к БД
-MSK_TZ = pytz.timezone("Europe/Moscow")
 
-# Интервал обновления сегодняшних цен (15 минут)
+# Интервал обновления сегодняшних цен (10 минут)
 UPDATE_INTERVAL_SECONDS = 15 * 60
 
 
-def is_moex_trading_time() -> bool:
-    """Проверяет, идет ли сейчас торговая сессия MOEX."""
-    now = datetime.now(MSK_TZ).time()
-    return time(10, 0) <= now <= time(19, 0)
+def parse_properties(props) -> dict:
+    """Парсит properties из строки или словаря."""
+    if not props:
+        return {}
+    if isinstance(props, dict):
+        return props
+    if isinstance(props, str):
+        try:
+            return json.loads(props)
+        except:
+            return {}
+    return {}
 
 
 async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, Dict]:
@@ -43,7 +50,7 @@ async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, 
     
     Если записи для актива нет в asset_latest_prices_full, значит истории цен еще нет в базе.
     В этом случае asset_id не будет в возвращаемом словаре, что корректно обрабатывается
-    в update_asset_history (запрашивается вся история с 2000 года).
+    в update_asset_history (запрашивается вся история за последние 365 дней).
     
     Args:
         asset_ids: Список ID активов
@@ -109,22 +116,28 @@ async def update_asset_history(
     last_date_map: Dict[int, str]
 ) -> Tuple[bool, Optional[str], List[Dict]]:
     """
-    Получает историю цен актива и возвращает новые цены для вставки.
+    Получает историю цен криптовалюты и возвращает новые цены для вставки.
     
     Args:
         session: HTTP сессия
-        asset: Словарь с данными актива (id, ticker)
+        asset: Словарь с данными актива (id, properties с coingecko_id)
         last_date_map: Словарь последних дат {asset_id: date}
         
     Returns:
         (success: bool, min_date: str или None, new_prices: List[Dict]) - результат и новые цены
     """
     asset_id = asset["id"]
-    ticker = asset["ticker"].upper().strip()
+    
+    # Получаем coingecko_id из properties
+    props = parse_properties(asset.get("properties"))
+    coingecko_id = props.get("coingecko_id")
+    if not coingecko_id:
+        logger.warning(f"Актив {asset_id} не имеет coingecko_id в properties")
+        return False, None, []
 
     # Получаем последнюю известную дату из предзагруженного словаря
     # Если записи нет в asset_latest_prices_full, last_date будет None
-    # и будет запрошена вся история с 2000 года (первое обновление)
+    # и будет запрошена вся история за последние 365 дней (первое обновление)
     last_date = last_date_map.get(asset_id)
 
     # Преобразуем last_date в date для передачи в функцию
@@ -145,10 +158,15 @@ async def update_asset_history(
     async with sem:
         # Получаем историю цен
         if start_date_for_query:
-            prices = await get_price_moex_history(session, ticker, start_date=start_date_for_query)
+            # Вычисляем количество дней
+            days_diff = (date.today() - start_date_for_query).days
+            if days_diff > 0:
+                prices = await get_price_crypto_history(session, coingecko_id, start_date=start_date_for_query)
+            else:
+                prices = []
         else:
-            # Для первого обновления запрашиваем всю историю начиная с 2000 года
-            prices = await get_price_moex_history(session, ticker)
+            # Для первого обновления запрашиваем историю за последние 365 дней
+            prices = await get_price_crypto_history(session, coingecko_id, days=365)
 
     if not prices:
         # Если есть last_date, то отсутствие новых цен - это нормально (все цены уже в базе)
@@ -156,7 +174,7 @@ async def update_asset_history(
             return True, None, []
         else:
             # Для активов без last_date отсутствие цен - это ошибка
-            logger.warning(f"⚠️ Не удалось получить цены для {ticker} (asset_id: {asset_id})")
+            logger.warning(f"⚠️ Не удалось получить цены для {coingecko_id} (asset_id: {asset_id})")
             return False, None, []
 
     # Фильтруем цены: берем те, что >= последней даты (чтобы заменить последнюю цену и вставить новые)
@@ -184,7 +202,6 @@ async def update_asset_history(
                                 "trade_date": trade_date
                             })
         else:
-            # Если не удалось распарсить last_date, берем все цены
             new_prices_data = [
                 {
                     "asset_id": asset_id,
@@ -194,7 +211,7 @@ async def update_asset_history(
                 for trade_date, close_price in prices
             ]
     else:
-        # Если нет последней даты, берем все цены (первое обновление - вся история)
+        # Если нет последней даты, берем все цены
         new_prices_data = [
             {
                 "asset_id": asset_id,
@@ -209,11 +226,14 @@ async def update_asset_history(
         if last_date:
             return True, None, []
         else:
-            logger.warning(f"⚠️ Получены цены для {ticker}, но после фильтрации новых цен нет")
+            logger.warning(f"⚠️ Получены цены для {coingecko_id}, но после фильтрации новых цен нет")
             return True, None, []
 
     # Находим минимальную дату обновления
-    min_date = min(price["trade_date"][:10] for price in new_prices_data)
+    min_date = min(
+        normalize_date_to_string(price["trade_date"]) or price["trade_date"][:10]
+        for price in new_prices_data
+    )
 
     return True, min_date, new_prices_data
 
@@ -234,7 +254,6 @@ async def get_portfolios_with_assets(asset_date_map: Dict[int, str]) -> Dict[int
     
     asset_ids = list(asset_date_map.keys())
     
-    # Получаем портфели, содержащие эти активы
     async with db_sem:
         portfolio_assets = await db_select(
             "portfolio_assets",
@@ -245,7 +264,6 @@ async def get_portfolios_with_assets(asset_date_map: Dict[int, str]) -> Dict[int
     if not portfolio_assets:
         return {}
     
-    # Для каждого портфеля находим минимальную дату среди его обновленных активов
     portfolio_dates = {}
     for pa in portfolio_assets:
         portfolio_id = pa["portfolio_id"]
@@ -253,7 +271,6 @@ async def get_portfolios_with_assets(asset_date_map: Dict[int, str]) -> Dict[int
         
         if asset_id in asset_date_map:
             asset_date = asset_date_map[asset_id]
-            # Преобразуем в date для сравнения
             if isinstance(asset_date, str):
                 asset_date = normalize_date(asset_date)
                 if not asset_date:
@@ -264,7 +281,6 @@ async def get_portfolios_with_assets(asset_date_map: Dict[int, str]) -> Dict[int
             if portfolio_id not in portfolio_dates:
                 portfolio_dates[portfolio_id] = asset_date
             else:
-                # Берем минимальную дату
                 if asset_date < portfolio_dates[portfolio_id]:
                     portfolio_dates[portfolio_id] = asset_date
     
@@ -273,42 +289,35 @@ async def get_portfolios_with_assets(asset_date_map: Dict[int, str]) -> Dict[int
 
 async def update_history_prices() -> int:
     """
-    Обновляет историю цен всех активов MOEX.
+    Обновляет историю цен всех криптовалютных активов.
     
     Returns:
         Количество успешно обновленных активов
     """
-    logger.info("📈 Обновление истории активов MOEX (инкрементально)...")
+    logger.info("📈 Обновление истории криптовалютных активов (инкрементально)...")
 
-    # Получаем MOEX активы с фильтром по asset_type_id (1=Акция, 2=Облигация, 10=Фонд, 11=Фьючерс)
+    # Получаем криптовалютные активы с фильтром по asset_type_id (6)
     # Это эффективнее, чем загружать все активы и фильтровать в Python
-    moex_asset_types = [1, 2, 10, 11]  # Акция, Облигация, Фонд, Фьючерс
     async with db_sem:
         all_assets = await db_select(
             "assets",
             "id, ticker, properties, asset_type_id",
-            in_filters={"asset_type_id": moex_asset_types}
+            filters={"asset_type_id": 6}
         )
     assets = []
     for a in all_assets:
         if not a.get("ticker") or a.get("user_id") is not None:
             continue
-        props = a.get("properties") or {}
-        if isinstance(props, str):
-            try:
-                import json
-                props = json.loads(props)
-            except:
-                props = {}
-        # Проверяем source = "moex"
-        if props.get("source") == "moex":
+        props = parse_properties(a.get("properties"))
+        # Проверяем наличие coingecko_id и source
+        if props.get("source") == "coingecko" and props.get("coingecko_id"):
             assets.append(a)
 
     if not assets:
-        logger.warning("⚠️ Нет активов MOEX для обновления")
+        logger.warning("⚠️ Нет криптовалютных активов для обновления")
         return 0
 
-    logger.info(f"📊 Найдено {len(assets)} активов MOEX для обновления")
+    logger.info(f"📊 Найдено {len(assets)} криптовалютных активов для обновления")
 
     # Предзагружаем последние даты для всех активов из asset_latest_prices_full
     logger.info("📊 Загрузка последних дат цен...")
@@ -329,14 +338,24 @@ async def update_history_prices() -> int:
     assets_without_prices = len(assets) - assets_with_prices
     logger.info(f"📊 Активов с ценами в БД: {assets_with_prices}, без цен (загрузка с нуля): {assets_without_prices}")
 
-    # Словарь для отслеживания обновленных активов и их минимальных дат
-    updated_assets = {}  # {asset_id: min_date}
+    updated_assets = {}
     updated_asset_ids = []
-
-    # Собираем все новые цены для массовой вставки
     all_new_prices = []
     
-    async with create_moex_session() as session:
+    # Создаем HTTP сессию для CoinGecko
+    connector = aiohttp.TCPConnector(
+        limit=10,
+        limit_per_host=5,
+        ttl_dns_cache=300,
+        force_close=False,
+        enable_cleanup_closed=True,
+    )
+    
+    async with aiohttp.ClientSession(
+        connector=connector,
+        timeout=aiohttp.ClientTimeout(total=30, connect=10, sock_read=20),
+        headers={"User-Agent": "CapitalView/1.0"}
+    ) as session:
         tasks = [update_asset_history(session, a, last_date_map) for a in assets]
         results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="История")
 
@@ -364,16 +383,32 @@ async def update_history_prices() -> int:
     logger.info(f"✅ Обработано активов: успешно {success_count}, ошибок {failed_count}, без новых данных {no_new_data_count}")
     logger.info(f"📊 Активов с новыми данными: {len(updated_assets)}/{len(assets)}")
     
-    # Вставляем все новые цены большими батчами (значительно уменьшаем количество запросов)
     if all_new_prices:
-        logger.info(f"💾 Вставка {len(all_new_prices)} новых цен большими батчами...")
-        batch_size = 1000  # Увеличиваем размер батча для уменьшения количества запросов
-        for i in range(0, len(all_new_prices), batch_size):
-            batch = all_new_prices[i:i + batch_size]
+        # Удаляем дубликаты по (asset_id, trade_date), оставляя последнюю запись
+        # Это предотвращает ошибку "ON CONFLICT DO UPDATE command cannot affect row a second time"
+        unique_prices = {}
+        for price in all_new_prices:
+            asset_id = price["asset_id"]
+            trade_date = price["trade_date"]
+            # Нормализуем дату для ключа
+            date_key = normalize_date_to_string(trade_date) or str(trade_date)[:10]
+            key = (asset_id, date_key)
+            # Оставляем последнюю запись (можно заменить на первую, если нужно)
+            unique_prices[key] = price
+        
+        deduplicated_prices = list(unique_prices.values())
+        
+        if len(deduplicated_prices) < len(all_new_prices):
+            logger.info(f"🔍 Удалено {len(all_new_prices) - len(deduplicated_prices)} дубликатов из {len(all_new_prices)} цен")
+        
+        logger.info(f"💾 Вставка {len(deduplicated_prices)} новых цен большими батчами...")
+        batch_size = 1000
+        for i in range(0, len(deduplicated_prices), batch_size):
+            batch = deduplicated_prices[i:i + batch_size]
             try:
                 async with db_sem:
                     await db_rpc("upsert_asset_prices", {"p_prices": batch})
-                logger.info(f"  ✅ Вставлено {min(i + batch_size, len(all_new_prices))}/{len(all_new_prices)} цен")
+                logger.info(f"  ✅ Вставлено {min(i + batch_size, len(deduplicated_prices))}/{len(deduplicated_prices)} цен")
             except Exception as e:
                 logger.error(f"  ⚠️ Ошибка при вставке батча {i//batch_size + 1}: {e}")
                 continue
@@ -382,7 +417,6 @@ async def update_history_prices() -> int:
         logger.info("ℹ️ Нет новых данных для обновления")
         return success_count
 
-    # 1. Обновляем таблицу asset_latest_prices_full батчами
     logger.info(f"🔄 Обновление цен для {len(updated_asset_ids)} активов...")
     batch_size = 500
     for i in range(0, len(updated_asset_ids), batch_size):
@@ -397,7 +431,6 @@ async def update_history_prices() -> int:
             logger.error(f"  ⚠️ Ошибка при обновлении батча {i//batch_size + 1}: {e}")
             continue
 
-    # 2. Получаем портфели с обновленными активами и минимальные даты
     logger.info("🔍 Поиск затронутых портфелей...")
     portfolio_dates = await get_portfolios_with_assets(updated_assets)
     
@@ -407,19 +440,11 @@ async def update_history_prices() -> int:
 
     logger.info(f"📦 Найдено портфелей для обновления: {len(portfolio_dates)}")
 
-    # 3. Обновляем портфели с минимальной датой обновления
     logger.info("🔄 Обновление портфельных данных...")
     update_tasks = []
     for portfolio_id, min_date in portfolio_dates.items():
-        # Преобразуем дату в строку, если нужно
-        if isinstance(min_date, str):
-            from_date = min_date[:10]
-        elif hasattr(min_date, 'isoformat'):
-            from_date = min_date.isoformat()
-        else:
-            from_date = str(min_date)[:10]
+        from_date = normalize_date_to_string(min_date) or str(min_date)[:10]
         
-        # Вызываем update_portfolio_values_from_date с датой начала
         async def update_portfolio_with_sem(pid, fdate):
             async with db_sem:
                 return await db_rpc('update_portfolio_values_from_date', {
@@ -429,10 +454,8 @@ async def update_history_prices() -> int:
         
         update_tasks.append(update_portfolio_with_sem(portfolio_id, from_date))
 
-    # Выполняем обновления параллельно (но с ограничением)
     if update_tasks:
-        # Ограничиваем параллелизм для обновления портфелей
-        sem_portfolio = asyncio.Semaphore(10)  # Не более 10 одновременных обновлений
+        sem_portfolio = asyncio.Semaphore(10)
         
         async def update_with_sem(task):
             async with sem_portfolio:
@@ -454,32 +477,35 @@ async def update_history_prices() -> int:
     return success_count
 
 
-async def process_today_price(
-    session: aiohttp.ClientSession,
+def process_today_price(
+    price_map: Dict[str, float],
     asset: Dict,
     today: str,
-    trading: bool,
     last_map: Dict[int, Dict],
-    now_msk: datetime
 ) -> Optional[Dict]:
     """
-    Обрабатывает текущую цену актива.
+    Обрабатывает текущую цену криптовалюты из предзагруженного batch.
     
     Args:
-        session: HTTP сессия
+        price_map: Словарь {coingecko_id: price} с ценами из batch запроса
         asset: Словарь с данными актива
         today: Сегодняшняя дата в формате YYYY-MM-DD
-        trading: Идет ли торговая сессия
         last_map: Словарь последних цен {asset_id: {price, trade_date}}
-        now_msk: Текущее время в МСК
         
     Returns:
         Словарь с данными для обновления или None
     """
     asset_id = asset["id"]
-    ticker = (asset.get("ticker") or "").upper().strip()
+    
+    # Получаем coingecko_id из properties
+    props = parse_properties(asset.get("properties"))
+    coingecko_id = props.get("coingecko_id")
+    if not coingecko_id:
+        return None
 
-    if not ticker:
+    # Получаем цену из предзагруженного batch
+    price = price_map.get(coingecko_id)
+    if not price:
         return None
 
     # берем предварительно загруженную последнюю цену
@@ -490,116 +516,132 @@ async def process_today_price(
     # Используем date (строка) или trade_date (для совместимости)
     prev_date = None
     if last:
-        prev_date = last.get("date") or (last.get("trade_date")[:10] if last.get("trade_date") else None)
+        prev_date = last.get("date") or (normalize_date_to_string(last.get("trade_date")) if last.get("trade_date") else None)
 
-    async with sem:
-        price = await get_price_moex(session, ticker)
-
-    if not price:
+    # анти-скачок (для крипты можно увеличить до 20%)
+    if prev_price and abs(price - prev_price) / prev_price > 0.2:
+        logger.warning(f"⚠️ Скачок цены для {coingecko_id}: {prev_price} -> {price}")
         return None
 
-    # анти-скачок
-    if prev_price and abs(price - prev_price) / prev_price > 0.1:
-        logger.warning(f"⚠️ Скачок цены для {ticker}: {prev_price} -> {price}")
-        return None
-
-    # выбираем дату для вставки
-    insert_date = today if trading else None
-
-    if not trading:
-        prev_dt = normalize_date(prev_date) if prev_date else None
-        yesterday = now_msk.date() - timedelta(days=1)
-
-        if prev_dt and prev_dt < yesterday:
-            insert_date = yesterday.isoformat()
-        elif prev_dt == yesterday:
-            return None  # вчера уже есть
-        else:
-            insert_date = today
+    # Для крипты всегда используем сегодняшнюю дату (торгуется 24/7)
+    insert_date = today
 
     return {
         "asset_id": asset_id,
         "price": price,
         "trade_date": insert_date,
-        "ticker": ticker
+        "ticker": asset.get("ticker", "")
     }
 
 
 async def update_today_prices() -> int:
     """
-    Обновляет сегодняшние цены всех активов MOEX.
+    Обновляет сегодняшние цены всех криптовалютных активов.
     
     Returns:
         Количество обновленных активов
     """
-    now = datetime.now(MSK_TZ)
+    now = datetime.now()
     today = now.date().isoformat()
-    trading = is_moex_trading_time()
 
-    logger.info(f"🕓 Обновление сегодняшних цен ({now.strftime('%H:%M')} МСК), торговая: {trading}")
-    
-    # Если торговая сессия закрыта, пропускаем обновление
-    if not trading:
-        logger.info("ℹ️ Торговая сессия закрыта, обновление цен пропущено")
-        return 0
+    logger.info(f"🕓 Обновление сегодняшних цен криптовалют ({now.strftime('%H:%M')})")
 
-    # Получаем MOEX активы с фильтром по asset_type_id
-    moex_asset_types = [1, 2, 10, 11]  # Акция, Облигация, Фонд, Фьючерс
+    # Получаем криптовалютные активы с фильтром по asset_type_id (6)
     async with db_sem:
         all_assets = await db_select(
             "assets",
             "id, ticker, properties, asset_type_id",
-            in_filters={"asset_type_id": moex_asset_types}
+            filters={"asset_type_id": 6}
         )
     assets = []
     for a in all_assets:
         if not a.get("ticker") or a.get("user_id") is not None:
             continue
-        props = a.get("properties") or {}
-        if isinstance(props, str):
-            try:
-                import json
-                props = json.loads(props)
-            except:
-                props = {}
-        if props.get("source") == "moex":
+        props = parse_properties(a.get("properties"))
+        if props.get("source") == "coingecko" and props.get("coingecko_id"):
             assets.append(a)
 
     if not assets:
-        logger.warning("⚠️ Нет активов MOEX для обновления")
+        logger.warning("⚠️ Нет криптовалютных активов для обновления")
         return 0
 
     # Загружаем последние цены только для нужных активов
     asset_ids = [a["id"] for a in assets]
     last_map = await get_last_prices_from_latest_prices(asset_ids)
+    
+    # Собираем все coingecko_id для batch запроса
+    asset_coingecko_map = {}  # {coingecko_id: asset}
+    for asset in assets:
+        props = parse_properties(asset.get("properties"))
+        coingecko_id = props.get("coingecko_id")
+        if coingecko_id:
+            asset_coingecko_map[coingecko_id] = asset
+    
+    coingecko_ids = list(asset_coingecko_map.keys())
+    
+    if not coingecko_ids:
+        logger.warning("⚠️ Нет coingecko_id для запроса цен")
+        return 0
 
+    logger.info(f"📊 Загрузка цен для {len(coingecko_ids)} криптовалют (batch запросы)...")
+    
+    connector = aiohttp.TCPConnector(
+        limit=10,
+        limit_per_host=5,
+        ttl_dns_cache=300,
+        force_close=False,
+        enable_cleanup_closed=True,
+    )
+
+    # Загружаем цены batch запросами (по 250 за раз)
+    all_prices = {}
+    batch_size = 250
+    
+    async with aiohttp.ClientSession(
+        connector=connector,
+        timeout=aiohttp.ClientTimeout(total=30, connect=10, sock_read=20),
+        headers={"User-Agent": "CapitalView/1.0"}
+    ) as session:
+        for i in range(0, len(coingecko_ids), batch_size):
+            batch_ids = coingecko_ids[i:i + batch_size]
+            async with sem:
+                batch_prices = await get_prices_crypto_batch(session, batch_ids)
+                all_prices.update(batch_prices)
+            logger.info(f"  ✅ Загружено цен: {len(all_prices)}/{len(coingecko_ids)}")
+    
+    logger.info(f"📊 Получено цен: {len(all_prices)}/{len(coingecko_ids)}")
+    
+    # Обрабатываем полученные цены
     updates_batch = []
-
-    async with create_moex_session() as session:
-        tasks = [
-            process_today_price(session, a, today, trading, last_map, now)
-            for a in assets
-        ]
-
-        results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Сегодня")
-
-    # фильтруем None и ошибки
-    updates_batch = [r for r in results if isinstance(r, dict)]
-    # получаем список изменившихся активов
+    for asset in assets:
+        result = process_today_price(all_prices, asset, today, last_map)
+        if result:
+            updates_batch.append(result)
     updated_ids = list({row["asset_id"] for row in updates_batch})
 
-    # пачечная вставка
     if updates_batch:
-        pack = []
-
+        # Удаляем дубликаты по (asset_id, trade_date) на всякий случай
+        unique_updates = {}
         for row in updates_batch:
-            pack.append({
-                "asset_id": row["asset_id"],
+            asset_id = row["asset_id"]
+            trade_date = row["trade_date"]
+            date_key = normalize_date_to_string(trade_date) or str(trade_date)[:10]
+            key = (asset_id, date_key)
+            unique_updates[key] = {
+                "asset_id": asset_id,
                 "price": row["price"],
-                "trade_date": row["trade_date"]
-            })
+                "trade_date": trade_date
+            }
+        
+        deduplicated_updates = list(unique_updates.values())
+        
+        if len(deduplicated_updates) < len(updates_batch):
+            logger.info(f"🔍 Удалено {len(updates_batch) - len(deduplicated_updates)} дубликатов из {len(updates_batch)} обновлений")
+        
+        pack = []
+        for row in deduplicated_updates:
+            pack.append(row)
             if len(pack) == 200:
-                # 👇 ВАЖНО: вставляем последовательно с ограничением параллелизма
                 async with db_sem:
                     await db_rpc("upsert_asset_prices", {"p_prices": pack})
                 pack.clear()
@@ -608,7 +650,6 @@ async def update_today_prices() -> int:
             async with db_sem:
                 await db_rpc("upsert_asset_prices", {"p_prices": pack})
 
-    # обновляем только измененные активы (быстрее, чем обновлять все)
     if updated_ids:
         logger.info(f"🔄 Обновление цен для {len(updated_ids)} активов...")
         async with db_sem:
@@ -617,7 +658,6 @@ async def update_today_prices() -> int:
             })
         logger.info(f"  ✅ Цены обновлены")
 
-    # Строим словарь {asset_id: min_date} для обновленных активов
     updated_assets_dates = {}
     portfolio_dates = {}
     
@@ -625,23 +665,14 @@ async def update_today_prices() -> int:
         asset_id = row["asset_id"]
         trade_date = row["trade_date"]
         if trade_date:
-            # Преобразуем дату в формат YYYY-MM-DD
-            if isinstance(trade_date, str):
-                date_str = trade_date[:10]
-            elif hasattr(trade_date, 'isoformat'):
-                date_str = trade_date.isoformat()
-            else:
-                date_str = str(trade_date)[:10]
+            date_str = normalize_date_to_string(trade_date) or str(trade_date)[:10]
             
-            # Для каждого актива берем минимальную дату (если несколько цен за день)
             if asset_id not in updated_assets_dates:
                 updated_assets_dates[asset_id] = date_str
             else:
-                # Берем минимальную дату
                 if date_str < updated_assets_dates[asset_id]:
                     updated_assets_dates[asset_id] = date_str
 
-    # Получаем портфели с обновленными активами
     if updated_assets_dates:
         logger.info("🔍 Поиск затронутых портфелей...")
         portfolio_dates = await get_portfolios_with_assets(updated_assets_dates)
@@ -649,21 +680,11 @@ async def update_today_prices() -> int:
         if portfolio_dates:
             logger.info(f"📦 Найдено портфелей для обновления: {len(portfolio_dates)}")
             
-            # Обновляем портфели с минимальной датой обновления
             logger.info("🔄 Обновление портфельных данных...")
             update_tasks = []
             for portfolio_id, min_date in portfolio_dates.items():
-                # Преобразуем дату в строку, если нужно
-                if isinstance(min_date, str):
-                    from_date = min_date[:10]
-                elif isinstance(min_date, date):
-                    from_date = min_date.isoformat()
-                elif hasattr(min_date, 'isoformat'):
-                    from_date = min_date.isoformat()
-                else:
-                    from_date = str(min_date)[:10]
+                from_date = normalize_date_to_string(min_date) or str(min_date)[:10]
                 
-                # Вызываем update_portfolio_values_from_date с датой начала
                 async def update_portfolio_with_sem(pid, fdate):
                     async with db_sem:
                         return await db_rpc('update_portfolio_values_from_date', {
@@ -673,9 +694,7 @@ async def update_today_prices() -> int:
                 
                 update_tasks.append(update_portfolio_with_sem(portfolio_id, from_date))
             
-            # Выполняем обновления параллельно (но с ограничением)
             if update_tasks:
-                # Используем db_sem для ограничения параллелизма
                 async def update_with_sem(task):
                     return await task
                 
@@ -700,19 +719,17 @@ async def update_today_prices() -> int:
 async def worker_loop():
     """
     Основной цикл worker'а.
-    При запуске обновляет всю историю, затем каждые 15 минут обновляет сегодняшние цены.
+    При запуске обновляет всю историю, затем каждые 10 минут обновляет сегодняшние цены.
     """
-    logger.info("🚀 MOEX Price Worker запущен")
+    logger.info("🚀 Crypto Price Worker запущен")
     
     try:
-        # При запуске обновляем всю историю
         logger.info("📈 Начальное обновление истории цен...")
         await update_history_prices()
         logger.info("✅ Начальное обновление истории завершено")
     except Exception as e:
         logger.error(f"❌ Ошибка при начальном обновлении истории: {e}", exc_info=True)
     
-    # Затем каждые 15 минут обновляем сегодняшние цены
     while True:
         try:
             await update_today_prices()
