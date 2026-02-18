@@ -37,6 +37,7 @@ BEGIN
                     ELSE 0
                 END,
                 'currency_ticker', qa.ticker,
+                'quote_asset_id', a.quote_asset_id,
                 'currency_rate_to_rub', COALESCE(curr.price, 1)
             )
             FROM portfolio_assets pa

@@ -1,23 +1,207 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Check } from 'lucide-vue-next'
-import { Button } from '../base'
+import { Button, ToggleSwitch } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
+import { useTransactionsStore } from '../../stores/transactions.store'
+import { useDashboardStore } from '../../stores/dashboard.store'
 
 const props = defineProps({
   asset: Object,
-  onSubmit: Function // универсальный обработчик добавления транзакции
+  onSubmit: Function // универсальный обработчик добавления транзакции/операции
 })
 
 const emit = defineEmits(['close'])
 
-const transactionType = ref('buy') // buy / sell
+const transactionsStore = useTransactionsStore()
+const dashboardStore = useDashboardStore()
+
+// Типы операций
+const operationTypes = [
+  { value: 1, label: 'Покупка', category: 'transaction' },
+  { value: 2, label: 'Продажа', category: 'transaction' },
+  { value: 3, label: 'Дивиденды', category: 'payout' },
+  { value: 4, label: 'Купоны', category: 'payout' },
+  { value: 7, label: 'Комиссия', category: 'expense' },
+  { value: 8, label: 'Налог', category: 'expense' },
+  { value: 5, label: 'Пополнение', category: 'cash' },
+  { value: 6, label: 'Вывод', category: 'cash' },
+  { value: 9, label: 'Другое', category: 'other' }
+]
+
+const operationType = ref(1) // По умолчанию Покупка
 const quantity = ref(0)
 const price = ref(0)
+const amount = ref(0)
+const dividendYield = ref(null)
 const date = ref(new Date().toISOString().slice(0, 10))
 const error = ref('')
+const saving = ref(false)
+
+// Валюты
+const useCustomCurrency = ref(false)
+const currencyId = ref(47) // RUB по умолчанию
+
+// Получаем список валют из referenceData (включая криптовалюты)
+const currencies = computed(() => {
+  const refData = dashboardStore.referenceData
+  if (!refData || !refData.currencies) return []
+  
+  // Сортируем: сначала традиционные валюты, потом криптовалюты
+  const sorted = [...refData.currencies].sort((a, b) => {
+    // RUB всегда первый
+    if (a.ticker === 'RUB') return -1
+    if (b.ticker === 'RUB') return 1
+    // Потом популярные валюты (USD, EUR)
+    const popular = ['USD', 'EUR', 'GBP', 'CNY', 'JPY']
+    const aPopular = popular.indexOf(a.ticker)
+    const bPopular = popular.indexOf(b.ticker)
+    if (aPopular !== -1 && bPopular !== -1) return aPopular - bPopular
+    if (aPopular !== -1) return -1
+    if (bPopular !== -1) return 1
+    // Потом популярные криптовалюты (BTC, ETH)
+    const crypto = ['BTC', 'ETH', 'USDT', 'USDC']
+    const aCrypto = crypto.indexOf(a.ticker)
+    const bCrypto = crypto.indexOf(b.ticker)
+    if (aCrypto !== -1 && bCrypto !== -1) return aCrypto - bCrypto
+    if (aCrypto !== -1) return -1
+    if (bCrypto !== -1) return 1
+    // Остальные по алфавиту
+    return (a.ticker || '').localeCompare(b.ticker || '')
+  })
+  
+  return sorted.map(c => ({
+    value: c.id,
+    label: `${c.ticker} - ${c.name || c.ticker}`,
+    ticker: c.ticker
+  }))
+})
+
+// Текущая цена актива и количество для расчета доходности
+const assetPrice = computed(() => {
+  if (!props.asset?.last_price) return null
+  return props.asset.last_price
+})
+
+const assetQuantity = computed(() => {
+  if (!props.asset?.quantity) return null
+  return props.asset.quantity
+})
+
+// Автоматический расчет доходности для выплат с учетом валют
+watch([amount, assetPrice, assetQuantity, currencyId, useCustomCurrency, operationType], () => {
+  if (isPayout.value && amount.value && assetPrice.value && assetQuantity.value) {
+    // Получаем валюту актива
+    const assetCurrencyId = props.asset?.quote_asset_id || 47 // По умолчанию RUB
+    const payoutCurrencyId = useCustomCurrency.value ? currencyId.value : 47
+    
+    // Получаем тикеры валют из referenceData
+    const refData = dashboardStore.referenceData
+    let assetCurrencyTicker = 'RUB'
+    let payoutCurrencyTicker = 'RUB'
+    
+    if (refData && refData.currencies) {
+      const assetCurrency = refData.currencies.find(c => c.id === assetCurrencyId)
+      if (assetCurrency && assetCurrency.ticker) {
+        assetCurrencyTicker = assetCurrency.ticker
+      }
+      
+      const payoutCurrency = refData.currencies.find(c => c.id === payoutCurrencyId)
+      if (payoutCurrency && payoutCurrency.ticker) {
+        payoutCurrencyTicker = payoutCurrency.ticker
+      }
+    }
+    
+    // Рассчитываем доходность: (сумма выплаты / (цена актива * количество)) * 100
+    const totalValue = assetPrice.value * assetQuantity.value
+    if (totalValue > 0) {
+      let payoutAmountInAssetCurrency = Math.abs(amount.value)
+      
+      // Если валюта выплаты отличается от валюты актива, конвертируем сумму выплаты
+      if (payoutCurrencyTicker !== assetCurrencyTicker) {
+        // Получаем курсы валют (если доступны)
+        // Для упрощения используем прямую конвертацию через курсы, если они есть
+        // Если курсов нет, используем упрощенный расчет (предполагаем 1:1 для одинаковых валют)
+        // В реальности нужно получать курсы из referenceData или из данных актива
+        const assetCurrencyRate = props.asset?.currency_rate_to_rub || 1
+        const payoutCurrencyRate = 1 // TODO: получить курс валюты выплаты из referenceData
+        
+        // Конвертируем: сумма выплаты в валюте выплаты -> RUB -> валюта актива
+        const amountInRub = payoutAmountInAssetCurrency * payoutCurrencyRate
+        payoutAmountInAssetCurrency = assetCurrencyRate > 0 ? amountInRub / assetCurrencyRate : payoutAmountInAssetCurrency
+      }
+      
+      dividendYield.value = parseFloat(((payoutAmountInAssetCurrency / totalValue) * 100).toFixed(4))
+    } else {
+      dividendYield.value = null
+    }
+  } else if (!isPayout.value) {
+    // Сбрасываем доходность для не-выплат
+    dividendYield.value = null
+  }
+}, { immediate: false })
+
+// Вычисляемые свойства
+const selectedOperation = computed(() => {
+  return operationTypes.find(op => op.value === operationType.value)
+})
+
+const isTransaction = computed(() => {
+  return operationType.value === 1 || operationType.value === 2
+})
+
+const isPayout = computed(() => {
+  return operationType.value === 3 || operationType.value === 4
+})
+
+const isExpense = computed(() => {
+  return operationType.value === 7 || operationType.value === 8
+})
+
+const isCashOperation = computed(() => {
+  return operationType.value === 5 || operationType.value === 6
+})
+
+const isOther = computed(() => {
+  return operationType.value === 9
+})
+
+const requiresQuantity = computed(() => {
+  return isTransaction.value
+})
+
+const requiresAmount = computed(() => {
+  return !isTransaction.value
+})
+
+const selectedCurrency = computed(() => {
+  if (!useCustomCurrency.value) return { ticker: 'RUB', symbol: '₽' }
+  const currency = currencies.value.find(c => c.value === currencyId.value)
+  if (!currency) return { ticker: 'RUB', symbol: '₽' }
+  // Используем ticker из объекта валюты
+  const ticker = currency.ticker || currency.label.split(' - ')[0] || 'RUB'
+  const symbols = { 
+    RUB: '₽', USD: '$', EUR: '€', GBP: '£', CNY: '¥', JPY: '¥',
+    BTC: '₿', ETH: 'Ξ', USDT: '₮', USDC: '₮', BNB: 'BNB', SOL: '◎'
+  }
+  return { ticker, symbol: symbols[ticker] || ticker }
+})
+
+const amountLabel = computed(() => {
+  const symbol = selectedCurrency.value.symbol
+  if (isPayout.value) return `Сумма выплаты (${symbol})`
+  if (isExpense.value) return `Сумма расхода (${symbol})`
+  if (isCashOperation.value) {
+    return operationType.value === 5 ? `Сумма пополнения (${symbol})` : `Сумма вывода (${symbol})`
+  }
+  return `Сумма (${symbol})`
+})
 
 const handleSubmit = async () => {
+  error.value = ''
+  
+  // Валидация для транзакций (Buy/Sell)
+  if (isTransaction.value) {
   if (!quantity.value || quantity.value <= 0) {
     error.value = 'Введите количество'
     return
@@ -26,20 +210,69 @@ const handleSubmit = async () => {
     error.value = 'Введите цену'
     return
   }
+  }
+  
+  // Валидация для остальных операций
+  if (requiresAmount.value) {
+    if (!amount.value || amount.value === 0) {
+      error.value = 'Введите сумму'
+      return
+    }
+  }
+  
+  // Валидация для выплат (Dividend/Coupon)
+  if (isPayout.value && !props.asset?.asset_id) {
+    error.value = 'Не указан актив'
+    return
+  }
+
+  saving.value = true
 
   try {
+    // Для Buy/Sell используем старый метод через onSubmit
+    if (isTransaction.value) {
     await props.onSubmit({
       asset_id: props.asset.asset_id,
       portfolio_asset_id: props.asset.portfolio_asset_id,
-      transaction_type: transactionType.value === 'buy' ? 1 : 2,
+        transaction_type: operationType.value,
       quantity: quantity.value,
       price: price.value,
-      transaction_date: date.value,  // Используем transaction_date вместо date
-      date: date.value  // Оставляем для обратной совместимости
-    })
+        transaction_date: date.value,
+        date: date.value
+      })
+    } else {
+      // Для остальных операций используем новый API
+      const operationData = {
+        portfolio_id: props.asset.portfolio_id,
+        operation_type: operationType.value,
+        amount: amount.value,
+        operation_date: date.value,
+        currency_id: useCustomCurrency.value ? currencyId.value : 47 // Выбранная валюта или RUB по умолчанию
+      }
+      
+      // Добавляем asset_id если есть
+      if (props.asset?.asset_id) {
+        operationData.asset_id = props.asset.asset_id
+      }
+      
+      // Для Buy/Sell также нужны portfolio_asset_id
+      if (props.asset?.portfolio_asset_id) {
+        operationData.portfolio_asset_id = props.asset.portfolio_asset_id
+      }
+      
+      // Для выплат добавляем доходность (если указана)
+      if (isPayout.value && dividendYield.value) {
+        operationData.dividend_yield = dividendYield.value
+      }
+      
+      await transactionsStore.addOperation(operationData)
+    }
+    
     emit('close')
   } catch (e) {
-    error.value = 'Ошибка при добавлении транзакции: ' + e.message
+    error.value = 'Ошибка при добавлении операции: ' + (e.response?.data?.detail || e.message || 'Неизвестная ошибка')
+  } finally {
+    saving.value = false
   }
 }
 </script>
@@ -48,7 +281,7 @@ const handleSubmit = async () => {
   <div class="modal-backdrop" @click.self="emit('close')">
     <div class="modal">
       <div class="modal-header">
-        <h2>Добавление транзакции</h2>
+        <h2>Добавление операции</h2>
         <button class="close-btn" @click="emit('close')" aria-label="Закрыть">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -59,7 +292,7 @@ const handleSubmit = async () => {
       
       <form @submit.prevent="handleSubmit" class="form-content">
         <div class="form-section">
-          <div class="asset-info">
+          <div class="asset-info" v-if="asset">
             <span class="asset-icon">📈</span>
             <div>
               <strong>{{ asset.name }}</strong>
@@ -75,11 +308,8 @@ const handleSubmit = async () => {
             Тип операции
           </label>
           <CustomSelect
-            v-model="transactionType"
-            :options="[
-              { value: 'buy', label: 'Покупка' },
-              { value: 'sell', label: 'Продажа' }
-            ]"
+            v-model="operationType"
+            :options="operationTypes"
             placeholder="Выберите тип"
             :show-empty-option="false"
             option-label="label"
@@ -89,7 +319,8 @@ const handleSubmit = async () => {
           />
         </div>
 
-        <div class="form-section">
+        <!-- Поля для транзакций (Buy/Sell) -->
+        <div v-if="isTransaction" class="form-section">
           <div class="section-divider"></div>
           <div class="form-row">
             <div class="form-field">
@@ -97,20 +328,100 @@ const handleSubmit = async () => {
                 <span class="label-icon">🔢</span>
                 Количество
               </label>
-              <input type="number" v-model.number="quantity" min="0" step="0.0001" class="form-input" />
+              <input type="number" v-model.number="quantity" min="0" step="0.0001" class="form-input" required />
             </div>
             <div class="form-field">
               <label class="form-label">
                 <span class="label-icon">💰</span>
                 Цена (₽)
               </label>
-              <input type="number" v-model.number="price" min="0" step="0.01" class="form-input" />
+              <input type="number" v-model.number="price" min="0" step="0.01" class="form-input" required />
             </div>
           </div>
+        </div>
+
+        <!-- Поля для остальных операций -->
+        <div v-if="requiresAmount" class="form-section">
+          <div class="section-divider"></div>
+          <div class="form-field">
+            <label class="form-label">
+              <span class="label-icon">💰</span>
+              {{ amountLabel }}
+            </label>
+            <input 
+              type="number" 
+              v-model.number="amount" 
+              :step="isPayout ? 0.000001 : 0.01" 
+              class="form-input" 
+              required
+              :placeholder="isExpense ? 'Отрицательное значение' : 'Положительное значение'"
+            />
+            <small class="form-hint" v-if="isExpense">
+              Введите отрицательное значение (например, -50)
+            </small>
+            <small class="form-hint" v-else-if="isPayout">
+              Можно вводить до 6 знаков после запятой (например, 0.001234)
+            </small>
+          </div>
+        </div>
+
+        <!-- Дополнительные поля для выплат (Dividend/Coupon) -->
+        <div v-if="isPayout" class="form-section">
+          <div class="section-divider"></div>
+          
+          <!-- Выбор валюты выплаты -->
+          <div class="form-field">
+            <label class="form-label">
+              <span class="label-icon">💱</span>
+              Валюта выплаты
+            </label>
+            <div class="toggle-wrapper">
+              <ToggleSwitch 
+                v-model="useCustomCurrency" 
+              />
+              <span class="toggle-label-text">{{ useCustomCurrency ? 'Выплата в другой валюте' : 'Выплата в рублях (RUB)' }}</span>
+            </div>
+            <CustomSelect
+              v-if="useCustomCurrency"
+              v-model="currencyId"
+              :options="currencies"
+              placeholder="Выберите валюту"
+              :show-empty-option="false"
+              option-label="label"
+              option-value="value"
+              :min-width="'100%'"
+              :flex="'none'"
+              class="currency-select"
+            />
+          </div>
+          
+          <div class="form-row">
+            <div class="form-field">
+              <label class="form-label">
+                <span class="label-icon">📊</span>
+                Доходность (%)
+                <span class="label-hint" v-if="dividendYield && assetPrice && assetQuantity">(рассчитано автоматически)</span>
+              </label>
+              <input 
+                type="number" 
+                v-model.number="dividendYield" 
+                min="0" 
+                step="0.0001" 
+                class="form-input" 
+                :readonly="!!(assetPrice && assetQuantity && amount)"
+                :placeholder="assetPrice && assetQuantity ? 'Рассчитывается автоматически' : 'Введите вручную (опционально)'"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Дата операции -->
+        <div class="form-section">
+          <div class="section-divider"></div>
           <div class="form-field">
             <label class="form-label">
               <span class="label-icon">📅</span>
-              Дата
+              Дата операции
             </label>
             <input type="date" v-model="date" required class="form-input" />
           </div>
@@ -322,6 +633,38 @@ const handleSubmit = async () => {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
   background: #fff;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.label-hint {
+  font-weight: 400;
+  color: #6b7280;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.toggle-wrapper {
+  margin-bottom: 12px;
+  padding: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toggle-label-text {
+  font-size: 13px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.currency-select {
+  margin-top: 8px;
 }
 
 .form-row {

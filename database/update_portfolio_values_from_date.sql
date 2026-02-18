@@ -41,7 +41,9 @@ BEGIN
       AND t.transaction_date::date < p_from_date;
 
     SELECT
-        coalesce(sum(co.amount),0)
+        -- Используем amount_rub для выплат (уже переведено в рубли по курсу на дату операции)
+        -- Типы: 3=Dividend, 4=Coupon, 8=Tax
+        coalesce(sum(COALESCE(co.amount_rub, co.amount)),0)
     INTO v_base_payouts
     FROM cash_operations co
     WHERE co.portfolio_id = p_portfolio_id
@@ -178,7 +180,8 @@ BEGIN
     payouts_daily AS (
         SELECT
             co.date::date AS report_date,
-            sum(co.amount)::numeric AS payout_day
+            -- Используем amount_rub для выплат (уже переведено в рубли по курсу на дату операции)
+            sum(COALESCE(co.amount_rub, co.amount))::numeric AS payout_day
         FROM cash_operations co
         WHERE co.portfolio_id = p_portfolio_id
           AND co.type IN (3,4,8)

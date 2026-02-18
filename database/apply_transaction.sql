@@ -169,8 +169,9 @@ begin
   END IF;
   
   -- Создаем cash_operation только если тип определен и её еще нет
+  -- Для транзакций Buy/Sell валюта всегда RUB, поэтому amount_rub = amount
   IF v_op_type_id IS NOT NULL THEN
-    INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id)
+    INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id, amount_rub)
     SELECT
       p_user_id,
       v_portfolio_id,
@@ -179,7 +180,8 @@ begin
       47, -- RUB
       p_transaction_date,
       v_tx_id,
-      v_asset_id
+      v_asset_id,
+      v_cash_amount -- amount_rub = amount для RUB
     WHERE NOT EXISTS (
       SELECT 1 
       FROM cash_operations 

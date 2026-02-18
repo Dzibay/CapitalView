@@ -10,6 +10,7 @@ import transactionsService from '../services/transactionsService'
 import CustomSelect from '../components/base/CustomSelect.vue'
 import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
+import { formatOperationAmount } from '../utils/formatCurrency'
 
 // Используем stores вместо inject
 const dashboardStore = useDashboardStore()
@@ -156,6 +157,7 @@ const recentAssets = ref([])
 
 const selectedPortfolio = ref('')
 const selectedType = ref('') // тип операции
+const selectedCurrency = ref('RUB') // валюта для отображения операций: 'RUB' | 'ORIGINAL'
 
 
 const periodPreset = ref('month') // today | week | month | quarter | year | all | custom
@@ -250,6 +252,59 @@ const setPeriodPreset = (preset) => {
 
 // --- формат даты ---
 const formatDate = (date) => new Date(date).toLocaleDateString()
+
+// --- функции для отображения операций в выбранной валюте ---
+// Получаем сумму операции в выбранной валюте
+const getOperationAmount = (op) => {
+  if (selectedCurrency.value === 'RUB') {
+    // Используем amount_rub (уже переведено в рубли по курсу на дату операции)
+    const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
+    return amountRub
+  } else {
+    // Используем оригинальную сумму в исходной валюте
+    return Number(op.amount) || 0
+  }
+}
+
+// Нормализует код валюты (защита от некорректных значений типа "RUB000UTSTOM")
+const normalizeCurrencyTicker = (ticker) => {
+  if (!ticker || typeof ticker !== 'string') return 'RUB'
+  
+  // Берем только первые 3 символа и приводим к верхнему регистру
+  const normalized = ticker.trim().substring(0, 3).toUpperCase()
+  
+  // Список валидных кодов валют
+  const validCurrencyCodes = ['RUB', 'USD', 'EUR', 'GBP', 'CNY', 'JPY', 'BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'SOL']
+  if (validCurrencyCodes.includes(normalized)) {
+    return normalized
+  }
+  
+  // Если не валидный код, пробуем найти в referenceData
+  const refData = referenceData.value
+  if (refData && refData.currencies) {
+    const currency = refData.currencies.find(c => {
+      const cTicker = c.ticker || ''
+      return cTicker.toUpperCase() === normalized || cTicker.toUpperCase().startsWith(normalized)
+    })
+    if (currency && currency.ticker) {
+      return currency.ticker.toUpperCase()
+    }
+  }
+  
+  // Если ничего не найдено, возвращаем нормализованный код (первые 3 символа)
+  return normalized
+}
+
+// Получаем валюту для отображения операции
+const getOperationCurrency = (op) => {
+  if (selectedCurrency.value === 'RUB') {
+    return 'RUB'
+  } else {
+    // Нормализуем валюту для корректного отображения
+    const originalCurrency = op.currency_ticker || 'RUB'
+    return normalizeCurrencyTicker(originalCurrency)
+  }
+}
 
 // --- фильтр активов для дропа ---
 const filteredAssetsList = computed(() => {
@@ -380,9 +435,10 @@ const applyFilter = () => {
         if (end && opDate > end) return false
       }
 
-      // Глобальный поиск
+      // Глобальный поиск (используем amount_rub для поиска)
       if (hasTerm) {
-        const searchableText = `${op.asset_name || ''} ${op.portfolio_name || ''} ${op.operation_type || ''} ${op.amount || ''} ${op.currency_ticker || ''} ${formatDate(op.operation_date)}`.toLowerCase()
+        const opAmount = getOperationAmount(op)
+        const searchableText = `${op.asset_name || ''} ${op.portfolio_name || ''} ${op.operation_type || ''} ${opAmount || ''} ${getOperationCurrency(op) || ''} ${formatDate(op.operation_date)}`.toLowerCase()
         if (!searchableText.includes(term)) return false
       }
 
@@ -547,9 +603,11 @@ const summary = computed(() => {
       res.byType[slug].value += value
     }
   } else {
-    // Для операций суммируем по типам
+    // Для операций суммируем по типам (ВСЕГДА используем amount_rub в рублях для статистики)
     for (const op of filteredOperations.value) {
-      const value = Number(op.amount || 0)
+      // Для статистики всегда используем amount_rub (в рублях)
+      const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
+      const value = amountRub
       const slug = normalizeType(op.operation_type)
 
       res.total += Math.abs(value)
@@ -624,11 +682,14 @@ const calculatorResult = computed(() => {
 })
 
 // Получение суммы по типу операции из отфильтрованных данных
+// ВСЕГДА использует amount_rub (в рублях) для статистики
 const getOperationTypeSum = (operationType) => {
   let sum = 0
   for (const op of filteredOperations.value) {
     if (op.operation_type === operationType) {
-      sum += Math.abs(Number(op.amount || 0))
+      // Для статистики всегда используем amount_rub (в рублях)
+      const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
+      sum += Math.abs(amountRub)
     }
   }
   return sum
@@ -760,6 +821,17 @@ const transactionsSummary = computed(() => {
               empty-option-text="Все типы"
               @change="applyFilter"
             />
+            <CustomSelect
+              v-if="viewMode === 'operations'"
+              v-model="selectedCurrency"
+              :options="[
+                { value: 'RUB', label: 'Рубли (RUB)' },
+                { value: 'ORIGINAL', label: 'Оригинальная валюта' }
+              ]"
+              label="Валюта отображения"
+              placeholder="Выберите валюту"
+              @change="applyFilter"
+            />
           </div>
           
           <button @click="resetFilters" class="btn btn-ghost reset-btn" title="Сбросить фильтры">
@@ -862,10 +934,10 @@ const transactionsSummary = computed(() => {
                 </td>
                 <td class="font-medium">{{ op.asset_name || '—' }}</td>
                 <td class="text-secondary">{{ op.portfolio_name }}</td>
-                <td class="text-right num-font font-semibold" :class="op.amount >= 0 ? 'text-green' : 'text-red'">
-                  {{ Math.abs(op.amount).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                <td class="text-right num-font font-semibold" :class="getOperationAmount(op) >= 0 ? 'text-green' : 'text-red'">
+                  {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
                 </td>
-                <td class="text-right num-font">{{ op.currency_ticker || 'RUB' }}</td>
+                <td class="text-right num-font">{{ getOperationCurrency(op) }}</td>
               </tr>
               <tr v-if="filteredOperations.length === 0">
                 <td colspan="6" class="empty-cell">

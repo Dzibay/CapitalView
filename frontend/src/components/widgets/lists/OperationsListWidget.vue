@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
-import { formatCurrency } from '../../../utils/formatCurrency'
+import { formatCurrency, formatOperationAmount } from '../../../utils/formatCurrency'
 import EmptyState from '../base/EmptyState.vue'
 
 const props = defineProps({
@@ -71,6 +71,11 @@ const props = defineProps({
       if (!date) return '-'
       return new Date(date).toLocaleDateString('ru-RU')
     }
+  },
+  // Функция для форматирования суммы операции (опционально, для кастомного форматирования с валютой)
+  formatAmount: {
+    type: Function,
+    default: null
   }
 })
 
@@ -110,7 +115,9 @@ const sortedOperations = computed(() => {
             <td v-if="columns.includes('price')">
               {{ op.price !== null && op.price !== undefined ? op.price.toFixed(2) : '-' }}
             </td>
-            <td v-if="columns.includes('amount')">{{ formatCurrency(op.amount || 0) }}</td>
+            <td v-if="columns.includes('amount')">
+              {{ formatAmount ? formatAmount(op) : formatOperationAmount(op.amount || 0, op.currency) }}
+            </td>
           </tr>
         </tbody>
       </table>

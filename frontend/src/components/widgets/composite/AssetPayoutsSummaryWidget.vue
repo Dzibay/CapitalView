@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
-import { formatCurrency } from '../../../utils/formatCurrency'
+import { formatCurrency, formatOperationAmount } from '../../../utils/formatCurrency'
 
 const props = defineProps({
   payouts: {
@@ -20,18 +20,18 @@ const hasPayouts = computed(() => {
     <div v-if="hasPayouts" class="payouts-summary">
       <div class="summary-item primary">
         <div class="summary-label">Всего выплат</div>
-        <div class="summary-value">{{ formatCurrency(payouts.total || 0) }}</div>
+        <div class="summary-value">{{ formatOperationAmount(payouts.total || 0) }}</div>
       </div>
 
       <div class="summary-row">
         <div class="summary-item">
           <div class="summary-label">Дивиденды</div>
-          <div class="summary-value">{{ formatCurrency(payouts.dividends || 0) }}</div>
+          <div class="summary-value">{{ formatOperationAmount(payouts.dividends || 0) }}</div>
         </div>
 
         <div class="summary-item">
           <div class="summary-label">Купоны</div>
-          <div class="summary-value">{{ formatCurrency(payouts.coupons || 0) }}</div>
+          <div class="summary-value">{{ formatOperationAmount(payouts.coupons || 0) }}</div>
         </div>
       </div>
 

@@ -21,7 +21,11 @@ ops AS (
   SELECT
     co.portfolio_id,
     ot.name AS type,
-    SUM(co.amount) AS sum
+    -- Для выплат используем amount_rub, для остальных операций - amount
+    SUM(CASE 
+      WHEN ot.name IN ('Dividend','Coupon','Amortization') THEN COALESCE(co.amount_rub, co.amount)
+      ELSE co.amount
+    END) AS sum
   FROM cash_operations co
   JOIN operations_type ot ON ot.id = co.type
   JOIN p ON p.id = co.portfolio_id
@@ -31,8 +35,13 @@ monthly AS (
   SELECT
     co.portfolio_id,
     to_char(date_trunc('month', co.date), 'YYYY-MM') AS month,
-    SUM(CASE WHEN ot.name IN ('Deposit','Dividend','Coupon')  THEN co.amount ELSE 0 END) AS inflow,
-    SUM(CASE WHEN ot.name IN ('Withdraw','Commision','Tax')   THEN co.amount ELSE 0 END) AS outflow
+    -- Для Deposit используем amount, для выплат (Dividend, Coupon) используем amount_rub
+    SUM(CASE 
+      WHEN ot.name = 'Deposit' THEN co.amount
+      WHEN ot.name IN ('Dividend','Coupon') THEN COALESCE(co.amount_rub, co.amount)
+      ELSE 0 
+    END) AS inflow,
+    SUM(CASE WHEN ot.name IN ('Withdraw','Commision','Tax') THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS outflow
   FROM cash_operations co
   JOIN operations_type ot ON ot.id = co.type
   JOIN p ON p.id = co.portfolio_id
@@ -42,10 +51,11 @@ monthly_payouts AS (
   SELECT
     co.portfolio_id,
     to_char(date_trunc('month', co.date), 'YYYY-MM') AS month,
-    SUM(CASE WHEN ot.name = 'Dividend' THEN co.amount ELSE 0 END) AS dividends,
-    SUM(CASE WHEN ot.name = 'Coupon' THEN co.amount ELSE 0 END) AS coupons,
-    SUM(CASE WHEN ot.name = 'Amortization' THEN co.amount ELSE 0 END) AS amortizations,
-    SUM(CASE WHEN ot.name IN ('Dividend','Coupon','Amortization') THEN co.amount ELSE 0 END) AS total_payouts
+    -- Используем amount_rub для выплат (уже переведено в рубли по курсу на дату операции)
+    SUM(CASE WHEN ot.name = 'Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS dividends,
+    SUM(CASE WHEN ot.name = 'Coupon' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS coupons,
+    SUM(CASE WHEN ot.name = 'Amortization' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS amortizations,
+    SUM(CASE WHEN ot.name IN ('Dividend','Coupon','Amortization') THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_payouts
   FROM cash_operations co
   JOIN operations_type ot ON ot.id = co.type
   JOIN p ON p.id = co.portfolio_id
@@ -85,9 +95,10 @@ asset_payouts_by_asset AS (
     co.asset_id,
     a.name AS asset_name,
     a.ticker AS asset_ticker,
-    SUM(CASE WHEN ot.name = 'Dividend' THEN co.amount ELSE 0 END) AS total_dividends,
-    SUM(CASE WHEN ot.name = 'Coupon' THEN co.amount ELSE 0 END) AS total_coupons,
-    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') THEN co.amount ELSE 0 END) AS total_payouts
+    -- Используем amount_rub для выплат (уже переведено в рубли по курсу на дату операции)
+    SUM(CASE WHEN ot.name = 'Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_dividends,
+    SUM(CASE WHEN ot.name = 'Coupon' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_coupons,
+    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_payouts
   FROM cash_operations co
   JOIN operations_type ot ON ot.id = co.type
   JOIN p ON p.id = co.portfolio_id
@@ -188,7 +199,8 @@ dividends_by_year AS (
   SELECT
     co.portfolio_id,
     EXTRACT(YEAR FROM co.date)::int AS year,
-    SUM(CASE WHEN ot.name = 'Dividend' THEN co.amount ELSE 0 END) AS total_dividends
+    -- Используем amount_rub для выплат (уже переведено в рубли по курсу на дату операции)
+    SUM(CASE WHEN ot.name = 'Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_dividends
   FROM cash_operations co
   JOIN operations_type ot ON ot.id = co.type
   JOIN p ON p.id = co.portfolio_id
@@ -397,12 +409,12 @@ asset_payouts_periods AS (
   SELECT
     co.portfolio_id,
     co.asset_id,
-    -- Выплаты за все время
-    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') THEN co.amount ELSE 0 END) AS total_payouts_all,
+    -- Выплаты за все время (используем amount_rub - уже переведено в рубли по курсу на дату операции)
+    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_payouts_all,
     -- Выплаты за год
-    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') AND co.date >= CURRENT_DATE - INTERVAL '1 year' THEN co.amount ELSE 0 END) AS total_payouts_year,
+    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') AND co.date >= CURRENT_DATE - INTERVAL '1 year' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_payouts_year,
     -- Выплаты за месяц
-    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') AND co.date >= CURRENT_DATE - INTERVAL '1 month' THEN co.amount ELSE 0 END) AS total_payouts_month
+    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') AND co.date >= CURRENT_DATE - INTERVAL '1 month' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_payouts_month
   FROM cash_operations co
   JOIN operations_type ot ON ot.id = co.type
   JOIN p ON p.id = co.portfolio_id
@@ -686,8 +698,8 @@ SELECT json_agg(
           AND ap.payment_date >= CURRENT_DATE
           AND COALESCE(pa.quantity, 0) > 0
       ) + (
-        -- Полученные купоны за текущий год
-        SELECT COALESCE(SUM(co.amount), 0)
+        -- Полученные купоны за текущий год (используем amount_rub - уже переведено в рубли)
+        SELECT COALESCE(SUM(COALESCE(co.amount_rub, co.amount)), 0)
         FROM cash_operations co
         JOIN operations_type ot ON ot.id = co.type
         WHERE co.portfolio_id = p.id

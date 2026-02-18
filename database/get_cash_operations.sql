@@ -11,8 +11,10 @@ RETURNS TABLE (
     portfolio_name text,
     operation_type text,
     amount numeric(20,6),
+    amount_rub float4,
     currency_id bigint,
     currency_ticker text,
+    currency_rate_to_rub numeric(20,6),
     asset_id bigint,
     asset_name text,
     operation_date timestamp
@@ -38,8 +40,10 @@ BEGIN
             ELSE ot.name
         END AS operation_type,
         co.amount::numeric(20,6) AS amount,
+        COALESCE(co.amount_rub, co.amount::numeric(20,6)) AS amount_rub,
         co.currency AS currency_id,
         cur.ticker AS currency_ticker,
+        COALESCE(curr.price, 1)::numeric(20,6) AS currency_rate_to_rub,
         a.id AS asset_id,
         a.name AS asset_name,
         co.date AS operation_date
@@ -50,6 +54,8 @@ BEGIN
         ON ot.id = co.type
     LEFT JOIN assets cur
         ON cur.id = co.currency
+    LEFT JOIN asset_last_currency_prices curr
+        ON curr.asset_id = co.currency
     LEFT JOIN assets a
         ON a.id = co.asset_id
     WHERE co.user_id = p_user_id

@@ -34,12 +34,14 @@ BEGIN
     -- 1️⃣ КЭШ-ОПЕРАЦИИ
     -------------------------------------------------------------------
     SELECT
+        -- Для Deposit используем amount, для остальных операций используем amount_rub (уже в рублях)
         COALESCE(SUM(CASE WHEN ot.name='Deposit'  THEN co.amount ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Withdraw' THEN co.amount ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Dividend' THEN co.amount ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Coupon'   THEN co.amount ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Commision' THEN co.amount ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Tax'      THEN co.amount ELSE 0 END), 0)
+        COALESCE(SUM(CASE WHEN ot.name='Withdraw' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
+        -- Для выплат (Dividend, Coupon) используем amount_rub (уже переведено в рубли по курсу на дату операции)
+        COALESCE(SUM(CASE WHEN ot.name='Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN ot.name='Coupon'   THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN ot.name='Commision' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN ot.name='Tax'      THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0)
     INTO v_inflow, v_outflow, v_dividends, v_coupons, v_commissions, v_taxes
     FROM cash_operations co
     JOIN operations_type ot ON ot.id = co.type

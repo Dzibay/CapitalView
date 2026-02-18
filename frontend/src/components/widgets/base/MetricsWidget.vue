@@ -11,7 +11,7 @@ const props = defineProps({
   items: {
     type: Array,
     required: true,
-    // Каждый item: { label, value, format?, isPositive?, showValueChange?, colorClass? }
+    // Каждый item: { label, value, format?, isPositive?, showValueChange?, colorClass?, formatter? }
     validator: (items) => {
       return Array.isArray(items) && items.every(item => 
         typeof item === 'object' && 
@@ -20,6 +20,11 @@ const props = defineProps({
         'value' in item
       )
     }
+  },
+  // Кастомная функция форматирования валюты (опционально)
+  formatCurrency: {
+    type: Function,
+    default: null
   }
 })
 
@@ -28,6 +33,15 @@ const formatValue = (item) => {
   const value = item.value
   
   if (item.format === 'currency') {
+    // Если есть кастомная функция форматирования, используем её
+    if (props.formatCurrency) {
+      return props.formatCurrency(value)
+    }
+    // Если в item есть своя функция форматирования, используем её
+    if (item.formatter && typeof item.formatter === 'function') {
+      return item.formatter(value)
+    }
+    // Иначе используем стандартное форматирование
     return formatCurrency(value)
   } else if (item.format === 'percent') {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`

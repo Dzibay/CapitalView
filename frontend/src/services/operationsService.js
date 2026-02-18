@@ -13,5 +13,10 @@ export default {
     const res = await apiClient.get(API_ENDPOINTS.OPERATIONS.BASE, { params });
     // API возвращает { success: true, data: { operations: [...] } }
     return res.data?.data?.operations || res.data?.operations || res.data || [];
+  },
+
+  async addOperation(operationData) {
+    const res = await apiClient.post(API_ENDPOINTS.OPERATIONS.BASE, operationData);
+    return res.data;
   }
 };
