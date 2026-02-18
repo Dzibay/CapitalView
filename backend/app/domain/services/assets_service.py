@@ -378,6 +378,85 @@ def add_asset_price(data):
         return {"success": False, "error": str(e)}
 
 
+def add_asset_prices_batch(asset_id: int, prices: list):
+    """
+    Массовое добавление цен актива.
+    
+    Args:
+        asset_id: ID актива
+        prices: Список словарей с полями:
+            - price: Цена
+            - date: Дата цены (может быть строкой или datetime)
+    
+    Returns:
+        dict с результатом операции
+    """
+    if not asset_id:
+        return {"success": False, "error": "asset_id обязателен"}
+    if not prices or len(prices) == 0:
+        return {"success": False, "error": "prices не может быть пустым"}
+    
+    # Подготавливаем данные для upsert
+    price_data_list = []
+    for price_item in prices:
+        price = price_item.get('price', 0)
+        date = price_item.get('date')
+        
+        if not price or price <= 0:
+            continue  # Пропускаем некорректные цены
+        
+        if not date:
+            continue  # Пропускаем записи без даты
+        
+        # Нормализуем дату
+        if hasattr(date, 'isoformat'):
+            date_str = date.isoformat()
+        elif isinstance(date, str):
+            date_str = date
+        else:
+            date_str = str(date)
+        
+        price_data_list.append({
+            "asset_id": asset_id,
+            "price": float(price),
+            "trade_date": date_str
+        })
+    
+    if not price_data_list:
+        return {"success": False, "error": "Нет валидных цен для добавления"}
+    
+    try:
+        # Используем RPC функцию для массовой вставки
+        result = rpc("upsert_asset_prices", {"p_prices": price_data_list})
+        
+        if result is False:
+            return {"success": False, "error": "Ошибка при массовом добавлении цен"}
+        
+        # Обновляем последнюю цену актива
+        try:
+            update_result = rpc('update_asset_latest_price', {'p_asset_id': asset_id})
+            if update_result is False:
+                logger.warning(f"RPC функция вернула False для актива {asset_id}")
+        except Exception as rpc_error:
+            logger.warning(f"Ошибка при обновлении цены актива {asset_id}: {rpc_error}")
+        
+        # Находим минимальную дату для обновления портфелей
+        min_date = min([p.get('trade_date', '') for p in price_data_list], default=None)
+        if min_date:
+            update_portfolios_with_asset(asset_id, min_date)
+        
+        return {
+            "success": True,
+            "message": f"Успешно добавлено {len(price_data_list)} цен",
+            "count": len(price_data_list)
+        }
+    except Exception as e:
+        logger.error(f"Ошибка при массовом добавлении цен актива: {e}", exc_info=True)
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
 def get_asset_info(asset_id: int):
     """
     Получает детальную информацию об активе.

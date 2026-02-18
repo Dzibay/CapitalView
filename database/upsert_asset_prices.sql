@@ -1,4 +1,7 @@
-
+CREATE OR REPLACE FUNCTION upsert_asset_prices(p_prices jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+AS $$
 BEGIN
     INSERT INTO asset_prices (asset_id, price, trade_date)
     SELECT 
@@ -12,3 +15,4 @@ BEGIN
 
     RETURN true; 
 END;
+$$;

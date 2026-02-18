@@ -4,11 +4,11 @@ API endpoints для работы с активами.
 """
 from fastapi import APIRouter, Query, HTTPException, Depends
 from app.domain.services.assets_service import (
-    delete_asset, create_asset, add_asset_price,
+    delete_asset, create_asset, add_asset_price, add_asset_prices_batch,
     get_asset_info, get_asset_price_history, get_portfolio_asset_info,
     move_asset_to_portfolio
 )
-from app.domain.models.asset_models import AddAssetPriceRequest, MoveAssetRequest
+from app.domain.models.asset_models import AddAssetPriceRequest, MoveAssetRequest, BatchAddPriceRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.core.dependencies import get_current_user
 from app.utils.response import success_response
@@ -96,6 +96,30 @@ async def add_asset_price_route(
     return success_response(
         data=res,
         message="Цена актива успешно добавлена",
+        status_code=HTTPStatus.CREATED
+    )
+
+
+@router.post("/prices/batch", status_code=HTTPStatus.CREATED)
+async def add_asset_prices_batch_route(
+    data: BatchAddPriceRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Массовое добавление цен актива."""
+    logger.debug(f"Получены данные для массового добавления цен: asset_id={data.asset_id}, count={len(data.prices)}")
+    
+    res = add_asset_prices_batch(data.asset_id, data.prices)
+    
+    if res.get("success") is False:
+        logger.warning(f"Ошибка при массовом добавлении цен: {res.get('error')}")
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=res.get("error", "Ошибка при массовом добавлении цен")
+        )
+    
+    return success_response(
+        data=res,
+        message=f"Успешно добавлено {res.get('count', 0)} цен",
         status_code=HTTPStatus.CREATED
     )
 
