@@ -39,6 +39,7 @@ export const API_ENDPOINTS = {
   },
   OPERATIONS: {
     BASE: '/operations/',
+    BATCH: '/operations/batch',  // Массовое создание операций
   },
   ANALYTICS: {
     BASE: '/analytics',

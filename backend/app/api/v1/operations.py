@@ -3,8 +3,8 @@ API endpoints для работы с операциями по активам.
 Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Other.
 """
 from fastapi import APIRouter, Query, HTTPException, Depends, Body
-from app.domain.services.operations_service import get_operations, create_operation
-from app.domain.models.operation_models import CreateOperationRequest
+from app.domain.services.operations_service import get_operations, create_operation, create_operations_batch
+from app.domain.models.operation_models import CreateOperationRequest, BatchCreateOperationRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.core.dependencies import get_current_user
 from app.utils.response import success_response
@@ -86,4 +86,47 @@ async def add_operation_route(
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail="Ошибка при создании операции"
+        )
+
+
+@router.post("/batch", status_code=HTTPStatus.CREATED)
+async def add_operations_batch_route(
+    data: BatchCreateOperationRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Массовое создание повторяющихся операций (ежемесячно)."""
+    logger.info(f"Получен запрос на массовое создание операций: operation_type={data.operation_type}, start_date={data.start_date}, end_date={data.end_date}")
+    
+    try:
+        result = create_operations_batch(
+            user_id=user["id"],
+            portfolio_id=data.portfolio_id,
+            operation_type=data.operation_type,
+            amount=data.amount,
+            currency_id=data.currency_id or 47,
+            start_date=data.start_date,
+            end_date=data.end_date,
+            day_of_month=data.day_of_month,
+            portfolio_asset_id=data.portfolio_asset_id,
+            asset_id=data.asset_id,
+            quantity=data.quantity,
+            price=data.price,
+            dividend_yield=data.dividend_yield
+        )
+        
+        return success_response(
+            data=result,
+            message=f"Успешно создано {result.get('count', 0)} операций",
+            status_code=HTTPStatus.CREATED
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при массовом создании операций: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Ошибка при массовом создании операций"
         )

@@ -1,3 +1,9 @@
+-- ============================================================================
+-- Обновление portfolio_daily_values
+-- ============================================================================
+-- Обновляет portfolio_daily_values инкрементально (с конкретной даты)
+-- Это работает быстро благодаря инкрементальному обновлению
+
 CREATE OR REPLACE FUNCTION update_portfolio_values_from_date(
     p_portfolio_id bigint,
     p_from_date date DEFAULT '0001-01-01'
@@ -8,6 +14,8 @@ AS $$
 DECLARE
     v_base_realized numeric := 0;
     v_base_payouts  numeric := 0;
+    v_base_commissions numeric := 0;
+    v_base_taxes numeric := 0;
     v_asset_ids bigint[];
 BEGIN
     ------------------------------------------------------------------
@@ -42,12 +50,34 @@ BEGIN
 
     SELECT
         -- Используем amount_rub для выплат (уже переведено в рубли по курсу на дату операции)
-        -- Типы: 3=Dividend, 4=Coupon, 8=Tax
+        -- Типы: 3=Dividend, 4=Coupon (НЕ включаем 8=Tax, налоги это расходы!)
         coalesce(sum(COALESCE(co.amount_rub, co.amount)),0)
     INTO v_base_payouts
     FROM cash_operations co
     WHERE co.portfolio_id = p_portfolio_id
-      AND co.type IN (3,4,8)
+      AND co.type IN (3,4)
+      AND co.date::date < p_from_date;
+
+    SELECT
+        -- Используем amount_rub для налогов (уже переведено в рубли по курсу на дату операции)
+        -- Типы: 8=Tax
+        -- Налоги - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
+        coalesce(sum(ABS(COALESCE(co.amount_rub, co.amount))),0)
+    INTO v_base_taxes
+    FROM cash_operations co
+    WHERE co.portfolio_id = p_portfolio_id
+      AND co.type IN (8)
+      AND co.date::date < p_from_date;
+
+    SELECT
+        -- Используем amount_rub для комиссий (уже переведено в рубли по курсу на дату операции)
+        -- Типы: 7=Commission
+        -- Комиссии - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
+        coalesce(sum(ABS(COALESCE(co.amount_rub, co.amount))),0)
+    INTO v_base_commissions
+    FROM cash_operations co
+    WHERE co.portfolio_id = p_portfolio_id
+      AND co.type IN (7)
       AND co.date::date < p_from_date;
 
     ------------------------------------------------------------------
@@ -67,6 +97,8 @@ BEGIN
         total_invested,
         total_payouts,
         total_realized,
+        total_commissions,
+        total_taxes,
         total_pnl
     )
     WITH
@@ -181,10 +213,11 @@ BEGIN
         SELECT
             co.date::date AS report_date,
             -- Используем amount_rub для выплат (уже переведено в рубли по курсу на дату операции)
+            -- Типы: 3=Dividend, 4=Coupon (НЕ включаем 8=Tax, налоги это расходы!)
             sum(COALESCE(co.amount_rub, co.amount))::numeric AS payout_day
         FROM cash_operations co
         WHERE co.portfolio_id = p_portfolio_id
-          AND co.type IN (3,4,8)
+          AND co.type IN (3,4)
           AND co.date::date >= p_from_date
         GROUP BY 1
     ),
@@ -199,6 +232,62 @@ BEGIN
         FROM dates d
         LEFT JOIN payouts_daily p
                ON p.report_date = d.report_date
+    ),
+
+    ------------------------------------------------------------------
+    -- Комиссии (дневные)
+    ------------------------------------------------------------------
+    commissions_daily AS (
+        SELECT
+            co.date::date AS report_date,
+            -- Используем amount_rub для комиссий (уже переведено в рубли по курсу на дату операции)
+            -- Комиссии - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
+            sum(ABS(COALESCE(co.amount_rub, co.amount)))::numeric AS commission_day
+        FROM cash_operations co
+        WHERE co.portfolio_id = p_portfolio_id
+          AND co.type IN (7)
+          AND co.date::date >= p_from_date
+        GROUP BY 1
+    ),
+
+    commissions_cum AS (
+        SELECT
+            d.report_date,
+            v_base_commissions
+            + sum(coalesce(c.commission_day,0)) OVER (
+                ORDER BY d.report_date
+            ) AS total_commissions
+        FROM dates d
+        LEFT JOIN commissions_daily c
+               ON c.report_date = d.report_date
+    ),
+
+    ------------------------------------------------------------------
+    -- Налоги (дневные)
+    ------------------------------------------------------------------
+    taxes_daily AS (
+        SELECT
+            co.date::date AS report_date,
+            -- Используем amount_rub для налогов (уже переведено в рубли по курсу на дату операции)
+            -- Налоги - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
+            sum(ABS(COALESCE(co.amount_rub, co.amount)))::numeric AS tax_day
+        FROM cash_operations co
+        WHERE co.portfolio_id = p_portfolio_id
+          AND co.type IN (8)
+          AND co.date::date >= p_from_date
+        GROUP BY 1
+    ),
+
+    taxes_cum AS (
+        SELECT
+            d.report_date,
+            v_base_taxes
+            + sum(coalesce(t.tax_day,0)) OVER (
+                ORDER BY d.report_date
+            ) AS total_taxes
+        FROM dates d
+        LEFT JOIN taxes_daily t
+               ON t.report_date = d.report_date
     )
 
     ------------------------------------------------------------------
@@ -219,6 +308,8 @@ BEGIN
         ) AS total_invested,
         pc.total_payouts,
         rc.total_realized,
+        COALESCE(cc.total_commissions, 0) AS total_commissions,
+        COALESCE(tc.total_taxes, 0) AS total_taxes,
         sum(
             dp.quantity
             * coalesce(cp.price,0)
@@ -230,7 +321,9 @@ BEGIN
             / nullif(dp.leverage,0)
         )
         + pc.total_payouts
-        + rc.total_realized AS total_pnl
+        + rc.total_realized
+        - COALESCE(cc.total_commissions, 0)
+        - COALESCE(tc.total_taxes, 0) AS total_pnl
     FROM daily_positions dp
     LEFT JOIN price_ranges cp
       ON cp.asset_id = dp.asset_id
@@ -238,10 +331,14 @@ BEGIN
      AND dp.report_date <  cp.valid_to
     LEFT JOIN realized_cum rc ON rc.report_date = dp.report_date
     LEFT JOIN payouts_cum  pc ON pc.report_date = dp.report_date
+    LEFT JOIN commissions_cum cc ON cc.report_date = dp.report_date
+    LEFT JOIN taxes_cum tc ON tc.report_date = dp.report_date
     GROUP BY
         dp.report_date,
         rc.total_realized,
-        pc.total_payouts;
+        pc.total_payouts,
+        cc.total_commissions,
+        tc.total_taxes;
     
     RETURN true;
 END;
@@ -249,4 +346,4 @@ $$;
 
 -- Комментарий к функции
 COMMENT ON FUNCTION update_portfolio_values_from_date(bigint, date) IS 
-'Оптимизированная версия: фильтрует price_ranges только по активам портфеля, что значительно ускоряет выполнение для больших таблиц asset_prices.';
+'Обновляет portfolio_daily_values инкрементально (с конкретной даты). Работает быстро благодаря инкрементальному обновлению и фильтрации price_ranges только по активам портфеля.';

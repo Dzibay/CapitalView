@@ -152,6 +152,8 @@ CREATE TABLE public.portfolio_daily_values (
   total_invested numeric,
   total_payouts numeric,
   total_realized numeric,
+  total_commissions numeric,
+  total_taxes numeric,
   total_pnl numeric,
   CONSTRAINT portfolio_daily_values_pkey PRIMARY KEY (portfolio_id, report_date)
 );

@@ -235,6 +235,10 @@ async def get_user_portfolios_analytics(user_id: str):
                     # Для return_percent нужно пересчитать на основе объединенных данных
                     if k == "return_percent":
                         continue  # Пропускаем, пересчитаем позже
+                    # Для total_profit тоже нужно пересчитать (суммируем из дочерних портфелей)
+                    if k == "total_profit":
+                        totals[k] = (totals.get(k, 0) or 0) + (v or 0)
+                        continue
                     totals[k] += v or 0
 
                 for op in child.get("operations_breakdown") or []:
@@ -434,15 +438,9 @@ async def get_user_portfolios_analytics(user_id: str):
                 - totals.get("outflow", 0) - totals.get("commissions", 0) - totals.get("taxes", 0)
             )
             
-            # Рассчитываем total_profit как сумму всех компонентов прибыли
-            totals["total_profit"] = (
-                totals.get("realized_pl", 0) +
-                totals.get("unrealized_pl", 0) +
-                totals.get("dividends", 0) +
-                totals.get("coupons", 0) +
-                totals.get("commissions", 0) +
-                totals.get("taxes", 0)
-            )
+            # total_profit уже рассчитан в SQL функции get_user_portfolios_analytics из total_pnl
+            # НЕ пересчитываем его здесь, используем значение из SQL функции
+            # totals["total_profit"] уже заполнен из pa.total_profit (который берется из portfolio_daily_values.total_pnl)
 
             # записываем объединённые данные
             analytics_map[parent_id]["totals"] = dict(totals)

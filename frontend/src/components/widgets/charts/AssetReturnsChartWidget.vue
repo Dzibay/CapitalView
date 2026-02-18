@@ -275,6 +275,9 @@ const chartOptions = computed(() => {
             const periodLabel = selectedPeriod.value === '1Y' ? ' (за год)' : 
                                selectedPeriod.value === '1M' ? ' (за месяц)' : ' (все время)'
             
+            // Получаем комиссии из данных актива (если есть)
+            const totalCommissions = Number(asset?.total_commissions || asset?.total_commissions_all || asset?.total_commissions_year || asset?.total_commissions_month || 0)
+            
             const labels = [
               `Доходность${periodLabel}: ${formatPercent(returnPercent)}`,
               '',
@@ -282,8 +285,9 @@ const chartOptions = computed(() => {
               `  Общая прибыль: ${formatMoney(totalReturn)}`,
               `  Нереализованная прибыль: ${formatMoney(priceChange)}`,
               `  Реализованная прибыль: ${formatMoney(realizedProfit)}`,
-              `  Выплаты: ${formatMoney(totalPayouts)}`
-            ]
+              `  Выплаты: ${formatMoney(totalPayouts)}`,
+              totalCommissions !== 0 ? `  Комиссии: ${formatMoney(-Math.abs(totalCommissions))} (уменьшают прибыль)` : null
+            ].filter(Boolean) // Убираем null значения
             
             return labels
           }

@@ -1,3 +1,13 @@
+-- Удаляем функцию, если она существует (для гарантированного обновления)
+DROP FUNCTION IF EXISTS get_portfolio_analytics(bigint, uuid);
+
+CREATE OR REPLACE FUNCTION get_portfolio_analytics(
+    p_portfolio_id bigint,
+    p_user_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
 DECLARE
     result jsonb;
 
@@ -40,8 +50,13 @@ BEGIN
         -- Для выплат (Dividend, Coupon) используем amount_rub (уже переведено в рубли по курсу на дату операции)
         COALESCE(SUM(CASE WHEN ot.name='Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
         COALESCE(SUM(CASE WHEN ot.name='Coupon'   THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Commision' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Tax'      THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0)
+        -- Комиссии - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
+        -- Учитываем оба варианта написания: 'Commission' и 'Commision'
+        COALESCE(SUM(CASE WHEN ot.name IN ('Commission','Commision') THEN ABS(COALESCE(co.amount_rub, co.amount)) ELSE 0 END), 0),
+        -- Налоги - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
+        -- Если налоги отрицательные в базе, ABS делает их положительными, затем вычитаем (правильно)
+        -- Если налоги положительные в базе, ABS ничего не меняет, затем вычитаем (правильно)
+        COALESCE(SUM(CASE WHEN ot.name='Tax' THEN ABS(COALESCE(co.amount_rub, co.amount)) ELSE 0 END), 0)
     INTO v_inflow, v_outflow, v_dividends, v_coupons, v_commissions, v_taxes
     FROM cash_operations co
     JOIN operations_type ot ON ot.id = co.type
@@ -126,13 +141,17 @@ BEGIN
     -------------------------------------------------------------------
     -- 4️⃣ TOTAL PROFIT + RETURN %
     -------------------------------------------------------------------
+    -- Комиссии и налоги вычитаются из прибыли (это расходы)
+    -- v_commissions и v_taxes уже положительные значения (используется ABS при суммировании)
+    -- Если налоги отрицательные в базе: ABS(-9889) = 9889, затем -9889 (правильно вычитается)
+    -- Если налоги положительные в базе: ABS(9889) = 9889, затем -9889 (правильно вычитается)
     v_total_profit :=
           v_unrealized_pl
         + v_realized_pl
         + v_dividends
         + v_coupons
-        + v_commissions
-        + v_taxes;
+        - v_commissions  -- Комиссии вычитаются (расходы)
+        - v_taxes;        -- Налоги вычитаются (расходы)
 
     IF v_total_invested > 0 THEN
         v_return_percent := v_total_profit / v_total_invested;
@@ -163,3 +182,4 @@ BEGIN
 
     RETURN result;
 END;
+$$;

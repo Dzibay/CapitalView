@@ -109,6 +109,9 @@ portfolio_history_data AS (
                 'value', pv.total_value,
                 'invested', pv.total_invested,
                 'payouts', pv.total_payouts,
+                'realized', pv.total_realized,
+                'commissions', pv.total_commissions,
+                'taxes', COALESCE(pv.total_taxes, 0),
                 'pnl', pv.total_pnl
             )
             ORDER BY pv.report_date

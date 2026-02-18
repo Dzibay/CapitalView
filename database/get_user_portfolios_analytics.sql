@@ -21,9 +21,10 @@ ops AS (
   SELECT
     co.portfolio_id,
     ot.name AS type,
-    -- Для выплат используем amount_rub, для остальных операций - amount
+    -- Для выплат (Dividend, Coupon) и расходов (Commission, Tax, Withdraw) используем amount_rub
+    -- Для Deposit используем amount (пополнение в исходной валюте)
     SUM(CASE 
-      WHEN ot.name IN ('Dividend','Coupon','Amortization') THEN COALESCE(co.amount_rub, co.amount)
+      WHEN ot.name IN ('Dividend','Coupon','Amortization','Commission','Commision','Tax','Withdraw') THEN COALESCE(co.amount_rub, co.amount)
       ELSE co.amount
     END) AS sum
   FROM cash_operations co
@@ -69,8 +70,11 @@ totals AS (
     SUM(CASE WHEN o.type='Withdraw'  THEN o.sum ELSE 0 END) AS total_outflow,
     SUM(CASE WHEN o.type='Dividend'  THEN o.sum ELSE 0 END) AS total_dividends,
     SUM(CASE WHEN o.type='Coupon'    THEN o.sum ELSE 0 END) AS total_coupons,
-    SUM(CASE WHEN o.type='Commision' THEN o.sum ELSE 0 END) AS total_commissions,
-    SUM(CASE WHEN o.type='Tax'       THEN o.sum ELSE 0 END) AS total_taxes
+    -- Комиссии - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
+    -- Учитываем оба варианта написания: 'Commission' и 'Commision'
+    SUM(CASE WHEN o.type IN ('Commission','Commision') THEN ABS(o.sum) ELSE 0 END) AS total_commissions,
+    -- Налоги - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
+    SUM(CASE WHEN o.type='Tax'       THEN ABS(o.sum) ELSE 0 END) AS total_taxes
   FROM ops o
   GROUP BY o.portfolio_id
 ),
@@ -224,7 +228,7 @@ dividends_by_year AS (
     AND COALESCE(pa.quantity, 0) > 0
   GROUP BY pa.portfolio_id, EXTRACT(YEAR FROM CURRENT_DATE)
 ),
--- Все активы портфеля (включая проданные) на основе транзакций (оптимизировано)
+-- Все активы портфеля (текущие и проданные)
 all_portfolio_assets AS (
   -- Текущие активы из portfolio_assets
   SELECT DISTINCT
@@ -237,7 +241,7 @@ all_portfolio_assets AS (
   FROM portfolio_assets pa
   JOIN p ON p.id = pa.portfolio_id
   UNION
-  -- Проданные активы (есть транзакции, но quantity = 0 или нет в portfolio_assets)
+  -- Проданные активы (есть транзакции, но quantity = 0)
   SELECT DISTINCT
     t_pa.portfolio_id,
     t_pa.asset_id,
@@ -422,6 +426,24 @@ asset_payouts_periods AS (
     AND co.asset_id IS NOT NULL
   GROUP BY co.portfolio_id, co.asset_id
 ),
+asset_commissions_periods AS (
+  SELECT
+    co.portfolio_id,
+    co.asset_id,
+    -- Комиссии за все время (используем amount_rub - уже переведено в рубли по курсу на дату операции)
+    -- Комиссии - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
+    SUM(CASE WHEN ot.name IN ('Commission','Commision') THEN ABS(COALESCE(co.amount_rub, co.amount)) ELSE 0 END) AS total_commissions_all,
+    -- Комиссии за год
+    SUM(CASE WHEN ot.name IN ('Commission','Commision') AND co.date >= CURRENT_DATE - INTERVAL '1 year' THEN ABS(COALESCE(co.amount_rub, co.amount)) ELSE 0 END) AS total_commissions_year,
+    -- Комиссии за месяц
+    SUM(CASE WHEN ot.name IN ('Commission','Commision') AND co.date >= CURRENT_DATE - INTERVAL '1 month' THEN ABS(COALESCE(co.amount_rub, co.amount)) ELSE 0 END) AS total_commissions_month
+  FROM cash_operations co
+  JOIN operations_type ot ON ot.id = co.type
+  JOIN p ON p.id = co.portfolio_id
+  WHERE ot.name IN ('Commission','Commision')
+    AND co.asset_id IS NOT NULL
+  GROUP BY co.portfolio_id, co.asset_id
+),
 -- Реализованная прибыль из транзакций продажи (оптимизировано: один проход, учитываем валюту и плечо)
 asset_realized_profit AS (
   SELECT
@@ -475,20 +497,24 @@ asset_returns AS (
     COALESCE(arp.realized_profit_all, 0) AS realized_profit,
     -- Выплаты
     COALESCE(app_periods.total_payouts_all, 0) AS total_payouts,
-    -- Общая доходность в рублях (нереализованная + реализованная + выплаты)
+    -- Комиссии (расходы, вычитаются)
+    COALESCE(acp.total_commissions_all, 0) AS total_commissions,
+    -- Общая доходность в рублях (нереализованная + реализованная + выплаты - комиссии)
     ((app.current_price - app.average_price) * app.current_quantity * app.currency_rate / app.leverage) 
       + COALESCE(arp.realized_profit_all, 0) 
-      + COALESCE(app_periods.total_payouts_all, 0) AS total_return,
+      + COALESCE(app_periods.total_payouts_all, 0)
+      - COALESCE(acp.total_commissions_all, 0) AS total_return,
     -- Доходность в процентах (с учетом реализованной прибыли, для проданных используем общую сумму покупок)
     CASE
       WHEN app.current_quantity > 0 AND (app.average_price * app.current_quantity * app.currency_rate / app.leverage) > 0 THEN (
         (((app.current_price - app.average_price) * app.current_quantity * app.currency_rate / app.leverage) 
           + COALESCE(arp.realized_profit_all, 0) 
-          + COALESCE(app_periods.total_payouts_all, 0)) /
+          + COALESCE(app_periods.total_payouts_all, 0)
+          - COALESCE(acp.total_commissions_all, 0)) /
         (app.average_price * app.current_quantity * app.currency_rate / app.leverage)
       ) * 100
       WHEN app.current_quantity = 0 AND (app.total_bought_amount * app.currency_rate / app.leverage) > 0 THEN (
-        (COALESCE(arp.realized_profit_all, 0) + COALESCE(app_periods.total_payouts_all, 0)) /
+        (COALESCE(arp.realized_profit_all, 0) + COALESCE(app_periods.total_payouts_all, 0) - COALESCE(acp.total_commissions_all, 0)) /
         (app.total_bought_amount * app.currency_rate / app.leverage)
       ) * 100
       ELSE 0
@@ -524,7 +550,9 @@ asset_returns AS (
     COALESCE(arp.realized_profit_year, 0) AS realized_profit_year,
     -- Выплаты за год
     COALESCE(app_periods.total_payouts_year, 0) AS total_payouts_year,
-    -- Общая доходность за год в рублях (нереализованная + реализованная + выплаты)
+    -- Комиссии за год (расходы, вычитаются)
+    COALESCE(acp.total_commissions_year, 0) AS total_commissions_year,
+    -- Общая доходность за год в рублях (нереализованная + реализованная + выплаты - комиссии)
     (
       CASE
         -- Если актив был год назад: считаем нереализованную прибыль только для той части, которая осталась
@@ -546,6 +574,7 @@ asset_returns AS (
       END
       + COALESCE(arp.realized_profit_year, 0) 
       + COALESCE(app_periods.total_payouts_year, 0)
+      - COALESCE(acp.total_commissions_year, 0)
     ) AS total_return_year,
     -- Доходность за год в процентах (с учетом реализованной прибыли)
     CASE
@@ -553,12 +582,13 @@ asset_returns AS (
       WHEN app.quantity_year_ago > 0 AND (app.price_year_ago * app.quantity_year_ago * app.currency_rate / app.leverage) > 0 THEN (
         (((app.current_price - app.price_year_ago) * LEAST(app.quantity_year_ago, app.current_quantity) * app.currency_rate / app.leverage) 
           + COALESCE(arp.realized_profit_year, 0) 
-          + COALESCE(app_periods.total_payouts_year, 0)) /
+          + COALESCE(app_periods.total_payouts_year, 0)
+          - COALESCE(acp.total_commissions_year, 0)) /
         (app.price_year_ago * app.quantity_year_ago * app.currency_rate / app.leverage)
       ) * 100
       -- Если актив был продан до начала года (quantity_year_ago = 0, но были покупки до начала года)
       WHEN app.quantity_year_ago = 0 AND app.current_quantity = 0 AND (app.total_bought_before_year * app.currency_rate / app.leverage) > 0 THEN (
-        (COALESCE(arp.realized_profit_year, 0) + COALESCE(app_periods.total_payouts_year, 0)) /
+        (COALESCE(arp.realized_profit_year, 0) + COALESCE(app_periods.total_payouts_year, 0) - COALESCE(acp.total_commissions_year, 0)) /
         (app.total_bought_before_year * app.currency_rate / app.leverage)
       ) * 100
       -- Если актив был куплен в течение года (quantity_year_ago = 0, но current_quantity > 0 или были покупки в течение года)
@@ -574,6 +604,7 @@ asset_returns AS (
           END
           + COALESCE(arp.realized_profit_year, 0) 
           + COALESCE(app_periods.total_payouts_year, 0)
+          - COALESCE(acp.total_commissions_year, 0)
         ) /
         (app.total_bought_in_year * app.currency_rate / app.leverage)
       ) * 100
@@ -592,20 +623,24 @@ asset_returns AS (
     COALESCE(arp.realized_profit_month, 0) AS realized_profit_month,
     -- Выплаты за месяц
     COALESCE(app_periods.total_payouts_month, 0) AS total_payouts_month,
-    -- Общая доходность за месяц в рублях (нереализованная + реализованная + выплаты)
+    -- Комиссии за месяц (расходы, вычитаются)
+    COALESCE(acp.total_commissions_month, 0) AS total_commissions_month,
+    -- Общая доходность за месяц в рублях (нереализованная + реализованная + выплаты - комиссии)
     ((app.current_price - app.price_month_ago) * app.quantity_month_ago * app.currency_rate / app.leverage) 
       + COALESCE(arp.realized_profit_month, 0) 
-      + COALESCE(app_periods.total_payouts_month, 0) AS total_return_month,
+      + COALESCE(app_periods.total_payouts_month, 0)
+      - COALESCE(acp.total_commissions_month, 0) AS total_return_month,
     -- Доходность за месяц в процентах (с учетом реализованной прибыли, для проданных используем сумму покупок до начала месяца)
     CASE
       WHEN app.quantity_month_ago > 0 AND (app.price_month_ago * app.quantity_month_ago * app.currency_rate / app.leverage) > 0 THEN (
         (((app.current_price - app.price_month_ago) * app.quantity_month_ago * app.currency_rate / app.leverage) 
           + COALESCE(arp.realized_profit_month, 0) 
-          + COALESCE(app_periods.total_payouts_month, 0)) /
+          + COALESCE(app_periods.total_payouts_month, 0)
+          - COALESCE(acp.total_commissions_month, 0)) /
         (app.price_month_ago * app.quantity_month_ago * app.currency_rate / app.leverage)
       ) * 100
       WHEN app.quantity_month_ago = 0 AND (app.total_bought_before_month * app.currency_rate / app.leverage) > 0 THEN (
-        (COALESCE(arp.realized_profit_month, 0) + COALESCE(app_periods.total_payouts_month, 0)) /
+        (COALESCE(arp.realized_profit_month, 0) + COALESCE(app_periods.total_payouts_month, 0) - COALESCE(acp.total_commissions_month, 0)) /
         (app.total_bought_before_month * app.currency_rate / app.leverage)
       ) * 100
       ELSE 0
@@ -614,7 +649,37 @@ asset_returns AS (
   FROM asset_prices_periods app
   JOIN assets a ON a.id = app.asset_id
   LEFT JOIN asset_payouts_periods app_periods ON app_periods.portfolio_id = app.portfolio_id AND app_periods.asset_id = app.asset_id
+  LEFT JOIN asset_commissions_periods acp ON acp.portfolio_id = app.portfolio_id AND acp.asset_id = app.asset_id
   LEFT JOIN asset_realized_profit arp ON arp.portfolio_id = app.portfolio_id AND arp.asset_id = app.asset_id
+),
+-- Оптимизация: получаем данные из portfolio_daily_values за один запрос
+portfolio_latest_values AS (
+  SELECT DISTINCT ON (pv.portfolio_id)
+    pv.portfolio_id,
+    pv.total_invested,
+    pv.total_value,
+    pv.total_payouts,
+    pv.total_realized,
+    pv.total_commissions,
+    COALESCE(pv.total_taxes, 0) AS total_taxes,
+    pv.total_pnl
+  FROM portfolio_daily_values pv
+  WHERE pv.portfolio_id IN (SELECT id FROM p)
+  ORDER BY pv.portfolio_id, pv.report_date DESC
+),
+portfolio_analytics_optimized AS (
+  SELECT
+    p.id AS portfolio_id,
+    COALESCE(plv.total_invested, 0) AS total_invested,
+    COALESCE(plv.total_value, 0) AS total_value,
+    COALESCE(plv.total_value, 0) - COALESCE(plv.total_invested, 0) AS unrealized_pl,
+    COALESCE(plv.total_realized, 0) AS realized_pl,
+    -- total_pnl из portfolio_daily_values уже включает: unrealized + realized + payouts - commissions - taxes
+    -- Всегда используем total_pnl напрямую из таблицы
+    COALESCE(plv.total_pnl, 0) AS total_profit
+  FROM p
+  LEFT JOIN portfolio_latest_values plv ON plv.portfolio_id = p.id
+  LEFT JOIN totals t ON t.portfolio_id = p.id
 )
 SELECT json_agg(
   json_build_object(
@@ -627,9 +692,9 @@ SELECT json_agg(
       'coupons',      COALESCE(t.total_coupons,0),
       'commissions',  COALESCE(t.total_commissions,0),
       'taxes',        COALESCE(t.total_taxes,0),
-      'realized_pl',  COALESCE((get_portfolio_analytics(p.id, p_user_id)->>'realized_pl')::numeric, 0),
-      'unrealized_pl', COALESCE((get_portfolio_analytics(p.id, p_user_id)->>'unrealized_pl')::numeric, 0),
-      'total_profit', COALESCE((get_portfolio_analytics(p.id, p_user_id)->>'total_profit')::numeric, 0),
+      'realized_pl',  COALESCE(pa.realized_pl, 0),
+      'unrealized_pl', COALESCE(pa.unrealized_pl, 0),
+      'total_profit', COALESCE(pa.total_profit, 0),
       'net_cashflow',
         COALESCE(t.total_inflow,0)
       + COALESCE(t.total_dividends,0)
@@ -637,21 +702,8 @@ SELECT json_agg(
       - COALESCE(t.total_outflow,0)
       - COALESCE(t.total_commissions,0)
       - COALESCE(t.total_taxes,0),
-      'total_invested', (
-        SELECT COALESCE(SUM(pa.quantity * pa.average_price * COALESCE(curr.price, 1) / COALESCE(pa.leverage, 1)), 0)
-        FROM portfolio_assets pa
-        JOIN assets a ON a.id = pa.asset_id
-        LEFT JOIN asset_last_currency_prices curr ON curr.asset_id = a.quote_asset_id
-        WHERE pa.portfolio_id = p.id
-      ),
-      'total_value', (
-        SELECT COALESCE(SUM(pa.quantity * COALESCE(apf.curr_price, 0) * COALESCE(curr.price, 1) / COALESCE(pa.leverage, 1)), 0)
-        FROM portfolio_assets pa
-        JOIN assets a ON a.id = pa.asset_id
-        LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
-        LEFT JOIN asset_last_currency_prices curr ON curr.asset_id = a.quote_asset_id
-        WHERE pa.portfolio_id = p.id
-      ),
+      'total_invested', COALESCE(pa.total_invested, 0),
+      'total_value', COALESCE(pa.total_value, 0),
       'return_percent', (
         SELECT CASE 
           WHEN SUM(ay.quantity * ay.current_price * ay.currency_rate / ay.leverage) > 0
@@ -796,7 +848,8 @@ SELECT json_agg(
   )
 )
 FROM p
-LEFT JOIN totals t ON t.portfolio_id = p.id;
+LEFT JOIN totals t ON t.portfolio_id = p.id
+LEFT JOIN portfolio_analytics_optimized pa ON pa.portfolio_id = p.id;
 $$ LANGUAGE sql;
 
 -- Комментарий к функции

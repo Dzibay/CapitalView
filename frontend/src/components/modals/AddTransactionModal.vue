@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { Check } from 'lucide-vue-next'
 import { Button, ToggleSwitch } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
@@ -29,6 +29,9 @@ const operationTypes = [
   { value: 9, label: 'Другое', category: 'other' }
 ]
 
+// Режим: 'single' - одна операция, 'recurring' - повторяющиеся операции
+const mode = ref('single')
+
 const operationType = ref(1) // По умолчанию Покупка
 const quantity = ref(0)
 const price = ref(0)
@@ -37,6 +40,44 @@ const dividendYield = ref(null)
 const date = ref(new Date().toISOString().slice(0, 10))
 const error = ref('')
 const saving = ref(false)
+
+// Поля для повторяющихся операций
+const startDate = ref('')
+const endDate = ref(new Date().toISOString().slice(0, 10))
+const dayOfMonth = ref(new Date().getDate()) // День месяца по умолчанию - сегодняшний день
+
+// Инициализация начальной даты из данных актива
+const initializeStartDate = () => {
+  if (props.asset) {
+    // Начальная дата = дата первой покупки (first_purchase_date)
+    if (props.asset.first_purchase_date) {
+      const date = new Date(props.asset.first_purchase_date)
+      if (!isNaN(date.getTime())) {
+        startDate.value = date.toISOString().slice(0, 10)
+        // Устанавливаем день месяца по умолчанию на день первой покупки
+        dayOfMonth.value = date.getDate()
+        return
+      }
+    }
+    
+    // Если first_purchase_date нет, используем сегодняшнюю дату
+    if (!startDate.value) {
+      startDate.value = new Date().toISOString().slice(0, 10)
+    }
+  } else {
+    // Если asset нет, используем сегодняшнюю дату
+    startDate.value = new Date().toISOString().slice(0, 10)
+  }
+}
+
+// Инициализируем при монтировании и при изменении asset
+onMounted(() => {
+  initializeStartDate()
+})
+
+watch(() => props.asset, () => {
+  initializeStartDate()
+}, { immediate: true, deep: true })
 
 // Валюты
 const useCustomCurrency = ref(false)
@@ -86,6 +127,61 @@ const assetPrice = computed(() => {
 const assetQuantity = computed(() => {
   if (!props.asset?.quantity) return null
   return props.asset.quantity
+})
+
+// Вычисляем количество операций для повторяющегося режима
+const operationsCount = computed(() => {
+  if (mode.value !== 'recurring' || !startDate.value || !endDate.value || !dayOfMonth.value) return 0
+  
+  const start = new Date(startDate.value)
+  const end = new Date(endDate.value)
+  if (end < start) return 0
+  
+  // Функция для получения валидного дня месяца
+  const getValidDay = (year, month, day) => {
+    const lastDay = new Date(year, month, 0).getDate()
+    return Math.min(day, lastDay)
+  }
+  
+  let count = 0
+  let currentYear = start.getFullYear()
+  let currentMonth = start.getMonth() + 1 // getMonth() возвращает 0-11
+  
+  // Находим первую дату операции
+  let firstOpDay = getValidDay(currentYear, currentMonth, dayOfMonth.value)
+  let firstOpDate = new Date(currentYear, currentMonth - 1, firstOpDay)
+  
+  // Если первая дата раньше startDate, переходим к следующему месяцу
+  if (firstOpDate < start) {
+    if (currentMonth === 12) {
+      currentYear++
+      currentMonth = 1
+    } else {
+      currentMonth++
+    }
+    firstOpDay = getValidDay(currentYear, currentMonth, dayOfMonth.value)
+    firstOpDate = new Date(currentYear, currentMonth - 1, firstOpDay)
+  }
+  
+  // Подсчитываем операции до endDate
+  while (firstOpDate <= end) {
+    if (firstOpDate >= start) {
+      count++
+    }
+    
+    // Переходим к следующему месяцу
+    if (currentMonth === 12) {
+      currentYear++
+      currentMonth = 1
+    } else {
+      currentMonth++
+    }
+    
+    firstOpDay = getValidDay(currentYear, currentMonth, dayOfMonth.value)
+    firstOpDate = new Date(currentYear, currentMonth - 1, firstOpDay)
+  }
+  
+  return count
 })
 
 // Автоматический расчет доходности для выплат с учетом валют
@@ -200,16 +296,21 @@ const amountLabel = computed(() => {
 const handleSubmit = async () => {
   error.value = ''
   
-  // Валидация для транзакций (Buy/Sell)
+  // Валидация для транзакций (Buy/Sell) - не поддерживаются в режиме повторения
+  if (isTransaction.value && mode.value === 'recurring') {
+    error.value = 'Повторяющиеся операции не поддерживаются для транзакций (Покупка/Продажа)'
+    return
+  }
+  
   if (isTransaction.value) {
-  if (!quantity.value || quantity.value <= 0) {
-    error.value = 'Введите количество'
-    return
-  }
-  if (!price.value || price.value <= 0) {
-    error.value = 'Введите цену'
-    return
-  }
+    if (!quantity.value || quantity.value <= 0) {
+      error.value = 'Введите количество'
+      return
+    }
+    if (!price.value || price.value <= 0) {
+      error.value = 'Введите цену'
+      return
+    }
   }
   
   // Валидация для остальных операций
@@ -225,23 +326,71 @@ const handleSubmit = async () => {
     error.value = 'Не указан актив'
     return
   }
+  
+  // Валидация для повторяющихся операций
+  if (mode.value === 'recurring') {
+    if (!startDate.value) {
+      error.value = 'Выберите начальную дату'
+      return
+    }
+    if (!endDate.value) {
+      error.value = 'Выберите конечную дату'
+      return
+    }
+    if (new Date(endDate.value) < new Date(startDate.value)) {
+      error.value = 'Конечная дата должна быть позже начальной'
+      return
+    }
+    if (!dayOfMonth.value || dayOfMonth.value < 1 || dayOfMonth.value > 31) {
+      error.value = 'День месяца должен быть от 1 до 31'
+      return
+    }
+  }
 
   saving.value = true
 
   try {
     // Для Buy/Sell используем старый метод через onSubmit
     if (isTransaction.value) {
-    await props.onSubmit({
-      asset_id: props.asset.asset_id,
-      portfolio_asset_id: props.asset.portfolio_asset_id,
+      await props.onSubmit({
+        asset_id: props.asset.asset_id,
+        portfolio_asset_id: props.asset.portfolio_asset_id,
         transaction_type: operationType.value,
-      quantity: quantity.value,
-      price: price.value,
+        quantity: quantity.value,
+        price: price.value,
         transaction_date: date.value,
         date: date.value
       })
+    } else if (mode.value === 'recurring') {
+      // Для повторяющихся операций используем batch API
+      const batchData = {
+        portfolio_id: props.asset.portfolio_id,
+        operation_type: operationType.value,
+        amount: amount.value,
+        start_date: startDate.value,
+        end_date: endDate.value,
+        day_of_month: dayOfMonth.value,
+        currency_id: useCustomCurrency.value ? currencyId.value : 47
+      }
+      
+      // Добавляем asset_id если есть
+      if (props.asset?.asset_id) {
+        batchData.asset_id = props.asset.asset_id
+      }
+      
+      // Для Buy/Sell также нужны portfolio_asset_id
+      if (props.asset?.portfolio_asset_id) {
+        batchData.portfolio_asset_id = props.asset.portfolio_asset_id
+      }
+      
+      // Для выплат добавляем доходность (если указана)
+      if (isPayout.value && dividendYield.value) {
+        batchData.dividend_yield = dividendYield.value
+      }
+      
+      await transactionsStore.addOperationsBatch(batchData)
     } else {
-      // Для остальных операций используем новый API
+      // Для остальных операций используем обычный API
       const operationData = {
         portfolio_id: props.asset.portfolio_id,
         operation_type: operationType.value,
@@ -319,6 +468,31 @@ const handleSubmit = async () => {
           />
         </div>
 
+        <!-- Переключатель режима (только для не-транзакций) -->
+        <div v-if="!isTransaction" class="form-section">
+          <div class="section-divider"></div>
+          <label class="form-label">
+            <span class="label-icon">⚙️</span>
+            Режим добавления
+          </label>
+          <div class="mode-switch">
+            <button
+              type="button"
+              :class="['mode-btn', { active: mode === 'single' }]"
+              @click="mode = 'single'"
+            >
+              Одна операция
+            </button>
+            <button
+              type="button"
+              :class="['mode-btn', { active: mode === 'recurring' }]"
+              @click="mode = 'recurring'"
+            >
+              Повторяющиеся операции
+            </button>
+          </div>
+        </div>
+
         <!-- Поля для транзакций (Buy/Sell) -->
         <div v-if="isTransaction" class="form-section">
           <div class="section-divider"></div>
@@ -337,6 +511,13 @@ const handleSubmit = async () => {
               </label>
               <input type="number" v-model.number="price" min="0" step="0.01" class="form-input" required />
             </div>
+          </div>
+          <div class="form-field" style="margin-top: 12px;">
+            <label class="form-label">
+              <span class="label-icon">📅</span>
+              Дата транзакции
+            </label>
+            <input type="date" v-model="date" required class="form-input" />
           </div>
         </div>
 
@@ -415,8 +596,8 @@ const handleSubmit = async () => {
           </div>
         </div>
 
-        <!-- Дата операции -->
-        <div class="form-section">
+        <!-- Дата операции (для одиночной операции) -->
+        <div v-if="mode === 'single' && !isTransaction" class="form-section">
           <div class="section-divider"></div>
           <div class="form-field">
             <label class="form-label">
@@ -427,15 +608,63 @@ const handleSubmit = async () => {
           </div>
         </div>
 
+        <!-- Поля для повторяющихся операций -->
+        <template v-if="mode === 'recurring' && !isTransaction">
+          <div class="form-section">
+            <div class="section-divider"></div>
+            <div class="form-row">
+              <div class="form-field">
+                <label class="form-label">
+                  <span class="label-icon">📅</span>
+                  Начальная дата
+                </label>
+                <input type="date" v-model="startDate" required class="form-input" />
+              </div>
+              <div class="form-field">
+                <label class="form-label">
+                  <span class="label-icon">📅</span>
+                  Конечная дата
+                </label>
+                <input type="date" v-model="endDate" required class="form-input" />
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="section-divider"></div>
+            <div class="form-field">
+              <label class="form-label">
+                <span class="label-icon">📆</span>
+                День месяца
+              </label>
+              <input 
+                type="number" 
+                v-model.number="dayOfMonth" 
+                min="1" 
+                max="31" 
+                class="form-input" 
+                required
+              />
+              <small class="form-hint">
+                Операция будет создаваться каждый месяц в указанный день (1-31)
+              </small>
+            </div>
+            <div v-if="operationsCount > 0" class="info-box">
+              <span class="info-icon">ℹ️</span>
+              <span>Будет создано <strong>{{ operationsCount }}</strong> операций</span>
+            </div>
+          </div>
+        </template>
+
         <div v-if="error" class="error">{{ error }}</div>
 
         <div class="form-actions">
-          <Button variant="secondary" type="button" @click="emit('close')">Отмена</Button>
+          <Button variant="secondary" type="button" @click="emit('close')" :disabled="saving">Отмена</Button>
           <Button variant="primary" type="submit" :loading="saving">
             <template #icon>
               <Check :size="16" />
             </template>
-            Добавить
+            {{ saving ? 'Сохранение...' : (mode === 'recurring' ? 'Создать повторяющиеся операции' : 'Добавить') }}
           </Button>
         </div>
       </form>
@@ -686,6 +915,60 @@ const handleSubmit = async () => {
   color: #dc2626;
   font-size: 13px;
   margin-bottom: 12px;
+}
+
+.mode-switch {
+  display: flex;
+  gap: 8px;
+  background: #f3f4f6;
+  padding: 4px;
+  border-radius: 12px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-btn:hover {
+  background: rgba(255, 255, 255, 0.5);
+  color: #374151;
+}
+
+.mode-btn.active {
+  background: white;
+  color: #111827;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.info-box {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #1e40af;
+}
+
+.info-icon {
+  font-size: 16px;
+}
+
+.info-box strong {
+  color: #1e3a8a;
+  font-weight: 600;
 }
 
 .form-actions {

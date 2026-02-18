@@ -102,39 +102,24 @@ def rpc(fn_name: str, params: dict):
     if isinstance(result, bool):
         return result
     
-    # Если результат - список с данными, проверяем наличие amount_rub
+    # Если результат - список с данными, нормализуем поля amount_rub/amountRub
     # Supabase может преобразовывать snake_case в camelCase
     if isinstance(result, list) and len(result) > 0:
         first_item = result[0]
         if isinstance(first_item, dict):
-            all_keys = list(first_item.keys())
             has_amount_rub = 'amount_rub' in first_item
             has_amountRub = 'amountRub' in first_item
             
-            # Логируем для диагностики
-            if fn_name == "get_cash_operations":
-                logger.info(f"RPC {fn_name}: получено {len(result)} записей")
-                logger.info(f"RPC {fn_name}: поля первой записи: {all_keys}")
-                logger.info(f"RPC {fn_name}: has_amount_rub={has_amount_rub}, has_amountRub={has_amountRub}")
-                if has_amount_rub:
-                    logger.info(f"RPC {fn_name}: amount_rub значение = {first_item.get('amount_rub')}")
-                if has_amountRub:
-                    logger.info(f"RPC {fn_name}: amountRub значение = {first_item.get('amountRub')}")
-            
             # Если есть amount_rub, но нет amountRub, добавляем amountRub для совместимости
             if has_amount_rub and not has_amountRub:
-                logger.info(f"RPC {fn_name}: добавляем amountRub для совместимости")
                 for item in result:
                     if isinstance(item, dict) and 'amount_rub' in item:
                         item['amountRub'] = item['amount_rub']
             # Если есть amountRub, но нет amount_rub, добавляем amount_rub для совместимости
             elif has_amountRub and not has_amount_rub:
-                logger.info(f"RPC {fn_name}: добавляем amount_rub для совместимости")
                 for item in result:
                     if isinstance(item, dict) and 'amountRub' in item:
                         item['amount_rub'] = item['amountRub']
-            elif not has_amount_rub and not has_amountRub:
-                logger.warning(f"RPC {fn_name}: amount_rub отсутствует! Поля: {all_keys}")
     
     # Если результат - список с данными или другой тип
     return result

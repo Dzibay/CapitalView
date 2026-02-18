@@ -294,8 +294,6 @@ async def update_history_prices() -> int:
     Returns:
         Количество успешно обновленных активов
     """
-    logger.info("📈 Обновление истории криптовалютных активов (инкрементально)...")
-
     # Получаем криптовалютные активы с фильтром по asset_type_id (6)
     # Это эффективнее, чем загружать все активы и фильтровать в Python
     async with db_sem:
@@ -314,13 +312,8 @@ async def update_history_prices() -> int:
             assets.append(a)
 
     if not assets:
-        logger.warning("⚠️ Нет криптовалютных активов для обновления")
         return 0
 
-    logger.info(f"📊 Найдено {len(assets)} криптовалютных активов для обновления")
-
-    # Предзагружаем последние даты для всех активов из asset_latest_prices_full
-    logger.info("📊 Загрузка последних дат цен...")
     asset_ids = [a["id"] for a in assets]
     
     # Получаем последние цены и даты из asset_latest_prices_full
@@ -332,11 +325,6 @@ async def update_history_prices() -> int:
         date_str = price_data.get("date")
         if date_str:
             last_date_map[asset_id] = date_str
-    
-    # Логируем статистику: сколько активов имеют цены, сколько будут загружены с нуля
-    assets_with_prices = len(last_date_map)
-    assets_without_prices = len(assets) - assets_with_prices
-    logger.info(f"📊 Активов с ценами в БД: {assets_with_prices}, без цен (загрузка с нуля): {assets_without_prices}")
 
     updated_assets = {}
     updated_asset_ids = []
@@ -380,9 +368,6 @@ async def update_history_prices() -> int:
         else:
             failed_count += 1
 
-    logger.info(f"✅ Обработано активов: успешно {success_count}, ошибок {failed_count}, без новых данных {no_new_data_count}")
-    logger.info(f"📊 Активов с новыми данными: {len(updated_assets)}/{len(assets)}")
-    
     if all_new_prices:
         # Удаляем дубликаты по (asset_id, trade_date), оставляя последнюю запись
         # Это предотвращает ошибку "ON CONFLICT DO UPDATE command cannot affect row a second time"
@@ -398,26 +383,19 @@ async def update_history_prices() -> int:
         
         deduplicated_prices = list(unique_prices.values())
         
-        if len(deduplicated_prices) < len(all_new_prices):
-            logger.info(f"🔍 Удалено {len(all_new_prices) - len(deduplicated_prices)} дубликатов из {len(all_new_prices)} цен")
-        
-        logger.info(f"💾 Вставка {len(deduplicated_prices)} новых цен большими батчами...")
         batch_size = 1000
         for i in range(0, len(deduplicated_prices), batch_size):
             batch = deduplicated_prices[i:i + batch_size]
             try:
                 async with db_sem:
                     await db_rpc("upsert_asset_prices", {"p_prices": batch})
-                logger.info(f"  ✅ Вставлено {min(i + batch_size, len(deduplicated_prices))}/{len(deduplicated_prices)} цен")
             except Exception as e:
-                logger.error(f"  ⚠️ Ошибка при вставке батча {i//batch_size + 1}: {e}")
+                logger.error(f"Ошибка при вставке батча {i//batch_size + 1}: {e}")
                 continue
 
     if not updated_asset_ids:
-        logger.info("ℹ️ Нет новых данных для обновления")
         return success_count
 
-    logger.info(f"🔄 Обновление цен для {len(updated_asset_ids)} активов...")
     batch_size = 500
     for i in range(0, len(updated_asset_ids), batch_size):
         batch_ids = updated_asset_ids[i:i + batch_size]
@@ -426,21 +404,14 @@ async def update_history_prices() -> int:
                 await db_rpc('update_asset_latest_prices_batch', {
                     'p_asset_ids': batch_ids
                 })
-            logger.info(f"  ✅ Обновлено {min(i + batch_size, len(updated_asset_ids))}/{len(updated_asset_ids)} активов")
         except Exception as e:
-            logger.error(f"  ⚠️ Ошибка при обновлении батча {i//batch_size + 1}: {e}")
+            logger.error(f"Ошибка при обновлении батча {i//batch_size + 1}: {e}")
             continue
 
-    logger.info("🔍 Поиск затронутых портфелей...")
     portfolio_dates = await get_portfolios_with_assets(updated_assets)
     
     if not portfolio_dates:
-        logger.info("ℹ️ Нет портфелей с обновленными активами")
         return success_count
-
-    logger.info(f"📦 Найдено портфелей для обновления: {len(portfolio_dates)}")
-
-    logger.info("🔄 Обновление портфельных данных...")
     update_tasks = []
     for portfolio_id, min_date in portfolio_dates.items():
         from_date = normalize_date_to_string(min_date) or str(min_date)[:10]
@@ -470,10 +441,8 @@ async def update_history_prices() -> int:
         error_count = sum(1 for r in portfolio_results if isinstance(r, Exception))
         
         if error_count > 0:
-            logger.warning(f"  ⚠️ Ошибок при обновлении портфелей: {error_count}")
-        logger.info(f"  ✅ Обновлено портфелей: {success_count}/{len(update_tasks)}")
+            logger.warning(f"Ошибок при обновлении портфелей: {error_count}")
 
-    logger.info(f"✅ История обновлена. Активов: {success_count}/{len(assets)}, портфелей: {len(portfolio_dates)}")
     return success_count
 
 
@@ -544,7 +513,6 @@ async def update_today_prices() -> int:
     now = datetime.now()
     today = now.date().isoformat()
 
-    logger.info(f"🕓 Обновление сегодняшних цен криптовалют ({now.strftime('%H:%M')})")
 
     # Получаем криптовалютные активы с фильтром по asset_type_id (6)
     async with db_sem:
@@ -562,7 +530,6 @@ async def update_today_prices() -> int:
             assets.append(a)
 
     if not assets:
-        logger.warning("⚠️ Нет криптовалютных активов для обновления")
         return 0
 
     # Загружаем последние цены только для нужных активов
@@ -580,10 +547,8 @@ async def update_today_prices() -> int:
     coingecko_ids = list(asset_coingecko_map.keys())
     
     if not coingecko_ids:
-        logger.warning("⚠️ Нет coingecko_id для запроса цен")
         return 0
 
-    logger.info(f"📊 Загрузка цен для {len(coingecko_ids)} криптовалют (batch запросы)...")
     
     connector = aiohttp.TCPConnector(
         limit=10,
@@ -607,9 +572,6 @@ async def update_today_prices() -> int:
             async with sem:
                 batch_prices = await get_prices_crypto_batch(session, batch_ids)
                 all_prices.update(batch_prices)
-            logger.info(f"  ✅ Загружено цен: {len(all_prices)}/{len(coingecko_ids)}")
-    
-    logger.info(f"📊 Получено цен: {len(all_prices)}/{len(coingecko_ids)}")
     
     # Обрабатываем полученные цены
     updates_batch = []
@@ -636,7 +598,6 @@ async def update_today_prices() -> int:
         deduplicated_updates = list(unique_updates.values())
         
         if len(deduplicated_updates) < len(updates_batch):
-            logger.info(f"🔍 Удалено {len(updates_batch) - len(deduplicated_updates)} дубликатов из {len(updates_batch)} обновлений")
         
         pack = []
         for row in deduplicated_updates:
@@ -651,12 +612,10 @@ async def update_today_prices() -> int:
                 await db_rpc("upsert_asset_prices", {"p_prices": pack})
 
     if updated_ids:
-        logger.info(f"🔄 Обновление цен для {len(updated_ids)} активов...")
         async with db_sem:
             await db_rpc('update_asset_latest_prices_batch', {
                 'p_asset_ids': updated_ids
             })
-        logger.info(f"  ✅ Цены обновлены")
 
     updated_assets_dates = {}
     portfolio_dates = {}
@@ -673,46 +632,68 @@ async def update_today_prices() -> int:
                 if date_str < updated_assets_dates[asset_id]:
                     updated_assets_dates[asset_id] = date_str
 
+    # Обновляем активы во всех портфелях используя новую оптимальную функцию
     if updated_assets_dates:
-        logger.info("🔍 Поиск затронутых портфелей...")
-        portfolio_dates = await get_portfolios_with_assets(updated_assets_dates)
         
-        if portfolio_dates:
-            logger.info(f"📦 Найдено портфелей для обновления: {len(portfolio_dates)}")
-            
-            logger.info("🔄 Обновление портфельных данных...")
-            update_tasks = []
-            for portfolio_id, min_date in portfolio_dates.items():
-                from_date = normalize_date_to_string(min_date) or str(min_date)[:10]
-                
-                async def update_portfolio_with_sem(pid, fdate):
-                    async with db_sem:
-                        return await db_rpc('update_portfolio_values_from_date', {
-                            'p_portfolio_id': pid,
-                            'p_from_date': fdate
-                        })
-                
-                update_tasks.append(update_portfolio_with_sem(portfolio_id, from_date))
-            
-            if update_tasks:
-                async def update_with_sem(task):
-                    return await task
-                
-                portfolio_results = await asyncio.gather(
-                    *[update_with_sem(task) for task in update_tasks],
-                    return_exceptions=True
-                )
-                
-                success_count = sum(1 for r in portfolio_results if not isinstance(r, Exception))
-                error_count = sum(1 for r in portfolio_results if isinstance(r, Exception))
-                
-                if error_count > 0:
-                    logger.warning(f"  ⚠️ Ошибок при обновлении портфелей: {error_count}")
-                logger.info(f"  ✅ Обновлено портфелей: {success_count}/{len(update_tasks)}")
-        else:
-            logger.info("ℹ️ Нет портфелей с обновленными активами")
+        # Находим минимальную дату для всех активов
+        min_date = min(updated_assets_dates.values())
+        from_date = normalize_date_to_string(min_date) or str(min_date)[:10]
+        
+        # Собираем список всех активов
+        asset_ids = list(updated_assets_dates.keys())
+        
+        # Используем оптимальную функцию update_assets_daily_values
+        # Это обновит portfolio_daily_values для всех портфелей с активом одним вызовом
+        try:
+            async with db_sem:
+                update_results = await db_rpc('update_assets_daily_values', {
+                    'p_asset_ids': asset_ids,
+                    'p_from_date': from_date
+                })
+                if update_results:
+                    updated_count = len([r for r in update_results if r.get("updated", False)])
+                    if updated_count == 0:
+                        logger.warning("Не удалось обновить портфели")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при обновлении портфелей: {e}", exc_info=True)
+        
+        # Старый код (закомментирован для справки)
+        # portfolio_dates = await get_portfolios_with_assets(updated_assets_dates)
+        # if portfolio_dates:
+        #     logger.info(f"📦 Найдено портфелей для обновления: {len(portfolio_dates)}")
+        #     
+        #     logger.info("🔄 Обновление портфельных данных...")
+        #     update_tasks = []
+        #     for portfolio_id, min_date in portfolio_dates.items():
+        #         from_date = normalize_date_to_string(min_date) or str(min_date)[:10]
+        #         
+        #         async def update_portfolio_with_sem(pid, fdate):
+        #             async with db_sem:
+        #                 return await db_rpc('update_portfolio_values_from_date', {
+        #                     'p_portfolio_id': pid,
+        #                     'p_from_date': fdate
+        #                 })
+        #         
+        #         update_tasks.append(update_portfolio_with_sem(portfolio_id, from_date))
+        #     
+        #     if update_tasks:
+        #         async def update_with_sem(task):
+        #             return await task
+        #         
+        #         portfolio_results = await asyncio.gather(
+        #             *[update_with_sem(task) for task in update_tasks],
+        #             return_exceptions=True
+        #         )
+        #         
+        #         success_count = sum(1 for r in portfolio_results if not isinstance(r, Exception))
+        #         error_count = sum(1 for r in portfolio_results if isinstance(r, Exception))
+        #         
+        #         if error_count > 0:
+        #             logger.warning(f"  ⚠️ Ошибок при обновлении портфелей: {error_count}")
+        #         logger.info(f"  ✅ Обновлено портфелей: {success_count}/{len(update_tasks)}")
+        # else:
+        #     logger.info("ℹ️ Нет портфелей с обновленными активами")
 
-    logger.info(f"✅ Сегодняшние цены обновлены. Активов: {len(updated_ids)}, портфелей: {len(portfolio_dates)}")
     return len(updated_ids)
 
 

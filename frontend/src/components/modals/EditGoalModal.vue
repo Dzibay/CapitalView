@@ -21,14 +21,6 @@ const newAnnualReturn = ref(props.annualReturn || '');
 const newUseInflation = ref(props.useInflation !== undefined && props.useInflation !== null ? props.useInflation : false);
 const newInflationRate = ref(props.inflationRate !== undefined && props.inflationRate !== null ? props.inflationRate : 7.5);
 
-// Отладочная информация при инициализации
-console.log('[EditGoalModal] Initialized with:', {
-  useInflation: props.useInflation,
-  inflationRate: props.inflationRate,
-  newUseInflation: newUseInflation.value,
-  newInflationRate: newInflationRate.value
-})
-
 // Обновляем локальные значения, если пропсы меняются
 watch(() => props.targetAmount, (val) => newTargetAmount.value = val);
 watch(() => props.monthlyContribution, (val) => {
@@ -39,11 +31,9 @@ watch(() => props.annualReturn, (val) => {
   newAnnualReturn.value = val || ''
 });
 watch(() => props.useInflation, (val) => {
-  console.log('[EditGoalModal] useInflation watch:', val, 'type:', typeof val)
   newUseInflation.value = val !== undefined && val !== null ? Boolean(val) : false
 }, { immediate: true });
 watch(() => props.inflationRate, (val) => {
-  console.log('[EditGoalModal] inflationRate watch:', val, 'type:', typeof val)
   newInflationRate.value = val !== undefined && val !== null ? Number(val) : 7.5
 }, { immediate: true });
 

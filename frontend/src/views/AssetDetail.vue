@@ -38,7 +38,7 @@ const assetInAllPortfolios = ref([])
 const selectedPortfolioId = ref(null)
 const selectedPeriod = ref('All')
 const selectedChartType = ref('position') // 'position' | 'quantity' | 'price'
-const cashOperations = ref([]) // Полученные выплаты из cash_operations
+const cashOperations = ref([]) // Все операции из cash_operations (выплаты, комиссии, налоги и т.д.)
 const portfolioTransactions = ref({}) // Транзакции для каждого portfolio_asset_id
 
 const chartTypeOptions = [
@@ -122,8 +122,8 @@ async function loadAssetInfo() {
         await loadPriceHistory(result.portfolio_asset.asset_id)
       }
       
-      // Загружаем полученные выплаты из cash_operations
-      await loadReceivedPayouts()
+      // Загружаем все операции из cash_operations
+      await loadAllCashOperations()
     }
   } catch (error) {
     console.error('Ошибка при загрузке информации об активе:', error)
@@ -154,8 +154,8 @@ async function loadTransactionsForAllPortfolios(portfolios) {
   }
 }
 
-// Загрузка полученных выплат из cash_operations
-async function loadReceivedPayouts() {
+// Загрузка всех операций из cash_operations для данного актива
+async function loadAllCashOperations() {
   if (!selectedPortfolioId.value || !assetInfo.value?.asset_id) return
   
   try {
@@ -169,58 +169,17 @@ async function loadReceivedPayouts() {
     const operations = Array.isArray(response) ? response : []
     
     if (operations && Array.isArray(operations)) {
-      // Фильтруем только выплаты (Dividend, Coupon) для данного актива
+      // Фильтруем все операции для данного актива (не только выплаты)
       const assetId = assetInfo.value.asset_id
       cashOperations.value = operations.filter(op => {
-        const opType = op.operation_type || op.type || ''
-        const isPayout = opType === 'Дивиденды' || opType === 'Купоны' || 
-                        opType === 'Dividend' || opType === 'Coupon' ||
-                        opType.toLowerCase().includes('dividend') || 
-                        opType.toLowerCase().includes('coupon') ||
-                        opType.toLowerCase().includes('дивиденд') || 
-                        opType.toLowerCase().includes('купон')
-        const matches = isPayout && op.asset_id === assetId
-        
-        if (import.meta.env.DEV && matches) {
-          console.log('Найдена выплата для актива:', {
-            op,
-            opType,
-            assetId,
-            operation_asset_id: op.asset_id,
-            // Диагностика полей amount_rub
-            всеПоля: Object.keys(op),
-            amount_rub: op.amount_rub,
-            amountRub: op.amountRub,
-            amount: op.amount,
-            has_amount_rub: 'amount_rub' in op,
-            has_amountRub: 'amountRub' in op
-          })
-        }
-        
-        return matches
+        // Включаем операции, которые связаны с активом (имеют asset_id)
+        return op.asset_id === assetId
       })
-      
-      if (import.meta.env.DEV) {
-        console.log('Загруженные выплаты для актива:', {
-          assetId,
-          всегоОпераций: operations.length,
-          выплат: cashOperations.value.length,
-          выплаты: cashOperations.value,
-          // Проверяем структуру первой выплаты для диагностики
-          перваяВыплата: cashOperations.value.length > 0 ? {
-            всеПоля: Object.keys(cashOperations.value[0]),
-            amount_rub: cashOperations.value[0].amount_rub,
-            amountRub: cashOperations.value[0].amountRub,
-            amount: cashOperations.value[0].amount,
-            currency_ticker: cashOperations.value[0].currency_ticker
-          } : null
-        })
-      }
     } else {
       cashOperations.value = []
     }
   } catch (error) {
-    console.error('Ошибка при загрузке полученных выплат:', error)
+    console.error('Ошибка при загрузке операций:', error)
     cashOperations.value = []
   }
 }
@@ -467,6 +426,24 @@ const selectedPriceGrowth = computed(() => {
   }
 })
 
+// Комиссии из cash_operations для выбранного портфеля
+const commissionsTotal = computed(() => {
+  // Фильтруем только комиссии для выбранного портфеля
+  const commissionsList = allCashOperationsList.value.filter(op => {
+    const opType = (op.operation_type || op.type || '').toLowerCase()
+    const opTypeId = op.operation_type_id
+    return (opType.includes('commission') || opType.includes('комиссия') || opType.includes('commision') || opTypeId === 7)
+  })
+  
+  // Суммируем комиссии в рублях (amount_rub уже рассчитан по курсу на дату операции)
+  // Комиссии - это расходы, поэтому берем абсолютное значение (на случай если они отрицательные в базе)
+  return commissionsList.reduce((sum, op) => {
+    const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
+    // Берем абсолютное значение, так как комиссии - это всегда расходы (положительная сумма)
+    return sum + Math.abs(amountRub)
+  }, 0)
+})
+
 // Расчет общей прибыли для выбранного портфеля
 const selectedTotalProfit = computed(() => {
   if (!selectedProfitLoss.value) return null
@@ -474,12 +451,14 @@ const selectedTotalProfit = computed(() => {
   const unrealized = selectedProfitLoss.value.profit
   const realized = realizedProfit.value
   const payoutAmount = receivedPayouts.value
-  const total = unrealized + realized + payoutAmount
+  const commissions = commissionsTotal.value
+  const total = unrealized + realized + payoutAmount - commissions
   
   return {
     unrealized,
     realized,
     payouts: payoutAmount,
+    commissions,
     total,
     isProfit: total >= 0
   }
@@ -525,47 +504,14 @@ const assetCurrency = computed(() => {
                        selectedPortfolioAsset.value?.quote_asset_id ||
                        portfolioAsset.value?.asset?.quote_asset_id
   
-  if (import.meta.env.DEV) {
-    console.log('assetCurrency: начало определения', {
-      quoteAssetId,
-      assetInfo_quote_asset_id: assetInfo.value?.quote_asset_id,
-      selectedPortfolioAsset_quote_asset_id: selectedPortfolioAsset.value?.quote_asset_id,
-      portfolioAsset_quote_asset_id: portfolioAsset.value?.asset?.quote_asset_id
-    })
-  }
-  
   if (quoteAssetId) {
     const refData = dashboardStore.referenceData
-    
-    if (import.meta.env.DEV) {
-      console.log('assetCurrency: поиск в referenceData', {
-        quoteAssetId,
-        hasCurrencies: !!(refData && refData.currencies),
-        currenciesCount: refData?.currencies?.length || 0,
-        hasAssets: !!(refData && refData.assets),
-        assetsCount: refData?.assets?.length || 0
-      })
-    }
     
     // Ищем валюту в списке валют (currencies)
     if (refData && refData.currencies) {
       const currency = refData.currencies.find(c => c.id === quoteAssetId)
       if (currency && currency.ticker) {
-        const normalized = normalizeCurrencyTicker(currency.ticker)
-        if (import.meta.env.DEV) {
-          console.log('assetCurrency: найдена валюта в currencies по quote_asset_id', {
-            quoteAssetId,
-            ticker: currency.ticker,
-            normalized,
-            currency
-          })
-        }
-        return normalized
-      } else if (import.meta.env.DEV) {
-        console.log('assetCurrency: валюта не найдена в currencies', {
-          quoteAssetId,
-          currencies: refData.currencies.map(c => ({ id: c.id, ticker: c.ticker }))
-        })
+        return normalizeCurrencyTicker(currency.ticker)
       }
     }
     
@@ -573,21 +519,7 @@ const assetCurrency = computed(() => {
     if (refData && refData.assets) {
       const currencyAsset = refData.assets.find(a => a.id === quoteAssetId)
       if (currencyAsset && currencyAsset.ticker) {
-        const normalized = normalizeCurrencyTicker(currencyAsset.ticker)
-        if (import.meta.env.DEV) {
-          console.log('assetCurrency: найдена валюта в assets по quote_asset_id', {
-            quoteAssetId,
-            ticker: currencyAsset.ticker,
-            normalized,
-            currencyAsset
-          })
-        }
-        return normalized
-      } else if (import.meta.env.DEV) {
-        console.log('assetCurrency: валюта не найдена в assets', {
-          quoteAssetId,
-          assetsCount: refData.assets.length
-        })
+        return normalizeCurrencyTicker(currencyAsset.ticker)
       }
     }
   }
@@ -602,45 +534,12 @@ const assetCurrency = computed(() => {
     currencyTicker = portfolioAsset.value.asset.currency_ticker
   }
   
-  if (import.meta.env.DEV) {
-    console.log('assetCurrency: проверка currency_ticker', {
-      currencyTicker,
-      selectedPortfolioAsset_currency_ticker: selectedPortfolioAsset.value?.currency_ticker,
-      assetInfo_currency_ticker: assetInfo.value?.currency_ticker,
-      portfolioAsset_currency_ticker: portfolioAsset.value?.asset?.currency_ticker
-    })
-  }
-  
   // Если нашли ticker, нормализуем его (защита от некорректных значений типа "RUB000UTSTOM")
   if (currencyTicker) {
-    const normalized = normalizeCurrencyTicker(currencyTicker)
-    if (import.meta.env.DEV) {
-      if (normalized !== currencyTicker) {
-        console.log('assetCurrency: нормализована валюта из currency_ticker', { 
-          было: currencyTicker, 
-          стало: normalized,
-          quoteAssetId
-        })
-      } else {
-        console.log('assetCurrency: использована валюта из currency_ticker', normalized)
-      }
-    }
-    return normalized
+    return normalizeCurrencyTicker(currencyTicker)
   }
   
   // Если ничего не найдено
-  if (import.meta.env.DEV) {
-    console.log('assetCurrency: валюта не найдена, возвращаем RUB', {
-      quoteAssetId,
-      currencyTicker,
-      refData: dashboardStore.referenceData ? { 
-        hasAssets: !!dashboardStore.referenceData.assets, 
-        hasCurrencies: !!dashboardStore.referenceData.currencies,
-        currencies: dashboardStore.referenceData.currencies?.map(c => ({ id: c.id, ticker: c.ticker })) || []
-      } : null
-    })
-  }
-  
   return 'RUB'
 })
 
@@ -739,6 +638,13 @@ const profitLossItems = computed(() => [
     format: 'currency',
     colorClass: 'profit',
     formatter: (v) => formatOperationAmount(v, 'RUB')
+  },
+  { 
+    label: 'Комиссии', 
+    value: commissionsTotal.value || 0, 
+    format: 'currency',
+    colorClass: 'loss',
+    formatter: (v) => formatOperationAmount(-v, 'RUB') // Вычитаем при форматировании
   },
   { 
     label: 'Общая прибыль', 
@@ -869,7 +775,7 @@ const priceGrowth = computed(() => {
   }
 })
 
-// Общая прибыль (unrealized + realized + выплаты)
+// Общая прибыль (unrealized + realized + выплаты - комиссии)
 const totalProfit = computed(() => {
   if (!profitLoss.value) return null
   
@@ -878,33 +784,41 @@ const totalProfit = computed(() => {
   // Используем receivedPayoutsTotal (из cash_operations, уже в рублях через amount_rub)
   // вместо payouts.value.total (из asset_payouts, старая структура)
   const payoutAmount = receivedPayoutsTotal.value || 0
+  const commissions = commissionsTotal.value || 0
   
-  const total = unrealizedProfit + realized + payoutAmount
+  const total = unrealizedProfit + realized + payoutAmount - commissions
   
   return {
     unrealized: unrealizedProfit,
     realized,
     payouts: payoutAmount,
+    commissions,
     total,
     isProfit: total >= 0
   }
 })
 
-// Полученные выплаты из cash_operations
-const receivedPayoutsList = computed(() => {
+// Все операции из cash_operations для выбранного портфеля
+const allCashOperationsList = computed(() => {
+  // Возвращаем все операции для выбранного портфеля
   return cashOperations.value || []
+})
+
+// Полученные выплаты из cash_operations (для обратной совместимости и статистики)
+const receivedPayoutsList = computed(() => {
+  // Фильтруем только выплаты (Dividend, Coupon) для выбранного портфеля
+  return allCashOperationsList.value.filter(op => {
+    const opType = (op.operation_type || op.type || '').toLowerCase()
+    const opTypeId = op.operation_type_id
+    return (opType.includes('dividend') || opType.includes('дивиденд') || opTypeId === 3) ||
+           (opType.includes('coupon') || opType.includes('купон') || opTypeId === 4)
+  })
 })
 
 // Сумма полученных выплат в рублях (используем amount_rub из базы данных)
 // amount_rub рассчитывается по курсу валюты на дату операции
 const receivedPayoutsTotal = computed(() => {
   if (!receivedPayoutsList.value || receivedPayoutsList.value.length === 0) {
-    if (import.meta.env.DEV) {
-      console.log('receivedPayoutsTotal: нет выплат', {
-        receivedPayoutsList: receivedPayoutsList.value,
-        cashOperations: cashOperations.value
-      })
-    }
     return 0
   }
   
@@ -913,44 +827,8 @@ const receivedPayoutsTotal = computed(() => {
     // Проверяем оба варианта: snake_case (amount_rub) и camelCase (amountRub)
     // Также проверяем, что значение не null и не undefined
     const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
-    
-    // Для старых записей, где amount_rub может быть NULL, SQL функция get_cash_operations
-    // использует COALESCE и возвращает amount, но это не правильно для валютных операций
-    // В этом случае нужно будет пересчитать или обновить записи в базе
-    // Проверяем, что amount_rub действительно отсутствует (не null, не undefined, не 0)
-    const hasAmountRub = (op.amount_rub !== undefined && op.amount_rub !== null) || 
-                         (op.amountRub !== undefined && op.amountRub !== null)
-    
-    if (import.meta.env.DEV && !hasAmountRub && op.currency_ticker && op.currency_ticker !== 'RUB') {
-      console.warn('receivedPayoutsTotal: amount_rub отсутствует для валютной операции, используем amount (возможно старая запись)', {
-        operation_id: op.cash_operation_id || op.id,
-        amount: op.amount,
-        amount_rub: op.amount_rub ?? op.amountRub,
-        currency: op.currency_ticker,
-        date: op.operation_date || op.date,
-        note: 'Для корректного отображения нужно обновить операцию в базе данных'
-      })
-    }
     return sum + amountRub
   }, 0)
-  
-  if (import.meta.env.DEV) {
-    console.log('receivedPayoutsTotal: итоговая сумма в рублях', {
-      total,
-      выплат: receivedPayoutsList.value.length,
-      выплаты: receivedPayoutsList.value.map(op => {
-        // Проверяем оба варианта: snake_case и camelCase
-        const amountRub = op.amount_rub ?? op.amountRub ?? (op.currency_ticker === 'RUB' ? op.amount : undefined)
-        return {
-          amount: op.amount,
-          amount_rub: amountRub,
-          amountRub: amountRub, // Дублируем для удобства
-          currency: op.currency_ticker,
-          всеПоля: Object.keys(op) // Для диагностики
-        }
-      })
-    })
-  }
   
   return total
 })
@@ -976,42 +854,99 @@ const allOperations = computed(() => {
     })
   }
   
-  // Добавляем полученные выплаты из cash_operations для выбранного портфеля
-  receivedPayoutsList.value.forEach(op => {
-    // Определяем тип операции для выплаты
+  // Собираем ID транзакций для исключения дублирования
+  const transactionIds = new Set()
+  transactions.forEach(tx => {
+    if (tx.id) transactionIds.add(tx.id)
+    if (tx.transaction_id) transactionIds.add(tx.transaction_id)
+  })
+  
+  // Добавляем все операции из cash_operations для выбранного портфеля
+  // Исключаем операции, которые созданы из транзакций (Buy/Sell)
+  allCashOperationsList.value.forEach(op => {
+    // Пропускаем cash_operations, которые связаны с транзакциями (созданы триггером)
+    // Проверяем по transaction_id
+    if (op.transaction_id) {
+      const txId = op.transaction_id
+      // Проверяем все возможные форматы ID
+      if (transactionIds.has(txId) || 
+          transactionIds.has(Number(txId)) || 
+          transactionIds.has(String(txId))) {
+        return // Пропускаем, так как это дубликат транзакции
+      }
+    }
+    
+    // Также пропускаем операции типа Buy/Sell из cash_operations (они должны быть только в transactions)
+    const opType = (op.operation_type || op.type || '').toLowerCase()
+    const opTypeId = op.operation_type_id
+    if (opType.includes('buy') || opType.includes('покупка') || opTypeId === 1 ||
+        opType.includes('sell') || opType.includes('продажа') || opTypeId === 2) {
+      return // Пропускаем Buy/Sell из cash_operations
+    }
+    
+    // Определяем тип операции по текстовому названию из operation_type
+    // opType уже объявлен выше для проверки Buy/Sell
     let operationType = 0
-    const opType = (op.operation_type || '').toLowerCase()
-    if (opType.includes('dividend') || opType.includes('дивиденд')) {
+    
+    // Определяем тип операции по названию (из get_cash_operations приходит переведенное название)
+    if (opType.includes('дивиденд') || opType.includes('dividend')) {
       operationType = 3 // Дивиденды
-    } else if (opType.includes('coupon') || opType.includes('купон')) {
+    } else if (opType.includes('купон') || opType.includes('coupon')) {
       operationType = 4 // Купоны
+    } else if (opType.includes('комиссия') || opType.includes('commission') || opType.includes('commision')) {
+      operationType = 7 // Комиссия
+    } else if (opType.includes('налог') || opType.includes('tax')) {
+      operationType = 8 // Налог
+    } else if (opType.includes('депозит') || opType.includes('пополнение') || opType.includes('deposit')) {
+      operationType = 5 // Пополнение
+    } else if (opType.includes('вывод') || opType.includes('withdraw')) {
+      operationType = 6 // Вывод
+    } else if (opType.includes('другое') || opType.includes('other')) {
+      operationType = 9 // Другое
+    }
+    
+    // Если не удалось определить по названию, пытаемся по operation_type_id (если есть)
+    if (operationType === 0 && op.operation_type_id) {
+      operationType = op.operation_type_id
     }
     
     // Определяем валюту операции: из currency_ticker операции или из валюты актива
     const operationCurrency = op.currency_ticker || assetCurrency.value
     
-    // Для выплат используем amount_rub (уже переведено в рубли по курсу на дату операции)
-    // amount - это сумма в исходной валюте выплаты, amount_rub - сумма в рублях
+    // Используем amount_rub (уже переведено в рубли по курсу на дату операции)
+    // amount - это сумма в исходной валюте операции, amount_rub - сумма в рублях
     // Проверяем оба варианта: snake_case (amount_rub) и camelCase (amountRub)
     // Приоритет: amount_rub > amountRub > amount (fallback для старых записей)
-    const payoutAmountRub = Number(
+    const operationAmountRub = Number(
       op.amount_rub ?? 
       op.amountRub ?? 
       (op.currency_ticker && op.currency_ticker !== 'RUB' ? 0 : op.amount) ?? 
       0
     ) || 0
     
+    // Определяем категорию операции для отображения
+    let operationCategory = 'cash'
+    if (operationType === 3 || operationType === 4) {
+      operationCategory = 'payout'
+    } else if (operationType === 7 || operationType === 8) {
+      operationCategory = 'expense'
+    } else if (operationType === 5 || operationType === 6) {
+      operationCategory = 'cash'
+    } else {
+      operationCategory = 'other'
+    }
+    
     operations.push({
-      id: `payout_${op.cash_operation_id || op.id}`,
-      type: 'payout',
+      id: `cash_op_${op.cash_operation_id || op.id}`,
+      type: operationCategory,
       date: op.operation_date || op.date,
       operationType: operationType,
       quantity: null,
       price: null,
-      amount: payoutAmountRub, // Используем amount_rub для отображения в рублях
+      amount: operationAmountRub, // Используем amount_rub для отображения в рублях
       amount_original: Number(op.amount) || 0, // Сохраняем оригинальную сумму в исходной валюте
-      currency: 'RUB', // Выплаты всегда отображаем в рублях (amount_rub)
-      currency_original: operationCurrency // Сохраняем исходную валюту выплаты
+      currency: 'RUB', // Операции всегда отображаем в рублях (amount_rub)
+      currency_original: operationCurrency // Сохраняем исходную валюту операции
     })
   })
   
@@ -1066,45 +1001,95 @@ const formatPayoutDate = (date) => {
 
 // Нормализация типа операции (как на странице Transactions)
 const normalizeType = (type, opType = null) => {
-  // Если это выплата (opType = 'payout'), то type это число 3 или 4
-  if (opType === 'payout') {
-    if (type === 3) return 'dividend'
-    if (type === 4) return 'coupon'
-  }
-  
   // Для транзакций
-  if (typeof type === 'number') {
+  if (opType === 'transaction') {
     if (type === 1) return 'buy'
     if (type === 2) return 'sell'
   }
   
+  // Для всех операций (по числовому типу)
+  if (typeof type === 'number') {
+    if (type === 1) return 'buy'
+    if (type === 2) return 'sell'
+    if (type === 3) return 'dividend'
+    if (type === 4) return 'coupon'
+    if (type === 5) return 'deposit'
+    if (type === 6) return 'withdraw'
+    if (type === 7) return 'commission'
+    if (type === 8) return 'tax'
+    if (type === 9) return 'other'
+  }
+  
+  // Для строковых типов
   if (typeof type === 'string') {
     const t = type.toLowerCase()
     if (t.includes('покуп') || t.includes('buy')) return 'buy'
     if (t.includes('прод') || t.includes('sell')) return 'sell'
     if (t.includes('див') || t.includes('div')) return 'dividend'
     if (t.includes('купон') || t.includes('coupon')) return 'coupon'
+    if (t.includes('пополн') || t.includes('deposit')) return 'deposit'
+    if (t.includes('вывод') || t.includes('withdraw')) return 'withdraw'
+    if (t.includes('комисс') || t.includes('commission')) return 'commission'
+    if (t.includes('налог') || t.includes('tax')) return 'tax'
+  }
+  
+  // По категории операции
+  if (opType === 'payout') {
+    if (type === 3) return 'dividend'
+    if (type === 4) return 'coupon'
+  }
+  if (opType === 'expense') {
+    if (type === 7) return 'commission'
+    if (type === 8) return 'tax'
+  }
+  if (opType === 'cash') {
+    if (type === 5) return 'deposit'
+    if (type === 6) return 'withdraw'
   }
   
   return 'other'
 }
 
+// Форматирование даты
+const formatDate = (date) => {
+  if (!date) return '—'
+  return new Date(date).toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  })
+}
+
 // Получение текстового названия типа операции для отображения
 const getOperationTypeLabel = (op) => {
-  if (op.type === 'payout') {
-    // Для выплат: type 3 = дивиденды, 4 = купоны
-    if (op.operationType === 3) return 'Дивиденды'
-    if (op.operationType === 4) return 'Купоны'
-    return 'Выплата'
-  }
+  const operationType = op.operationType || op.type
   
   // Для транзакций
   if (op.type === 'transaction') {
-    if (op.operationType === 1) return 'Покупка'
-    if (op.operationType === 2) return 'Продажа'
+    if (operationType === 1) return 'Покупка'
+    if (operationType === 2) return 'Продажа'
   }
   
-  return String(op.operationType || '')
+  // Для всех остальных операций
+  if (operationType === 3) return 'Дивиденды'
+  if (operationType === 4) return 'Купоны'
+  if (operationType === 5) return 'Пополнение'
+  if (operationType === 6) return 'Вывод'
+  if (operationType === 7) return 'Комиссия'
+  if (operationType === 8) return 'Налог'
+  if (operationType === 9) return 'Другое'
+  
+  // Fallback: пытаемся определить по строковому типу
+  const opTypeStr = (op.operation_type || op.type || '').toLowerCase()
+  if (opTypeStr.includes('dividend') || opTypeStr.includes('дивиденд')) return 'Дивиденды'
+  if (opTypeStr.includes('coupon') || opTypeStr.includes('купон')) return 'Купоны'
+  if (opTypeStr.includes('commission') || opTypeStr.includes('комиссия')) return 'Комиссия'
+  if (opTypeStr.includes('tax') || opTypeStr.includes('налог')) return 'Налог'
+  if (opTypeStr.includes('deposit') || opTypeStr.includes('пополнение')) return 'Пополнение'
+  if (opTypeStr.includes('withdraw') || opTypeStr.includes('вывод')) return 'Вывод'
+  if (opTypeStr.includes('other') || opTypeStr.includes('другое')) return 'Другое'
+  
+  return 'Операция'
 }
 
 // Загрузка при монтировании
@@ -1124,7 +1109,7 @@ watch(() => route.params.id, () => {
 // Отслеживание изменений выбранного портфеля
 watch(selectedPortfolioId, async (newPortfolioId) => {
   if (newPortfolioId && assetInfo.value?.asset_id) {
-    await loadReceivedPayouts()
+    await loadAllCashOperations()
   }
 })
 
@@ -1258,21 +1243,49 @@ async function handlePortfolioChange(portfolioId) {
         </WidgetContainer>
       </div>
 
-      <!-- Операции (транзакции + полученные выплаты) -->
+      <!-- Операции (транзакции + все операции) -->
       <div class="widgets-grid">
         <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
-          <OperationsListWidget
-            title="Операции"
-            :operations="allOperations"
-            :get-operation-type-label="getOperationTypeLabel"
-            :get-operation-type-class="(op) => normalizeType(op.operationType, op.type)"
-            :format-amount="(op) => {
-              // Для выплат используем amount_rub (уже в рублях), для транзакций - обычный amount
-              const amount = op.type === 'payout' ? (op.amount || 0) : (op.amount || 0)
-              const currency = op.type === 'payout' ? 'RUB' : (op.currency || assetCurrency.value)
-              return formatOperationAmount(amount, currency)
-            }"
-          />
+          <Widget title="Операции">
+            <div class="table-container">
+              <table class="transactions-table">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Тип</th>
+                    <th class="text-right">Кол-во</th>
+                    <th class="text-right">Цена</th>
+                    <th class="text-right">Сумма</th>
+                    <th class="text-right">Валюта</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="op in allOperations" :key="op.id" class="tx-row">
+                    <td class="td-date">{{ formatDate(op.date) }}</td>
+                    <td>
+                      <span :class="['badge', 'badge-' + normalizeType(op.operationType, op.type)]">
+                        {{ getOperationTypeLabel(op) }}
+                      </span>
+                    </td>
+                    <td class="text-right num-font">{{ op.quantity || '—' }}</td>
+                    <td class="text-right num-font">{{ op.price ? op.price.toLocaleString() : '—' }}</td>
+                    <td class="text-right num-font font-semibold" :class="op.amount >= 0 ? 'text-green' : 'text-red'">
+                      {{ formatOperationAmount(Math.abs(op.amount || 0), op.currency || 'RUB') }}
+                    </td>
+                    <td class="text-right num-font">{{ op.currency || 'RUB' }}</td>
+                  </tr>
+                  <tr v-if="allOperations.length === 0">
+                    <td colspan="6" class="empty-cell">
+                      <div class="empty-state">
+                        <span class="empty-icon">🔍</span>
+                        <p>Операции не найдены</p>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Widget>
         </WidgetContainer>
       </div>
 
@@ -1691,6 +1704,15 @@ async function handlePortfolioChange(portfolioId) {
   text-transform: uppercase;
 }
 
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
 .badge-buy {
   background: #dcfce7;
   color: #166534;
@@ -1719,6 +1741,109 @@ async function handlePortfolioChange(portfolioId) {
 .badge-other {
   background: #f3f4f6;
   color: #4b5563;
+}
+
+.badge-deposit {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.badge-withdraw {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.badge-tax {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge-commission {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* Table styles */
+.table-container {
+  overflow-x: auto;
+}
+
+.transactions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.transactions-table th {
+  text-align: left;
+  padding: 12px 16px;
+  background: #f9fafb;
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.transactions-table th.text-right {
+  text-align: right;
+}
+
+.transactions-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: middle;
+}
+
+.transactions-table tr:last-child td {
+  border-bottom: none;
+}
+
+.transactions-table tr:hover {
+  background: #f9fafb;
+}
+
+.td-date {
+  color: #374151;
+  white-space: nowrap;
+}
+
+.text-right {
+  text-align: right !important;
+}
+
+.num-font {
+  font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace;
+  font-size: 13px;
+  letter-spacing: -0.5px;
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+.text-green {
+  color: #059669;
+}
+
+.text-red {
+  color: #dc2626;
+}
+
+.empty-cell {
+  text-align: center;
+  padding: 40px;
+}
+
+.empty-state {
+  color: #9ca3af;
+}
+
+.empty-icon {
+  font-size: 32px;
+  display: block;
+  margin-bottom: 8px;
+  opacity: 0.5;
 }
 
 .btn-primary {

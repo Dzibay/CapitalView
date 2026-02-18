@@ -45,6 +45,24 @@ export const useTransactionsStore = defineStore('transactions', {
       }
     },
 
+    async addOperationsBatch(batchData) {
+      const uiStore = useUIStore()
+      const dashboardStore = useDashboardStore()
+      
+      try {
+        await operationsService.addOperationsBatch(batchData)
+        uiStore.setLoading(true)
+        await dashboardStore.reloadDashboard()
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.error('Ошибка массового добавления операций:', err)
+        }
+        throw err
+      } finally {
+        uiStore.setLoading(false)
+      }
+    },
+
     async editTransaction(updated_transaction) {
       const uiStore = useUIStore()
       const dashboardStore = useDashboardStore()

@@ -18,5 +18,10 @@ export default {
   async addOperation(operationData) {
     const res = await apiClient.post(API_ENDPOINTS.OPERATIONS.BASE, operationData);
     return res.data;
+  },
+
+  async addOperationsBatch(batchData) {
+    const res = await apiClient.post(API_ENDPOINTS.OPERATIONS.BATCH, batchData);
+    return res.data;
   }
 };
