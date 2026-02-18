@@ -127,11 +127,12 @@ async def upsert_asset(asset: Dict, existing_assets: Dict) -> str:
         )
         
         # Всегда обновляем для синхронизации данных
+        # Важно: обновляем quote_asset_id даже если он уже установлен (может быть NULL)
         update_data = {
             "asset_type_id": asset["asset_type_id"],
             "name": asset["name"],
             "properties": asset["properties"],
-            "quote_asset_id": asset.get("quote_asset_id"),
+            "quote_asset_id": asset.get("quote_asset_id"),  # Всегда обновляем quote_asset_id
         }
         await table_update_async("assets", update_data, {"id": existing["id"]})
         return "updated"
@@ -153,6 +154,19 @@ async def process_crypto_assets(session: aiohttp.ClientSession, existing_assets:
         Кортеж (количество добавленных, количество обновленных)
     """
     print(f"\n🔹 Обработка криптовалют...")
+    
+    # Находим ID актива USD один раз для всех криптовалют
+    usd_asset = await table_select_async(
+        "assets",
+        "id",
+        filters={"ticker": "USD", "user_id": None}
+    )
+    quote_asset_id = usd_asset[0]["id"] if usd_asset and len(usd_asset) > 0 else None
+    
+    if not quote_asset_id:
+        logger.warning("⚠️ Актив USD не найден в базе данных. quote_asset_id будет NULL для всех криптовалют")
+    else:
+        print(f"   💵 Найден актив USD с ID: {quote_asset_id}")
     
     crypto_list = await get_crypto_list(session, limit=250)
     
@@ -176,10 +190,6 @@ async def process_crypto_assets(session: aiohttp.ClientSession, existing_assets:
             "coingecko_id": crypto.get("id"),
             "market_cap_rank": crypto.get("market_cap_rank"),
         }
-        
-        # Определяем quote_asset_id (по умолчанию USD, но можно использовать RUB если есть)
-        # Для криптовалют обычно используется USD, но можно оставить None
-        quote_asset_id = 51  # Можно настроить если есть актив USD в базе
         
         asset = {
             "asset_type_id": asset_type_id,
