@@ -3,14 +3,15 @@ API endpoints для работы с операциями по активам.
 Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Other.
 """
 from fastapi import APIRouter, Query, HTTPException, Depends, Body
-from app.domain.services.operations_service import get_operations, create_operation, create_operations_batch
+from app.domain.services.operations_service import get_operations, create_operation, create_operations_batch, delete_operations_batch
 from app.domain.models.operation_models import CreateOperationRequest, BatchCreateOperationRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.core.dependencies import get_current_user
 from app.utils.response import success_response
 from app.utils.date import parse_date_range
 import logging
-from typing import Optional
+from typing import Optional, List
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -129,4 +130,46 @@ async def add_operations_batch_route(
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail="Ошибка при массовом создании операций"
+        )
+
+
+class DeleteOperationsRequest(BaseModel):
+    """Модель запроса удаления операций."""
+    ids: List[int] = Body(..., description="Список ID операций для удаления")
+
+
+@router.delete("/", status_code=HTTPStatus.OK)
+async def delete_operations_route(
+    request: DeleteOperationsRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Batch удаление операций с пересчетом аналитики."""
+    ids = request.ids
+    
+    if not ids or not isinstance(ids, list):
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail="ids must be a non-empty array"
+        )
+    
+    try:
+        result = delete_operations_batch(ids)
+        
+        if result.get("success") is False:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=result.get("error", "Ошибка при удалении операций")
+            )
+        
+        deleted_count = result.get("deleted_count", 0)
+        
+        return success_response(
+            data=result,
+            message=f"Удалено операций: {deleted_count}/{len(ids)}"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при удалении операций: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=str(e)
         )

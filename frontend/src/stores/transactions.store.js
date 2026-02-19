@@ -86,12 +86,31 @@ export const useTransactionsStore = defineStore('transactions', {
       const dashboardStore = useDashboardStore()
       
       try {
+        // Используем batch удаление для оптимизации
         await transactionsService.deleteTransactions(transaction_ids)
         uiStore.setLoading(true)
         await dashboardStore.reloadDashboard()
       } catch (err) {
         if (import.meta.env.DEV) {
           console.error('Ошибка удаления транзакций:', err)
+        }
+        throw err
+      } finally {
+        uiStore.setLoading(false)
+      }
+    },
+
+    async deleteOperations(operation_ids) {
+      const uiStore = useUIStore()
+      const dashboardStore = useDashboardStore()
+      
+      try {
+        await operationsService.deleteOperations(operation_ids)
+        uiStore.setLoading(true)
+        await dashboardStore.reloadDashboard()
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.error('Ошибка удаления операций:', err)
         }
         throw err
       } finally {

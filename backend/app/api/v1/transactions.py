@@ -3,7 +3,7 @@ API endpoints для работы с транзакциями.
 Версия 1.
 """
 from fastapi import APIRouter, Query, HTTPException, Depends, Body
-from app.domain.services.transactions_service import get_transactions, create_transaction, update_transaction, delete_transaction
+from app.domain.services.transactions_service import get_transactions, create_transaction, update_transaction, delete_transactions_batch
 from app.domain.models.transaction_models import CreateTransactionRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.core.dependencies import get_current_user
@@ -119,7 +119,7 @@ async def delete_transactions_route(
     request: DeleteTransactionsRequest,
     user: dict = Depends(get_current_user)
 ):
-    """Удаление транзакций."""
+    """Batch удаление транзакций с пересчетом FIFO."""
     ids = request.ids
     
     if not ids or not isinstance(ids, list):
@@ -127,28 +127,26 @@ async def delete_transactions_route(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="ids must be a non-empty array"
         )
-        
-    deleted_count = 0
-    errors = []
-        
-    for tx_id in ids:
-        try:
-            delete_transaction(tx_id)
-            deleted_count += 1
-        except Exception as e:
-            errors.append(f"Транзакция {tx_id}: {str(e)}")
-            logger.warning(f"Ошибка при удалении транзакции {tx_id}: {e}")
-        
-    if deleted_count == 0:
-        raise HTTPException(
-            status_code=HTTPStatus.BAD_REQUEST,
-            detail="Не удалось удалить транзакции"
-        )
     
-    return success_response(
-        data={
-            "deleted_count": deleted_count,
-            "errors": errors if errors else None
-        },
-        message=f"Удалено транзакций: {deleted_count}/{len(ids)}"
-    )
+    try:
+        # Используем batch удаление для оптимизации
+        result = delete_transactions_batch(ids)
+        
+        if result.get("success") is False:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=result.get("error", "Ошибка при удалении транзакций")
+            )
+        
+        deleted_count = result.get("deleted_count", 0)
+        
+        return success_response(
+            data=result,
+            message=f"Удалено транзакций: {deleted_count}/{len(ids)}"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при batch удалении транзакций: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )

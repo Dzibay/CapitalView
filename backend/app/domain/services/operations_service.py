@@ -281,3 +281,23 @@ def create_operations_batch(
         "created": created_operations,
         "errors": errors
     }
+
+
+def delete_operations_batch(operation_ids: list[int]):
+    """
+    Удаляет несколько операций батчем и пересчитывает историю портфелей.
+    SQL функция delete_operations_batch выполняет:
+    - Удаление операций из cash_operations
+    - Обновление истории портфелей с минимальной даты удаленных операций
+    """
+    if not operation_ids:
+        return {"success": False, "error": "Список ID операций пуст", "deleted_count": 0}
+    
+    # Вызываем RPC функцию для batch удаления
+    delete_result = rpc("delete_operations_batch", {"p_operation_ids": operation_ids})
+    
+    if not delete_result or delete_result.get("success") is False:
+        error_msg = delete_result.get("error", "Неизвестная ошибка") if delete_result else "Ошибка при удалении операций"
+        raise Exception(f"Ошибка при batch удалении операций: {error_msg}")
+    
+    return delete_result

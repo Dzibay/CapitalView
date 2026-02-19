@@ -89,6 +89,13 @@ const deleteTransactions = async (transaction_ids) => {
   await transactionsStore.deleteTransactions(transaction_ids)
 }
 
+const deleteOperations = async (operation_ids) => {
+  await transactionsStore.deleteOperations(operation_ids)
+  // Перезагружаем операции после удаления
+  operations.value = []
+  await loadOperations()
+}
+
 const editTransaction = async (updated_transaction) => {
   await transactionsStore.editTransaction(updated_transaction)
 }
@@ -172,9 +179,12 @@ const filteredOperations = ref([])
 
 // выделенные транзакции
 const selectedTxIds = ref([])
+// выделенные операции
+const selectedOpIds = ref([])
 
 // главный чекбокс
 const allSelected = ref(false)
+const allOperationsSelected = ref(false)
 
 // модальное окно
 const showEditModal = ref(false)
@@ -190,6 +200,12 @@ const handleEditTransaction = (transaction) => {
 const handleDeleteTransaction = (transaction) => {
   if (transaction && transaction.transaction_id) {
     deleteOne(transaction.transaction_id)
+  }
+}
+
+const handleDeleteOperation = (operation) => {
+  if (operation && (operation.cash_operation_id || operation.id)) {
+    deleteOneOperation(operation.cash_operation_id || operation.id)
   }
 }
 
@@ -470,6 +486,9 @@ watch(transactions, () => {
     setPeriodPreset(periodPreset.value)
   }
   applyFilter()
+  // Очищаем выделение при обновлении транзакций
+  selectedTxIds.value = []
+  allSelected.value = false
 }, { immediate: true })
 
 // следим за обновлением операций
@@ -501,12 +520,21 @@ watch([startDate, endDate], () => {
   }
 })
 
-// выбор всех
+// выбор всех транзакций
 const toggleAll = () => {
   if (allSelected.value) {
     selectedTxIds.value = filteredTransactions.value.map(tx => tx.transaction_id)
   } else {
     selectedTxIds.value = []
+  }
+}
+
+// выбор всех операций
+const toggleAllOperations = () => {
+  if (allOperationsSelected.value) {
+    selectedOpIds.value = filteredOperations.value.map(op => op.cash_operation_id || op.id)
+  } else {
+    selectedOpIds.value = []
   }
 }
 
@@ -516,7 +544,13 @@ watch(selectedTxIds, () => {
     selectedTxIds.value.length === filteredTransactions.value.length
 })
 
-// удаление выбранных
+watch(selectedOpIds, () => {
+  allOperationsSelected.value =
+    selectedOpIds.value.length > 0 &&
+    selectedOpIds.value.length === filteredOperations.value.length
+})
+
+// удаление выбранных транзакций
 const deleteSelected = () => {
   if (selectedTxIds.value.length &&
       confirm(`Вы уверены, что хотите удалить ${selectedTxIds.value.length} транзакций?`)) {
@@ -526,10 +560,27 @@ const deleteSelected = () => {
   }
 }
 
-// удалить одну строку
+// удаление выбранных операций
+const deleteSelectedOperations = () => {
+  if (selectedOpIds.value.length &&
+      confirm(`Вы уверены, что хотите удалить ${selectedOpIds.value.length} операций?`)) {
+    deleteOperations(selectedOpIds.value)
+    selectedOpIds.value = []
+    allOperationsSelected.value = false
+  }
+}
+
+// удалить одну транзакцию
 const deleteOne = (txId) => {
   if (confirm('Удалить эту транзакцию?')) {
     deleteTransactions([txId])
+  }
+}
+
+// удалить одну операцию
+const deleteOneOperation = (opId) => {
+  if (confirm('Удалить эту операцию?')) {
+    deleteOperations([opId])
   }
 }
 
@@ -741,8 +792,14 @@ const transactionsSummary = computed(() => {
           </div>
           <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
             <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
-            <button @click="deleteSelected" class="btn btn-danger-soft">
-              Удалить выбранные
+            <button @click="deleteSelected" class="btn btn-danger-soft" :disabled="selectedTxIds.length === 0">
+              Удалить выбранные ({{ selectedTxIds.length }})
+            </button>
+          </div>
+          <div v-if="selectedOpIds.length > 0 && viewMode === 'operations'" class="bulk-actions">
+            <span class="selected-count">Выбрано: {{ selectedOpIds.length }}</span>
+            <button @click="deleteSelectedOperations" class="btn btn-danger-soft" :disabled="selectedOpIds.length === 0">
+              Удалить выбранные ({{ selectedOpIds.length }})
             </button>
           </div>
         </div>
@@ -916,16 +973,23 @@ const transactionsSummary = computed(() => {
           <table v-else class="transactions-table">
             <thead>
               <tr>
+                <th class="w-checkbox">
+                  <input type="checkbox" v-model="allOperationsSelected" @change="toggleAllOperations" class="custom-checkbox" />
+                </th>
                 <th>Дата</th>
                 <th>Тип</th>
                 <th>Актив</th>
                 <th>Портфель</th>
                 <th class="text-right">Сумма</th>
                 <th class="text-right">Валюта</th>
+                <th class="w-actions"></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="op in filteredOperations" :key="op.cash_operation_id" class="tx-row">
+              <tr v-for="op in filteredOperations" :key="op.cash_operation_id || op.id" class="tx-row">
+                <td class="w-checkbox">
+                  <input type="checkbox" :value="op.cash_operation_id || op.id" v-model="selectedOpIds" class="custom-checkbox" />
+                </td>
                 <td class="td-date">{{ formatDate(op.operation_date) }}</td>
                 <td>
                   <span :class="['badge', 'badge-' + normalizeType(op.operation_type)]">
@@ -938,9 +1002,12 @@ const transactionsSummary = computed(() => {
                   {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
                 </td>
                 <td class="text-right num-font">{{ getOperationCurrency(op) }}</td>
+                <td class="w-actions">
+                  <button class="icon-btn" @click="openMenu($event, 'operation', op)">⋯</button>
+                </td>
               </tr>
               <tr v-if="filteredOperations.length === 0">
-                <td colspan="6" class="empty-cell">
+                <td colspan="8" class="empty-cell">
                   <div class="empty-state">
                     <span class="empty-icon">🔍</span>
                     <p v-if="isLoadingOperations">Загрузка операций...</p>
@@ -1086,6 +1153,7 @@ const transactionsSummary = computed(() => {
     <ContextMenu
       @editTransaction="handleEditTransaction"
       @deleteTransaction="handleDeleteTransaction"
+      @deleteOperation="handleDeleteOperation"
     />
   </PageLayout>
 </template>

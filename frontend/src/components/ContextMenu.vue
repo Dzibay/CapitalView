@@ -10,7 +10,8 @@ const emit = defineEmits([
   'moveAsset',
   'removeAsset',
   'editTransaction',
-  'deleteTransaction'
+  'deleteTransaction',
+  'deleteOperation'
 ])
 
 const { menu, closeMenu } = useContextMenu()
@@ -142,6 +143,19 @@ onBeforeUnmount(() => {
           <span class="item-text">Редактировать</span>
         </button>
         <button class="item danger" @click="closeMenu(); $emit('deleteTransaction', menu.payload)">
+          <span class="item-icon">🗑️</span>
+          <span class="item-text">Удалить</span>
+        </button>
+      </template>
+
+      <!-- Операция -->
+      <template v-if="menu.type === 'operation'">
+        <div class="menu-header">
+          <span class="menu-icon">💰</span>
+          <span class="menu-title">Операция</span>
+        </div>
+        <div class="divider"></div>
+        <button class="item danger" @click="closeMenu(); $emit('deleteOperation', menu.payload)">
           <span class="item-icon">🗑️</span>
           <span class="item-text">Удалить</span>
         </button>
