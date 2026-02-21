@@ -148,20 +148,47 @@
         <!-- Параметры покупки -->
         <div class="form-section">
           <div class="section-divider"></div>
+          
+          <!-- Переключатель использования рыночной цены (только для системных активов) -->
+          <div v-if="assetTypeChoice === 'system'" class="toggle-wrapper">
+            <ToggleSwitch v-model="useMarketPrice" />
+            <span class="toggle-label-text">
+              Использовать рыночную цену на дату добавления
+            </span>
+          </div>
+          
           <div class="form-row">
             <div class="form-field">
               <label class="form-label">
                 <span class="label-icon">🔢</span>
                 Количество
               </label>
-              <input v-model.number="form.quantity" type="number" min="0" step="0.0001" required class="form-input" />
+              <input v-model.number="form.quantity" type="number" min="0" step="0.000001" required class="form-input" />
+              <small class="form-hint" style="margin-top: 4px;">
+                Можно вводить до 6 знаков после запятой
+              </small>
             </div>
             <div class="form-field">
               <label class="form-label">
                 <span class="label-icon">💰</span>
                 Средняя цена
+                <span v-if="loadingPrice" style="margin-left: 8px; color: #3b82f6;">⏳ Загрузка...</span>
               </label>
-              <input v-model.number="form.average_price" type="number" min="0" step="0.01" required class="form-input" />
+              <input 
+                v-model.number="form.average_price" 
+                type="number" 
+                min="0" 
+                step="0.000001" 
+                required 
+                class="form-input"
+                :disabled="useMarketPrice && loadingPrice"
+              />
+              <small class="form-hint" style="margin-top: 4px;" v-if="useMarketPrice && assetTypeChoice === 'system'">
+                Цена автоматически обновляется при изменении даты
+              </small>
+              <small class="form-hint" style="margin-top: 4px;">
+                Можно вводить до 6 знаков после запятой
+              </small>
             </div>
           </div>
           <div class="form-field">
@@ -190,10 +217,14 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed } from 'vue'
+import { reactive, ref, computed, watch } from 'vue'
 import { Check } from 'lucide-vue-next'
-import { Button } from '../base'
+import { Button, ToggleSwitch } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
+import assetsService from '../../services/assetsService'
+import { useDashboardStore } from '../../stores/dashboard.store'
+
+const dashboardStore = useDashboardStore()
 
 const props = defineProps({
   onSave: Function, // функция сохранения из родителя
@@ -216,9 +247,15 @@ const initialFormState = {
 }
 
 const form = reactive({ ...initialFormState })
-const saving = ref(false)           // индикатор сохранения
+const saving = ref(false)           // индикатор сохранения
 const searchQuery = ref("")
 const assetTypeChoice = ref("system") // 'system' или 'custom' - по умолчанию системный
+
+// Использование рыночной цены для системных активов
+const useMarketPrice = ref(false) // Переключатель для автоматической загрузки рыночной цены
+const loadingPrice = ref(false) // Состояние загрузки рыночной цены
+const priceHistoryCache = ref(null) // Кэш истории цен актива
+const isLoadingHistory = ref(false) // Флаг для предотвращения двойной загрузки истории
 
 
 const resetAssetFields = () => {
@@ -292,7 +329,266 @@ const selectAsset = (asset) => {
   form.currency = asset.currency
   // Отображаем выбранное значение в поле поиска
   searchQuery.value = `${asset.name} (${asset.ticker || '—'})`
+  
+  // Очищаем кэш истории цен при выборе нового актива
+  priceHistoryCache.value = null
+  // Если переключатель включен, загружаем историю для нового актива
+  if (useMarketPrice.value && form.date) {
+    loadPriceHistory().then(() => {
+      loadMarketPrice(true)
+    })
+  }
 }
+
+// Функция для получения цены актива на дату
+// Если передан cachedHistory, использует его вместо загрузки из API
+async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
+  try {
+    // Сначала пытаемся получить информацию об активе из referenceData
+    const refData = dashboardStore.referenceData
+    let assetTicker = null
+    let assetInfo = null
+    
+    if (refData?.assets) {
+      assetInfo = refData.assets.find(a => a.id === assetId)
+      if (assetInfo && assetInfo.ticker) {
+        assetTicker = assetInfo.ticker
+      }
+    }
+    
+    let priceHistory = cachedHistory
+    
+    // Если история не передана, но есть в глобальном кэше, используем её
+    if (!priceHistory && priceHistoryCache.value && priceHistoryCache.value.length > 0) {
+      priceHistory = priceHistoryCache.value
+    }
+    
+    // Загружаем историю цен только если она не передана в кэше и нет в глобальном кэше
+    // Это fallback для обратной совместимости (не должно вызываться при использовании переключателя)
+    if (!priceHistory) {
+      // Получаем историю цен актива
+      // Используем дату на день позже, чтобы включить саму дату операции
+      const targetDateObj = new Date(targetDate)
+      targetDateObj.setHours(23, 59, 59, 999) // Конец дня, чтобы включить саму дату
+      const endDateStr = targetDateObj.toISOString().slice(0, 10) // YYYY-MM-DD
+      
+      const priceHistoryResponse = await assetsService.getAssetPriceHistory(
+        assetId,
+        null, // start_date - не ограничиваем
+        endDateStr, // end_date - до даты операции включительно
+        1000 // Увеличиваем лимит, чтобы получить больше записей
+      )
+      
+      if (priceHistoryResponse.success && priceHistoryResponse.prices) {
+        priceHistory = priceHistoryResponse.prices
+      }
+    }
+    
+    if (priceHistory && priceHistory.length > 0) {
+      // Нормализуем целевую дату для сравнения
+      const targetDateNormalized = new Date(targetDate)
+      targetDateNormalized.setHours(0, 0, 0, 0)
+      
+      // Сортируем по дате (от новых к старым)
+      const sortedPrices = [...priceHistory].sort((a, b) => {
+        const dateA = new Date(a.trade_date)
+        const dateB = new Date(b.trade_date)
+        return dateB - dateA
+      })
+      
+      // Ищем цену на точную дату или ближайшую предыдущую
+      for (const priceRecord of sortedPrices) {
+        const priceDate = new Date(priceRecord.trade_date)
+        priceDate.setHours(0, 0, 0, 0)
+        
+        // Проверяем, что дата цены <= целевой даты
+        if (priceDate <= targetDateNormalized) {
+          const price = parseFloat(priceRecord.price)
+          if (price && price > 0) {
+            return price
+          }
+        }
+      }
+    }
+    
+    // Если цена не найдена в истории, пытаемся получить из referenceData
+    if (refData) {
+      // Сначала пробуем получить из assets
+      if (refData.assets && assetInfo) {
+        if (assetInfo.last_price) {
+          const price = parseFloat(assetInfo.last_price)
+          if (price && price > 0) {
+            return price
+          }
+        }
+      }
+      
+      // Если это валюта/криптовалюта, пробуем получить курс из currencies
+      if (assetTicker && refData.currencies) {
+        const currency = refData.currencies.find(c => c.ticker === assetTicker)
+        if (currency) {
+          // Для валют/криптовалют используем rate_to_rub как цену в рублях
+          if (currency.rate_to_rub) {
+            const rate = parseFloat(currency.rate_to_rub)
+            if (rate && rate > 0) {
+              return rate
+            }
+          }
+          // Если rate_to_rub нет, пробуем получить из asset_last_currency_prices через assets
+          if (refData.assets) {
+            const currencyAsset = refData.assets.find(a => a.ticker === assetTicker)
+            if (currencyAsset && currencyAsset.last_price) {
+              const price = parseFloat(currencyAsset.last_price)
+              if (price && price > 0) {
+                return price
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Если ничего не найдено, возвращаем null (не используем fallback 1)
+    // Это позволит системе показать ошибку или запросить цену вручную
+    return null
+  } catch (error) {
+    console.error('Ошибка при получении цены актива:', error)
+    return null
+  }
+}
+
+// Функция для загрузки истории цен актива (вызывается один раз при включении переключателя)
+async function loadPriceHistory() {
+  if (!form.asset_id) {
+    return false
+  }
+  
+  // Если история уже загружена для этого актива, не загружаем повторно
+  if (priceHistoryCache.value && priceHistoryCache.value.length > 0) {
+    return true
+  }
+  
+  // Если уже идет загрузка истории, не запускаем повторную загрузку
+  if (isLoadingHistory.value) {
+    // Ждем завершения текущей загрузки
+    while (isLoadingHistory.value) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    // После завершения проверяем, загрузилась ли история
+    return priceHistoryCache.value && priceHistoryCache.value.length > 0
+  }
+  
+  try {
+    isLoadingHistory.value = true
+    loadingPrice.value = true
+    
+    // Загружаем полную историю цен актива (без ограничения по дате)
+    const priceHistoryResponse = await assetsService.getAssetPriceHistory(
+      form.asset_id,
+      null, // start_date - не ограничиваем
+      null, // end_date - не ограничиваем, загружаем всю историю
+      10000 // Большой лимит для получения всей истории
+    )
+    
+    if (priceHistoryResponse.success && priceHistoryResponse.prices) {
+      // Сохраняем историю в кэш
+      priceHistoryCache.value = priceHistoryResponse.prices
+      return true
+    }
+    
+    return false
+  } catch (e) {
+    console.error('Ошибка при загрузке истории цен:', e)
+    return false
+  } finally {
+    isLoadingHistory.value = false
+    loadingPrice.value = false
+  }
+}
+
+// Функция для получения рыночной цены на дату транзакции и заполнения поля цены
+async function loadMarketPrice(silent = false) {
+  if (!form.asset_id) {
+    return false
+  }
+  
+  if (!form.date) {
+    return false
+  }
+  
+  if (!silent) {
+    loadingPrice.value = true
+  }
+  
+  try {
+    // Используем кэшированную историю цен, если она есть
+    const marketPrice = await getAssetPriceOnDate(
+      form.asset_id, 
+      form.date, 
+      priceHistoryCache.value
+    )
+    
+    if (marketPrice && marketPrice > 0) {
+      form.average_price = marketPrice
+      return true
+    }
+    
+    return false
+  } catch (e) {
+    console.error('Ошибка при получении рыночной цены:', e)
+    return false
+  } finally {
+    if (!silent) {
+      loadingPrice.value = false
+    }
+  }
+}
+
+// Автоматическая загрузка истории цен и рыночной цены при включении переключателя
+watch(useMarketPrice, async (newValue, oldValue) => {
+  // Загружаем историю цен и цену только при включении переключателя (переходе с false на true)
+  // Только для системных активов
+  if (newValue && !oldValue && assetTypeChoice.value === 'system' && form.asset_id && form.date) {
+    // Загружаем историю цен один раз при включении переключателя (если еще не загружена)
+    const historyLoaded = await loadPriceHistory()
+    
+    // Если история загружена или уже была в кэше, загружаем цену на текущую дату
+    if (historyLoaded) {
+      await loadMarketPrice(true) // silent = true, чтобы не показывать ошибки при автоматической загрузке
+    }
+  }
+  // При выключении переключателя НЕ очищаем кэш - сохраняем для повторного использования
+})
+
+// Автоматическое обновление цены при изменении даты, если переключатель включен
+watch(() => form.date, async (newDate, oldDate) => {
+  // Обновляем цену только если переключатель включен, выбран системный актив и дата действительно изменилась
+  if (useMarketPrice.value && assetTypeChoice.value === 'system' && form.asset_id && newDate && newDate !== oldDate) {
+    // Используем кэшированную историю цен для быстрого поиска цены
+    await loadMarketPrice(true) // silent = true, чтобы не показывать ошибки при автоматической загрузке
+  }
+}, { immediate: false })
+
+// Очистка кэша истории цен при изменении актива
+watch(() => form.asset_id, (newAssetId, oldAssetId) => {
+  if (newAssetId !== oldAssetId) {
+    priceHistoryCache.value = null
+    // Если переключатель включен и актив изменился, загружаем новую историю
+    if (useMarketPrice.value && assetTypeChoice.value === 'system' && newAssetId && form.date) {
+      loadPriceHistory().then(() => {
+        loadMarketPrice(true)
+      })
+    }
+  }
+})
+
+// Сброс переключателя при переключении типа актива
+watch(assetTypeChoice, (newChoice) => {
+  if (newChoice === 'custom') {
+    useMarketPrice.value = false
+    priceHistoryCache.value = null
+  }
+})
 
 // Установка начального portfolio_id при загрузке
 if (props.portfolios.length > 0) {
@@ -690,6 +986,27 @@ setAssetTypeChoice('system')
   padding-top: 16px;
   margin-top: 8px;
   border-top: 1px solid #f3f4f6;
+}
+
+.toggle-wrapper {
+  margin-bottom: 12px;
+  padding: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toggle-label-text {
+  font-size: 13px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
 }
 
 </style>

@@ -44,6 +44,9 @@ const dividendYield = ref(null)
 const date = ref(new Date().toISOString().slice(0, 10))
 const error = ref('')
 const saving = ref(false)
+const loadingPrice = ref(false) // Состояние загрузки рыночной цены
+const priceHistoryCache = ref(null) // Кэш истории цен актива
+const isLoadingHistory = ref(false) // Флаг для предотвращения двойной загрузки истории
 
 // Поля для повторяющихся операций
 const startDate = ref('')
@@ -87,6 +90,25 @@ watch(() => props.asset, () => {
 const useCustomCurrency = ref(false)
 const currencyId = ref(47) // RUB по умолчанию
 const createAssetFromCurrency = ref(false) // Автоматически создать актив из валюты
+
+// Использование рыночной цены для транзакций
+const useMarketPrice = ref(false) // Переключатель для автоматической загрузки рыночной цены
+
+// Автоматическая загрузка рыночной цены при включении переключателя
+watch(useMarketPrice, async (newValue) => {
+  if (newValue && isTransaction.value && props.asset?.asset_id && date.value) {
+    // Загружаем цену один раз при включении переключателя
+    await loadMarketPrice(true) // silent = true, чтобы не показывать ошибки при автоматической загрузке
+  }
+})
+
+// Автоматическое обновление цены при изменении даты, если переключатель включен
+watch(date, async (newDate) => {
+  if (useMarketPrice.value && isTransaction.value && props.asset?.asset_id && newDate) {
+    // Обновляем цену при изменении даты
+    await loadMarketPrice(true) // silent = true, чтобы не показывать ошибки при автоматической загрузке
+  }
+})
 
 // Получаем список валют из referenceData (включая криптовалюты)
 const currencies = computed(() => {
@@ -433,7 +455,8 @@ async function findOrCreateCurrencyAsset(currencyTicker, currencyId) {
 }
 
 // Функция для получения цены актива на дату
-async function getAssetPriceOnDate(assetId, targetDate) {
+// Если передан cachedHistory, использует его вместо загрузки из API
+async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
   try {
     // Сначала пытаемся получить информацию об активе из referenceData
     const refData = dashboardStore.referenceData
@@ -447,26 +470,41 @@ async function getAssetPriceOnDate(assetId, targetDate) {
       }
     }
     
-    // Получаем историю цен актива
-    // Используем дату на день позже, чтобы включить саму дату операции
-    const targetDateObj = new Date(targetDate)
-    targetDateObj.setHours(23, 59, 59, 999) // Конец дня, чтобы включить саму дату
-    const endDateStr = targetDateObj.toISOString().slice(0, 10) // YYYY-MM-DD
+    let priceHistory = cachedHistory
     
-    const priceHistory = await assetsService.getAssetPriceHistory(
-      assetId,
-      null, // start_date - не ограничиваем
-      endDateStr, // end_date - до даты операции включительно
-      1000 // Увеличиваем лимит, чтобы получить больше записей
-    )
+    // Если история не передана, но есть в глобальном кэше, используем её
+    if (!priceHistory && priceHistoryCache.value && priceHistoryCache.value.length > 0) {
+      priceHistory = priceHistoryCache.value
+    }
     
-    if (priceHistory.success && priceHistory.prices && priceHistory.prices.length > 0) {
+    // Загружаем историю цен только если она не передана в кэше и нет в глобальном кэше
+    // Это fallback для обратной совместимости (не должно вызываться при использовании переключателя)
+    if (!priceHistory) {
+      // Получаем историю цен актива
+      // Используем дату на день позже, чтобы включить саму дату операции
+      const targetDateObj = new Date(targetDate)
+      targetDateObj.setHours(23, 59, 59, 999) // Конец дня, чтобы включить саму дату
+      const endDateStr = targetDateObj.toISOString().slice(0, 10) // YYYY-MM-DD
+      
+      const priceHistoryResponse = await assetsService.getAssetPriceHistory(
+        assetId,
+        null, // start_date - не ограничиваем
+        endDateStr, // end_date - до даты операции включительно
+        1000 // Увеличиваем лимит, чтобы получить больше записей
+      )
+      
+      if (priceHistoryResponse.success && priceHistoryResponse.prices) {
+        priceHistory = priceHistoryResponse.prices
+      }
+    }
+    
+    if (priceHistory && priceHistory.length > 0) {
       // Нормализуем целевую дату для сравнения
       const targetDateNormalized = new Date(targetDate)
       targetDateNormalized.setHours(0, 0, 0, 0)
       
       // Сортируем по дате (от новых к старым)
-      const sortedPrices = [...priceHistory.prices].sort((a, b) => {
+      const sortedPrices = [...priceHistory].sort((a, b) => {
         const dateA = new Date(a.trade_date)
         const dateB = new Date(b.trade_date)
         return dateB - dateA
@@ -532,6 +570,142 @@ async function getAssetPriceOnDate(assetId, targetDate) {
     return null
   }
 }
+
+// Функция для загрузки истории цен актива (вызывается один раз при включении переключателя)
+async function loadPriceHistory() {
+  if (!props.asset?.asset_id) {
+    return false
+  }
+  
+  // Если история уже загружена для этого актива, не загружаем повторно
+  if (priceHistoryCache.value && priceHistoryCache.value.length > 0) {
+    return true
+  }
+  
+  // Если уже идет загрузка истории, не запускаем повторную загрузку
+  if (isLoadingHistory.value) {
+    // Ждем завершения текущей загрузки
+    while (isLoadingHistory.value) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    // После завершения проверяем, загрузилась ли история
+    return priceHistoryCache.value && priceHistoryCache.value.length > 0
+  }
+  
+  try {
+    isLoadingHistory.value = true
+    loadingPrice.value = true
+    
+    // Загружаем полную историю цен актива (без ограничения по дате)
+    const priceHistoryResponse = await assetsService.getAssetPriceHistory(
+      props.asset.asset_id,
+      null, // start_date - не ограничиваем
+      null, // end_date - не ограничиваем, загружаем всю историю
+      10000 // Большой лимит для получения всей истории
+    )
+    
+    if (priceHistoryResponse.success && priceHistoryResponse.prices) {
+      // Сохраняем историю в кэш
+      priceHistoryCache.value = priceHistoryResponse.prices
+      return true
+    }
+    
+    return false
+  } catch (e) {
+    console.error('Ошибка при загрузке истории цен:', e)
+    return false
+  } finally {
+    isLoadingHistory.value = false
+    loadingPrice.value = false
+  }
+}
+
+// Функция для получения рыночной цены на дату транзакции и заполнения поля цены
+async function loadMarketPrice(silent = false) {
+  if (!props.asset?.asset_id) {
+    if (!silent) {
+      error.value = 'Не выбран актив'
+    }
+    return false
+  }
+  
+  if (!date.value) {
+    if (!silent) {
+      error.value = 'Выберите дату транзакции'
+    }
+    return false
+  }
+  
+  if (!silent) {
+    loadingPrice.value = true
+    error.value = ''
+  }
+  
+  try {
+    // Используем кэшированную историю цен, если она есть
+    const marketPrice = await getAssetPriceOnDate(
+      props.asset.asset_id, 
+      date.value, 
+      priceHistoryCache.value
+    )
+    
+    if (marketPrice && marketPrice > 0) {
+      price.value = marketPrice
+      return true
+    } else {
+      if (!silent) {
+        error.value = `Не удалось получить рыночную цену актива на дату ${date.value}. Пожалуйста, введите цену вручную.`
+      }
+      return false
+    }
+  } catch (e) {
+    if (!silent) {
+      error.value = 'Ошибка при получении рыночной цены: ' + (e.message || 'Неизвестная ошибка')
+    }
+    return false
+  } finally {
+    if (!silent) {
+      loadingPrice.value = false
+    }
+  }
+}
+
+// Автоматическая загрузка истории цен и рыночной цены при включении переключателя
+watch(useMarketPrice, async (newValue, oldValue) => {
+  // Загружаем историю цен и цену только при включении переключателя (переходе с false на true)
+  if (newValue && !oldValue && isTransaction.value && props.asset?.asset_id) {
+    // Загружаем историю цен один раз при включении переключателя (если еще не загружена)
+    const historyLoaded = await loadPriceHistory()
+    
+    // Если история загружена или уже была в кэше, загружаем цену на текущую дату
+    if (historyLoaded && date.value) {
+      await loadMarketPrice(true) // silent = true, чтобы не показывать ошибки при автоматической загрузке
+    }
+  }
+  // При выключении переключателя НЕ очищаем кэш - сохраняем для повторного использования
+})
+
+// Автоматическое обновление цены при изменении даты, если переключатель включен
+watch(date, async (newDate, oldDate) => {
+  // Обновляем цену только если переключатель включен и дата действительно изменилась
+  if (useMarketPrice.value && isTransaction.value && props.asset?.asset_id && newDate && newDate !== oldDate) {
+    // Используем кэшированную историю цен для быстрого поиска цены
+    await loadMarketPrice(true) // silent = true, чтобы не показывать ошибки при автоматической загрузке
+  }
+}, { immediate: false })
+
+// Очистка кэша истории цен при изменении актива
+watch(() => props.asset?.asset_id, (newAssetId, oldAssetId) => {
+  if (newAssetId !== oldAssetId) {
+    priceHistoryCache.value = null
+    // Если переключатель включен и актив изменился, загружаем новую историю
+    if (useMarketPrice.value && isTransaction.value && newAssetId && date.value) {
+      loadPriceHistory().then(() => {
+        loadMarketPrice(true)
+      })
+    }
+  }
+})
 
 // Функция для создания транзакции покупки
 async function createBuyTransaction(assetId, portfolioAssetId, quantity, transactionDate) {
@@ -869,20 +1043,47 @@ const handleSubmit = async () => {
         <!-- Поля для транзакций (Buy/Sell) -->
         <div v-if="isTransaction" class="form-section">
           <div class="section-divider"></div>
+          
+          <!-- Переключатель использования рыночной цены -->
+          <div class="toggle-wrapper">
+            <ToggleSwitch v-model="useMarketPrice" />
+            <span class="toggle-label-text">
+              Использовать рыночную цену на дату транзакции
+            </span>
+          </div>
+          
           <div class="form-row">
             <div class="form-field">
               <label class="form-label">
                 <span class="label-icon">🔢</span>
                 Количество
               </label>
-              <input type="number" v-model.number="quantity" min="0" step="0.0001" class="form-input" required />
+              <input type="number" v-model.number="quantity" min="0" step="0.000001" class="form-input" required />
+              <small class="form-hint" style="margin-top: 4px;">
+                Можно вводить до 6 знаков после запятой
+              </small>
             </div>
             <div class="form-field">
               <label class="form-label">
                 <span class="label-icon">💰</span>
                 Цена (₽)
+                <span v-if="loadingPrice" style="margin-left: 8px; color: #3b82f6;">⏳ Загрузка...</span>
               </label>
-              <input type="number" v-model.number="price" min="0" step="0.01" class="form-input" required />
+              <input 
+                type="number" 
+                v-model.number="price" 
+                min="0" 
+                step="0.000001" 
+                class="form-input" 
+                required 
+                :disabled="useMarketPrice && loadingPrice"
+              />
+              <small class="form-hint" style="margin-top: 4px;" v-if="useMarketPrice">
+                Цена автоматически обновляется при изменении даты
+              </small>
+              <small class="form-hint" style="margin-top: 4px;">
+                Можно вводить до 6 знаков после запятой
+              </small>
             </div>
           </div>
           <div class="form-field" style="margin-top: 12px;">
@@ -1366,6 +1567,38 @@ const handleSubmit = async () => {
   padding-top: 16px;
   margin-top: 8px;
   border-top: 1px solid #f3f4f6;
+}
+
+.market-price-btn {
+  white-space: nowrap;
+  padding: 8px 16px;
+  min-width: auto;
+  border: 1.5px solid #3b82f6;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #3b82f6;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+}
+
+.market-price-btn:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.market-price-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: #d1d5db;
+  background: #f3f4f6;
+  color: #9ca3af;
 }
 
 </style>
