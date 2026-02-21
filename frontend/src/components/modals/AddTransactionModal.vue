@@ -355,6 +355,9 @@ function findAssetInPortfolio(portfolioId, assetId) {
 }
 
 // Функция для поиска или создания актива по валюте
+// Если актив уже существует в портфеле, просто возвращает его ID (без создания дубликата)
+// Если актив есть в системе, но не в портфеле - создает portfolio_asset с quantity=0
+// Если актив не найден - создает новый кастомный актив
 async function findOrCreateCurrencyAsset(currencyTicker, currencyId) {
   const refData = dashboardStore.referenceData
   if (!refData?.assets) {
@@ -371,14 +374,18 @@ async function findOrCreateCurrencyAsset(currencyTicker, currencyId) {
     // Проверяем, есть ли актив уже в нужном портфеле
     const portfolioAsset = findAssetInPortfolio(portfolioId, existingAsset.id)
     if (portfolioAsset) {
+      // Актив уже есть в портфеле - просто возвращаем его ID
+      // Это предотвращает создание дубликата и конфликтов
+      // Транзакция покупки будет создана позже через createBuyTransaction
       return {
         asset_id: existingAsset.id,
         portfolio_asset_id: portfolioAsset.portfolio_asset_id || portfolioAsset.id
       }
     }
     
-    // Актив есть, но его нет в портфеле - создаем portfolio_asset без транзакции
+    // Актив есть в системе, но его нет в портфеле - создаем portfolio_asset без транзакции
     // Создаем с quantity=0, транзакция не будет создана (будет создана позже через createBuyTransaction)
+    // На бэкенде это обработается корректно: если portfolio_asset уже существует, он обновится
     const assetData = {
       portfolio_id: portfolioId,
       asset_id: existingAsset.id,
@@ -696,16 +703,22 @@ const handleSubmit = async () => {
         batchData.dividend_yield = dividendYield.value
       }
       
-      // Создаем операции через batch API (store автоматически обновит dashboard)
+      // Создаем операции дивидендов по первоначальному активу (props.asset.asset_id) через batch API
+      // Это важно: операции дивидендов всегда привязаны к активу, по которому выплачиваются дивиденды
       await transactionsStore.addOperationsBatch(batchData)
       
       // Если нужно создать актив из валюты для повторяющихся операций
+      // Это создает транзакции покупки актива валюты (например, BTC) для каждой даты выплаты дивидендов
       if (isPayout.value && createAssetFromCurrency.value && useCustomCurrency.value && selectedCurrency.value.ticker !== 'RUB') {
+        // findOrCreateCurrencyAsset проверяет, есть ли актив уже в портфеле
+        // Если есть - возвращает существующий portfolio_asset_id (без создания дубликата)
+        // Если нет - создает новый portfolio_asset с quantity=0
         const currencyAsset = await findOrCreateCurrencyAsset(selectedCurrency.value.ticker, currencyId.value)
         const dates = generateRecurringDates(startDate.value, endDate.value, dayOfMonth.value)
         
         // Создаем транзакции покупки для каждой даты
         // Используем Promise.all для параллельного выполнения, но с ограничением
+        // Если актив уже был в портфеле, транзакции просто добавятся к существующему активу
         const batchSize = 5 // Обрабатываем по 5 транзакций за раз
         for (let i = 0; i < dates.length; i += batchSize) {
           const batch = dates.slice(i, i + batchSize)
@@ -751,17 +764,23 @@ const handleSubmit = async () => {
         operationData.dividend_yield = dividendYield.value
       }
       
-      // Создаем операцию (store автоматически обновит dashboard)
+      // Создаем операцию дивидендов по первоначальному активу (props.asset.asset_id)
+      // Это важно: операция дивидендов всегда привязана к активу, по которому выплачиваются дивиденды
       await transactionsStore.addOperation(operationData)
       
       // Если нужно создать актив из валюты для одиночной операции
+      // Это создает транзакцию покупки актива валюты (например, BTC), в которую выплачены дивиденды
       if (isPayout.value && createAssetFromCurrency.value && useCustomCurrency.value && selectedCurrency.value.ticker !== 'RUB') {
+        // findOrCreateCurrencyAsset проверяет, есть ли актив уже в портфеле
+        // Если есть - возвращает существующий portfolio_asset_id (без создания дубликата)
+        // Если нет - создает новый portfolio_asset с quantity=0
         const currencyAsset = await findOrCreateCurrencyAsset(selectedCurrency.value.ticker, currencyId.value)
         
         // Создаем транзакцию покупки актива валюты
         // Цена получается автоматически из истории цен на дату операции
-        // Количество = сумма дивидендов
+        // Количество = сумма дивидендов в валюте выплаты
         // createBuyTransaction использует store, который автоматически обновит dashboard
+        // Если актив уже был в портфеле, транзакция просто добавится к существующему активу
         await createBuyTransaction(
           currencyAsset.asset_id,
           currencyAsset.portfolio_asset_id,

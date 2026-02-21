@@ -49,15 +49,25 @@ function aggregateData(dataObj, period) {
   const normalizeDate = (date) => {
     const d = new Date(date)
     d.setHours(0, 0, 0, 0)
+    d.setMilliseconds(0)
     return d
   }
   
-  const parseDate = (d) => normalizeDate(new Date(d))
+  const parseDate = (d) => {
+    // Парсим дату из строки формата YYYY-MM-DD
+    if (typeof d === 'string') {
+      const parts = d.split('T')[0].split('-')
+      if (parts.length === 3) {
+        return normalizeDate(new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])))
+      }
+    }
+    return normalizeDate(new Date(d))
+  }
 
   const points = dataObj.labels.map((label, index) => ({
     date: parseDate(label),
     values: dataObj.datasets.map(ds => ds.data[index])
-  })).sort((a, b) => a.date - b.date)
+  })).sort((a, b) => a.date.getTime() - b.date.getTime())
 
   const firstPoint = points[0]?.date
 
@@ -67,7 +77,13 @@ function aggregateData(dataObj, period) {
   } else if (period === '1Y') {
     firstDate = new Date(today.getFullYear(), today.getMonth() - 11, 1)
   } else {
-    firstDate = firstPoint ? new Date(firstPoint) : new Date(today)
+    // Для периода "Все время" начинаем с дня до первой точки данных, чтобы первая отметка была 0
+    if (firstPoint) {
+      firstDate = new Date(firstPoint)
+      firstDate.setDate(firstDate.getDate() - 1) // День до первой точки
+    } else {
+      firstDate = new Date(today)
+    }
   }
   
   // Нормализуем даты до начала дня
@@ -80,20 +96,43 @@ function aggregateData(dataObj, period) {
   let lastValues = new Array(dataObj.datasets.length).fill(0)
 
   // Итерируемся по дням, включая последний день
-  for (let d = new Date(firstDate); d <= lastDate; d.setDate(d.getDate() + 1)) {
-    const currentDay = normalizeDate(d)
+  // Используем сравнение по timestamp для корректной работы с датами
+  const firstDateTimestamp = firstDate.getTime()
+  const lastDateTimestamp = lastDate.getTime()
+  
+  // Функция для форматирования даты в YYYY-MM-DD без проблем с часовыми поясами
+  const formatDateLocal = (date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  
+  // Итерируемся по дням, используя локальные даты для избежания проблем с часовыми поясами
+  let currentDate = new Date(firstDate)
+  
+  while (currentDate <= lastDate) {
+    const currentDay = normalizeDate(currentDate)
+    const currentDayTimestamp = currentDay.getTime()
     
-    if (currentDay < firstPoint) {
+    if (firstPoint && currentDayTimestamp < firstPoint.getTime()) {
+      // Для дат до первой точки данных устанавливаем значение 0
       datasetBuffers.forEach((arr) => arr.push(0))
     } else {
       // Обновляем lastValues до последней точки, которая <= текущего дня
-      while (idx < points.length && points[idx].date <= currentDay) {
+      // Используем сравнение по timestamp для точности
+      while (idx < points.length && points[idx].date.getTime() <= currentDayTimestamp) {
         lastValues = points[idx].values
         idx++
       }
-      datasetBuffers.forEach((arr, i) => arr.push(lastValues[i]))
+      datasetBuffers.forEach((arr, i) => arr.push(lastValues[i] || 0))
     }
-    labels.push(currentDay.toISOString().split("T")[0])
+    // Используем локальное форматирование даты вместо toISOString для избежания проблем с часовыми поясами
+    labels.push(formatDateLocal(currentDay))
+    
+    // Переходим к следующему дню, используя локальные методы для избежания проблем с часовыми поясами
+    currentDate.setDate(currentDate.getDate() + 1)
+    currentDate = normalizeDate(currentDate) // Нормализуем после изменения
   }
 
   return { labels, datasets: datasetBuffers }
