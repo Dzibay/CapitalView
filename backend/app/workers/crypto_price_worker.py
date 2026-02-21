@@ -367,7 +367,7 @@ async def update_history_prices() -> int:
                 no_new_data_count += 1
         else:
             failed_count += 1
-
+    
     if all_new_prices:
         # Удаляем дубликаты по (asset_id, trade_date), оставляя последнюю запись
         # Это предотвращает ошибку "ON CONFLICT DO UPDATE command cannot affect row a second time"

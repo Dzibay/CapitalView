@@ -5,6 +5,9 @@ import { Button, ToggleSwitch } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
 import { useTransactionsStore } from '../../stores/transactions.store'
 import { useDashboardStore } from '../../stores/dashboard.store'
+import { useAssetsStore } from '../../stores/assets.store'
+import transactionsService from '../../services/transactionsService'
+import assetsService from '../../services/assetsService'
 
 const props = defineProps({
   asset: Object,
@@ -15,6 +18,7 @@ const emit = defineEmits(['close'])
 
 const transactionsStore = useTransactionsStore()
 const dashboardStore = useDashboardStore()
+const assetsStore = useAssetsStore()
 
 // Типы операций
 const operationTypes = [
@@ -82,6 +86,7 @@ watch(() => props.asset, () => {
 // Валюты
 const useCustomCurrency = ref(false)
 const currencyId = ref(47) // RUB по умолчанию
+const createAssetFromCurrency = ref(false) // Автоматически создать актив из валюты
 
 // Получаем список валют из referenceData (включая криптовалюты)
 const currencies = computed(() => {
@@ -293,6 +298,306 @@ const amountLabel = computed(() => {
   return `Сумма (${symbol})`
 })
 
+// Функция для получения portfolio_id из актива или портфелей
+function getPortfolioId() {
+  // Сначала пробуем получить из props.asset
+  if (props.asset?.portfolio_id) {
+    return props.asset.portfolio_id
+  }
+  
+  const portfolios = dashboardStore.portfolios || []
+  if (portfolios.length === 0) {
+    throw new Error('Не удалось определить portfolio_id. Портфели не загружены.')
+  }
+  
+  // Если нет в props.asset, ищем в портфелях по portfolio_asset_id
+  if (props.asset?.portfolio_asset_id) {
+    for (const portfolio of portfolios) {
+      if (portfolio.assets && Array.isArray(portfolio.assets)) {
+        const portfolioAsset = portfolio.assets.find(pa => 
+          pa.portfolio_asset_id === props.asset.portfolio_asset_id ||
+          pa.id === props.asset.portfolio_asset_id
+        )
+        if (portfolioAsset && portfolio.id) {
+          return portfolio.id
+        }
+      }
+    }
+  }
+  
+  // Если есть asset_id, ищем портфель по asset_id
+  if (props.asset?.asset_id) {
+    for (const portfolio of portfolios) {
+      if (portfolio.assets && Array.isArray(portfolio.assets)) {
+        const portfolioAsset = portfolio.assets.find(pa => pa.asset_id === props.asset.asset_id)
+        if (portfolioAsset && portfolio.id) {
+          return portfolio.id
+        }
+      }
+    }
+  }
+  
+  // Если ничего не найдено, пробуем взять первый портфель
+  if (portfolios[0]?.id) {
+    return portfolios[0].id
+  }
+  
+  throw new Error('Не удалось определить portfolio_id. Убедитесь, что выбран актив из портфеля.')
+}
+
+// Функция для поиска актива в конкретном портфеле
+function findAssetInPortfolio(portfolioId, assetId) {
+  const portfolio = dashboardStore.portfolios?.find(p => p.id === portfolioId)
+  if (!portfolio?.assets || !Array.isArray(portfolio.assets)) {
+    return null
+  }
+  return portfolio.assets.find(pa => pa.asset_id === assetId)
+}
+
+// Функция для поиска или создания актива по валюте
+async function findOrCreateCurrencyAsset(currencyTicker, currencyId) {
+  const refData = dashboardStore.referenceData
+  if (!refData?.assets) {
+    throw new Error('Не удалось загрузить справочные данные')
+  }
+  
+  // Получаем portfolio_id
+  const portfolioId = getPortfolioId()
+  
+  // Ищем актив с таким тикером валюты
+  const existingAsset = refData.assets.find(a => a.ticker === currencyTicker && !a.user_id)
+  
+  if (existingAsset) {
+    // Проверяем, есть ли актив уже в нужном портфеле
+    const portfolioAsset = findAssetInPortfolio(portfolioId, existingAsset.id)
+    if (portfolioAsset) {
+      return {
+        asset_id: existingAsset.id,
+        portfolio_asset_id: portfolioAsset.portfolio_asset_id || portfolioAsset.id
+      }
+    }
+    
+    // Актив есть, но его нет в портфеле - создаем portfolio_asset без транзакции
+    // Создаем с quantity=0, транзакция не будет создана (будет создана позже через createBuyTransaction)
+    const assetData = {
+      portfolio_id: portfolioId,
+      asset_id: existingAsset.id,
+      quantity: 0, // Транзакция не будет создана при quantity=0
+      average_price: 1,
+      date: date.value
+    }
+    
+    const result = await assetsStore.addAsset(assetData)
+    if (result.success && result.asset) {
+      return {
+        asset_id: existingAsset.id,
+        portfolio_asset_id: result.asset.portfolio_asset_id
+      }
+    }
+    throw new Error('Не удалось добавить актив в портфель')
+  }
+  
+  // Актив не найден, создаем новый кастомный актив
+  // Определяем asset_type_id: 6 для криптовалют, 5 для обычных валют
+  const cryptoCurrencies = ['BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'SOL']
+  const assetTypeId = cryptoCurrencies.includes(currencyTicker) ? 6 : 5
+  
+  // Создаем с quantity=0, транзакция не будет создана (будет создана позже через createBuyTransaction)
+  const assetData = {
+    portfolio_id: portfolioId,
+    asset_type_id: assetTypeId,
+    name: currencyTicker,
+    ticker: currencyTicker,
+    currency: currencyId,
+    quantity: 0, // Транзакция не будет создана при quantity=0
+    average_price: 1,
+    date: date.value
+  }
+  
+  const result = await assetsStore.addAsset(assetData)
+  if (result.success && result.asset) {
+    return {
+      asset_id: result.asset.asset_id,
+      portfolio_asset_id: result.asset.portfolio_asset_id
+    }
+  }
+  
+  throw new Error('Не удалось создать актив')
+}
+
+// Функция для получения цены актива на дату
+async function getAssetPriceOnDate(assetId, targetDate) {
+  try {
+    // Сначала пытаемся получить информацию об активе из referenceData
+    const refData = dashboardStore.referenceData
+    let assetTicker = null
+    let assetInfo = null
+    
+    if (refData?.assets) {
+      assetInfo = refData.assets.find(a => a.id === assetId)
+      if (assetInfo && assetInfo.ticker) {
+        assetTicker = assetInfo.ticker
+      }
+    }
+    
+    // Получаем историю цен актива
+    // Используем дату на день позже, чтобы включить саму дату операции
+    const targetDateObj = new Date(targetDate)
+    targetDateObj.setHours(23, 59, 59, 999) // Конец дня, чтобы включить саму дату
+    const endDateStr = targetDateObj.toISOString().slice(0, 10) // YYYY-MM-DD
+    
+    const priceHistory = await assetsService.getAssetPriceHistory(
+      assetId,
+      null, // start_date - не ограничиваем
+      endDateStr, // end_date - до даты операции включительно
+      1000 // Увеличиваем лимит, чтобы получить больше записей
+    )
+    
+    if (priceHistory.success && priceHistory.prices && priceHistory.prices.length > 0) {
+      // Нормализуем целевую дату для сравнения
+      const targetDateNormalized = new Date(targetDate)
+      targetDateNormalized.setHours(0, 0, 0, 0)
+      
+      // Сортируем по дате (от новых к старым)
+      const sortedPrices = [...priceHistory.prices].sort((a, b) => {
+        const dateA = new Date(a.trade_date)
+        const dateB = new Date(b.trade_date)
+        return dateB - dateA
+      })
+      
+      // Ищем цену на точную дату или ближайшую предыдущую
+      for (const priceRecord of sortedPrices) {
+        const priceDate = new Date(priceRecord.trade_date)
+        priceDate.setHours(0, 0, 0, 0)
+        
+        // Проверяем, что дата цены <= целевой даты
+        if (priceDate <= targetDateNormalized) {
+          const price = parseFloat(priceRecord.price)
+          if (price && price > 0) {
+            return price
+          }
+        }
+      }
+    }
+    
+    // Если цена не найдена в истории, пытаемся получить из referenceData
+    if (refData) {
+      // Сначала пробуем получить из assets
+      if (refData.assets && assetInfo) {
+        if (assetInfo.last_price) {
+          const price = parseFloat(assetInfo.last_price)
+          if (price && price > 0) {
+            return price
+          }
+        }
+      }
+      
+      // Если это валюта/криптовалюта, пробуем получить курс из currencies
+      if (assetTicker && refData.currencies) {
+        const currency = refData.currencies.find(c => c.ticker === assetTicker)
+        if (currency) {
+          // Для валют/криптовалют используем rate_to_rub как цену в рублях
+          if (currency.rate_to_rub) {
+            const rate = parseFloat(currency.rate_to_rub)
+            if (rate && rate > 0) {
+              return rate
+            }
+          }
+          // Если rate_to_rub нет, пробуем получить из asset_last_currency_prices через assets
+          if (refData.assets) {
+            const currencyAsset = refData.assets.find(a => a.ticker === assetTicker)
+            if (currencyAsset && currencyAsset.last_price) {
+              const price = parseFloat(currencyAsset.last_price)
+              if (price && price > 0) {
+                return price
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Если ничего не найдено, возвращаем null (не используем fallback 1)
+    // Это позволит системе показать ошибку или запросить цену вручную
+    return null
+  } catch (error) {
+    console.error('Ошибка при получении цены актива:', error)
+    return null
+  }
+}
+
+// Функция для создания транзакции покупки
+async function createBuyTransaction(assetId, portfolioAssetId, quantity, transactionDate) {
+  // Получаем рыночную цену актива на дату операции
+  let price = await getAssetPriceOnDate(assetId, transactionDate)
+  
+  // Если цена не найдена, пытаемся получить из referenceData по тикеру
+  if (!price || price <= 0) {
+    const refData = dashboardStore.referenceData
+    if (refData?.assets) {
+      const asset = refData.assets.find(a => a.id === assetId)
+      if (asset?.ticker && refData.currencies) {
+        const currency = refData.currencies.find(c => c.ticker === asset.ticker)
+        if (currency?.rate_to_rub) {
+          price = parseFloat(currency.rate_to_rub)
+        }
+      }
+      // Если не нашли в currencies, пробуем last_price из assets
+      if ((!price || price <= 0) && asset?.last_price) {
+        price = parseFloat(asset.last_price)
+      }
+    }
+  }
+  
+  // Если цена все еще не найдена, используем fallback на 1 с предупреждением
+  // Это позволит создать транзакцию, но пользователь должен будет исправить цену вручную
+  if (!price || price <= 0) {
+    console.warn(`Не удалось получить цену актива ${assetId} на дату ${transactionDate}. Используется fallback цена = 1. Пожалуйста, обновите цену вручную.`)
+    price = 1
+  }
+  
+  // Используем store для создания транзакции, чтобы автоматически обновился dashboard
+  await transactionsStore.addTransaction({
+    asset_id: assetId,
+    portfolio_asset_id: portfolioAssetId,
+    transaction_type: 1, // buy
+    quantity,
+    price,
+    transaction_date: transactionDate
+  })
+}
+
+// Функция для генерации дат для повторяющихся операций
+function generateRecurringDates(startDate, endDate, dayOfMonth) {
+  const dates = []
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  
+  let current = new Date(start.getFullYear(), start.getMonth(), dayOfMonth)
+  
+  // Если первая дата раньше startDate, переходим к следующему месяцу
+  if (current < start) {
+    current.setMonth(current.getMonth() + 1)
+  }
+  
+  while (current <= end) {
+    // Проверяем, что день месяца валиден для этого месяца
+    const lastDay = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate()
+    const validDay = Math.min(dayOfMonth, lastDay)
+    current.setDate(validDay)
+    
+    if (current >= start && current <= end) {
+      dates.push(new Date(current))
+    }
+    
+    // Переходим к следующему месяцу
+    current.setMonth(current.getMonth() + 1)
+    current.setDate(dayOfMonth)
+  }
+  
+  return dates
+}
+
 const handleSubmit = async () => {
   error.value = ''
   
@@ -363,8 +668,11 @@ const handleSubmit = async () => {
       })
     } else if (mode.value === 'recurring') {
       // Для повторяющихся операций используем batch API
+      // Получаем portfolio_id из актива или портфелей
+      const portfolioId = props.asset?.portfolio_id || getPortfolioId()
+      
       const batchData = {
-        portfolio_id: props.asset.portfolio_id,
+        portfolio_id: portfolioId,
         operation_type: operationType.value,
         amount: amount.value,
         start_date: startDate.value,
@@ -388,11 +696,40 @@ const handleSubmit = async () => {
         batchData.dividend_yield = dividendYield.value
       }
       
+      // Создаем операции через batch API (store автоматически обновит dashboard)
       await transactionsStore.addOperationsBatch(batchData)
+      
+      // Если нужно создать актив из валюты для повторяющихся операций
+      if (isPayout.value && createAssetFromCurrency.value && useCustomCurrency.value && selectedCurrency.value.ticker !== 'RUB') {
+        const currencyAsset = await findOrCreateCurrencyAsset(selectedCurrency.value.ticker, currencyId.value)
+        const dates = generateRecurringDates(startDate.value, endDate.value, dayOfMonth.value)
+        
+        // Создаем транзакции покупки для каждой даты
+        // Используем Promise.all для параллельного выполнения, но с ограничением
+        const batchSize = 5 // Обрабатываем по 5 транзакций за раз
+        for (let i = 0; i < dates.length; i += batchSize) {
+          const batch = dates.slice(i, i + batchSize)
+          await Promise.all(batch.map(async (opDate) => {
+            const dateStr = opDate.toISOString().slice(0, 10)
+            await createBuyTransaction(
+              currencyAsset.asset_id,
+              currencyAsset.portfolio_asset_id,
+              Math.abs(amount.value),
+              dateStr
+            )
+          }))
+        }
+        
+        // Обновляем dashboard после создания всех транзакций
+        await dashboardStore.reloadDashboard()
+      }
     } else {
       // Для остальных операций используем обычный API
+      // Получаем portfolio_id из актива или портфелей
+      const portfolioId = props.asset?.portfolio_id || getPortfolioId()
+      
       const operationData = {
-        portfolio_id: props.asset.portfolio_id,
+        portfolio_id: portfolioId,
         operation_type: operationType.value,
         amount: amount.value,
         operation_date: date.value,
@@ -414,7 +751,24 @@ const handleSubmit = async () => {
         operationData.dividend_yield = dividendYield.value
       }
       
+      // Создаем операцию (store автоматически обновит dashboard)
       await transactionsStore.addOperation(operationData)
+      
+      // Если нужно создать актив из валюты для одиночной операции
+      if (isPayout.value && createAssetFromCurrency.value && useCustomCurrency.value && selectedCurrency.value.ticker !== 'RUB') {
+        const currencyAsset = await findOrCreateCurrencyAsset(selectedCurrency.value.ticker, currencyId.value)
+        
+        // Создаем транзакцию покупки актива валюты
+        // Цена получается автоматически из истории цен на дату операции
+        // Количество = сумма дивидендов
+        // createBuyTransaction использует store, который автоматически обновит dashboard
+        await createBuyTransaction(
+          currencyAsset.asset_id,
+          currencyAsset.portfolio_asset_id,
+          Math.abs(amount.value),
+          date.value
+        )
+      }
     }
     
     emit('close')
@@ -593,6 +947,21 @@ const handleSubmit = async () => {
                 :placeholder="assetPrice && assetQuantity ? 'Рассчитывается автоматически' : 'Введите вручную (опционально)'"
               />
             </div>
+          </div>
+          
+          <!-- Переключатель для автоматического создания актива из валюты -->
+          <div v-if="useCustomCurrency && selectedCurrency.ticker !== 'RUB'" class="form-field">
+            <div class="toggle-wrapper">
+              <ToggleSwitch 
+                v-model="createAssetFromCurrency" 
+              />
+              <span class="toggle-label-text">
+                Создать актив из валюты ({{ selectedCurrency.ticker }})
+              </span>
+            </div>
+            <small class="form-hint">
+              Будет создан актив с валютой {{ selectedCurrency.ticker }} и транзакция покупки на сумму дивидендов
+            </small>
           </div>
         </div>
 

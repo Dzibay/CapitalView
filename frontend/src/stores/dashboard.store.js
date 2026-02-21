@@ -70,7 +70,7 @@ export const useDashboardStore = defineStore('dashboard', {
         
       } catch (err) {
         if (import.meta.env.DEV && (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error'))) {
-          console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
+            console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
         }
         throw err
       } finally {

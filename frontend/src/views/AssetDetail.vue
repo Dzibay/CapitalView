@@ -156,28 +156,48 @@ async function loadTransactionsForAllPortfolios(portfolios) {
 
 // Загрузка всех операций из cash_operations для данного актива
 async function loadAllCashOperations() {
-  if (!selectedPortfolioId.value || !assetInfo.value?.asset_id) return
+  if (!assetInfo.value?.asset_id) return
   
   try {
-    const response = await operationsService.getOperations({
-      portfolio_id: selectedPortfolioId.value,
-      limit: 1000
-    })
+    const assetId = assetInfo.value.asset_id
+    const allOperations = []
     
-    // API возвращает { success: true, data: { operations: [...] } }
-    // operationsService.getOperations уже обрабатывает это и возвращает массив
-    const operations = Array.isArray(response) ? response : []
-    
-    if (operations && Array.isArray(operations)) {
-      // Фильтруем все операции для данного актива (не только выплаты)
-      const assetId = assetInfo.value.asset_id
-      cashOperations.value = operations.filter(op => {
-        // Включаем операции, которые связаны с активом (имеют asset_id)
-        return op.asset_id === assetId
+    // Загружаем операции для всех портфелей, где есть этот актив
+    if (assetInAllPortfolios.value && assetInAllPortfolios.value.length > 0) {
+      for (const portfolio of assetInAllPortfolios.value) {
+        if (portfolio.portfolio_id) {
+          try {
+            const response = await operationsService.getOperations({
+              portfolio_id: portfolio.portfolio_id,
+              limit: 1000
+            })
+            
+            const operations = Array.isArray(response) ? response : []
+            if (operations && Array.isArray(operations)) {
+              // Фильтруем операции для данного актива (включая Buy/Sell)
+              const assetOperations = operations.filter(op => op.asset_id === assetId)
+              allOperations.push(...assetOperations)
+            }
+          } catch (error) {
+            console.error(`Ошибка при загрузке операций для портфеля ${portfolio.portfolio_id}:`, error)
+          }
+        }
+      }
+    } else if (selectedPortfolioId.value) {
+      // Fallback: загружаем только для выбранного портфеля
+      const response = await operationsService.getOperations({
+        portfolio_id: selectedPortfolioId.value,
+        limit: 1000
       })
-    } else {
-      cashOperations.value = []
+      
+      const operations = Array.isArray(response) ? response : []
+      if (operations && Array.isArray(operations)) {
+        const assetOperations = operations.filter(op => op.asset_id === assetId)
+        allOperations.push(...assetOperations)
+      }
     }
+    
+    cashOperations.value = allOperations
   } catch (error) {
     console.error('Ошибка при загрузке операций:', error)
     cashOperations.value = []
@@ -364,10 +384,10 @@ const chartData = computed(() => {
       fill: true
     }]
   } else if (selectedChartType.value === 'price') {
-    // График цены единицы актива
+    // График цены единицы актива - используем оригинальную валюту (без конвертации в рубли)
     const data = labels.map(date => {
       const price = filteredPrices.find(p => p.trade_date === date)?.price || 0
-      return price * currencyRate
+      return price // Не конвертируем в рубли, используем оригинальную цену
     })
     
     datasets = [{
@@ -387,15 +407,90 @@ const chartData = computed(() => {
 // Форматирование для графика количества (без валюты)
 const formatQuantity = (value) => {
   if (typeof value !== 'number') return value
+  // Используем больше знаков после запятой для малых значений (например, 0.0015)
   return value.toLocaleString('ru-RU', {
-    maximumFractionDigits: 2
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 8
   })
 }
+
+// Форматирование для графика стоимости позиции (в рублях)
+const formatPositionCurrency = (value) => {
+  return formatOperationAmount(value || 0, 'RUB')
+}
+
+// Определяем валюту актива для графика цены единицы (computed для реактивности)
+// Используем ту же логику, что и в basicInfoItems
+const assetQuoteCurrency = computed(() => {
+  const quoteAssetId = selectedPortfolioAsset.value?.quote_asset_id || 
+                       assetInfo.value?.quote_asset_id ||
+                       portfolioAsset.value?.asset?.quote_asset_id
+  
+  if (quoteAssetId) {
+    const refData = dashboardStore.referenceData
+    
+    // Ищем валюту в списке валют (currencies)
+    if (refData?.currencies) {
+      const currency = refData.currencies.find(c => c.id === quoteAssetId)
+      if (currency && currency.ticker) {
+        // Нормализуем ticker (берем первые 3 символа)
+        const normalized = currency.ticker.trim().substring(0, 3).toUpperCase()
+        const validCurrencyCodes = ['RUB', 'USD', 'EUR', 'GBP', 'CNY', 'JPY', 'BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'SOL']
+        if (validCurrencyCodes.includes(normalized)) {
+          return normalized
+        }
+        return currency.ticker
+      }
+    }
+    
+    // Если не нашли в currencies, ищем в assets (для криптовалют)
+    if (refData?.assets) {
+      const currencyAsset = refData.assets.find(a => a.id === quoteAssetId)
+      if (currencyAsset && currencyAsset.ticker) {
+        // Нормализуем ticker (берем первые 3 символа)
+        const normalized = currencyAsset.ticker.trim().substring(0, 3).toUpperCase()
+        const validCurrencyCodes = ['RUB', 'USD', 'EUR', 'GBP', 'CNY', 'JPY', 'BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'SOL']
+        if (validCurrencyCodes.includes(normalized)) {
+          return normalized
+        }
+        return currencyAsset.ticker
+      }
+    }
+  }
+  
+  // Fallback: используем currency_ticker из данных актива
+  const currencyTicker = selectedPortfolioAsset.value?.currency_ticker || 
+                         assetInfo.value?.currency_ticker ||
+                         portfolioAsset.value?.asset?.currency_ticker
+  
+  if (currencyTicker) {
+    const normalized = normalizeCurrencyTicker(currencyTicker)
+    if (normalized !== 'RUB') {
+      return normalized
+    }
+  }
+  
+  return 'RUB'
+})
+
+// Форматирование для графика цены единицы (в валюте актива) - computed для реактивности
+// Важно: используем assetQuoteCurrency.value при каждом вызове, чтобы всегда получать актуальное значение
+const formatPriceCurrency = computed(() => {
+  return (value) => {
+    // Всегда используем актуальное значение assetQuoteCurrency.value
+    const currency = assetQuoteCurrency.value
+    return formatOperationAmount(value || 0, currency)
+  }
+})
 
 // Выбираем форматтер в зависимости от типа графика
 const chartFormatter = computed(() => {
   if (selectedChartType.value === 'quantity') {
     return formatQuantity
+  } else if (selectedChartType.value === 'position') {
+    return formatPositionCurrency
+  } else if (selectedChartType.value === 'price') {
+    return formatPriceCurrency.value
   }
   return formatCurrency
 })
@@ -557,10 +652,37 @@ const selectedPortfolioPercentageInRoot = computed(() => {
 
 // Computed properties для виджетов метрик
 const basicInfoItems = computed(() => {
+  // Для "Основная информация" используем валюту актива (quote_asset_id)
+  // Например, для BTC это будет USD
+  const quoteAssetId = selectedPortfolioAsset.value?.quote_asset_id || 
+                       assetInfo.value?.quote_asset_id ||
+                       portfolioAsset.value?.asset?.quote_asset_id
+  
+  let assetQuoteCurrency = 'RUB'
+  if (quoteAssetId) {
+    const refData = dashboardStore.referenceData
+    if (refData?.currencies) {
+      const currency = refData.currencies.find(c => c.id === quoteAssetId)
+      if (currency && currency.ticker) {
+        assetQuoteCurrency = currency.ticker
+      }
+    }
+  }
+  
   const result = [
     { label: 'Количество', value: selectedPortfolioAsset.value?.quantity || 0, format: 'number' },
-    { label: 'Средняя цена', value: selectedPortfolioAsset.value?.average_price || 0, format: 'number' },
-    { label: 'Текущая цена', value: selectedPortfolioAsset.value?.last_price || 0, format: 'number' }
+    { 
+      label: 'Средняя цена', 
+      value: selectedPortfolioAsset.value?.average_price || 0, 
+      format: 'currency',
+      formatter: (v) => formatOperationAmount(v, assetQuoteCurrency)
+    },
+    { 
+      label: 'Текущая цена', 
+      value: selectedPortfolioAsset.value?.last_price || 0, 
+      format: 'currency',
+      formatter: (v) => formatOperationAmount(v, assetQuoteCurrency)
+    }
   ]
   
   if (selectedPriceGrowth.value) {
@@ -577,18 +699,19 @@ const basicInfoItems = computed(() => {
 })
 
 const contributionItems = computed(() => {
+  // Для "Вклад в портфель" все значения в рублях
   const result = [
     { 
       label: 'Общая стоимость портфеля', 
       value: selectedPortfolioAsset.value?.portfolio_total_value || 0, 
       format: 'currency',
-      formatter: (v) => formatOperationAmount(v, assetCurrency.value)
+      formatter: (v) => formatOperationAmount(v, 'RUB')
     },
     { 
       label: 'Стоимость актива', 
       value: selectedPortfolioAsset.value?.asset_value || 0, 
       format: 'currency',
-      formatter: (v) => formatOperationAmount(v, assetCurrency.value)
+      formatter: (v) => formatOperationAmount(v, 'RUB')
     },
     { label: 'Доля в портфеле', value: selectedPortfolioAsset.value?.percentage_in_portfolio || 0, format: 'number', suffix: '%' }
   ]
@@ -605,55 +728,63 @@ const contributionItems = computed(() => {
   return result
 })
 
-const profitLossItems = computed(() => [
-  { 
-    label: 'Инвестировано', 
-    value: selectedProfitLoss.value?.invested || 0, 
-    format: 'currency',
-    formatter: (v) => formatOperationAmount(v, assetCurrency.value)
-  },
-  { 
-    label: 'Текущая стоимость', 
-    value: selectedProfitLoss.value?.currentValue || 0, 
-    format: 'currency',
-    formatter: (v) => formatOperationAmount(v, assetCurrency.value)
-  },
-  { 
-    label: 'Нереализованная прибыль', 
-    value: selectedProfitLoss.value?.profit || 0, 
-    format: 'currency',
-    isPositive: selectedProfitLoss.value?.isProfit || false,
-    formatter: (v) => formatOperationAmount(v, assetCurrency.value)
-  },
-  { 
-    label: 'Прибыль от продаж', 
-    value: realizedProfit.value || 0, 
-    format: 'currency',
-    isPositive: realizedProfit.value >= 0,
-    formatter: (v) => formatOperationAmount(v, assetCurrency.value)
-  },
-  { 
-    label: 'Получено выплат', 
-    value: receivedPayouts.value || 0, 
-    format: 'currency',
-    colorClass: 'profit',
-    formatter: (v) => formatOperationAmount(v, 'RUB')
-  },
-  { 
-    label: 'Комиссии', 
-    value: commissionsTotal.value || 0, 
-    format: 'currency',
-    colorClass: 'loss',
-    formatter: (v) => formatOperationAmount(-v, 'RUB') // Вычитаем при форматировании
-  },
-  { 
-    label: 'Общая прибыль', 
-    value: selectedTotalProfit.value?.total || 0, 
-    format: 'currency',
-    isPositive: selectedTotalProfit.value?.isProfit || false,
-    formatter: (v) => formatOperationAmount(v, assetCurrency.value)
-  }
-])
+const profitLossItems = computed(() => {
+  // Для "Прибыль и убытки" все значения всегда в рублях
+  // (так как все операции конвертируются в рубли через amount_rub)
+  // Инвестированная сумма рассчитывается из amount_rub операций покупки
+  // Текущая стоимость конвертируется в рубли через currency_rate_to_rub
+  const displayCurrency = 'RUB'
+  
+  return [
+    { 
+      label: 'Инвестировано', 
+      value: selectedProfitLoss.value?.invested || 0, 
+      format: 'currency',
+      formatter: (v) => formatOperationAmount(v, displayCurrency)
+    },
+    { 
+      label: 'Текущая стоимость', 
+      value: selectedProfitLoss.value?.currentValue || 0, 
+      format: 'currency',
+      formatter: (v) => formatOperationAmount(v, displayCurrency)
+    },
+    { 
+      label: 'Нереализованная прибыль', 
+      value: selectedProfitLoss.value?.profit || 0, 
+      format: 'currency',
+      isPositive: selectedProfitLoss.value?.isProfit || false,
+      formatter: (v) => formatOperationAmount(v, displayCurrency)
+    },
+    { 
+      label: 'Прибыль от продаж', 
+      value: realizedProfit.value || 0, 
+      format: 'currency',
+      isPositive: realizedProfit.value >= 0,
+      formatter: (v) => formatOperationAmount(v, displayCurrency)
+    },
+    { 
+      label: 'Получено выплат', 
+      value: receivedPayouts.value || 0, 
+      format: 'currency',
+      colorClass: 'profit',
+      formatter: (v) => formatOperationAmount(v, 'RUB')
+    },
+    { 
+      label: 'Комиссии', 
+      value: commissionsTotal.value || 0, 
+      format: 'currency',
+      colorClass: 'loss',
+      formatter: (v) => formatOperationAmount(-v, 'RUB') // Вычитаем при форматировании
+    },
+    { 
+      label: 'Общая прибыль', 
+      value: selectedTotalProfit.value?.total || 0, 
+      format: 'currency',
+      isPositive: selectedTotalProfit.value?.isProfit || false,
+      formatter: (v) => formatOperationAmount(v, displayCurrency)
+    }
+  ]
+})
 
 // Изменение цены за день в процентах для выбранного портфеля
 const selectedPriceChangePercent = computed(() => {
@@ -671,21 +802,52 @@ const selectedPriceChangePercent = computed(() => {
   return (dailyChange / previousPrice) * 100
 })
 
+// Расчет инвестированной суммы из операций покупки (используем amount_rub)
+const investedFromOperations = computed(() => {
+  if (!selectedPortfolioAsset.value || !cashOperations.value) return 0
+  
+  const portfolioId = selectedPortfolioAsset.value.portfolio_id
+  const assetId = selectedPortfolioAsset.value.asset_id || assetInfo.value?.asset_id
+  
+  if (!portfolioId || !assetId) return 0
+  
+  // Фильтруем операции покупки (Buy) для выбранного портфеля и актива
+  const buyOperations = cashOperations.value.filter(op => {
+    const opType = (op.operation_type || op.type || '').toLowerCase()
+    const opTypeId = op.operation_type_id
+    const isBuy = opType.includes('buy') || opType.includes('покупка') || opTypeId === 1
+    const matchesPortfolio = op.portfolio_id === portfolioId
+    const matchesAsset = op.asset_id === assetId
+    
+    return isBuy && matchesPortfolio && matchesAsset
+  })
+  
+  // Суммируем amount_rub из операций покупки (уже в рублях)
+  // Берем по модулю, так как операции покупки могут быть отрицательными
+  return buyOperations.reduce((sum, op) => {
+    const amountRub = Number(op.amount_rub ?? op.amountRub ?? 0) || 0
+    return sum + Math.abs(amountRub)
+  }, 0)
+})
+
 // Расчет прибыли/убытка для выбранного портфеля
 const selectedProfitLoss = computed(() => {
   if (!selectedPortfolioAsset.value) return null
   
   const asset = selectedPortfolioAsset.value
   const currentPrice = asset.last_price || 0
-  const averagePrice = asset.average_price || 0
   const quantity = asset.quantity || 0
   const leverage = asset.leverage || 1
-  // Используем курс из данных портфеля или из основного актива
+  
+  // Используем инвестированную сумму из операций покупки (amount_rub уже в рублях)
+  const invested = investedFromOperations.value
+  
+  // Для текущей стоимости используем текущую цену, количество и курс валюты к рублю
   const currencyRate = asset.currency_rate_to_rub || portfolioAsset.value?.asset.currency_rate_to_rub || 1
-
-  const invested = (quantity * averagePrice / leverage) * currencyRate
   const currentValue = (quantity * currentPrice / leverage) * currencyRate
+  
   const profit = currentValue - invested
+  const averagePrice = asset.average_price || 0
   const profitPercent = averagePrice > 0 ? ((currentPrice - averagePrice) / averagePrice) * 100 : 0
 
   return {
@@ -741,7 +903,18 @@ const payouts = computed(() => {
 const realizedProfit = computed(() => {
   const transactions = selectedPortfolioTransactions.value || []
   
-  // Суммируем realized_pnl из транзакций продажи, если есть
+  // Получаем quote_asset_id актива для конвертации realized_pnl в рубли
+  const quoteAssetId = selectedPortfolioAsset.value?.quote_asset_id || 
+                       assetInfo.value?.quote_asset_id ||
+                       portfolioAsset.value?.asset?.quote_asset_id
+  
+  // Получаем курс валюты актива к рублю
+  const currencyRate = selectedPortfolioAsset.value?.currency_rate_to_rub || 
+                       portfolioAsset.value?.asset?.currency_rate_to_rub || 
+                       1
+  
+  // Суммируем realized_pnl из транзакций продажи, конвертируя в рубли
+  // realized_pnl хранится в валюте актива (quote_asset_id), нужно конвертировать в рубли
   let totalRealized = 0
   
   for (const tx of transactions) {
@@ -751,7 +924,14 @@ const realizedProfit = computed(() => {
     
     // Если это продажа и есть realized_pnl
     if (txType === 2 && tx.realized_pnl !== undefined && tx.realized_pnl !== null) {
-      totalRealized += Number(tx.realized_pnl) || 0
+      const realizedPnl = Number(tx.realized_pnl) || 0
+      // Конвертируем в рубли, если актив не в рублях
+      // Если quote_asset_id != RUB, то realized_pnl в валюте актива, нужно конвертировать
+      if (quoteAssetId && quoteAssetId !== 47) {
+        totalRealized += realizedPnl * currencyRate
+      } else {
+        totalRealized += realizedPnl
+      }
     }
   }
   

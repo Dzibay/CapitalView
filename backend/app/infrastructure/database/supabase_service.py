@@ -131,14 +131,23 @@ def table_select(table: str, select="*", filters: dict = None, in_filters: dict 
     
     if filters:
         for k, v in filters.items():
+            # Пропускаем None значения, чтобы избежать ошибок с типами bigint
+            if v is None:
+                continue
             q = q.eq(k, v)
     
     if in_filters:
         for k, v in in_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.in_(k, v)
     
     if neq_filters:
         for k, v in neq_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.neq(k, v)
 
     if order:
@@ -166,6 +175,9 @@ def table_upsert(table: str, data, filters: dict = None):
         # Если указаны фильтры, делаем update
         q = supabase.table(table).update(data)
         for k, v in filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.eq(k, v)
         return q.execute().data
     else:
@@ -177,6 +189,9 @@ def table_update(table: str, data: dict, filters: dict):
     supabase = get_supabase_client()
     q = supabase.table(table).update(data)
     for k, v in filters.items():
+        # Пропускаем None значения
+        if v is None:
+            continue
         q = q.eq(k, v)
     return q.execute().data
 
@@ -187,14 +202,23 @@ def table_delete(table: str, filters: dict = None, neq_filters: dict = None, in_
 
     if filters:
         for k, v in filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.eq(k, v)
 
     if neq_filters:
         for k, v in neq_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.neq(k, v)
 
     if in_filters:
         for k, v in in_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.in_(k, v)
 
     return q.execute().data
@@ -210,14 +234,23 @@ def table_select_with_neq(table: str, select: str = "*", filters: dict = None, n
     
     if filters:
         for k, v in filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.eq(k, v)
     
     if neq_filters:
         for k, v in neq_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.neq(k, v)
     
     if in_filters:
         for k, v in in_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.in_(k, v)
     
     return q.execute().data

@@ -20,15 +20,34 @@ def create_asset(email: str, data: dict):
 
     user_id = user["id"]
 
-    portfolio_id = data.get("portfolio_id")
-    asset_id = data.get("asset_id")
-    asset_type_id = data.get("asset_type_id")
+    # Нормализуем значения, преобразуя строки "None" и пустые строки в None
+    def normalize_value(value):
+        if value is None or value == "None" or value == "":
+            return None
+        return value
+    
+    portfolio_id = normalize_value(data.get("portfolio_id"))
+    asset_id = normalize_value(data.get("asset_id"))
+    asset_type_id = normalize_value(data.get("asset_type_id"))
     name = data.get("name")
     ticker = data.get("ticker")
     quantity = float(data.get("quantity", 0))
-    currency = int(data.get("currency")) if data.get("currency") else None
+    currency = int(data.get("currency")) if data.get("currency") and data.get("currency") != "None" else None
     price = float(data.get("average_price", 0))
     date = data.get("date") or datetime.utcnow().isoformat()
+    
+    # Преобразуем portfolio_id и asset_id в int, если они не None
+    if portfolio_id is not None:
+        try:
+            portfolio_id = int(portfolio_id)
+        except (ValueError, TypeError):
+            return {"success": False, "error": "Некорректный portfolio_id"}
+    
+    if asset_id is not None:
+        try:
+            asset_id = int(asset_id)
+        except (ValueError, TypeError):
+            return {"success": False, "error": "Некорректный asset_id"}
 
     try:
         # --- Если актив кастомный или новый ---
@@ -100,6 +119,12 @@ def create_asset(email: str, data: dict):
                 ticker = asset_info[0]["ticker"]
 
         # --- Проверяем, есть ли актив в портфеле ---
+        # Убеждаемся, что portfolio_id и asset_id не None перед использованием в фильтрах
+        if not portfolio_id:
+            return {"success": False, "error": "portfolio_id обязателен"}
+        if not asset_id:
+            return {"success": False, "error": "asset_id обязателен"}
+        
         pa_resp = table_select(
             "portfolio_assets",
             select="id, quantity, average_price",
@@ -126,16 +151,18 @@ def create_asset(email: str, data: dict):
             new_quantity = quantity
             new_avg_price = price
 
-        # --- Добавляем транзакцию покупки ---
-        create_transaction(
-            user_id=user_id,
-            portfolio_asset_id=portfolio_asset_id,
-            asset_id=asset_id,
-            transaction_type=1,  # BUY
-            quantity=quantity,
-            price=price,
-            transaction_date=date,
-        )
+        # --- Добавляем транзакцию покупки только если quantity > 0 ---
+        # Если quantity = 0, транзакция не создается (например, при создании актива валюты для дивидендов)
+        if quantity > 0:
+            create_transaction(
+                user_id=user_id,
+                portfolio_asset_id=portfolio_asset_id,
+                asset_id=asset_id,
+                transaction_type=1,  # BUY
+                quantity=quantity,
+                price=price,
+                transaction_date=date,
+            )
 
         # --- Обновляем историю портфеля с даты транзакции ---
         # Преобразуем дату транзакции в формат YYYY-MM-DD
@@ -517,21 +544,43 @@ def get_asset_price_history(asset_id: int, start_date: str = None, end_date: str
         
         # Фильтруем по датам в Python, если нужно
         if start_date or end_date:
-            from datetime import datetime
+            from datetime import datetime, date as date_type
             filtered = []
             for row in query:
                 trade_date = row.get("trade_date")
+                
+                # Нормализуем trade_date до date для сравнения
                 if isinstance(trade_date, str):
-                    trade_date = datetime.fromisoformat(trade_date.replace("Z", "+00:00"))
+                    try:
+                        trade_date = datetime.fromisoformat(trade_date.replace("Z", "+00:00"))
+                    except:
+                        try:
+                            trade_date = datetime.fromisoformat(trade_date)
+                        except:
+                            continue
+                elif isinstance(trade_date, date_type):
+                    trade_date = datetime.combine(trade_date, datetime.min.time())
+                
+                # Нормализуем до начала дня для сравнения
+                trade_date_normalized = trade_date.replace(hour=0, minute=0, second=0, microsecond=0)
                 
                 if start_date:
-                    start = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-                    if trade_date < start:
+                    try:
+                        start = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                    except:
+                        start = datetime.fromisoformat(start_date)
+                    start_normalized = start.replace(hour=0, minute=0, second=0, microsecond=0)
+                    if trade_date_normalized < start_normalized:
                         continue
                 
                 if end_date:
-                    end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-                    if trade_date > end:
+                    try:
+                        end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                    except:
+                        end = datetime.fromisoformat(end_date)
+                    # Включаем саму дату end_date (нормализуем до конца дня)
+                    end_normalized = end.replace(hour=23, minute=59, second=59, microsecond=999999)
+                    if trade_date_normalized > end_normalized:
                         continue
                 
                 filtered.append(row)
@@ -583,6 +632,7 @@ def get_portfolio_asset_info(portfolio_asset_id: int, user_id: str):
             "last_price": portfolio_asset_data.get("last_price"),
             "daily_change": portfolio_asset_data.get("daily_change"),
             "currency_ticker": portfolio_asset_data.get("currency_ticker"),
+            "quote_asset_id": portfolio_asset_data.get("quote_asset_id"),
             "currency_rate_to_rub": portfolio_asset_data.get("currency_rate_to_rub"),
             "name": portfolio_asset_data.get("asset_name"),
             "ticker": portfolio_asset_data.get("ticker"),

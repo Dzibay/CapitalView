@@ -348,7 +348,7 @@ async def update_history_prices() -> int:
                 no_new_data_count += 1
         else:
             failed_count += 1
-
+    
     # Вставляем все новые цены большими батчами (значительно уменьшаем количество запросов)
     if all_new_prices:
         batch_size = 1000  # Увеличиваем размер батча для уменьшения количества запросов
