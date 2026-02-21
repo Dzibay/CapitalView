@@ -67,9 +67,12 @@ BEGIN
     -- 2️⃣ UNREALIZED P/L (по текущим позициям)
     -------------------------------------------------------------------
     SELECT
-        COALESCE(SUM(pa.quantity * pa.average_price * COALESCE(curr.curr_price,1) / pa.leverage), 0),
-        COALESCE(SUM(pa.quantity * ap.curr_price    * COALESCE(curr.curr_price,1) / pa.leverage), 0),
-        COALESCE(SUM(pa.quantity * (ap.curr_price - pa.average_price) * COALESCE(curr.curr_price,1) / pa.leverage), 0)
+        -- total_invested: конвертируем среднюю цену в рубли через курс валюты
+        COALESCE(SUM(pa.quantity * pa.average_price * COALESCE(curr.curr_price, 1) / pa.leverage), 0),
+        -- total_value: конвертируем текущую цену в рубли через курс валюты
+        COALESCE(SUM(pa.quantity * ap.curr_price    * COALESCE(curr.curr_price, 1) / pa.leverage), 0),
+        -- unrealized_pl: разница уже в рублях после конвертации
+        COALESCE(SUM(pa.quantity * (ap.curr_price - pa.average_price) * COALESCE(curr.curr_price, 1) / pa.leverage), 0)
     INTO v_total_invested, v_total_value, v_unrealized_pl
     FROM portfolio_assets pa
     JOIN assets a ON a.id = pa.asset_id

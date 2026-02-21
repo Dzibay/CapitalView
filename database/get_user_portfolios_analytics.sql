@@ -21,10 +21,10 @@ ops AS (
   SELECT
     co.portfolio_id,
     ot.name AS type,
-    -- Для выплат (Dividend, Coupon) и расходов (Commission, Tax, Withdraw) используем amount_rub
+    -- Для выплат (Dividend, Coupon) и расходов (Commission, Tax, Withdraw, Buy, Sell) используем amount_rub
     -- Для Deposit используем amount (пополнение в исходной валюте)
     SUM(CASE 
-      WHEN ot.name IN ('Dividend','Coupon','Amortization','Commission','Commision','Tax','Withdraw') THEN COALESCE(co.amount_rub, co.amount)
+      WHEN ot.name IN ('Dividend','Coupon','Amortization','Commission','Commision','Tax','Withdraw','Buy','Sell') THEN COALESCE(co.amount_rub, co.amount)
       ELSE co.amount
     END) AS sum
   FROM cash_operations co

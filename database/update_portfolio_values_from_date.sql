@@ -141,17 +141,19 @@ BEGIN
     ),
 
     ------------------------------------------------------------------
-    -- Позиции на каждую активную дату
+    -- Позиции на каждую активную дату (с информацией о валюте актива)
     ------------------------------------------------------------------
     daily_positions AS (
         SELECT
             d.report_date,
             pa.asset_id,
+            a.quote_asset_id,
             pa.leverage::numeric AS leverage,
             coalesce(pr.quantity,0) AS quantity,
             coalesce(pr.average_price,0) AS average_price
         FROM dates d
         JOIN portfolio_assets pa ON pa.portfolio_id = p_portfolio_id
+        JOIN assets a ON a.id = pa.asset_id
         LEFT JOIN pos_ranges pr
           ON pr.portfolio_asset_id = pa.id
          AND d.report_date >= pr.valid_from
@@ -159,7 +161,7 @@ BEGIN
     ),
 
     ------------------------------------------------------------------
-    -- Цены (ОПТИМИЗИРОВАНО: только для активов портфеля!)
+    -- Цены активов (ОПТИМИЗИРОВАНО: только для активов портфеля!)
     -- КРИТИЧНО: фильтруем asset_prices только по нужным активам
     -- Это может ускорить запрос в 10-100 раз для больших таблиц
     ------------------------------------------------------------------
@@ -178,7 +180,7 @@ BEGIN
         FROM asset_prices
         WHERE asset_id = ANY(v_asset_ids)  -- КРИТИЧНО: фильтруем только нужные активы!
     ),
-
+    
     ------------------------------------------------------------------
     -- Реализованная прибыль (дневная)
     ------------------------------------------------------------------
@@ -291,33 +293,40 @@ BEGIN
     )
 
     ------------------------------------------------------------------
-    -- Финальный агрегат
+    -- Финальный агрегат (с конвертацией в рубли)
     ------------------------------------------------------------------
     SELECT
         p_portfolio_id,
         dp.report_date,
+        -- total_value: конвертируем цену актива в рубли через курс валюты
         sum(
             dp.quantity
             * coalesce(cp.price,0)
+            * COALESCE(cr.rate_to_rub, 1)  -- Курс валюты актива к рублю
             / nullif(dp.leverage,0)
         ) AS total_value,
+        -- total_invested: конвертируем среднюю цену в рубли через курс валюты
         sum(
             dp.quantity
             * dp.average_price
+            * COALESCE(cr.rate_to_rub, 1)  -- Курс валюты актива к рублю
             / nullif(dp.leverage,0)
         ) AS total_invested,
         pc.total_payouts,
         rc.total_realized,
         COALESCE(cc.total_commissions, 0) AS total_commissions,
         COALESCE(tc.total_taxes, 0) AS total_taxes,
+        -- total_pnl: все значения уже в рублях
         sum(
             dp.quantity
             * coalesce(cp.price,0)
+            * COALESCE(cr.rate_to_rub, 1)  -- Курс валюты актива к рублю
             / nullif(dp.leverage,0)
         )
         - sum(
             dp.quantity
             * dp.average_price
+            * COALESCE(cr.rate_to_rub, 1)  -- Курс валюты актива к рублю
             / nullif(dp.leverage,0)
         )
         + pc.total_payouts
@@ -329,6 +338,22 @@ BEGIN
       ON cp.asset_id = dp.asset_id
      AND dp.report_date >= cp.valid_from
      AND dp.report_date <  cp.valid_to
+    LEFT JOIN LATERAL (
+        -- Получаем исторический курс валюты к рублю на конкретную дату
+        -- Используем ближайший предыдущий курс, если точный курс на дату не найден
+        SELECT COALESCE(
+            -- Ищем исторический курс на дату или ближайший предыдущий
+            (SELECT price::numeric
+             FROM asset_prices ap
+             WHERE ap.asset_id = dp.quote_asset_id
+               AND CAST(ap.trade_date AS date) <= dp.report_date
+               AND (dp.quote_asset_id IS NOT NULL AND dp.quote_asset_id != 47)
+             ORDER BY ap.trade_date DESC
+             LIMIT 1),
+            -- Если валюта RUB или NULL, курс = 1
+            CASE WHEN dp.quote_asset_id IS NULL OR dp.quote_asset_id = 47 THEN 1 ELSE 1 END
+        ) AS rate_to_rub
+    ) cr ON TRUE
     LEFT JOIN realized_cum rc ON rc.report_date = dp.report_date
     LEFT JOIN payouts_cum  pc ON pc.report_date = dp.report_date
     LEFT JOIN commissions_cum cc ON cc.report_date = dp.report_date
