@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query, HTTPException, Depends
 from app.domain.services.assets_service import (
     delete_asset, create_asset, add_asset_price, add_asset_prices_batch,
     get_asset_info, get_asset_price_history, get_portfolio_asset_info,
-    move_asset_to_portfolio
+    move_asset_to_portfolio, get_asset_daily_values
 )
 from app.domain.models.asset_models import AddAssetPriceRequest, MoveAssetRequest, BatchAddPriceRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
@@ -157,6 +157,25 @@ async def get_asset_price_history_route(
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail=result.get("error", "Ошибка при получении истории цен")
+        )
+    
+    return success_response(data=result)
+
+
+@router.get("/portfolio/{portfolio_asset_id}/daily-values")
+async def get_asset_daily_values_route(
+    portfolio_asset_id: int,
+    user: dict = Depends(get_current_user),
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None)
+):
+    """Получение истории стоимости актива для графика."""
+    result = get_asset_daily_values(portfolio_asset_id, from_date, to_date)
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=result.get("error", "Ошибка при получении истории стоимости актива")
         )
     
     return success_response(data=result)

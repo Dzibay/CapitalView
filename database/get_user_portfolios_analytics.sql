@@ -78,20 +78,26 @@ totals AS (
   FROM ops o
   GROUP BY o.portfolio_id
 ),
+-- ОПТИМИЗИРОВАНО: используем position_value из portfolio_daily_positions
 portfolio_assets_distribution AS (
   SELECT
-    pa.portfolio_id,
+    pdp.portfolio_id,
+    pdp.portfolio_asset_id,
     pa.asset_id,
     COALESCE(a.name, 'Unknown') AS asset_name,
     COALESCE(a.ticker, '') AS asset_ticker,
-    SUM(pa.quantity * COALESCE(apf.curr_price, 0) * COALESCE(curr.curr_price, 1) / COALESCE(pa.leverage, 1)) AS total_value
-  FROM portfolio_assets pa
-  JOIN p ON p.id = pa.portfolio_id
+    pdp.position_value AS total_value
+  FROM portfolio_daily_positions pdp
+  JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
+  JOIN p ON p.id = pdp.portfolio_id
   JOIN assets a ON a.id = pa.asset_id
-  LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
-  LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
-  WHERE COALESCE(pa.quantity, 0) > 0
-  GROUP BY pa.portfolio_id, pa.asset_id, a.name, a.ticker
+  WHERE pdp.report_date = (
+    SELECT MAX(report_date)
+    FROM portfolio_daily_positions
+    WHERE portfolio_asset_id = pdp.portfolio_asset_id
+  )
+    AND COALESCE(pdp.position_value, 0) > 0
+  GROUP BY pdp.portfolio_id, pdp.portfolio_asset_id, pa.asset_id, a.name, a.ticker, pdp.position_value
 ),
 asset_payouts_by_asset AS (
   SELECT
@@ -408,72 +414,98 @@ asset_prices_periods AS (
     LIMIT 1
   ) ap_year ON TRUE
 ),
--- Выплаты за разные периоды
+-- ОПТИМИЗИРОВАНО: используем payouts из portfolio_daily_positions
+-- Для периодов используем разницу между последним значением и значением на начало периода
 asset_payouts_periods AS (
   SELECT
-    co.portfolio_id,
-    co.asset_id,
-    -- Выплаты за все время (используем amount_rub - уже переведено в рубли по курсу на дату операции)
-    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_payouts_all,
-    -- Выплаты за год
-    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') AND co.date >= CURRENT_DATE - INTERVAL '1 year' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_payouts_year,
-    -- Выплаты за месяц
-    SUM(CASE WHEN ot.name IN ('Dividend','Coupon') AND co.date >= CURRENT_DATE - INTERVAL '1 month' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_payouts_month
-  FROM cash_operations co
-  JOIN operations_type ot ON ot.id = co.type
-  JOIN p ON p.id = co.portfolio_id
-  WHERE ot.name IN ('Dividend','Coupon')
-    AND co.asset_id IS NOT NULL
-  GROUP BY co.portfolio_id, co.asset_id
+    pdp.portfolio_id,
+    pa.asset_id,
+    -- Выплаты за все время (из последней записи portfolio_daily_positions)
+    COALESCE(MAX(CASE WHEN pdp.report_date = latest.report_date THEN pdp.payouts ELSE 0 END), 0) AS total_payouts_all,
+    -- Выплаты за год (разница между последним значением и значением год назад)
+    COALESCE(
+      MAX(CASE WHEN pdp.report_date = latest.report_date THEN pdp.payouts ELSE 0 END) -
+      MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 year' THEN pdp.payouts ELSE 0 END),
+      0
+    ) AS total_payouts_year,
+    -- Выплаты за месяц (разница между последним значением и значением месяц назад)
+    COALESCE(
+      MAX(CASE WHEN pdp.report_date = latest.report_date THEN pdp.payouts ELSE 0 END) -
+      MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 month' THEN pdp.payouts ELSE 0 END),
+      0
+    ) AS total_payouts_month
+  FROM portfolio_daily_positions pdp
+  JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
+  JOIN p ON p.id = pdp.portfolio_id
+  CROSS JOIN LATERAL (
+    SELECT MAX(report_date) AS report_date
+    FROM portfolio_daily_positions
+    WHERE portfolio_asset_id = pdp.portfolio_asset_id
+  ) latest
+  WHERE pdp.report_date >= CURRENT_DATE - INTERVAL '1 year'
+  GROUP BY pdp.portfolio_id, pa.asset_id
 ),
+-- ОПТИМИЗИРОВАНО: используем commissions из portfolio_daily_positions
+-- Для периодов используем разницу между последним значением и значением на начало периода
 asset_commissions_periods AS (
   SELECT
-    co.portfolio_id,
-    co.asset_id,
-    -- Комиссии за все время (используем amount_rub - уже переведено в рубли по курсу на дату операции)
-    -- Комиссии - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
-    SUM(CASE WHEN ot.name IN ('Commission','Commision') THEN ABS(COALESCE(co.amount_rub, co.amount)) ELSE 0 END) AS total_commissions_all,
-    -- Комиссии за год
-    SUM(CASE WHEN ot.name IN ('Commission','Commision') AND co.date >= CURRENT_DATE - INTERVAL '1 year' THEN ABS(COALESCE(co.amount_rub, co.amount)) ELSE 0 END) AS total_commissions_year,
-    -- Комиссии за месяц
-    SUM(CASE WHEN ot.name IN ('Commission','Commision') AND co.date >= CURRENT_DATE - INTERVAL '1 month' THEN ABS(COALESCE(co.amount_rub, co.amount)) ELSE 0 END) AS total_commissions_month
-  FROM cash_operations co
-  JOIN operations_type ot ON ot.id = co.type
-  JOIN p ON p.id = co.portfolio_id
-  WHERE ot.name IN ('Commission','Commision')
-    AND co.asset_id IS NOT NULL
-  GROUP BY co.portfolio_id, co.asset_id
+    pdp.portfolio_id,
+    pa.asset_id,
+    -- Комиссии за все время (из последней записи portfolio_daily_positions)
+    COALESCE(MAX(CASE WHEN pdp.report_date = latest.report_date THEN pdp.commissions ELSE 0 END), 0) AS total_commissions_all,
+    -- Комиссии за год (разница между последним значением и значением год назад)
+    COALESCE(
+      MAX(CASE WHEN pdp.report_date = latest.report_date THEN pdp.commissions ELSE 0 END) -
+      MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 year' THEN pdp.commissions ELSE 0 END),
+      0
+    ) AS total_commissions_year,
+    -- Комиссии за месяц (разница между последним значением и значением месяц назад)
+    COALESCE(
+      MAX(CASE WHEN pdp.report_date = latest.report_date THEN pdp.commissions ELSE 0 END) -
+      MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 month' THEN pdp.commissions ELSE 0 END),
+      0
+    ) AS total_commissions_month
+  FROM portfolio_daily_positions pdp
+  JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
+  JOIN p ON p.id = pdp.portfolio_id
+  CROSS JOIN LATERAL (
+    SELECT MAX(report_date) AS report_date
+    FROM portfolio_daily_positions
+    WHERE portfolio_asset_id = pdp.portfolio_asset_id
+  ) latest
+  WHERE pdp.report_date >= CURRENT_DATE - INTERVAL '1 year'
+  GROUP BY pdp.portfolio_id, pa.asset_id
 ),
--- Реализованная прибыль из транзакций продажи (оптимизировано: один проход, учитываем валюту и плечо)
+-- ОПТИМИЗИРОВАНО: используем realized_pnl из portfolio_daily_positions
+-- Для периодов используем разницу между последним значением и значением на начало периода
 asset_realized_profit AS (
   SELECT
-    pa.portfolio_id,
+    pdp.portfolio_id,
     pa.asset_id,
-    -- Реализованная прибыль за все время (конвертируем в рубли и учитываем плечо)
-    COALESCE(SUM(t.realized_pnl * COALESCE(curr.curr_price, 1) / COALESCE(pa.leverage, 1)), 0) AS realized_profit_all,
-    -- Реализованная прибыль за год
-    COALESCE(SUM(
-      CASE 
-        WHEN t.transaction_date >= CURRENT_DATE - INTERVAL '1 year'
-        THEN t.realized_pnl * COALESCE(curr.curr_price, 1) / COALESCE(pa.leverage, 1)
-        ELSE 0
-      END
-    ), 0) AS realized_profit_year,
-    -- Реализованная прибыль за месяц
-    COALESCE(SUM(
-      CASE 
-        WHEN t.transaction_date >= CURRENT_DATE - INTERVAL '1 month'
-        THEN t.realized_pnl * COALESCE(curr.curr_price, 1) / COALESCE(pa.leverage, 1)
-        ELSE 0
-      END
-    ), 0) AS realized_profit_month
-  FROM transactions t
-  JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
-  JOIN p ON p.id = pa.portfolio_id
-  JOIN assets a ON a.id = pa.asset_id
-  LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
-  WHERE t.transaction_type = 2 AND t.realized_pnl IS NOT NULL
-  GROUP BY pa.portfolio_id, pa.asset_id
+    -- Реализованная прибыль за все время (из последней записи portfolio_daily_positions)
+    COALESCE(MAX(CASE WHEN pdp.report_date = latest.report_date THEN pdp.realized_pnl ELSE 0 END), 0) AS realized_profit_all,
+    -- Реализованная прибыль за год (разница между последним значением и значением год назад)
+    COALESCE(
+      MAX(CASE WHEN pdp.report_date = latest.report_date THEN pdp.realized_pnl ELSE 0 END) -
+      MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 year' THEN pdp.realized_pnl ELSE 0 END),
+      0
+    ) AS realized_profit_year,
+    -- Реализованная прибыль за месяц (разница между последним значением и значением месяц назад)
+    COALESCE(
+      MAX(CASE WHEN pdp.report_date = latest.report_date THEN pdp.realized_pnl ELSE 0 END) -
+      MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 month' THEN pdp.realized_pnl ELSE 0 END),
+      0
+    ) AS realized_profit_month
+  FROM portfolio_daily_positions pdp
+  JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
+  JOIN p ON p.id = pdp.portfolio_id
+  CROSS JOIN LATERAL (
+    SELECT MAX(report_date) AS report_date
+    FROM portfolio_daily_positions
+    WHERE portfolio_asset_id = pdp.portfolio_asset_id
+  ) latest
+  WHERE pdp.report_date >= CURRENT_DATE - INTERVAL '1 year'
+  GROUP BY pdp.portfolio_id, pa.asset_id
 ),
 asset_returns AS (
   -- Расчет доходности по активам за разные периоды
@@ -670,15 +702,15 @@ portfolio_latest_values AS (
 portfolio_analytics_optimized AS (
   SELECT
     p.id AS portfolio_id,
-    COALESCE(plv.total_invested, 0) AS total_invested,
-    COALESCE(plv.total_value, 0) AS total_value,
-    COALESCE(plv.total_value, 0) - COALESCE(plv.total_invested, 0) AS unrealized_pl,
-    COALESCE(plv.total_realized, 0) AS realized_pl,
+    plv.total_invested,
+    plv.total_value,
+    plv.total_value - plv.total_invested AS unrealized_pl,
+    plv.total_realized AS realized_pl,
     -- total_pnl из portfolio_daily_values уже включает: unrealized + realized + payouts - commissions - taxes
     -- Всегда используем total_pnl напрямую из таблицы
-    COALESCE(plv.total_pnl, 0) AS total_profit
+    plv.total_pnl AS total_profit
   FROM p
-  LEFT JOIN portfolio_latest_values plv ON plv.portfolio_id = p.id
+  INNER JOIN portfolio_latest_values plv ON plv.portfolio_id = p.id
   LEFT JOIN totals t ON t.portfolio_id = p.id
 )
 SELECT json_agg(

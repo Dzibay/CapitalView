@@ -34,6 +34,7 @@ const portfolioAssetId = computed(() => parseInt(route.params.id))
 const isLoading = ref(false)
 const assetInfo = ref(null)
 const priceHistory = ref([])
+const assetDailyValues = ref([]) // История стоимости позиции из portfolio_daily_positions
 const assetInAllPortfolios = ref([])
 const selectedPortfolioId = ref(null)
 const selectedPeriod = ref('All')
@@ -122,8 +123,16 @@ async function loadAssetInfo() {
         await loadPriceHistory(result.portfolio_asset.asset_id)
       }
       
-      // Загружаем все операции из cash_operations
-      await loadAllCashOperations()
+      // ОПТИМИЗИРОВАНО: используем daily_values и cash_operations из основного запроса
+      if (result.portfolio_asset.daily_values) {
+        assetDailyValues.value = result.portfolio_asset.daily_values
+        console.log('Загружены данные стоимости позиции из основного запроса:', result.portfolio_asset.daily_values.length, 'записей')
+      }
+      
+      if (result.portfolio_asset.cash_operations) {
+        cashOperations.value = result.portfolio_asset.cash_operations
+        console.log('Загружены операции из основного запроса:', result.portfolio_asset.cash_operations.length, 'записей')
+      }
     }
   } catch (error) {
     console.error('Ошибка при загрузке информации об активе:', error)
@@ -132,26 +141,12 @@ async function loadAssetInfo() {
   }
 }
 
-// Загрузка транзакций для всех портфелей
+// ОПТИМИЗИРОВАНО: не загружаем транзакции для всех портфелей при инициализации
+// Транзакции будут загружены только для выбранного портфеля при смене
 async function loadTransactionsForAllPortfolios(portfolios) {
-  // Транзакции уже загружены для текущего portfolio_asset_id
-  // Для других портфелей нужно загружать отдельно, но это требует дополнительных запросов
-  // Пока используем транзакции из основного запроса
-  // Для каждого портфеля загружаем транзакции, если они еще не загружены
-  for (const portfolio of portfolios) {
-    const portfolioAssetId = portfolio.portfolio_asset_id
-    if (portfolioAssetId && !portfolioTransactions.value[portfolioAssetId]) {
-      // Загружаем транзакции для этого portfolio_asset_id
-      try {
-        const result = await assetsService.getPortfolioAssetInfo(portfolioAssetId)
-        if (result.success && result.portfolio_asset?.transactions) {
-          portfolioTransactions.value[portfolioAssetId] = result.portfolio_asset.transactions
-        }
-      } catch (error) {
-        console.error(`Ошибка при загрузке транзакций для portfolio_asset_id ${portfolioAssetId}:`, error)
-      }
-    }
-  }
+  // Транзакции уже загружены для текущего portfolio_asset_id из основного запроса
+  // Для других портфелей транзакции будут загружены при смене портфеля
+  // Это значительно уменьшает количество запросов при загрузке страницы
 }
 
 // Загрузка всех операций из cash_operations для данного актива
@@ -213,6 +208,31 @@ async function loadPriceHistory(assetId) {
     }
   } catch (error) {
     console.error('Ошибка при загрузке истории цен:', error)
+  }
+}
+
+// Загрузка истории стоимости позиции из portfolio_daily_positions
+async function loadAssetDailyValues() {
+  // Используем portfolio_asset_id из выбранного портфеля или текущего актива
+  const targetPortfolioAssetId = selectedPortfolioAsset.value?.portfolio_asset_id || portfolioAssetId.value
+  
+  if (!targetPortfolioAssetId) {
+    assetDailyValues.value = []
+    return
+  }
+  
+  try {
+    const result = await assetsService.getAssetDailyValues(targetPortfolioAssetId)
+    if (result.success && result.values) {
+      assetDailyValues.value = result.values
+      console.log('Загружены данные стоимости позиции:', result.values.length, 'записей')
+    } else {
+      console.warn('Не удалось загрузить данные стоимости позиции:', result.error)
+      assetDailyValues.value = []
+    }
+  } catch (error) {
+    console.error('Ошибка при загрузке истории стоимости позиции:', error)
+    assetDailyValues.value = []
   }
 }
 
@@ -343,7 +363,73 @@ const chartData = computed(() => {
   let datasets = []
   
   if (selectedChartType.value === 'position') {
-    // График стоимости позиции
+    // График стоимости позиции - используем данные из portfolio_daily_positions
+    if (assetDailyValues.value && assetDailyValues.value.length > 0) {
+      // Фильтруем данные по выбранному периоду
+      let filteredValues = [...assetDailyValues.value]
+      
+      // Фильтруем по первой транзакции
+      if (firstTransactionDate.value) {
+        filteredValues = filteredValues.filter(v => {
+          const valueDate = new Date(v.report_date)
+          valueDate.setHours(0, 0, 0, 0)
+          const firstDate = new Date(firstTransactionDate.value)
+          firstDate.setHours(0, 0, 0, 0)
+          return valueDate >= firstDate
+        })
+      }
+      
+      // Сортируем по дате
+      filteredValues.sort((a, b) => {
+        const dateA = new Date(a.report_date)
+        const dateB = new Date(b.report_date)
+        return dateA - dateB
+      })
+      
+      if (filteredValues.length > 0) {
+        const data = filteredValues.map(v => {
+          const value = v.position_value
+          // Проверяем, что значение не null и не undefined
+          if (value === null || value === undefined) {
+            console.warn('Найдено null/undefined position_value для даты:', v.report_date)
+            return 0
+          }
+          return Number(value)
+        })
+        const labels = filteredValues.map(v => v.report_date)
+        
+        // Отладочная информация
+        if (data.length > 0) {
+          const minValue = Math.min(...data)
+          const maxValue = Math.max(...data)
+          console.log('График стоимости позиции:', {
+            записей: data.length,
+            мин: minValue,
+            макс: maxValue,
+            первые_5: data.slice(0, 5),
+            последние_5: data.slice(-5)
+          })
+        }
+        
+        datasets = [{
+          label: 'Стоимость позиции',
+          data,
+          color: '#3b82f6',
+          fill: true
+        }]
+        
+        return {
+          labels,
+          datasets
+        }
+      } else {
+        console.warn('Нет данных после фильтрации для графика стоимости позиции')
+      }
+    } else {
+      console.warn('Нет данных assetDailyValues для графика стоимости позиции')
+    }
+    
+    // Fallback: используем старый метод расчета (если данных из API нет)
     const quantities = quantityByDate.value
     const data = labels.map(date => {
       // Нормализуем дату для поиска в quantityMap
@@ -367,7 +453,39 @@ const chartData = computed(() => {
       fill: true
     }]
   } else if (selectedChartType.value === 'quantity') {
-    // График количества актива
+    // График количества актива - используем данные из portfolio_daily_positions
+    if (assetDailyValues.value && assetDailyValues.value.length > 0) {
+      // Фильтруем данные по выбранному периоду
+      let filteredValues = [...assetDailyValues.value]
+      if (firstTransactionDate.value) {
+        filteredValues = filteredValues.filter(v => {
+          const valueDate = new Date(v.report_date)
+          valueDate.setHours(0, 0, 0, 0)
+          const firstDate = new Date(firstTransactionDate.value)
+          firstDate.setHours(0, 0, 0, 0)
+          return valueDate >= firstDate
+        })
+      }
+      
+      if (filteredValues.length > 0) {
+        const data = filteredValues.map(v => v.quantity || 0)
+        const labels = filteredValues.map(v => v.report_date)
+        
+        datasets = [{
+          label: 'Количество актива',
+          data,
+          color: '#10b981',
+          fill: true
+        }]
+        
+        return {
+          labels,
+          datasets
+        }
+      }
+    }
+    
+    // Fallback: используем старый метод расчета
     const quantities = quantityByDate.value
     const data = labels.map(date => {
       // Нормализуем дату для поиска в quantityMap
@@ -764,17 +882,24 @@ const profitLossItems = computed(() => {
     },
     { 
       label: 'Получено выплат', 
-      value: receivedPayouts.value || 0, 
+      // ОПТИМИЗИРОВАНО: используем payouts из portfolio_daily_positions (уже в RUB)
+      value: selectedPortfolioAsset.value?.payouts || 0, 
       format: 'currency',
       colorClass: 'profit',
       formatter: (v) => formatOperationAmount(v, 'RUB')
     },
     { 
       label: 'Комиссии', 
-      value: commissionsTotal.value || 0, 
+      // ОПТИМИЗИРОВАНО: используем commissions из portfolio_daily_positions (уже в RUB)
+      value: Math.abs(selectedPortfolioAsset.value?.commissions || 0), 
       format: 'currency',
-      colorClass: 'loss',
-      formatter: (v) => formatOperationAmount(-v, 'RUB') // Вычитаем при форматировании
+      // Если комиссии равны 0, показываем зеленым (как выплаты), иначе красным (расход)
+      colorClass: (selectedPortfolioAsset.value?.commissions || 0) === 0 ? 'profit' : 'loss',
+      formatter: (v) => {
+        // Если значение 0, показываем просто 0 без минуса
+        if (v === 0) return formatOperationAmount(0, 'RUB')
+        return formatOperationAmount(-v, 'RUB') // Вычитаем при форматировании
+      }
     },
     { 
       label: 'Общая прибыль', 
@@ -831,23 +956,23 @@ const investedFromOperations = computed(() => {
 })
 
 // Расчет прибыли/убытка для выбранного портфеля
+// ОПТИМИЗИРОВАНО: используем данные из portfolio_daily_positions
 const selectedProfitLoss = computed(() => {
   if (!selectedPortfolioAsset.value) return null
   
   const asset = selectedPortfolioAsset.value
-  const currentPrice = asset.last_price || 0
-  const quantity = asset.quantity || 0
-  const leverage = asset.leverage || 1
   
-  // Используем инвестированную сумму из операций покупки (amount_rub уже в рублях)
-  const invested = investedFromOperations.value
+  // ОПТИМИЗИРОВАНО: используем invested_value из portfolio_daily_positions (уже в RUB)
+  // Это значение корректно пересчитывается после продаж и учитывает только текущее количество
+  const invested = asset.invested_value || 0
   
-  // Для текущей стоимости используем текущую цену, количество и курс валюты к рублю
-  const currencyRate = asset.currency_rate_to_rub || portfolioAsset.value?.asset.currency_rate_to_rub || 1
-  const currentValue = (quantity * currentPrice / leverage) * currencyRate
+  // ОПТИМИЗИРОВАНО: используем asset_value из portfolio_daily_positions (уже в RUB)
+  // Это значение корректно рассчитывается с учетом текущей цены и количества
+  const currentValue = asset.asset_value || 0
   
   const profit = currentValue - invested
   const averagePrice = asset.average_price || 0
+  const currentPrice = asset.last_price || 0
   const profitPercent = averagePrice > 0 ? ((currentPrice - averagePrice) / averagePrice) * 100 : 0
 
   return {
@@ -900,42 +1025,13 @@ const payouts = computed(() => {
 })
 
 // Расчет прибыли от продаж (realized P&L) для выбранного портфеля
+// ОПТИМИЗИРОВАНО: используем realized_pnl из portfolio_daily_positions (уже в RUB)
 const realizedProfit = computed(() => {
-  const transactions = selectedPortfolioTransactions.value || []
+  // ОПТИМИЗИРОВАНО: используем realized_pnl из portfolio_daily_positions
+  // Это значение уже рассчитано и переведено в рубли с учетом курса валюты на дату транзакции
+  const realizedPnl = selectedPortfolioAsset.value?.realized_pnl || 0
   
-  // Получаем quote_asset_id актива для конвертации realized_pnl в рубли
-  const quoteAssetId = selectedPortfolioAsset.value?.quote_asset_id || 
-                       assetInfo.value?.quote_asset_id ||
-                       portfolioAsset.value?.asset?.quote_asset_id
-  
-  // Получаем курс валюты актива к рублю
-  const currencyRate = selectedPortfolioAsset.value?.currency_rate_to_rub || 
-                       portfolioAsset.value?.asset?.currency_rate_to_rub || 
-                       1
-  
-  // Суммируем realized_pnl из транзакций продажи, конвертируя в рубли
-  // realized_pnl хранится в валюте актива (quote_asset_id), нужно конвертировать в рубли
-  let totalRealized = 0
-  
-  for (const tx of transactions) {
-    const txType = typeof tx.transaction_type === 'number' 
-      ? tx.transaction_type 
-      : (tx.transaction_type?.toLowerCase() === 'sell' ? 2 : 1)
-    
-    // Если это продажа и есть realized_pnl
-    if (txType === 2 && tx.realized_pnl !== undefined && tx.realized_pnl !== null) {
-      const realizedPnl = Number(tx.realized_pnl) || 0
-      // Конвертируем в рубли, если актив не в рублях
-      // Если quote_asset_id != RUB, то realized_pnl в валюте актива, нужно конвертировать
-      if (quoteAssetId && quoteAssetId !== 47) {
-        totalRealized += realizedPnl * currencyRate
-      } else {
-        totalRealized += realizedPnl
-      }
-    }
-  }
-  
-  return totalRealized
+  return realizedPnl
 })
 
 // Рост цены (в процентах)
@@ -956,15 +1052,16 @@ const priceGrowth = computed(() => {
 })
 
 // Общая прибыль (unrealized + realized + выплаты - комиссии)
+// ОПТИМИЗИРОВАНО: используем данные из portfolio_daily_positions
 const totalProfit = computed(() => {
-  if (!profitLoss.value) return null
+  if (!profitLoss.value || !selectedPortfolioAsset.value) return null
   
   const unrealizedProfit = profitLoss.value.profit || 0
   const realized = realizedProfit.value || 0
-  // Используем receivedPayoutsTotal (из cash_operations, уже в рублях через amount_rub)
-  // вместо payouts.value.total (из asset_payouts, старая структура)
-  const payoutAmount = receivedPayoutsTotal.value || 0
-  const commissions = commissionsTotal.value || 0
+  // ОПТИМИЗИРОВАНО: используем payouts из portfolio_daily_positions (уже в RUB)
+  const payoutAmount = selectedPortfolioAsset.value.payouts || 0
+  // ОПТИМИЗИРОВАНО: используем commissions из portfolio_daily_positions (уже в RUB)
+  const commissions = selectedPortfolioAsset.value.commissions || 0
   
   const total = unrealizedProfit + realized + payoutAmount - commissions
   
@@ -1287,11 +1384,51 @@ watch(() => route.params.id, () => {
 }, { immediate: false })
 
 // Отслеживание изменений выбранного портфеля
-watch(selectedPortfolioId, async (newPortfolioId) => {
+// ОПТИМИЗИРОВАНО: при смене портфеля загружаем данные только для нового портфеля через getPortfolioAssetInfo
+let portfolioChangeTimeout = null
+watch(selectedPortfolioId, async (newPortfolioId, oldPortfolioId) => {
+  // Пропускаем первый вызов (инициализация)
+  if (!oldPortfolioId) return
+  
   if (newPortfolioId && assetInfo.value?.asset_id) {
-    await loadAllCashOperations()
+    // Очищаем предыдущий таймаут, если он есть
+    if (portfolioChangeTimeout) {
+      clearTimeout(portfolioChangeTimeout)
+    }
+    // Задержка для предотвращения множественных вызовов при быстрой смене портфеля
+    portfolioChangeTimeout = setTimeout(async () => {
+      // Находим portfolio_asset_id для нового портфеля
+      const newPortfolioAsset = assetInAllPortfolios.value.find(
+        p => p.portfolio_id === newPortfolioId
+      )
+      
+      if (newPortfolioAsset?.portfolio_asset_id) {
+        // Загружаем данные для актива в новом портфеле через единый запрос
+        try {
+          const result = await assetsService.getPortfolioAssetInfo(newPortfolioAsset.portfolio_asset_id)
+          if (result.success && result.portfolio_asset) {
+            // Обновляем daily_values и cash_operations из нового запроса
+            if (result.portfolio_asset.daily_values) {
+              assetDailyValues.value = result.portfolio_asset.daily_values
+            }
+            if (result.portfolio_asset.cash_operations) {
+              cashOperations.value = result.portfolio_asset.cash_operations
+            }
+            // Обновляем транзакции для нового портфеля
+            if (result.portfolio_asset.transactions) {
+              portfolioTransactions.value[newPortfolioAsset.portfolio_asset_id] = result.portfolio_asset.transactions
+            }
+          }
+        } catch (error) {
+          console.error('Ошибка при загрузке данных для нового портфеля:', error)
+        }
+      }
+    }, 100)
   }
 })
+
+// ОПТИМИЗИРОВАНО: убран watch для selectedPortfolioAsset
+// Данные загружаются при смене портфеля через watch(selectedPortfolioId)
 
 // Обработчик изменения портфеля
 async function handlePortfolioChange(portfolioId) {

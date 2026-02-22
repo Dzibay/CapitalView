@@ -139,11 +139,17 @@ CREATE TABLE public.portfolio_assets (
 CREATE TABLE public.portfolio_daily_positions (
   portfolio_id bigint NOT NULL,
   portfolio_asset_id bigint NOT NULL,
-  tx_date date NOT NULL,
+  report_date date NOT NULL,
   quantity numeric NOT NULL,
   cumulative_invested numeric NOT NULL,
   average_price numeric NOT NULL,
-  CONSTRAINT portfolio_daily_positions_pkey PRIMARY KEY (portfolio_asset_id, tx_date)
+  position_value numeric,
+  realized_pnl numeric DEFAULT 0,
+  payouts numeric DEFAULT 0,
+  commissions numeric DEFAULT 0,
+  taxes numeric DEFAULT 0,
+  total_pnl numeric,
+  CONSTRAINT portfolio_daily_positions_pkey PRIMARY KEY (portfolio_asset_id, report_date)
 );
 CREATE TABLE public.portfolio_daily_values (
   portfolio_id bigint NOT NULL,

@@ -47,5 +47,13 @@ export default {
   async getPortfolioAssetInfo(portfolio_asset_id) {
     const res = await apiClient.get(API_ENDPOINTS.ASSETS.GET_PORTFOLIO_ASSET_INFO(portfolio_asset_id));
     return res.data;
+  },
+
+  async getAssetDailyValues(portfolio_asset_id, from_date = null, to_date = null) {
+    const params = {};
+    if (from_date) params.from_date = from_date;
+    if (to_date) params.to_date = to_date;
+    const res = await apiClient.get(API_ENDPOINTS.ASSETS.GET_DAILY_VALUES(portfolio_asset_id), { params });
+    return res.data;
   }
 };

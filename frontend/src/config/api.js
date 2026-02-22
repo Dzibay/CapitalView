@@ -33,6 +33,7 @@ export const API_ENDPOINTS = {
     GET_INFO: (id) => `/assets/${id}`,
     GET_PRICES: (id) => `/assets/${id}/prices`,
     GET_PORTFOLIO_ASSET_INFO: (portfolio_asset_id) => `/assets/portfolio/${portfolio_asset_id}`,
+    GET_DAILY_VALUES: (portfolio_asset_id) => `/assets/portfolio/${portfolio_asset_id}/daily-values`,
   },
   TRANSACTIONS: {
     BASE: '/transactions/',

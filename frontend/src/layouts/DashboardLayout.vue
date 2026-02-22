@@ -20,19 +20,33 @@ const transactionsStore = useTransactionsStore()
 // Инициализация при загрузке
 onMounted(async () => {
   try {
-    // Проверяем токен через store
-    await authStore.checkToken()
+    // ОПТИМИЗИРОВАНО: проверяем токен только если он еще не проверен
+    // (router guard уже проверил токен, но может быть не обновил store)
+    if (!authStore.isAuthenticated) {
+      await authStore.checkToken()
+    }
     
     if (!authStore.isAuthenticated) {
       router.push('/login')
       return
     }
     
-    // Загружаем данные dashboard (теперь включает транзакции и аналитику)
-    await dashboardStore.fetchDashboard()
+    // ОПТИМИЗИРОВАНО: загружаем dashboard в фоновом режиме после загрузки основного контента
+    // Это особенно важно для страницы актива, чтобы не блокировать загрузку
+    const currentRoute = router.currentRoute.value
+    const isAssetDetailPage = currentRoute.path.startsWith('/assets/')
     
-    // Инициализируем выбранный портфель
-    uiStore.initSelectedPortfolioId(dashboardStore.portfolios)
+    if (isAssetDetailPage) {
+      // Для страницы актива откладываем загрузку dashboard
+      setTimeout(async () => {
+        await dashboardStore.fetchDashboard()
+        uiStore.initSelectedPortfolioId(dashboardStore.portfolios)
+      }, 0)
+    } else {
+      // Для других страниц загружаем сразу
+      await dashboardStore.fetchDashboard()
+      uiStore.initSelectedPortfolioId(dashboardStore.portfolios)
+    }
   } catch (err) {
     if (import.meta.env.DEV) {
       console.error('Ошибка при загрузке данных:', err)

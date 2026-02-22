@@ -370,6 +370,59 @@ def get_asset_price_history(asset_id: int, start_date: str = None, end_date: str
         return {"success": False, "error": str(e)}
 
 
+def get_asset_daily_values(portfolio_asset_id: int, from_date: str = None, to_date: str = None):
+    """
+    Получает историю стоимости актива для графика.
+    Использует предрассчитанные данные из portfolio_daily_positions.
+    
+    Args:
+        portfolio_asset_id: ID актива в портфеле
+        from_date: Начальная дата (опционально, формат: 'YYYY-MM-DD')
+        to_date: Конечная дата (опционально, формат: 'YYYY-MM-DD')
+    
+    Returns:
+        dict с ключами:
+            - success: bool
+            - values: list - список записей с полями:
+                - report_date: дата
+                - position_value: стоимость позиции в RUB
+                - quantity: количество
+                - average_price: средняя цена
+                - cumulative_invested: инвестированная стоимость в RUB
+                - unrealized_pnl: нереализованная прибыль в RUB
+            - error: str (если success=False)
+    """
+    try:
+        params = {"p_portfolio_asset_id": portfolio_asset_id}
+        
+        if from_date:
+            params["p_from_date"] = from_date
+        if to_date:
+            params["p_to_date"] = to_date
+        
+        result = rpc("get_portfolio_asset_daily_values", params)
+        
+        if result is None:
+            logger.warning(f"get_portfolio_asset_daily_values вернул None для portfolio_asset_id={portfolio_asset_id}")
+            return {"success": False, "error": "Не удалось получить данные"}
+        
+        if not result:
+            logger.warning(f"get_portfolio_asset_daily_values вернул пустой результат для portfolio_asset_id={portfolio_asset_id}")
+            return {"success": True, "values": [], "count": 0}
+        
+        # Проверяем, что есть данные с position_value
+        values_with_position = [v for v in result if v.get("position_value") is not None]
+        if values_with_position:
+            logger.info(f"Загружено {len(result)} записей для portfolio_asset_id={portfolio_asset_id}, из них {len(values_with_position)} с position_value")
+        else:
+            logger.warning(f"Все записи для portfolio_asset_id={portfolio_asset_id} имеют position_value=null")
+        
+        return {"success": True, "values": result, "count": len(result) if result else 0}
+    except Exception as e:
+        logger.error(f"Ошибка при получении истории стоимости актива {portfolio_asset_id}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
 def get_portfolio_asset_info(portfolio_asset_id: int, user_id: str):
     """
     Получает детальную информацию о портфельном активе (оптимизированная версия).
@@ -420,6 +473,9 @@ def get_portfolio_asset_info(portfolio_asset_id: int, user_id: str):
             "transactions_count": len(result.get("transactions", [])),
             "payouts": result.get("all_payouts", []),  # Все выплаты из asset_payouts
             "payouts_count": len(result.get("all_payouts", [])),
+            # ОПТИМИЗИРОВАНО: добавляем daily_values и cash_operations из основного запроса
+            "daily_values": result.get("daily_values", []),
+            "cash_operations": result.get("cash_operations", []),
             "price_history": result.get("price_history", [])  # История цен из того же запроса
         }
         
@@ -474,6 +530,39 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
         asset_id = meta.get("asset_id")
         asset_created_at = meta.get("created_at")
         
+        # Получаем дату первой транзакции по перемещенному активу через прямой SQL запрос
+        from app.infrastructure.database.supabase_service import get_supabase_client
+        supabase = get_supabase_client()
+        
+        first_tx_result = supabase.table("transactions")\
+            .select("transaction_date")\
+            .eq("portfolio_asset_id", portfolio_asset_id)\
+            .order("transaction_date", desc=False)\
+            .limit(1)\
+            .execute()
+        
+        # Используем дату первой транзакции, если она есть, иначе дату создания актива
+        first_tx_date = None
+        if first_tx_result.data and len(first_tx_result.data) > 0:
+            tx_date = first_tx_result.data[0].get("transaction_date")
+            if tx_date:
+                # Преобразуем в строку формата YYYY-MM-DD
+                if isinstance(tx_date, str):
+                    first_tx_date = tx_date[:10] if 'T' in tx_date else tx_date
+                else:
+                    first_tx_date = str(tx_date)[:10]
+        
+        # Если даты первой транзакции нет, используем дату создания актива
+        from_date = first_tx_date if first_tx_date else asset_created_at
+        
+        # Если и даты создания нет, используем минимальную дату
+        if not from_date:
+            from_date = "0001-01-01"
+        elif isinstance(from_date, str) and 'T' in from_date:
+            from_date = from_date[:10]
+        
+        logger.info(f"Перемещение актива {portfolio_asset_id}: первая транзакция = {first_tx_date}, дата создания = {asset_created_at}, используем {from_date}")
+        
         # Проверяем, что целевой портфель существует и отличается от исходного
         if source_portfolio_id == target_portfolio_id:
             return {"success": False, "error": "Актив уже находится в указанном портфеле"}
@@ -522,21 +611,41 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
             {"portfolio_asset_id": portfolio_asset_id}
         )
         
-        # 7️⃣ Обновляем графики стоимости для исходного портфеля
-        update_pos_result = rpc("update_portfolio_positions_from_date", {"p_portfolio_id": source_portfolio_id, "p_from_date": asset_created_at})
+        # 7️⃣ Пересчитываем позиции перемещенного актива с даты первой транзакции
+        update_asset_pos_result = rpc("update_portfolio_asset_positions_from_date", {
+            "p_portfolio_asset_id": portfolio_asset_id,
+            "p_from_date": from_date
+        })
+        if update_asset_pos_result is False:
+            logger.warning(f"Ошибка при обновлении позиций актива {portfolio_asset_id}")
+        
+        # 8️⃣ Обновляем графики стоимости для исходного портфеля (с даты первой транзакции)
+        update_pos_result = rpc("update_portfolio_positions_from_date", {
+            "p_portfolio_id": source_portfolio_id,
+            "p_from_date": from_date
+        })
         if update_pos_result is False:
             logger.warning(f"Ошибка при обновлении позиций портфеля {source_portfolio_id}")
         
-        update_val_result = rpc("update_portfolio_values_from_date", {"p_portfolio_id": source_portfolio_id, "p_from_date": asset_created_at})
+        update_val_result = rpc("update_portfolio_values_from_date", {
+            "p_portfolio_id": source_portfolio_id,
+            "p_from_date": from_date
+        })
         if update_val_result is False:
             logger.warning(f"Ошибка при обновлении значений портфеля {source_portfolio_id}")
         
-        # 8️⃣ Обновляем графики стоимости для целевого портфеля
-        update_pos_result2 = rpc("update_portfolio_positions_from_date", {"p_portfolio_id": target_portfolio_id, "p_from_date": asset_created_at})
+        # 9️⃣ Обновляем графики стоимости для целевого портфеля (с даты первой транзакции)
+        update_pos_result2 = rpc("update_portfolio_positions_from_date", {
+            "p_portfolio_id": target_portfolio_id,
+            "p_from_date": from_date
+        })
         if update_pos_result2 is False:
             logger.warning(f"Ошибка при обновлении позиций портфеля {target_portfolio_id}")
         
-        update_val_result2 = rpc("update_portfolio_values_from_date", {"p_portfolio_id": target_portfolio_id, "p_from_date": asset_created_at})
+        update_val_result2 = rpc("update_portfolio_values_from_date", {
+            "p_portfolio_id": target_portfolio_id,
+            "p_from_date": from_date
+        })
         if update_val_result2 is False:
             logger.warning(f"Ошибка при обновлении значений портфеля {target_portfolio_id}")
         
