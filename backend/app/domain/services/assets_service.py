@@ -1,10 +1,6 @@
-from app.infrastructure.database.supabase_service import (
-    table_select, table_insert, table_delete, table_update, rpc
-)
+from app.infrastructure.database.supabase_service import rpc
 from app.domain.services.user_service import get_user_by_email
 from datetime import datetime
-from app.domain.services.transactions_service import create_transaction
-from app.domain.services.portfolio_service import update_portfolios_with_asset
 from app.utils.date import normalize_date_to_string
 from app.core.logging import get_logger
 
@@ -13,6 +9,10 @@ logger = get_logger(__name__)
 
 
 def create_asset(email: str, data: dict):
+    """
+    Создает актив в портфеле через RPC функцию с ACID транзакцией.
+    Для кастомных активов всегда создается новый уникальный актив (не ищется существующий).
+    """
     # --- Получаем пользователя ---
     user = get_user_by_email(email)
     if not user:
@@ -30,7 +30,7 @@ def create_asset(email: str, data: dict):
     asset_id = normalize_value(data.get("asset_id"))
     asset_type_id = normalize_value(data.get("asset_type_id"))
     name = data.get("name")
-    ticker = data.get("ticker")
+    ticker = data.get("ticker")  # Не используется для кастомных активов
     quantity = float(data.get("quantity", 0))
     currency = int(data.get("currency")) if data.get("currency") and data.get("currency") != "None" else None
     price = float(data.get("average_price", 0))
@@ -50,298 +50,77 @@ def create_asset(email: str, data: dict):
             return {"success": False, "error": "Некорректный asset_id"}
 
     try:
-        # --- Если актив кастомный или новый ---
-        if not asset_id:
-            existing_asset = table_select(
-                "assets",
-                select="id, name, ticker, asset_type_id, quote_asset_id",
-                filters={"user_id": user_id, "ticker": ticker}
-            )
+        # Преобразуем дату в формат date для PostgreSQL
+        from app.utils.date import normalize_date_to_string
+        transaction_date = normalize_date_to_string(date)
+        if not transaction_date:
+            transaction_date = datetime.utcnow().date().isoformat()
 
-            if existing_asset:
-                asset_id = existing_asset[0]["id"]
-                name = existing_asset[0]["name"]
-                asset_type_id = existing_asset[0]["asset_type_id"]
-                currency = existing_asset[0]["quote_asset_id"]
-                
-                # Проверяем, есть ли цена на эту дату, если нет - добавляем
-                existing_price = table_select(
-                    "asset_prices",
-                    select="id",
-                    filters={"asset_id": asset_id, "trade_date": date}
-                )
-                if not existing_price:
-                    # Добавляем цену для существующего актива
-                    price_data = {
-                        "asset_id": asset_id,
-                        "price": price,
-                        "trade_date": date,
-                    }
-                    table_insert("asset_prices", price_data)
-                    # Обновляем цену актива
-                    update_result = rpc('update_asset_latest_price', {'p_asset_id': asset_id})
-                    if update_result is False:
-                        logger.warning(f"Ошибка при обновлении цены актива {asset_id}")
-                    
-                    # Обновляем все портфели, содержащие этот актив
-                    update_portfolios_with_asset(asset_id, date)
-            else:
-                # Создаём кастомный актив
-                new_asset = {
-                    "asset_type_id": asset_type_id,
-                    "user_id": user_id,
-                    "name": name,
-                    "ticker": ticker,
-                    "properties": {},
-                    "quote_asset_id": currency
-                }
-                asset_res = table_insert("assets", new_asset)
-                if not asset_res:
-                    return {"success": False, "error": "Ошибка при создании кастомного актива"}
-                asset_id = asset_res[0]["id"]
-
-                # Добавляем цену кастомного актива
-                price_data = {
-                    "asset_id": asset_id,
-                    "price": price,
-                    "trade_date": date,
-                }
-                table_insert("asset_prices", price_data)
-                # Обновляем только новый актив
-                update_result = rpc('update_asset_latest_price', {'p_asset_id': asset_id})
-                if update_result is False:
-                    logger.warning(f"Ошибка при обновлении цены актива {asset_id}")
-        else:
-            # --- Если системный актив, берём name и ticker из таблицы assets ---
-            asset_info = table_select("assets", select="name, ticker", filters={"id": asset_id})
-            if asset_info:
-                name = asset_info[0]["name"]
-                ticker = asset_info[0]["ticker"]
-
-        # --- Проверяем, есть ли актив в портфеле ---
-        # Убеждаемся, что portfolio_id и asset_id не None перед использованием в фильтрах
-        if not portfolio_id:
-            return {"success": False, "error": "portfolio_id обязателен"}
-        if not asset_id:
-            return {"success": False, "error": "asset_id обязателен"}
-        
-        pa_resp = table_select(
-            "portfolio_assets",
-            select="id, quantity, average_price",
-            filters={"portfolio_id": portfolio_id, "asset_id": asset_id}
-        )
-
-        if pa_resp:
-            portfolio_asset_id = pa_resp[0]["id"]
-            current_quantity = pa_resp[0]["quantity"]
-            current_avg_price = pa_resp[0]["average_price"]
-            new_quantity = current_quantity + quantity
-            new_avg_price = ((current_avg_price * current_quantity) + (price * quantity)) / new_quantity if new_quantity else 0
-        else:
-            pa_data = {
-                "portfolio_id": portfolio_id,
-                "asset_id": asset_id,
-                "quantity": quantity,
-                "average_price": price,
-            }
-            pa_res = table_insert("portfolio_assets", pa_data)
-            if not pa_res:
-                return {"success": False, "error": "Ошибка при добавлении актива в портфель"}
-            portfolio_asset_id = pa_res[0]["id"]
-            new_quantity = quantity
-            new_avg_price = price
-
-        # --- Добавляем транзакцию покупки только если quantity > 0 ---
-        # Если quantity = 0, транзакция не создается (например, при создании актива валюты для дивидендов)
-        if quantity > 0:
-            create_transaction(
-                user_id=user_id,
-                portfolio_asset_id=portfolio_asset_id,
-                asset_id=asset_id,
-                transaction_type=1,  # BUY
-                quantity=quantity,
-                price=price,
-                transaction_date=date,
-            )
-
-        # --- Обновляем историю портфеля с даты транзакции ---
-        # Преобразуем дату транзакции в формат YYYY-MM-DD
-        from_date = normalize_date_to_string(date)
-        if from_date:
-            # Обновляем историю портфеля начиная с даты транзакции
-            try:
-                update_result = rpc("update_portfolio_values_from_date", {
-                    "p_portfolio_id": portfolio_id,
-                    "p_from_date": from_date
-                })
-                if update_result is False:
-                    logger.warning(f"Ошибка при обновлении истории портфеля {portfolio_id}")
-            except Exception as e:
-                logger.error(f"Ошибка при обновлении истории портфеля: {e}", exc_info=True)
-
-        # --- Берём последнюю цену актива ---
-        last_price_resp = table_select(
-            "asset_prices",
-            select="price",
-            filters={"asset_id": asset_id},
-            order={"column": "trade_date", "desc": True},
-            limit=1
-        )
-        last_price = last_price_resp[0]["price"] if last_price_resp else price
-
-        # --- Формируем объект для фронтенда ---
-        asset_obj = {
-            "asset_id": asset_id,
-            "portfolio_asset_id": portfolio_asset_id,
-            "name": name,
-            "ticker": ticker,
-            "quantity": new_quantity,
-            "average_price": new_avg_price,
-            "last_price": last_price,
-            "total_value": round(new_quantity * last_price, 2),
-            # заглушки для остальных полей
-            "profit": 0,
-            "profit_rub": 0,
-            "currency_rate_to_rub": 1,
-            "currency_ticker": "RUB",
-            "leverage": 1,
-            "type": "Неизвестно"
+        # Вызываем RPC функцию для создания актива
+        rpc_params = {
+            "p_user_id": str(user_id),
+            "p_portfolio_id": portfolio_id,
+            "p_asset_id": asset_id,  # NULL для кастомного актива
+            "p_asset_type_id": asset_type_id,
+            "p_name": name,
+            "p_ticker": ticker,  # Не используется для кастомных активов
+            "p_currency_id": currency,
+            "p_quantity": quantity,
+            "p_price": price,
+            "p_transaction_date": transaction_date
         }
-
-        return {"success": True, "message": "Актив успешно добавлен в портфель", "asset": asset_obj}
+        
+        result = rpc("create_portfolio_asset", rpc_params)
+        
+        if not result:
+            return {"success": False, "error": "Ошибка при создании актива: пустой ответ от RPC"}
+        
+        # RPC функция возвращает text (JSON строка), нужно распарсить
+        import json
+        if isinstance(result, str):
+            try:
+                return json.loads(result)
+            except json.JSONDecodeError as e:
+                logger.error(f"Ошибка при парсинге JSON из RPC: {e}, result: {result}")
+                return {"success": False, "error": f"Ошибка при парсинге ответа от RPC: {str(e)}"}
+        elif isinstance(result, dict):
+            return result
+        elif isinstance(result, list) and len(result) > 0:
+            return result[0]
+        else:
+            return {"success": False, "error": f"Некорректный формат ответа от RPC: {type(result)}"}
 
     except Exception as e:
         logger.error(f"Ошибка при добавлении актива: {e}", exc_info=True)
+        import traceback
+        traceback.print_exc()
         return {"success": False, "error": str(e)}
  
 
 def delete_asset(portfolio_asset_id: int):
     """
-    Удаляет актив из портфеля.
-    
-    Порядок удаления (важно для соблюдения foreign key constraints):
-      1. transactions, fifo_lots (связаны с portfolio_asset_id)
-      2. portfolio_assets
-      3. Если актив кастомный:
-         - asset_prices
-         - asset_latest_prices_full (ВАЖНО: перед удалением assets)
-         - assets
-    
-    ВАЖНО: 
-    - Для системных активов НЕ удаляем asset_latest_prices_full и assets,
-      так как актив остается в системе для других пользователей.
-    - asset_latest_prices_full имеет foreign key на assets(id),
-      поэтому удаляется ПЕРЕД удалением assets.
+    Удаляет актив из портфеля через RPC функцию с ACID транзакцией.
     """
     try:
-        # 1️⃣ Проверяем существование portfolio_asset
-        pa_resp = table_select('portfolio_assets', select='asset_id', filters={"id": portfolio_asset_id})
-
-        if not pa_resp:
-            return {"success": False, "error": f"Портфельный актив с ID {portfolio_asset_id} не найден"}
-
-        asset_id = pa_resp[0]["asset_id"]
-
-        # 2️⃣ Получаем данные актива через RPC
-        try:
-            asset_meta = rpc("get_portfolio_asset_meta", {"p_portfolio_asset_id": portfolio_asset_id})
-        except Exception as rpc_error:
-            logger.warning(f"Ошибка при вызове get_portfolio_asset_meta: {rpc_error}")
-            return {"success": False, "error": f"Ошибка при получении данных актива: {str(rpc_error)}"}
-
-        # Проверяем результат RPC
-        if not asset_meta:
-            return {"success": False, "error": f"Метаданные актива не найдены для portfolio_asset_id {portfolio_asset_id}"}
+        result = rpc("delete_portfolio_asset", {"p_portfolio_asset_id": portfolio_asset_id})
         
-        # Обрабатываем результат: может быть словарь (если одна запись) или список
-        if isinstance(asset_meta, dict):
-            # Если это словарь, используем его напрямую
-            portfolio_id = asset_meta.get("portfolio_id")
-            is_custom = asset_meta.get("is_custom", False)
-        elif isinstance(asset_meta, list) and len(asset_meta) > 0:
-            # Если это список, берем первый элемент
-            portfolio_id = asset_meta[0].get("portfolio_id")
-            is_custom = asset_meta[0].get("is_custom", False)
-        else:
-            return {"success": False, "error": f"Некорректный формат данных актива: {type(asset_meta)}"}
+        if not result:
+            return {"success": False, "error": "Ошибка при удалении актива: пустой ответ от RPC"}
         
-        if not portfolio_id:
-            return {"success": False, "error": "Не удалось определить portfolio_id"}
-
-        # 3️⃣ Удаляем все транзакции
-        try:
-            table_delete("transactions", {"portfolio_asset_id": portfolio_asset_id})
-        except Exception as e:
-            logger.warning(f"Ошибка при удалении транзакций: {e}", exc_info=True)
-
-        try:
-            table_delete("fifo_lots", {"portfolio_asset_id": portfolio_asset_id})
-        except Exception as e:
-            logger.warning(f"Ошибка при удалении fifo_lots: {e}", exc_info=True)
-
-        # 4️⃣ Удаляем саму запись portfolio_assets
-        try:
-            table_delete("portfolio_assets", {"id": portfolio_asset_id})
-        except Exception as e:
-            logger.warning(f"Ошибка при удалении portfolio_assets: {e}", exc_info=True)
-            return {"success": False, "error": f"Ошибка при удалении portfolio_assets: {str(e)}"}
-
-        # 5️⃣ Если актив кастомный — удаляем и сам актив
-        if is_custom:
+        # RPC функция возвращает text (JSON строка), нужно распарсить
+        import json
+        if isinstance(result, str):
             try:
-                # Удаляем историю цен актива (все записи с этим asset_id)
-                # ВАЖНО: asset_prices имеет foreign key на assets, поэтому удаляем перед assets
-                deleted_prices = table_delete("asset_prices", {"asset_id": asset_id})
-                if deleted_prices:
-                    logger.info(f"Удалено записей из asset_prices для актива {asset_id}: {len(deleted_prices) if isinstance(deleted_prices, list) else 'N/A'}")
-                else:
-                    logger.debug(f"Не найдено записей в asset_prices для актива {asset_id}")
-                
-                # Удаляем запись из asset_latest_prices_full (ВАЖНО: перед удалением актива из-за foreign key)
-                # Это нужно делать только для кастомных активов, которые будут удалены
-                try:
-                    deleted_latest = table_delete("asset_latest_prices_full", {"asset_id": asset_id})
-                    if deleted_latest:
-                        logger.info(f"Удалена запись из asset_latest_prices_full для актива {asset_id}")
-                    else:
-                        logger.debug(f"Не найдено записи в asset_latest_prices_full для актива {asset_id}")
-                except Exception as e:
-                    logger.warning(f"Ошибка при удалении из asset_latest_prices_full: {e}", exc_info=True)
-                    import traceback
-                    traceback.print_exc()
-                    # Не прерываем выполнение, но логируем ошибку
-                
-                # Удаляем сам актив (должно быть последним, чтобы не нарушить внешние ключи)
-                # Порядок удаления:
-                # 1. asset_prices (удалено выше)
-                # 2. asset_latest_prices_full (удалено выше)
-                # 3. assets (удаляем сейчас)
-                deleted_asset = table_delete("assets", {"id": asset_id})
-                if deleted_asset:
-                    logger.info(f"Удален кастомный актив {asset_id}")
-                else:
-                    logger.warning(f"Не удалось удалить актив {asset_id} из таблицы assets")
-            except Exception as e:
-                logger.error(f"Ошибка при удалении кастомного актива: {e}", exc_info=True)
-                import traceback
-                traceback.print_exc()
-                # Не прерываем выполнение, но логируем ошибку
-
-        # 7️⃣ Обновляем ежедневные позиции и значения портфеля
-        try:
-            table_delete("portfolio_daily_positions", {"portfolio_asset_id": portfolio_asset_id})
-        except Exception as e:
-            logger.warning(f"Ошибка при удалении portfolio_daily_positions: {e}", exc_info=True)
-        
-        # Обновляем историю портфеля (не критично, если не удастся)
-        try:
-            update_result = rpc("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id})
-            if update_result is False:
-                logger.warning(f"Ошибка при обновлении истории портфеля {portfolio_id}")
-        except Exception as e:
-            logger.error(f"Ошибка при обновлении истории портфеля: {e}", exc_info=True)
-
-        return {"success": True, "message": "Актив и связанные записи успешно удалены"}
+                return json.loads(result)
+            except json.JSONDecodeError as e:
+                logger.error(f"Ошибка при парсинге JSON из RPC: {e}, result: {result}")
+                return {"success": False, "error": f"Ошибка при парсинге ответа от RPC: {str(e)}"}
+        elif isinstance(result, dict):
+            return result
+        elif isinstance(result, list) and len(result) > 0:
+            return result[0]
+        else:
+            return {"success": False, "error": f"Некорректный формат ответа от RPC: {type(result)}"}
 
     except Exception as e:
         logger.error(f"Ошибка при удалении актива {portfolio_asset_id}: {e}", exc_info=True)

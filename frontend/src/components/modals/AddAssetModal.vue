@@ -106,13 +106,6 @@
                 </label>
                 <input v-model="form.name" type="text" required class="form-input" />
               </div>
-              <div class="form-field">
-                <label class="form-label">
-                  <span class="label-icon">🏷️</span>
-                  Тикер
-                </label>
-                <input v-model="form.ticker" type="text" class="form-input" />
-              </div>
             </div>
             <div class="form-row">
               <div class="form-field">
@@ -131,7 +124,7 @@
               <div class="form-field">
                 <CustomSelect
                   v-model="form.currency"
-                  :options="referenceData.currencies"
+                  :options="fiatCurrencies"
                   label="Валюта"
                   placeholder="Выберите валюту"
                   :show-empty-option="false"
@@ -257,6 +250,11 @@ const loadingPrice = ref(false) // Состояние загрузки рыно�
 const priceHistoryCache = ref(null) // Кэш истории цен актива
 const isLoadingHistory = ref(false) // Флаг для предотвращения двойной загрузки истории
 
+// Фильтруем валюты: исключаем криптовалюты (asset_type_id = 6), оставляем только фиатные валюты (asset_type_id = 7)
+const fiatCurrencies = computed(() => {
+  if (!props.referenceData?.currencies) return []
+  return props.referenceData.currencies.filter(c => c.asset_type_id === 7)
+})
 
 const resetAssetFields = () => {
     form.asset_id = null
@@ -278,8 +276,8 @@ const setAssetTypeChoice = (choice) => {
         if (firstCustomType) {
             form.asset_type_id = firstCustomType.id
         }
-        if (props.referenceData.currencies.length > 0) {
-            form.currency = props.referenceData.currencies[0].id
+        if (fiatCurrencies.value.length > 0) {
+            form.currency = fiatCurrencies.value[0].id
         }
     }
 }
@@ -292,9 +290,10 @@ const submitForm = async () => {
     return;
   }
   
-  // Для кастомного актива: заполняем asset_id как null, чтобы backend знал, что это новый
+  // Для кастомного актива: заполняем asset_id как null и убираем ticker
   if (assetTypeChoice.value === 'custom') {
-      form.asset_id = null; 
+      form.asset_id = null;
+      form.ticker = null; // Тикер не нужен для кастомных активов
   }
   
   if (!props.onSave) return
