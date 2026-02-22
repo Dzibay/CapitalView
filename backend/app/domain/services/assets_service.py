@@ -1,7 +1,9 @@
-from app.infrastructure.database.supabase_service import rpc
+import json
+from app.infrastructure.database.supabase_service import rpc, table_insert, table_select, table_update
 from app.domain.services.user_service import get_user_by_email
 from datetime import datetime
 from app.utils.date import normalize_date_to_string
+from app.domain.services.portfolio_service import update_portfolios_with_asset
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -76,7 +78,6 @@ def create_asset(email: str, data: dict):
             return {"success": False, "error": "Ошибка при создании актива: пустой ответ от RPC"}
         
         # RPC функция возвращает text (JSON строка), нужно распарсить
-        import json
         if isinstance(result, str):
             try:
                 return json.loads(result)
@@ -108,7 +109,6 @@ def delete_asset(portfolio_asset_id: int):
             return {"success": False, "error": "Ошибка при удалении актива: пустой ответ от RPC"}
         
         # RPC функция возвращает text (JSON строка), нужно распарсить
-        import json
         if isinstance(result, str):
             try:
                 return json.loads(result)

@@ -46,7 +46,7 @@ BEGIN
         COALESCE(co.amount_rub, co.amount::numeric(20,6)) AS amount_rub,
         co.currency AS currency_id,
         cur.ticker AS currency_ticker,
-        COALESCE(curr.price, 1)::numeric(20,6) AS currency_rate_to_rub,
+        COALESCE(curr.curr_price, 1)::numeric(20,6) AS currency_rate_to_rub,
         a.id AS asset_id,
         a.name AS asset_name,
         co.date AS operation_date,
@@ -58,7 +58,7 @@ BEGIN
         ON ot.id = co.type
     LEFT JOIN assets cur
         ON cur.id = co.currency
-    LEFT JOIN asset_last_currency_prices curr
+    LEFT JOIN asset_latest_prices_full curr
         ON curr.asset_id = co.currency
     LEFT JOIN assets a
         ON a.id = co.asset_id

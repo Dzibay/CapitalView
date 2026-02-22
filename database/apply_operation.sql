@@ -88,8 +88,8 @@ BEGIN
             
             -- Если исторический курс не найден, пробуем взять текущий курс
             IF v_currency_to_quote_rate IS NULL THEN
-                SELECT price INTO v_currency_to_quote_rate
-                FROM asset_last_currency_prices
+                SELECT curr_price INTO v_currency_to_quote_rate
+                FROM asset_latest_prices_full
                 WHERE asset_id = p_currency_id;
             END IF;
             
@@ -144,10 +144,10 @@ BEGIN
             ORDER BY trade_date DESC
             LIMIT 1;
             
-            -- Если курс не найден, пробуем взять текущий курс из asset_last_currency_prices
+            -- Если курс не найден, пробуем взять текущий курс из asset_latest_prices_full
             IF v_currency_rate IS NULL THEN
-                SELECT price INTO v_currency_rate
-                FROM asset_last_currency_prices
+                SELECT curr_price INTO v_currency_rate
+                FROM asset_latest_prices_full
                 WHERE asset_id = p_currency_id;
             END IF;
             

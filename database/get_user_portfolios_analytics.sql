@@ -84,12 +84,12 @@ portfolio_assets_distribution AS (
     pa.asset_id,
     COALESCE(a.name, 'Unknown') AS asset_name,
     COALESCE(a.ticker, '') AS asset_ticker,
-    SUM(pa.quantity * COALESCE(apf.curr_price, 0) * COALESCE(curr.price, 1) / COALESCE(pa.leverage, 1)) AS total_value
+    SUM(pa.quantity * COALESCE(apf.curr_price, 0) * COALESCE(curr.curr_price, 1) / COALESCE(pa.leverage, 1)) AS total_value
   FROM portfolio_assets pa
   JOIN p ON p.id = pa.portfolio_id
   JOIN assets a ON a.id = pa.asset_id
   LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
-  LEFT JOIN asset_last_currency_prices curr ON curr.asset_id = a.quote_asset_id
+  LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
   WHERE COALESCE(pa.quantity, 0) > 0
   GROUP BY pa.portfolio_id, pa.asset_id, a.name, a.ticker
 ),
@@ -138,7 +138,7 @@ asset_yields AS (
     a.id AS asset_id_ref,
     at.name AS asset_type,
     COALESCE(apf.curr_price, 0) AS current_price,
-    COALESCE(curr.price, 1) AS currency_rate,
+    COALESCE(curr.curr_price, 1) AS currency_rate,
     COALESCE(pa.leverage, 1) AS leverage,
     pa.quantity,
     pa.average_price,
@@ -195,7 +195,7 @@ asset_yields AS (
   JOIN assets a ON a.id = pa.asset_id
   LEFT JOIN asset_types at ON at.id = a.asset_type_id
   LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
-  LEFT JOIN asset_last_currency_prices curr ON curr.asset_id = a.quote_asset_id
+  LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
   WHERE COALESCE(pa.quantity, 0) > 0
 ),
 dividends_by_year AS (
@@ -371,7 +371,7 @@ asset_prices_periods AS (
     -- Цена год назад
     COALESCE(ap_year.price, COALESCE(apf.curr_price, 0)) AS price_year_ago,
     -- Курс валюты
-    COALESCE(curr.price, 1) AS currency_rate,
+    COALESCE(curr.curr_price, 1) AS currency_rate,
     -- Количество на разные даты
     aqp.current_quantity,
     aqp.quantity_month_ago,
@@ -388,7 +388,7 @@ asset_prices_periods AS (
   FROM asset_quantities_periods aqp
   JOIN assets a ON a.id = aqp.asset_id
   LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = aqp.asset_id
-  LEFT JOIN asset_last_currency_prices curr ON curr.asset_id = a.quote_asset_id
+  LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
   -- Цена месяц назад
   LEFT JOIN LATERAL (
     SELECT ap1.price
@@ -450,12 +450,12 @@ asset_realized_profit AS (
     pa.portfolio_id,
     pa.asset_id,
     -- Реализованная прибыль за все время (конвертируем в рубли и учитываем плечо)
-    COALESCE(SUM(t.realized_pnl * COALESCE(curr.price, 1) / COALESCE(pa.leverage, 1)), 0) AS realized_profit_all,
+    COALESCE(SUM(t.realized_pnl * COALESCE(curr.curr_price, 1) / COALESCE(pa.leverage, 1)), 0) AS realized_profit_all,
     -- Реализованная прибыль за год
     COALESCE(SUM(
       CASE 
         WHEN t.transaction_date >= CURRENT_DATE - INTERVAL '1 year'
-        THEN t.realized_pnl * COALESCE(curr.price, 1) / COALESCE(pa.leverage, 1)
+        THEN t.realized_pnl * COALESCE(curr.curr_price, 1) / COALESCE(pa.leverage, 1)
         ELSE 0
       END
     ), 0) AS realized_profit_year,
@@ -463,7 +463,7 @@ asset_realized_profit AS (
     COALESCE(SUM(
       CASE 
         WHEN t.transaction_date >= CURRENT_DATE - INTERVAL '1 month'
-        THEN t.realized_pnl * COALESCE(curr.price, 1) / COALESCE(pa.leverage, 1)
+        THEN t.realized_pnl * COALESCE(curr.curr_price, 1) / COALESCE(pa.leverage, 1)
         ELSE 0
       END
     ), 0) AS realized_profit_month
@@ -471,7 +471,7 @@ asset_realized_profit AS (
   JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
   JOIN p ON p.id = pa.portfolio_id
   JOIN assets a ON a.id = pa.asset_id
-  LEFT JOIN asset_last_currency_prices curr ON curr.asset_id = a.quote_asset_id
+  LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
   WHERE t.transaction_type = 2 AND t.realized_pnl IS NOT NULL
   GROUP BY pa.portfolio_id, pa.asset_id
 ),

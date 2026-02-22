@@ -49,6 +49,16 @@ BEGIN
             t.transaction_type,
             t.quantity::numeric as qty,
             t.price::numeric as price,
+            -- Используем amount_rub из cash_operations для расчета cumulative_invested в рублях
+            -- Если amount_rub нет, используем fallback (price * qty, но это будет в валюте актива)
+            COALESCE(
+                (SELECT ABS(co.amount_rub) 
+                 FROM cash_operations co 
+                 WHERE co.transaction_id = t.id 
+                   AND co.type IN (1, 2) -- Buy или Sell
+                 LIMIT 1),
+                t.quantity * t.price -- Fallback: в валюте актива (неправильно, но лучше чем ничего)
+            )::numeric as amount_rub,
             row_number() over (
                 order by t.transaction_date, t.id
             ) as rn
@@ -66,7 +76,9 @@ BEGIN
                 v_base_qty + case when transaction_type = 1 then qty else -qty end
             ) as current_qty,
             case
-                when transaction_type = 1 then v_base_inv + qty * price
+                -- Для покупки: добавляем amount_rub (уже в рублях)
+                when transaction_type = 1 then v_base_inv + amount_rub
+                -- Для продажи: вычитаем пропорционально количеству
                 when transaction_type = 2 and v_base_qty > 0
                     then v_base_inv - (qty * (v_base_inv / v_base_qty))
                 else v_base_inv
@@ -85,7 +97,9 @@ BEGIN
                 p.current_qty + case when c.transaction_type = 1 then c.qty else -c.qty end
             ) as current_qty,
             case
-                when c.transaction_type = 1 then p.current_inv + c.qty * c.price
+                -- Для покупки: добавляем amount_rub (уже в рублях)
+                when c.transaction_type = 1 then p.current_inv + c.amount_rub
+                -- Для продажи: вычитаем пропорционально количеству
                 when c.transaction_type = 2 and p.current_qty > 0
                     then p.current_inv - (c.qty * (p.current_inv / p.current_qty))
                 else p.current_inv

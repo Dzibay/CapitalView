@@ -135,7 +135,8 @@ BEGIN
                 current_date + 1
             ) AS valid_to,
             pdp.quantity,
-            pdp.average_price
+            pdp.average_price,
+            pdp.cumulative_invested
         FROM portfolio_daily_positions pdp
         WHERE pdp.portfolio_id = p_portfolio_id
     ),
@@ -150,7 +151,8 @@ BEGIN
             a.quote_asset_id,
             pa.leverage::numeric AS leverage,
             coalesce(pr.quantity,0) AS quantity,
-            coalesce(pr.average_price,0) AS average_price
+            coalesce(pr.average_price,0) AS average_price,
+            coalesce(pr.cumulative_invested,0) AS cumulative_invested
         FROM dates d
         JOIN portfolio_assets pa ON pa.portfolio_id = p_portfolio_id
         JOIN assets a ON a.id = pa.asset_id
@@ -305,12 +307,10 @@ BEGIN
             * COALESCE(cr.rate_to_rub, 1)  -- Курс валюты актива к рублю
             / nullif(dp.leverage,0)
         ) AS total_value,
-        -- total_invested: конвертируем среднюю цену в рубли через курс валюты
+        -- total_invested: используем cumulative_invested из portfolio_daily_positions
+        -- который рассчитывается на основе amount_rub из транзакций (исторический курс на момент покупки)
         sum(
-            dp.quantity
-            * dp.average_price
-            * COALESCE(cr.rate_to_rub, 1)  -- Курс валюты актива к рублю
-            / nullif(dp.leverage,0)
+            COALESCE(dp.cumulative_invested, 0)
         ) AS total_invested,
         pc.total_payouts,
         rc.total_realized,
@@ -324,10 +324,7 @@ BEGIN
             / nullif(dp.leverage,0)
         )
         - sum(
-            dp.quantity
-            * dp.average_price
-            * COALESCE(cr.rate_to_rub, 1)  -- Курс валюты актива к рублю
-            / nullif(dp.leverage,0)
+            COALESCE(dp.cumulative_invested, 0)
         )
         + pc.total_payouts
         + rc.total_realized
@@ -341,18 +338,28 @@ BEGIN
     LEFT JOIN LATERAL (
         -- Получаем исторический курс валюты к рублю на конкретную дату
         -- Используем ближайший предыдущий курс, если точный курс на дату не найден
-        SELECT COALESCE(
-            -- Ищем исторический курс на дату или ближайший предыдущий
-            (SELECT price::numeric
-             FROM asset_prices ap
-             WHERE ap.asset_id = dp.quote_asset_id
-               AND CAST(ap.trade_date AS date) <= dp.report_date
-               AND (dp.quote_asset_id IS NOT NULL AND dp.quote_asset_id != 47)
-             ORDER BY ap.trade_date DESC
-             LIMIT 1),
-            -- Если валюта RUB или NULL, курс = 1
-            CASE WHEN dp.quote_asset_id IS NULL OR dp.quote_asset_id = 47 THEN 1 ELSE 1 END
-        ) AS rate_to_rub
+        SELECT 
+            CASE 
+                -- Если валюта RUB или NULL, курс = 1
+                WHEN dp.quote_asset_id IS NULL OR dp.quote_asset_id = 47 THEN 1::numeric
+                -- Ищем исторический курс на дату или ближайший предыдущий
+                ELSE COALESCE(
+                    (SELECT price::numeric
+                     FROM asset_prices ap
+                     WHERE ap.asset_id = dp.quote_asset_id
+                       AND CAST(ap.trade_date AS date) <= dp.report_date
+                     ORDER BY ap.trade_date DESC
+                     LIMIT 1),
+                    -- Если курса на дату нет, ищем последнюю известную цену вообще (до любой даты)
+                    (SELECT price::numeric
+                     FROM asset_prices ap
+                     WHERE ap.asset_id = dp.quote_asset_id
+                     ORDER BY ap.trade_date DESC
+                     LIMIT 1),
+                    -- Если вообще нет курса, используем 1 (fallback)
+                    1::numeric
+                )
+            END AS rate_to_rub
     ) cr ON TRUE
     LEFT JOIN realized_cum rc ON rc.report_date = dp.report_date
     LEFT JOIN payouts_cum  pc ON pc.report_date = dp.report_date

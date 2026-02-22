@@ -65,9 +65,9 @@ portfolio_assets_data AS (
                 END,
                 'profit', ((COALESCE(apf.curr_price, 0) - COALESCE(pa.average_price, 0)) * COALESCE(pa.quantity, 0)),
                 'currency_ticker', qa.ticker,
-                'currency_rate_to_rub', COALESCE(curr.price, 1),
+                'currency_rate_to_rub', COALESCE(curr.curr_price, 1),
                 'profit_rub', ((COALESCE(apf.curr_price, 0) - COALESCE(pa.average_price, 0))
-                    * COALESCE(pa.quantity, 0) * COALESCE(curr.price, 1)),
+                    * COALESCE(pa.quantity, 0) * COALESCE(curr.curr_price, 1)),
                 'first_purchase_date', fpd.first_purchase_date,
                 'first_purchase_price', COALESCE(fpd.first_purchase_price, 0),
                 'dividends', COALESCE((
@@ -94,7 +94,7 @@ portfolio_assets_data AS (
     LEFT JOIN asset_types at ON at.id = a.asset_type_id
     LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
     LEFT JOIN assets qa ON qa.id = a.quote_asset_id
-    LEFT JOIN asset_last_currency_prices curr ON curr.asset_id = a.quote_asset_id
+    LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
     LEFT JOIN first_purchase_data fpd ON fpd.portfolio_asset_id = pa.id
     GROUP BY pa.portfolio_id
 ),

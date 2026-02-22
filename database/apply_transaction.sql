@@ -218,8 +218,8 @@ begin
     
     -- Если исторический курс не найден, пробуем взять текущий курс
     IF v_quote_to_rub_rate IS NULL THEN
-      SELECT price INTO v_quote_to_rub_rate
-      FROM asset_last_currency_prices
+      SELECT curr_price INTO v_quote_to_rub_rate
+      FROM asset_latest_prices_full
       WHERE asset_id = v_asset_quote_asset_id;
     END IF;
     
