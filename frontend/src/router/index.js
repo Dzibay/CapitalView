@@ -10,6 +10,7 @@ import Analitics from '../views/Analitics.vue';
 import Dividends from '../views/Dividends.vue';
 import Settings from '../views/Settings.vue';
 import { authService } from '../services/authService';
+import { useAuthStore } from '../stores/auth.store';
 
 const routes = [
   { path: '/', component: Home },
@@ -59,24 +60,26 @@ router.beforeEach(async (to, from, next) => {
     
     // Проверяем валидность токена
     try {
-      const user = await authService.checkToken();
-      if (!user || !user.user) {
+      // ОПТИМИЗИРОВАНО: используем authStore для проверки токена, чтобы обновить store
+      const authStore = useAuthStore()
+      const user = await authStore.checkToken()
+      if (!user) {
         // Токен недействителен
-        authService.logout();
-        next({ path: '/login', query: { redirect: to.fullPath } });
-        return;
+        next({ path: '/login', query: { redirect: to.fullPath } })
+        return
       }
       // Токен валиден, разрешаем доступ
-      next();
+      next()
     } catch (error) {
       // Ошибка при проверке токена (кроме сетевых ошибок)
       if (error.code !== 'ERR_NETWORK' && error.code !== 'ECONNREFUSED') {
-        console.error('Token check failed:', error);
-        authService.logout();
-        next({ path: '/login', query: { redirect: to.fullPath } });
+        console.error('Token check failed:', error)
+        const authStore = useAuthStore()
+        authStore.logout()
+        next({ path: '/login', query: { redirect: to.fullPath } })
       } else {
         // При сетевой ошибке все равно разрешаем доступ (backend может быть временно недоступен)
-        next();
+        next()
       }
     }
   } 
@@ -85,8 +88,10 @@ router.beforeEach(async (to, from, next) => {
     if (token) {
       // Есть токен - проверяем его валидность (но не блокируем доступ при ошибках)
       try {
-        const user = await authService.checkToken();
-        if (user && user.user) {
+        // ОПТИМИЗИРОВАНО: используем authStore для проверки токена
+        const authStore = useAuthStore()
+        const user = await authStore.checkToken()
+        if (user) {
           // Токен валиден - перенаправляем на dashboard
           const redirectPath = from.query.redirect || '/dashboard';
           next(redirectPath);

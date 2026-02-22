@@ -18,6 +18,13 @@ export default {
     return res.data;
   },
 
+  async addPricesBatch(asset_id, prices) {
+    // prices - массив объектов { price, date }
+    const payload = { asset_id, prices };
+    const res = await apiClient.post(API_ENDPOINTS.ASSETS.ADD_PRICES_BATCH, payload);
+    return res.data;
+  },
+
   async moveAsset(portfolio_asset_id, target_portfolio_id) {
     const payload = { target_portfolio_id };
     const res = await apiClient.post(API_ENDPOINTS.ASSETS.MOVE(portfolio_asset_id), payload);
@@ -39,6 +46,14 @@ export default {
 
   async getPortfolioAssetInfo(portfolio_asset_id) {
     const res = await apiClient.get(API_ENDPOINTS.ASSETS.GET_PORTFOLIO_ASSET_INFO(portfolio_asset_id));
+    return res.data;
+  },
+
+  async getAssetDailyValues(portfolio_asset_id, from_date = null, to_date = null) {
+    const params = {};
+    if (from_date) params.from_date = from_date;
+    if (to_date) params.to_date = to_date;
+    const res = await apiClient.get(API_ENDPOINTS.ASSETS.GET_DAILY_VALUES(portfolio_asset_id), { params });
     return res.data;
   }
 };

@@ -27,6 +27,9 @@ BEGIN
                     'value', gh.total_value,
                     'invested', gh.total_invested,
                     'payouts', gh.total_payouts,
+                    'realized', gh.total_realized,
+                    'commissions', gh.total_commissions,
+                    'taxes', COALESCE(gh.total_taxes, 0),
                     'pnl', gh.total_pnl
                 )
                 ORDER BY gh.report_date

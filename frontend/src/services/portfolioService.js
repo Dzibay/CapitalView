@@ -35,16 +35,10 @@ export default {
       inflation_rate: inflationRate || 7.5
     };
 
-    console.log('[PortfolioService] updatePortfolioGoal payload:', payload);
-
     const response = await apiClient.post(API_ENDPOINTS.PORTFOLIO.DESCRIPTION(portfolioId), payload);
     
-    console.log('[PortfolioService] updatePortfolioGoal response:', response.data);
-    
     if (response.data.success) {
-      const result = response.data.description;
-      console.log('[PortfolioService] updatePortfolioGoal result:', result);
-      return result;
+      return response.data.description;
     } else {
       throw new Error(response.data.error || 'Ошибка при обновлении цели');
     }

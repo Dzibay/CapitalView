@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import transactionsService from '../services/transactionsService'
+import operationsService from '../services/operationsService'
 import analyticsService from '../services/analyticsService'
 import { useDashboardStore } from './dashboard.store'
 import { useUIStore } from './ui.store'
@@ -19,6 +20,42 @@ export const useTransactionsStore = defineStore('transactions', {
       } catch (err) {
         if (import.meta.env.DEV) {
           console.error('Ошибка добавления транзакции:', err)
+        }
+        throw err
+      } finally {
+        uiStore.setLoading(false)
+      }
+    },
+
+    async addOperation(operationData) {
+      const uiStore = useUIStore()
+      const dashboardStore = useDashboardStore()
+      
+      try {
+        await operationsService.addOperation(operationData)
+        uiStore.setLoading(true)
+        await dashboardStore.reloadDashboard()
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.error('Ошибка добавления операции:', err)
+        }
+        throw err
+      } finally {
+        uiStore.setLoading(false)
+      }
+    },
+
+    async addOperationsBatch(batchData) {
+      const uiStore = useUIStore()
+      const dashboardStore = useDashboardStore()
+      
+      try {
+        await operationsService.addOperationsBatch(batchData)
+        uiStore.setLoading(true)
+        await dashboardStore.reloadDashboard()
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.error('Ошибка массового добавления операций:', err)
         }
         throw err
       } finally {
@@ -49,12 +86,31 @@ export const useTransactionsStore = defineStore('transactions', {
       const dashboardStore = useDashboardStore()
       
       try {
+        // Используем batch удаление для оптимизации
         await transactionsService.deleteTransactions(transaction_ids)
         uiStore.setLoading(true)
         await dashboardStore.reloadDashboard()
       } catch (err) {
         if (import.meta.env.DEV) {
           console.error('Ошибка удаления транзакций:', err)
+        }
+        throw err
+      } finally {
+        uiStore.setLoading(false)
+      }
+    },
+
+    async deleteOperations(operation_ids) {
+      const uiStore = useUIStore()
+      const dashboardStore = useDashboardStore()
+      
+      try {
+        await operationsService.deleteOperations(operation_ids)
+        uiStore.setLoading(true)
+        await dashboardStore.reloadDashboard()
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.error('Ошибка удаления операций:', err)
         }
         throw err
       } finally {

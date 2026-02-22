@@ -10,12 +10,16 @@ RETURNS TABLE (
     portfolio_id bigint,
     portfolio_name text,
     operation_type text,
+    operation_type_id bigint,
     amount numeric(20,6),
+    amount_rub float4,
     currency_id bigint,
     currency_ticker text,
+    currency_rate_to_rub numeric(20,6),
     asset_id bigint,
     asset_name text,
-    operation_date timestamp
+    operation_date timestamp,
+    transaction_id bigint
 )
 LANGUAGE plpgsql
 AS $$
@@ -37,12 +41,16 @@ BEGIN
             WHEN 'Sell' THEN 'Продажа'
             ELSE ot.name
         END AS operation_type,
+        ot.id AS operation_type_id,
         co.amount::numeric(20,6) AS amount,
+        COALESCE(co.amount_rub, co.amount::numeric(20,6)) AS amount_rub,
         co.currency AS currency_id,
         cur.ticker AS currency_ticker,
+        COALESCE(curr.curr_price, 1)::numeric(20,6) AS currency_rate_to_rub,
         a.id AS asset_id,
         a.name AS asset_name,
-        co.date AS operation_date
+        co.date AS operation_date,
+        co.transaction_id AS transaction_id
     FROM cash_operations co
     JOIN portfolios p
         ON p.id = co.portfolio_id
@@ -50,6 +58,8 @@ BEGIN
         ON ot.id = co.type
     LEFT JOIN assets cur
         ON cur.id = co.currency
+    LEFT JOIN asset_latest_prices_full curr
+        ON curr.asset_id = co.currency
     LEFT JOIN assets a
         ON a.id = co.asset_id
     WHERE co.user_id = p_user_id

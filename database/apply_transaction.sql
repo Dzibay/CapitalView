@@ -19,8 +19,15 @@ declare
   v_sell_op_type_id bigint;
   v_op_type_id bigint;
   v_cash_amount numeric;
+  v_amount_rub numeric;
   v_tx_after integer;
   v_needs_rebuild boolean := false;
+  v_asset_quote_asset_id bigint;
+  v_rub_currency_id bigint;
+  v_currency_to_quote_rate numeric(20,6);
+  v_quote_to_rub_rate numeric(20,6);
+  v_amount_in_quote numeric(20,6);
+  v_currency_rate numeric(20,6);
   lot record;
 begin
   ------------------------------------------------------------------
@@ -155,11 +162,27 @@ begin
   FROM portfolio_assets
   WHERE id = p_portfolio_asset_id;
   
+  -- Получаем quote_asset_id актива (валюта, в которой выражена цена актива)
+  SELECT quote_asset_id INTO v_asset_quote_asset_id
+  FROM assets
+  WHERE id = v_asset_id;
+  
+  -- Получаем ID рубля
+  SELECT id INTO v_rub_currency_id
+  FROM assets
+  WHERE ticker = 'RUB' AND user_id IS NULL
+  LIMIT 1;
+  
+  -- Если v_rub_currency_id не найден, используем 47 как fallback
+  IF v_rub_currency_id IS NULL THEN
+    v_rub_currency_id := 47;
+  END IF;
+  
   -- Получаем ID типов операций
   SELECT id INTO v_buy_op_type_id FROM operations_type WHERE name = 'Buy' LIMIT 1;
   SELECT id INTO v_sell_op_type_id FROM operations_type WHERE name = 'Sell' LIMIT 1;
   
-  -- Определяем тип операции и сумму
+  -- Определяем тип операции и сумму в валюте актива
   IF p_transaction_type = 1 THEN
     v_op_type_id := v_buy_op_type_id;
     v_cash_amount := -(p_price * p_quantity);
@@ -168,18 +191,65 @@ begin
     v_cash_amount := (p_price * p_quantity);
   END IF;
   
+  -- Убеждаемся, что v_cash_amount не NULL
+  IF v_cash_amount IS NULL THEN
+    v_cash_amount := 0;
+  END IF;
+  
+  -- Рассчитываем amount_rub: конвертируем из валюты актива в рубли
+  -- p_price передается в валюте quote_asset_id актива (например, для BTC это USD)
+  -- v_cash_amount = p_price * p_quantity в валюте quote_asset_id актива
+  
+  -- Если quote_asset_id актива = RUB или NULL, то цена уже в рублях
+  IF v_asset_quote_asset_id IS NULL OR v_asset_quote_asset_id = v_rub_currency_id OR v_asset_quote_asset_id = 47 THEN
+    -- Цена уже в рублях
+    v_amount_rub := v_cash_amount;
+  ELSE
+    -- Цена в другой валюте (quote_asset_id актива), нужно конвертировать в рубли
+    -- Например, для BTC: quote_asset_id = USD, нужно конвертировать USD -> RUB
+    
+    -- Получаем курс quote_asset актива к рублю на дату транзакции
+    SELECT price INTO v_quote_to_rub_rate
+    FROM asset_prices
+    WHERE asset_id = v_asset_quote_asset_id
+      AND CAST(trade_date AS date) <= CAST(p_transaction_date AS date)
+    ORDER BY trade_date DESC
+    LIMIT 1;
+    
+    -- Если исторический курс не найден, пробуем взять текущий курс
+    IF v_quote_to_rub_rate IS NULL THEN
+      SELECT curr_price INTO v_quote_to_rub_rate
+      FROM asset_latest_prices_full
+      WHERE asset_id = v_asset_quote_asset_id;
+    END IF;
+    
+    -- Если курс все еще не найден, используем 1 (fallback)
+    IF v_quote_to_rub_rate IS NULL OR v_quote_to_rub_rate <= 0 THEN
+      v_quote_to_rub_rate := 1;
+      RAISE WARNING 'Курс для актива % (quote_asset актива) к рублю не найден для транзакции на дату %. Используется fallback = 1', v_asset_quote_asset_id, p_transaction_date;
+    END IF;
+    
+    -- Рассчитываем сумму в рублях: amount в quote_asset * курс quote_asset->RUB
+    -- Пример: для BTC с ценой 115700 USD и количеством 0.001:
+    -- v_cash_amount = -115.7 USD
+    -- v_amount_rub = -115.7 * курс_USD_to_RUB
+    v_amount_rub := v_cash_amount * v_quote_to_rub_rate;
+  END IF;
+  
   -- Создаем cash_operation только если тип определен и её еще нет
+  -- Для транзакций Buy/Sell валюта всегда RUB, но amount_rub рассчитывается с учетом валюты актива
   IF v_op_type_id IS NOT NULL THEN
-    INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id)
+    INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id, amount_rub)
     SELECT
       p_user_id,
       v_portfolio_id,
       v_op_type_id,
       v_cash_amount,
-      47, -- RUB
+      47, -- RUB (валюта операции всегда RUB)
       p_transaction_date,
       v_tx_id,
-      v_asset_id
+      v_asset_id,
+      COALESCE(v_amount_rub, v_cash_amount) -- amount_rub конвертирован из валюты актива в рубли
     WHERE NOT EXISTS (
       SELECT 1 
       FROM cash_operations 

@@ -204,6 +204,7 @@ def get_portfolios_with_asset(asset_id: int) -> Dict[int, str]:
 def update_portfolios_with_asset(asset_id: int, from_date) -> None:
     """
     Обновляет все портфели, содержащие указанный актив, начиная с указанной даты.
+    Использует новую оптимальную функцию update_assets_daily_values.
     
     Args:
         asset_id: ID актива
@@ -216,23 +217,20 @@ def update_portfolios_with_asset(asset_id: int, from_date) -> None:
             logger.warning(f"Не удалось нормализовать дату: {from_date}")
             return
         
-        # Находим все портфели с этим активом
-        portfolio_ids = get_portfolios_with_asset(asset_id)
-        
-        if not portfolio_ids:
-            return
-        
-        # Обновляем каждый затронутый портфель
-        for portfolio_id in portfolio_ids.keys():
-            try:
-                update_result = rpc("update_portfolio_values_from_date", {
-                    "p_portfolio_id": portfolio_id,
-                    "p_from_date": normalized_date
-                })
-                if update_result is False:
-                    logger.warning(f"Ошибка при обновлении портфеля {portfolio_id}")
-            except Exception as portfolio_error:
-                logger.warning(f"Ошибка при обновлении портфеля {portfolio_id}: {portfolio_error}", exc_info=True)
+        # Используем оптимальную функцию для обновления активов во всех портфелях
+        # Это обновит portfolio_daily_values для всех портфелей с активом одним вызовом
+        try:
+            update_results = rpc("update_assets_daily_values", {
+                "p_asset_ids": [asset_id],
+                "p_from_date": normalized_date
+            })
+            if update_results:
+                updated_count = len([r for r in update_results if r.get("updated", False)])
+                logger.info(f"Обновлено портфелей с активом {asset_id}: {updated_count}")
+            else:
+                logger.warning(f"Не удалось обновить портфели с активом {asset_id}")
+        except Exception as update_error:
+            logger.warning(f"Ошибка при обновлении портфелей с активом {asset_id}: {update_error}", exc_info=True)
     except Exception as e:
         # Логируем ошибку, но не прерываем выполнение
         logger.error(f"Ошибка при обновлении портфелей с активом {asset_id}: {e}", exc_info=True)

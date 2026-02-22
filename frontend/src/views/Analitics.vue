@@ -178,9 +178,28 @@ const profitWidgetData = computed(() => {
 // Данные для PortfolioProfitChartWidget
 const profitChartData = computed(() => {
   if (!selectedPortfolio.value?.history) {
-    return { labels: [], data: [] }
+    return { labels: [], data_pnl: [] }
   }
-  return selectedPortfolio.value.history
+  
+  const history = selectedPortfolio.value.history
+  
+  // Если история уже в нужном формате
+  if (history.labels && history.data_pnl) {
+    return {
+      labels: history.labels || [],
+      data_pnl: history.data_pnl || []
+    }
+  }
+  
+  // Если история в формате массива объектов, преобразуем
+  if (Array.isArray(history) && history.length > 0) {
+    return {
+      labels: history.map(h => h.date || ''),
+      data_pnl: history.map(h => Number(h.pnl || h.total_pnl || 0))
+    }
+  }
+  
+  return { labels: [], data_pnl: [] }
 })
 </script>
 

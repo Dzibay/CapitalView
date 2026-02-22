@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
-import { formatCurrency } from '../../../utils/formatCurrency'
+import { formatCurrency, formatOperationAmount } from '../../../utils/formatCurrency'
 import EmptyState from '../base/EmptyState.vue'
 
 const props = defineProps({
@@ -61,7 +61,7 @@ const formatDate = (date) => {
           <span class="payout-type" :class="getPayoutTypeClass(payout.type)">
             {{ getPayoutTypeLabel(payout.type) }}
           </span>
-          <span class="payout-amount">{{ formatCurrency(payout.value || 0) }}</span>
+          <span class="payout-amount">{{ formatOperationAmount(payout.value || 0) }}</span>
         </div>
         <div class="payout-date">{{ formatDate(payout.payment_date) }}</div>
         <div v-if="payout.record_date" class="payout-meta">

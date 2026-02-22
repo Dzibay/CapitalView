@@ -28,16 +28,19 @@ export const API_ENDPOINTS = {
     ADD: '/assets/',  // Исправлено: на backend это POST /assets/ (со слешем!)
     DELETE: (id) => `/assets/${id}`,
     ADD_PRICE: '/assets/price',  // Исправлено: на backend это POST /assets/price
+    ADD_PRICES_BATCH: '/assets/prices/batch',  // Массовое добавление цен
     MOVE: (portfolio_asset_id) => `/assets/portfolio/${portfolio_asset_id}/move`,
     GET_INFO: (id) => `/assets/${id}`,
     GET_PRICES: (id) => `/assets/${id}/prices`,
     GET_PORTFOLIO_ASSET_INFO: (portfolio_asset_id) => `/assets/portfolio/${portfolio_asset_id}`,
+    GET_DAILY_VALUES: (portfolio_asset_id) => `/assets/portfolio/${portfolio_asset_id}/daily-values`,
   },
   TRANSACTIONS: {
     BASE: '/transactions/',
   },
   OPERATIONS: {
     BASE: '/operations/',
+    BATCH: '/operations/batch',  // Массовое создание операций
   },
   ANALYTICS: {
     BASE: '/analytics',

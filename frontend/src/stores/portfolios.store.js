@@ -107,16 +107,6 @@ export const usePortfoliosStore = defineStore('portfolios', {
 
     async updatePortfolioGoal({ portfolioId, title, targetAmount, monthlyContribution, annualReturn, useInflation, inflationRate }) {
       try {
-        console.log('[PortfoliosStore] updatePortfolioGoal called:', {
-          portfolioId,
-          title,
-          targetAmount,
-          monthlyContribution,
-          annualReturn,
-          useInflation,
-          inflationRate
-        })
-        
         const res = await portfolioService.updatePortfolioGoal(portfolioId, { 
           title, 
           targetAmount, 
@@ -126,14 +116,9 @@ export const usePortfoliosStore = defineStore('portfolios', {
           inflationRate
         })
         
-        console.log('[PortfoliosStore] updatePortfolioGoal response:', res)
-        
         if (!res) throw new Error('Ошибка при обновлении цели')
 
         const updated = res[0]
-        console.log('[PortfoliosStore] updated portfolio data:', updated)
-        console.log('[PortfoliosStore] updated.description:', updated.description)
-        
         const dashboardStore = useDashboardStore()
         
         // Оптимистичное обновление
@@ -150,13 +135,6 @@ export const usePortfoliosStore = defineStore('portfolios', {
           capital_target_value: updated.capital_target_value,
           capital_target_currency: updated.capital_target_currency
         }
-        
-        console.log('[PortfoliosStore] updating portfolio with:', {
-          updateData,
-          updatedDescription,
-          use_inflation: updatedDescription.use_inflation,
-          inflation_rate: updatedDescription.inflation_rate
-        })
         
         dashboardStore.updatePortfolio(portfolioId, updateData)
         

@@ -1,3 +1,13 @@
+-- Удаляем функцию, если она существует (для гарантированного обновления)
+DROP FUNCTION IF EXISTS get_portfolio_analytics(bigint, uuid);
+
+CREATE OR REPLACE FUNCTION get_portfolio_analytics(
+    p_portfolio_id bigint,
+    p_user_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
 DECLARE
     result jsonb;
 
@@ -34,12 +44,19 @@ BEGIN
     -- 1️⃣ КЭШ-ОПЕРАЦИИ
     -------------------------------------------------------------------
     SELECT
+        -- Для Deposit используем amount, для остальных операций используем amount_rub (уже в рублях)
         COALESCE(SUM(CASE WHEN ot.name='Deposit'  THEN co.amount ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Withdraw' THEN co.amount ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Dividend' THEN co.amount ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Coupon'   THEN co.amount ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Commision' THEN co.amount ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN ot.name='Tax'      THEN co.amount ELSE 0 END), 0)
+        COALESCE(SUM(CASE WHEN ot.name='Withdraw' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
+        -- Для выплат (Dividend, Coupon) используем amount_rub (уже переведено в рубли по курсу на дату операции)
+        COALESCE(SUM(CASE WHEN ot.name='Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN ot.name='Coupon'   THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
+        -- Комиссии - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
+        -- Учитываем оба варианта написания: 'Commission' и 'Commision'
+        COALESCE(SUM(CASE WHEN ot.name IN ('Commission','Commision') THEN ABS(COALESCE(co.amount_rub, co.amount)) ELSE 0 END), 0),
+        -- Налоги - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
+        -- Если налоги отрицательные в базе, ABS делает их положительными, затем вычитаем (правильно)
+        -- Если налоги положительные в базе, ABS ничего не меняет, затем вычитаем (правильно)
+        COALESCE(SUM(CASE WHEN ot.name='Tax' THEN ABS(COALESCE(co.amount_rub, co.amount)) ELSE 0 END), 0)
     INTO v_inflow, v_outflow, v_dividends, v_coupons, v_commissions, v_taxes
     FROM cash_operations co
     JOIN operations_type ot ON ot.id = co.type
@@ -47,90 +64,55 @@ BEGIN
 
 
     -------------------------------------------------------------------
-    -- 2️⃣ UNREALIZED P/L (по текущим позициям)
+    -- 2️⃣ ОПТИМИЗИРОВАНО: Используем данные из portfolio_daily_values
+    -- Вместо расчетов на лету используем предрассчитанные значения
     -------------------------------------------------------------------
+    -- ОПТИМИЗИРОВАНО: Используем данные из portfolio_daily_values
+    -- Если данных нет - это ошибка, не используем fallback
     SELECT
-        COALESCE(SUM(pa.quantity * pa.average_price * COALESCE(curr.curr_price,1) / pa.leverage), 0),
-        COALESCE(SUM(pa.quantity * ap.curr_price    * COALESCE(curr.curr_price,1) / pa.leverage), 0),
-        COALESCE(SUM(pa.quantity * (ap.curr_price - pa.average_price) * COALESCE(curr.curr_price,1) / pa.leverage), 0)
-    INTO v_total_invested, v_total_value, v_unrealized_pl
-    FROM portfolio_assets pa
-    JOIN assets a ON a.id = pa.asset_id
-    LEFT JOIN asset_latest_prices_full ap   ON ap.asset_id   = pa.asset_id
-    LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
-    WHERE pa.portfolio_id = p_portfolio_id;
+        pdv.total_invested,
+        pdv.total_value,
+        pdv.total_value - pdv.total_invested,
+        pdv.total_realized,
+        pdv.total_commissions,
+        pdv.total_taxes
+    INTO v_total_invested, v_total_value, v_unrealized_pl, v_realized_pl, v_commissions, v_taxes
+    FROM portfolio_daily_values pdv
+    WHERE pdv.portfolio_id = p_portfolio_id
+    ORDER BY pdv.report_date DESC
+    LIMIT 1;
 
+    -- Если данных нет - это ошибка системы
+    IF v_total_invested IS NULL OR v_total_value IS NULL THEN
+        RAISE EXCEPTION 'Данные портфеля % отсутствуют в portfolio_daily_values. Необходимо выполнить update_portfolio_values_from_date.', p_portfolio_id;
+    END IF;
 
-    -------------------------------------------------------------------
-    -- 3️⃣ REALIZED P/L — FIFO, ОТДЕЛЬНО ДЛЯ КАЖДОГО АКТИВА
-    -------------------------------------------------------------------
-    v_realized_pl := 0;
-
-    FOR r_asset IN
-        SELECT DISTINCT pa.asset_id
-        FROM portfolio_assets pa
-        JOIN transactions t ON t.portfolio_asset_id = pa.id
-        WHERE pa.portfolio_id = p_portfolio_id
-    LOOP
-        buy_qty := ARRAY[]::numeric[];
-        buy_price := ARRAY[]::numeric[];
-
-        FOR r IN
-            SELECT
-                t.transaction_type,
-                t.quantity::numeric AS qty,
-                t.price::numeric AS price
-            FROM transactions t
-            JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
-            WHERE pa.portfolio_id = p_portfolio_id
-              AND pa.asset_id = r_asset.asset_id
-            ORDER BY t.transaction_date, t.id
-        LOOP
-            IF r.transaction_type = 1 THEN
-                buy_qty   := array_append(buy_qty, r.qty);
-                buy_price := array_append(buy_price, r.price);
-
-            ELSIF r.transaction_type = 2 THEN
-                remaining := r.qty;
-                i := 1;
-
-                WHILE remaining > 0 AND i <= array_length(buy_qty, 1) LOOP
-                    IF buy_qty[i] <= 0 THEN
-                        i := i + 1;
-                        CONTINUE;
-                    END IF;
-
-                    IF buy_qty[i] <= remaining THEN
-                        v_realized_pl := v_realized_pl +
-                            buy_qty[i] * (r.price - buy_price[i]);
-
-                        remaining := remaining - buy_qty[i];
-                        buy_qty[i] := 0;
-                    ELSE
-                        v_realized_pl := v_realized_pl +
-                            remaining * (r.price - buy_price[i]);
-
-                        buy_qty[i] := buy_qty[i] - remaining;
-                        remaining := 0;
-                    END IF;
-
-                    i := i + 1;
-                END LOOP;
-            END IF;
-        END LOOP;
-    END LOOP;
+    -- Разделяем total_payouts на dividends и coupons из cash_operations
+    -- portfolio_daily_values хранит total_payouts, но не разделяет на dividends и coupons
+    -- Поэтому всегда берем из cash_operations для разделения
+    SELECT
+        COALESCE(SUM(CASE WHEN ot.name='Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN ot.name='Coupon'   THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0)
+    INTO v_dividends, v_coupons
+    FROM cash_operations co
+    JOIN operations_type ot ON ot.id = co.type
+    WHERE co.portfolio_id = p_portfolio_id;
 
 
     -------------------------------------------------------------------
     -- 4️⃣ TOTAL PROFIT + RETURN %
     -------------------------------------------------------------------
+    -- Комиссии и налоги вычитаются из прибыли (это расходы)
+    -- v_commissions и v_taxes уже положительные значения (используется ABS при суммировании)
+    -- Если налоги отрицательные в базе: ABS(-9889) = 9889, затем -9889 (правильно вычитается)
+    -- Если налоги положительные в базе: ABS(9889) = 9889, затем -9889 (правильно вычитается)
     v_total_profit :=
           v_unrealized_pl
         + v_realized_pl
         + v_dividends
         + v_coupons
-        + v_commissions
-        + v_taxes;
+        - v_commissions  -- Комиссии вычитаются (расходы)
+        - v_taxes;        -- Налоги вычитаются (расходы)
 
     IF v_total_invested > 0 THEN
         v_return_percent := v_total_profit / v_total_invested;
@@ -161,3 +143,4 @@ BEGIN
 
     RETURN result;
 END;
+$$;

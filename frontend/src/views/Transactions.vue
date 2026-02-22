@@ -10,6 +10,7 @@ import transactionsService from '../services/transactionsService'
 import CustomSelect from '../components/base/CustomSelect.vue'
 import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
+import { formatOperationAmount } from '../utils/formatCurrency'
 
 // Используем stores вместо inject
 const dashboardStore = useDashboardStore()
@@ -88,6 +89,13 @@ const deleteTransactions = async (transaction_ids) => {
   await transactionsStore.deleteTransactions(transaction_ids)
 }
 
+const deleteOperations = async (operation_ids) => {
+  await transactionsStore.deleteOperations(operation_ids)
+  // Перезагружаем операции после удаления
+  operations.value = []
+  await loadOperations()
+}
+
 const editTransaction = async (updated_transaction) => {
   await transactionsStore.editTransaction(updated_transaction)
 }
@@ -156,6 +164,7 @@ const recentAssets = ref([])
 
 const selectedPortfolio = ref('')
 const selectedType = ref('') // тип операции
+const selectedCurrency = ref('RUB') // валюта для отображения операций: 'RUB' | 'ORIGINAL'
 
 
 const periodPreset = ref('month') // today | week | month | quarter | year | all | custom
@@ -170,9 +179,12 @@ const filteredOperations = ref([])
 
 // выделенные транзакции
 const selectedTxIds = ref([])
+// выделенные операции
+const selectedOpIds = ref([])
 
 // главный чекбокс
 const allSelected = ref(false)
+const allOperationsSelected = ref(false)
 
 // модальное окно
 const showEditModal = ref(false)
@@ -188,6 +200,12 @@ const handleEditTransaction = (transaction) => {
 const handleDeleteTransaction = (transaction) => {
   if (transaction && transaction.transaction_id) {
     deleteOne(transaction.transaction_id)
+  }
+}
+
+const handleDeleteOperation = (operation) => {
+  if (operation && (operation.cash_operation_id || operation.id)) {
+    deleteOneOperation(operation.cash_operation_id || operation.id)
   }
 }
 
@@ -250,6 +268,59 @@ const setPeriodPreset = (preset) => {
 
 // --- формат даты ---
 const formatDate = (date) => new Date(date).toLocaleDateString()
+
+// --- функции для отображения операций в выбранной валюте ---
+// Получаем сумму операции в выбранной валюте
+const getOperationAmount = (op) => {
+  if (selectedCurrency.value === 'RUB') {
+    // Используем amount_rub (уже переведено в рубли по курсу на дату операции)
+    const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
+    return amountRub
+  } else {
+    // Используем оригинальную сумму в исходной валюте
+    return Number(op.amount) || 0
+  }
+}
+
+// Нормализует код валюты (защита от некорректных значений типа "RUB000UTSTOM")
+const normalizeCurrencyTicker = (ticker) => {
+  if (!ticker || typeof ticker !== 'string') return 'RUB'
+  
+  // Берем только первые 3 символа и приводим к верхнему регистру
+  const normalized = ticker.trim().substring(0, 3).toUpperCase()
+  
+  // Список валидных кодов валют
+  const validCurrencyCodes = ['RUB', 'USD', 'EUR', 'GBP', 'CNY', 'JPY', 'BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'SOL']
+  if (validCurrencyCodes.includes(normalized)) {
+    return normalized
+  }
+  
+  // Если не валидный код, пробуем найти в referenceData
+  const refData = referenceData.value
+  if (refData && refData.currencies) {
+    const currency = refData.currencies.find(c => {
+      const cTicker = c.ticker || ''
+      return cTicker.toUpperCase() === normalized || cTicker.toUpperCase().startsWith(normalized)
+    })
+    if (currency && currency.ticker) {
+      return currency.ticker.toUpperCase()
+    }
+  }
+  
+  // Если ничего не найдено, возвращаем нормализованный код (первые 3 символа)
+  return normalized
+}
+
+// Получаем валюту для отображения операции
+const getOperationCurrency = (op) => {
+  if (selectedCurrency.value === 'RUB') {
+    return 'RUB'
+  } else {
+    // Нормализуем валюту для корректного отображения
+    const originalCurrency = op.currency_ticker || 'RUB'
+    return normalizeCurrencyTicker(originalCurrency)
+  }
+}
 
 // --- фильтр активов для дропа ---
 const filteredAssetsList = computed(() => {
@@ -380,9 +451,10 @@ const applyFilter = () => {
         if (end && opDate > end) return false
       }
 
-      // Глобальный поиск
+      // Глобальный поиск (используем amount_rub для поиска)
       if (hasTerm) {
-        const searchableText = `${op.asset_name || ''} ${op.portfolio_name || ''} ${op.operation_type || ''} ${op.amount || ''} ${op.currency_ticker || ''} ${formatDate(op.operation_date)}`.toLowerCase()
+        const opAmount = getOperationAmount(op)
+        const searchableText = `${op.asset_name || ''} ${op.portfolio_name || ''} ${op.operation_type || ''} ${opAmount || ''} ${getOperationCurrency(op) || ''} ${formatDate(op.operation_date)}`.toLowerCase()
         if (!searchableText.includes(term)) return false
       }
 
@@ -414,6 +486,9 @@ watch(transactions, () => {
     setPeriodPreset(periodPreset.value)
   }
   applyFilter()
+  // Очищаем выделение при обновлении транзакций
+  selectedTxIds.value = []
+  allSelected.value = false
 }, { immediate: true })
 
 // следим за обновлением операций
@@ -445,12 +520,21 @@ watch([startDate, endDate], () => {
   }
 })
 
-// выбор всех
+// выбор всех транзакций
 const toggleAll = () => {
   if (allSelected.value) {
     selectedTxIds.value = filteredTransactions.value.map(tx => tx.transaction_id)
   } else {
     selectedTxIds.value = []
+  }
+}
+
+// выбор всех операций
+const toggleAllOperations = () => {
+  if (allOperationsSelected.value) {
+    selectedOpIds.value = filteredOperations.value.map(op => op.cash_operation_id || op.id)
+  } else {
+    selectedOpIds.value = []
   }
 }
 
@@ -460,7 +544,13 @@ watch(selectedTxIds, () => {
     selectedTxIds.value.length === filteredTransactions.value.length
 })
 
-// удаление выбранных
+watch(selectedOpIds, () => {
+  allOperationsSelected.value =
+    selectedOpIds.value.length > 0 &&
+    selectedOpIds.value.length === filteredOperations.value.length
+})
+
+// удаление выбранных транзакций
 const deleteSelected = () => {
   if (selectedTxIds.value.length &&
       confirm(`Вы уверены, что хотите удалить ${selectedTxIds.value.length} транзакций?`)) {
@@ -470,10 +560,27 @@ const deleteSelected = () => {
   }
 }
 
-// удалить одну строку
+// удаление выбранных операций
+const deleteSelectedOperations = () => {
+  if (selectedOpIds.value.length &&
+      confirm(`Вы уверены, что хотите удалить ${selectedOpIds.value.length} операций?`)) {
+    deleteOperations(selectedOpIds.value)
+    selectedOpIds.value = []
+    allOperationsSelected.value = false
+  }
+}
+
+// удалить одну транзакцию
 const deleteOne = (txId) => {
   if (confirm('Удалить эту транзакцию?')) {
     deleteTransactions([txId])
+  }
+}
+
+// удалить одну операцию
+const deleteOneOperation = (opId) => {
+  if (confirm('Удалить эту операцию?')) {
+    deleteOperations([opId])
   }
 }
 
@@ -547,9 +654,11 @@ const summary = computed(() => {
       res.byType[slug].value += value
     }
   } else {
-    // Для операций суммируем по типам
+    // Для операций суммируем по типам (ВСЕГДА используем amount_rub в рублях для статистики)
     for (const op of filteredOperations.value) {
-      const value = Number(op.amount || 0)
+      // Для статистики всегда используем amount_rub (в рублях)
+      const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
+      const value = amountRub
       const slug = normalizeType(op.operation_type)
 
       res.total += Math.abs(value)
@@ -624,11 +733,14 @@ const calculatorResult = computed(() => {
 })
 
 // Получение суммы по типу операции из отфильтрованных данных
+// ВСЕГДА использует amount_rub (в рублях) для статистики
 const getOperationTypeSum = (operationType) => {
   let sum = 0
   for (const op of filteredOperations.value) {
     if (op.operation_type === operationType) {
-      sum += Math.abs(Number(op.amount || 0))
+      // Для статистики всегда используем amount_rub (в рублях)
+      const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
+      sum += Math.abs(amountRub)
     }
   }
   return sum
@@ -680,8 +792,14 @@ const transactionsSummary = computed(() => {
           </div>
           <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
             <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
-            <button @click="deleteSelected" class="btn btn-danger-soft">
-              Удалить выбранные
+            <button @click="deleteSelected" class="btn btn-danger-soft" :disabled="selectedTxIds.length === 0">
+              Удалить выбранные ({{ selectedTxIds.length }})
+            </button>
+          </div>
+          <div v-if="selectedOpIds.length > 0 && viewMode === 'operations'" class="bulk-actions">
+            <span class="selected-count">Выбрано: {{ selectedOpIds.length }}</span>
+            <button @click="deleteSelectedOperations" class="btn btn-danger-soft" :disabled="selectedOpIds.length === 0">
+              Удалить выбранные ({{ selectedOpIds.length }})
             </button>
           </div>
         </div>
@@ -758,6 +876,17 @@ const transactionsSummary = computed(() => {
               label="Тип"
               placeholder="Все типы"
               empty-option-text="Все типы"
+              @change="applyFilter"
+            />
+            <CustomSelect
+              v-if="viewMode === 'operations'"
+              v-model="selectedCurrency"
+              :options="[
+                { value: 'RUB', label: 'Рубли (RUB)' },
+                { value: 'ORIGINAL', label: 'Оригинальная валюта' }
+              ]"
+              label="Валюта отображения"
+              placeholder="Выберите валюту"
               @change="applyFilter"
             />
           </div>
@@ -844,16 +973,23 @@ const transactionsSummary = computed(() => {
           <table v-else class="transactions-table">
             <thead>
               <tr>
+                <th class="w-checkbox">
+                  <input type="checkbox" v-model="allOperationsSelected" @change="toggleAllOperations" class="custom-checkbox" />
+                </th>
                 <th>Дата</th>
                 <th>Тип</th>
                 <th>Актив</th>
                 <th>Портфель</th>
                 <th class="text-right">Сумма</th>
                 <th class="text-right">Валюта</th>
+                <th class="w-actions"></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="op in filteredOperations" :key="op.cash_operation_id" class="tx-row">
+              <tr v-for="op in filteredOperations" :key="op.cash_operation_id || op.id" class="tx-row">
+                <td class="w-checkbox">
+                  <input type="checkbox" :value="op.cash_operation_id || op.id" v-model="selectedOpIds" class="custom-checkbox" />
+                </td>
                 <td class="td-date">{{ formatDate(op.operation_date) }}</td>
                 <td>
                   <span :class="['badge', 'badge-' + normalizeType(op.operation_type)]">
@@ -862,13 +998,16 @@ const transactionsSummary = computed(() => {
                 </td>
                 <td class="font-medium">{{ op.asset_name || '—' }}</td>
                 <td class="text-secondary">{{ op.portfolio_name }}</td>
-                <td class="text-right num-font font-semibold" :class="op.amount >= 0 ? 'text-green' : 'text-red'">
-                  {{ Math.abs(op.amount).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                <td class="text-right num-font font-semibold" :class="getOperationAmount(op) >= 0 ? 'text-green' : 'text-red'">
+                  {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
                 </td>
-                <td class="text-right num-font">{{ op.currency_ticker || 'RUB' }}</td>
+                <td class="text-right num-font">{{ getOperationCurrency(op) }}</td>
+                <td class="w-actions">
+                  <button class="icon-btn" @click="openMenu($event, 'operation', op)">⋯</button>
+                </td>
               </tr>
               <tr v-if="filteredOperations.length === 0">
-                <td colspan="6" class="empty-cell">
+                <td colspan="8" class="empty-cell">
                   <div class="empty-state">
                     <span class="empty-icon">🔍</span>
                     <p v-if="isLoadingOperations">Загрузка операций...</p>
@@ -1014,6 +1153,7 @@ const transactionsSummary = computed(() => {
     <ContextMenu
       @editTransaction="handleEditTransaction"
       @deleteTransaction="handleDeleteTransaction"
+      @deleteOperation="handleDeleteOperation"
     />
   </PageLayout>
 </template>

@@ -561,15 +561,17 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
         for a in combined_assets
     )
 
-    # 6️⃣ Пересчёт итоговой прибыли
-    total_profit = (
-        combined_analytics["realized_pl"] +
-        combined_analytics["unrealized_pl"] +
-        combined_analytics["dividends"] +
-        combined_analytics["coupons"] +
-        combined_analytics["commissions"] +
-        combined_analytics["taxes"]
-    )
+    # 6️⃣ total_profit уже рассчитан в SQL функции get_user_portfolios_analytics из total_pnl
+    # НЕ пересчитываем его здесь, используем значение из SQL функции
+    # Для агрегации дочерних портфелей суммируем total_profit из их totals
+    total_profit = float(totals.get("total_profit", 0) or 0)
+    # Суммируем total_profit из дочерних портфелей
+    for child_data in child_data_list:
+        child_id = child_data["child"]["id"]
+        child_portfolio = portfolio_map.get(child_id)
+        if child_portfolio and child_portfolio.get("analytics"):
+            child_totals = child_portfolio["analytics"].get("totals", {})
+            total_profit += float(child_totals.get("total_profit", 0) or 0)
 
     # 6️⃣ Пересчёт доходностей для родительских портфелей
     # Для портфелей без дочерних используем значения из аналитики напрямую
@@ -955,21 +957,10 @@ async def get_dashboard_data(user_email: str):
     portfolios = build_portfolio_hierarchy(portfolios)
     logger.debug(f'Иерархия: {time() - time1:.2f} сек')
     
-    # Убеждаемся, что total_profit рассчитан в totals для всех портфелей
-    for portfolio in portfolios:
-        if portfolio.get("analytics") and portfolio["analytics"].get("totals"):
-            totals = portfolio["analytics"]["totals"]
-            if "total_profit" not in totals or totals.get("total_profit") is None:
-                # Рассчитываем total_profit как сумму всех компонентов прибыли
-                total_profit = (
-                    float(totals.get("realized_pl", 0) or 0) +
-                    float(totals.get("unrealized_pl", 0) or 0) +
-                    float(totals.get("dividends", 0) or 0) +
-                    float(totals.get("coupons", 0) or 0) +
-                    float(totals.get("commissions", 0) or 0) +
-                    float(totals.get("taxes", 0) or 0)
-                )
-                totals["total_profit"] = total_profit
+    # total_profit уже рассчитан в SQL функции get_user_portfolios_analytics из total_pnl
+    # НЕ пересчитываем его здесь, используем значение из SQL функции
+    # Если total_profit отсутствует, это означает, что таблица portfolio_daily_values не обновлена
+    # В этом случае оставляем None или 0, но не пересчитываем неправильно
     
     # Обрабатываем историю и считаем динамику
     time1 = time()

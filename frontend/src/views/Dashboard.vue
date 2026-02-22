@@ -154,16 +154,6 @@ const goalData = computed(() => {
     inflation_rate: desc.inflation_rate || desc.inflationRate || 7.5
   }
   
-  // Отладочная информация
-  if (import.meta.env.DEV) {
-    console.log('[GoalProgressWidget] goalData computed:', {
-      description: desc,
-      result: result,
-      useInflation: result.useInflation,
-      inflationRate: result.inflationRate
-    })
-  }
-  
   return result
 })
 
@@ -266,10 +256,10 @@ const recentTransactions = computed(() => {
       <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
         <PortfolioProfitWidget 
           :total-amount="parsedDashboard.totalAmount" 
-          :total-profit="selectedPortfolio.analytics?.totals?.total_profit || selectedPortfolio.analytics?.total_profit || 0" 
+          :total-profit="selectedPortfolioAnalytics?.totals?.total_profit || selectedPortfolio.analytics?.totals?.total_profit || selectedPortfolio.analytics?.total_profit || 0" 
           :monthly-change="parsedDashboard.monthlyChange"
           :invested-amount="parsedDashboard.investedAmount"
-          :analytics="selectedPortfolio.analytics || {}"
+          :analytics="selectedPortfolioAnalytics || selectedPortfolio.analytics || {}"
         />
       </WidgetContainer>
       <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">

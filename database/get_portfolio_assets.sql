@@ -25,12 +25,12 @@ BEGIN
         ((COALESCE(apf.curr_price,0) - COALESCE(pa.average_price,0)) * COALESCE(pa.quantity,0))::numeric(20,2) AS profit,
 
         qa.ticker AS currency_ticker,
-        COALESCE(curr.price,1)::numeric(20,6) AS currency_rate_to_rub,
+        COALESCE(curr.curr_price,1)::numeric(20,6) AS currency_rate_to_rub,
 
         -- 💰 прибыль в рублях
         ((COALESCE(apf.curr_price,0) - COALESCE(pa.average_price,0))
          * COALESCE(pa.quantity,0)
-         * COALESCE(curr.price,1))::numeric(20,2) AS profit_rub,
+         * COALESCE(curr.curr_price,1))::numeric(20,2) AS profit_rub,
 
         -- 💵 выплаты (дивиденды, купоны, амортизации)
         COALESCE((
@@ -53,7 +53,7 @@ BEGIN
     LEFT JOIN asset_types at ON at.id = a.asset_type_id
     LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
     LEFT JOIN assets qa ON qa.id = a.quote_asset_id
-    LEFT JOIN asset_last_currency_prices curr ON curr.asset_id = a.quote_asset_id
+    LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
     WHERE pa.portfolio_id = p_portfolio_id;
     -- ✅ Включаем все активы, включая проданные (quantity = 0)
 END;

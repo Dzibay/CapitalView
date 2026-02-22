@@ -49,8 +49,10 @@ const profitBreakdown = computed(() => {
   const unrealized = totals.unrealized_pl ?? analytics.unrealized_pl ?? 0
   const dividends = totals.dividends ?? analytics.dividends ?? 0
   const coupons = totals.coupons ?? analytics.coupons ?? 0
-  const commissions = totals.commissions ?? analytics.commissions ?? 0
-  const taxes = totals.taxes ?? analytics.taxes ?? 0
+  // Комиссии - это расходы, берем абсолютное значение (на случай если они отрицательные)
+  const commissions = Math.abs(totals.commissions ?? analytics.commissions ?? 0)
+  // Налоги - это расходы, берем абсолютное значение (на случай если они отрицательные)
+  const taxes = Math.abs(totals.taxes ?? analytics.taxes ?? 0)
   
   return {
     realized,
@@ -71,8 +73,16 @@ const profitBreakdownTooltip = computed(() => {
   if (b.unrealized !== 0) parts.push(`Нереализованная прибыль: ${formatCurrency(b.unrealized)}`)
   if (b.dividends !== 0) parts.push(`Дивиденды: ${formatCurrency(b.dividends)}`)
   if (b.coupons !== 0) parts.push(`Купоны: ${formatCurrency(b.coupons)}`)
-  if (b.commissions !== 0) parts.push(`Комиссии: ${formatCurrency(Math.abs(b.commissions))} (уменьшают прибыль)`)
-  if (b.taxes !== 0) parts.push(`Налоги: ${formatCurrency(b.taxes)}`)
+  // Комиссии показываем как отрицательные (расходы уменьшают прибыль)
+  if (b.commissions !== 0) {
+    const commissionsAbs = Math.abs(b.commissions)
+    parts.push(`Комиссии: ${formatCurrency(-commissionsAbs)} (уменьшают прибыль)`)
+  }
+  // Налоги показываем как отрицательные (расходы уменьшают прибыль)
+  if (b.taxes !== 0) {
+    const taxesAbs = Math.abs(b.taxes)
+    parts.push(`Налоги: ${formatCurrency(-taxesAbs)} (уменьшают прибыль)`)
+  }
   
   if (parts.length === 0) return 'Прибыль: 0 ₽'
   

@@ -162,10 +162,10 @@ def update_transaction(
         if old_pa:
             old_portfolio_id = old_pa[0].get("portfolio_id")
     
-    # 2️⃣ Удаляем старую транзакцию через RPC (пересчитывает FIFO)
-    delete_result = rpc("delete_transaction", {"p_transaction_id": transaction_id})
-    if delete_result is False:
-        raise Exception("Ошибка при удалении транзакции")
+    # 2️⃣ Удаляем старую транзакцию через batch функцию (пересчитывает FIFO)
+    delete_result = delete_transactions_batch([transaction_id])
+    if delete_result.get("success") is False:
+        raise Exception(f"Ошибка при удалении транзакции: {delete_result.get('error', 'Неизвестная ошибка')}")
     
     # 3️⃣ Создаем новую транзакцию с обновленными данными
     new_tx_id = create_transaction(
@@ -246,19 +246,23 @@ def update_transaction(
     return new_tx_id
 
 
-def delete_transaction(transaction_id: int):
+def delete_transactions_batch(transaction_ids: list[int]):
     """
-    Удаляет транзакцию и пересчитывает связанные данные.
-    SQL функция delete_transaction выполняет:
-    - Удаление транзакции
-    - Пересчет FIFO лотов
-    - Обновление portfolio_asset
-    - Обновление истории портфеля
+    Удаляет несколько транзакций батчем и пересчитывает связанные данные.
+    SQL функция delete_transactions_batch выполняет:
+    - Удаление транзакций
+    - Пересчет FIFO лотов для всех затронутых portfolio_assets
+    - Обновление portfolio_assets
+    - Обновление истории портфелей
     """
-    # Вызываем RPC функцию, которая выполняет все необходимые операции
-    delete_result = rpc("delete_transaction", {"p_transaction_id": transaction_id})
+    if not transaction_ids:
+        return {"success": False, "error": "Список ID транзакций пуст", "deleted_count": 0}
     
-    if delete_result is False:
-        raise Exception(f"Ошибка при удалении транзакции {transaction_id}")
+    # Вызываем RPC функцию для batch удаления
+    delete_result = rpc("delete_transactions_batch", {"p_transaction_ids": transaction_ids})
     
-    return True
+    if not delete_result or delete_result.get("success") is False:
+        error_msg = delete_result.get("error", "Неизвестная ошибка") if delete_result else "Ошибка при удалении транзакций"
+        raise Exception(f"Ошибка при batch удалении транзакций: {error_msg}")
+    
+    return delete_result

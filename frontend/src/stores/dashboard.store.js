@@ -68,15 +68,9 @@ export const useDashboardStore = defineStore('dashboard', {
         
         this.lastFetch = Date.now()
         
-        if (import.meta.env.DEV) {
-          console.log('Dashboard data loaded:', data)
-        }
       } catch (err) {
-        if (import.meta.env.DEV) {
-          console.error('Ошибка получения данных Dashboard:', err)
-          if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
+        if (import.meta.env.DEV && (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error'))) {
             console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
-          }
         }
         throw err
       } finally {
@@ -118,19 +112,12 @@ export const useDashboardStore = defineStore('dashboard', {
     updatePortfolio(portfolioId, updates) {
       const portfolio = this.portfolios.find(p => p.id === portfolioId)
       if (portfolio) {
-        console.log('[DashboardStore] updatePortfolio called:', {
-          portfolioId,
-          updates,
-          currentPortfolio: portfolio
-        })
-        
         // Если обновляется description, нужно правильно его слить
         if (updates.description) {
           portfolio.description = {
             ...(portfolio.description || {}),
             ...updates.description
           }
-          console.log('[DashboardStore] description updated:', portfolio.description)
         }
         
         // Обновляем остальные поля
@@ -139,10 +126,6 @@ export const useDashboardStore = defineStore('dashboard', {
             portfolio[key] = updates[key]
           }
         })
-        
-        console.log('[DashboardStore] portfolio after update:', portfolio)
-      } else {
-        console.warn('[DashboardStore] Portfolio not found:', portfolioId)
       }
     },
 
@@ -165,10 +148,6 @@ export const useDashboardStore = defineStore('dashboard', {
       
       // Удаляем все найденные портфели
       this.portfolios = this.portfolios.filter(p => !idsToRemove.has(p.id))
-      
-      if (import.meta.env.DEV) {
-        console.log(`Удалено портфелей: ${idsToRemove.size} (родитель + дочерние)`)
-      }
     },
 
     // Удаление актива из всех портфелей

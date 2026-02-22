@@ -42,3 +42,24 @@ class AddAssetPriceRequest(BaseModel):
 class MoveAssetRequest(BaseModel):
     """Модель запроса перемещения актива между портфелями."""
     target_portfolio_id: int = Field(..., ge=1, description="ID целевого портфеля")
+
+
+class BatchAddPriceRequest(BaseModel):
+    """Модель запроса массового добавления цен актива."""
+    asset_id: int = Field(..., ge=1, description="ID актива")
+    prices: list = Field(..., min_length=1, description="Список цен с датами")
+    
+    @field_validator('prices')
+    @classmethod
+    def validate_prices(cls, v):
+        """Валидирует список цен."""
+        if not isinstance(v, list):
+            raise ValueError("prices должен быть списком")
+        for price_item in v:
+            if not isinstance(price_item, dict):
+                raise ValueError("Каждый элемент prices должен быть словарем")
+            if 'price' not in price_item or 'date' not in price_item:
+                raise ValueError("Каждый элемент prices должен содержать 'price' и 'date'")
+            if price_item['price'] <= 0:
+                raise ValueError("Цена должна быть больше 0")
+        return v

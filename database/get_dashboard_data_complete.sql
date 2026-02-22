@@ -31,7 +31,18 @@ connections_data AS (
     ORDER BY ubc.portfolio_id, ubc.last_sync_at DESC
 ),
 
--- 3. Активы портфелей (встроенный запрос вместо функции)
+-- 3. Первая транзакция покупки для каждого актива
+first_purchase_data AS (
+    SELECT DISTINCT ON (t.portfolio_asset_id)
+        t.portfolio_asset_id,
+        t.transaction_date AS first_purchase_date,
+        t.price AS first_purchase_price
+    FROM transactions t
+    WHERE t.transaction_type = 1  -- Покупка
+    ORDER BY t.portfolio_asset_id, t.transaction_date ASC, t.id ASC
+),
+
+-- 4. Активы портфелей (встроенный запрос вместо функции)
 portfolio_assets_data AS (
     SELECT 
         pa.portfolio_id,
@@ -54,9 +65,11 @@ portfolio_assets_data AS (
                 END,
                 'profit', ((COALESCE(apf.curr_price, 0) - COALESCE(pa.average_price, 0)) * COALESCE(pa.quantity, 0)),
                 'currency_ticker', qa.ticker,
-                'currency_rate_to_rub', COALESCE(curr.price, 1),
+                'currency_rate_to_rub', COALESCE(curr.curr_price, 1),
                 'profit_rub', ((COALESCE(apf.curr_price, 0) - COALESCE(pa.average_price, 0))
-                    * COALESCE(pa.quantity, 0) * COALESCE(curr.price, 1)),
+                    * COALESCE(pa.quantity, 0) * COALESCE(curr.curr_price, 1)),
+                'first_purchase_date', fpd.first_purchase_date,
+                'first_purchase_price', COALESCE(fpd.first_purchase_price, 0),
                 'dividends', COALESCE((
                     SELECT jsonb_agg(
                         jsonb_build_object(
@@ -81,11 +94,12 @@ portfolio_assets_data AS (
     LEFT JOIN asset_types at ON at.id = a.asset_type_id
     LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
     LEFT JOIN assets qa ON qa.id = a.quote_asset_id
-    LEFT JOIN asset_last_currency_prices curr ON curr.asset_id = a.quote_asset_id
+    LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
+    LEFT JOIN first_purchase_data fpd ON fpd.portfolio_asset_id = pa.id
     GROUP BY pa.portfolio_id
 ),
 
--- 4. История портфелей (встроенный запрос вместо функции)
+-- 5. История портфелей (встроенный запрос вместо функции)
 portfolio_history_data AS (
     SELECT 
         pv.portfolio_id,
@@ -95,6 +109,9 @@ portfolio_history_data AS (
                 'value', pv.total_value,
                 'invested', pv.total_invested,
                 'payouts', pv.total_payouts,
+                'realized', pv.total_realized,
+                'commissions', pv.total_commissions,
+                'taxes', COALESCE(pv.total_taxes, 0),
                 'pnl', pv.total_pnl
             )
             ORDER BY pv.report_date
@@ -104,13 +121,13 @@ portfolio_history_data AS (
     GROUP BY pv.portfolio_id
 ),
 
--- 5. Полная аналитика портфелей (используем get_user_portfolios_analytics для полной структуры)
+-- 6. Полная аналитика портфелей (используем get_user_portfolios_analytics для полной структуры)
 -- Это даст нам все нужные поля: totals, monthly_flow, monthly_payouts, asset_distribution, etc.
 full_analytics_data AS (
     SELECT get_user_portfolios_analytics(p_user_id) AS analytics_json
 ),
 
--- 6. Преобразуем JSON массив аналитики в map по portfolio_id для JOIN
+-- 7. Преобразуем JSON массив аналитики в map по portfolio_id для JOIN
 -- И заменяем null на пустые массивы для полей, которые должны быть массивами
 portfolio_analytics_map AS (
     SELECT 
@@ -148,13 +165,13 @@ portfolio_analytics_map AS (
     LATERAL json_array_elements(analytics_json::json) AS elem
 ),
 
--- 7. Финальная аналитика для JOIN
+-- 8. Финальная аналитика для JOIN
 portfolio_analytics_final AS (
     SELECT portfolio_id, analytics
     FROM portfolio_analytics_map
 ),
 
--- 7. Последние транзакции (по 5 для каждого портфеля)
+-- 9. Последние транзакции (по 5 для каждого портфеля)
 recent_transactions AS (
     SELECT jsonb_agg(
         jsonb_build_object(
@@ -199,7 +216,7 @@ recent_transactions AS (
     WHERE tx.rn <= 5
 )
 
--- 8. Финальная сборка результата
+-- 10. Финальная сборка результата
 SELECT jsonb_build_object(
     'portfolios', COALESCE(
         jsonb_agg(

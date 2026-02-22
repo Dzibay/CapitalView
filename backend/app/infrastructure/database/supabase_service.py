@@ -102,6 +102,25 @@ def rpc(fn_name: str, params: dict):
     if isinstance(result, bool):
         return result
     
+    # Если результат - список с данными, нормализуем поля amount_rub/amountRub
+    # Supabase может преобразовывать snake_case в camelCase
+    if isinstance(result, list) and len(result) > 0:
+        first_item = result[0]
+        if isinstance(first_item, dict):
+            has_amount_rub = 'amount_rub' in first_item
+            has_amountRub = 'amountRub' in first_item
+            
+            # Если есть amount_rub, но нет amountRub, добавляем amountRub для совместимости
+            if has_amount_rub and not has_amountRub:
+                for item in result:
+                    if isinstance(item, dict) and 'amount_rub' in item:
+                        item['amountRub'] = item['amount_rub']
+            # Если есть amountRub, но нет amount_rub, добавляем amount_rub для совместимости
+            elif has_amountRub and not has_amount_rub:
+                for item in result:
+                    if isinstance(item, dict) and 'amountRub' in item:
+                        item['amount_rub'] = item['amountRub']
+    
     # Если результат - список с данными или другой тип
     return result
 
@@ -112,14 +131,23 @@ def table_select(table: str, select="*", filters: dict = None, in_filters: dict 
     
     if filters:
         for k, v in filters.items():
+            # Пропускаем None значения, чтобы избежать ошибок с типами bigint
+            if v is None:
+                continue
             q = q.eq(k, v)
     
     if in_filters:
         for k, v in in_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.in_(k, v)
     
     if neq_filters:
         for k, v in neq_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.neq(k, v)
 
     if order:
@@ -147,6 +175,9 @@ def table_upsert(table: str, data, filters: dict = None):
         # Если указаны фильтры, делаем update
         q = supabase.table(table).update(data)
         for k, v in filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.eq(k, v)
         return q.execute().data
     else:
@@ -158,6 +189,9 @@ def table_update(table: str, data: dict, filters: dict):
     supabase = get_supabase_client()
     q = supabase.table(table).update(data)
     for k, v in filters.items():
+        # Пропускаем None значения
+        if v is None:
+            continue
         q = q.eq(k, v)
     return q.execute().data
 
@@ -168,14 +202,23 @@ def table_delete(table: str, filters: dict = None, neq_filters: dict = None, in_
 
     if filters:
         for k, v in filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.eq(k, v)
 
     if neq_filters:
         for k, v in neq_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.neq(k, v)
 
     if in_filters:
         for k, v in in_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.in_(k, v)
 
     return q.execute().data
@@ -191,14 +234,23 @@ def table_select_with_neq(table: str, select: str = "*", filters: dict = None, n
     
     if filters:
         for k, v in filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.eq(k, v)
     
     if neq_filters:
         for k, v in neq_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.neq(k, v)
     
     if in_filters:
         for k, v in in_filters.items():
+            # Пропускаем None значения
+            if v is None:
+                continue
             q = q.in_(k, v)
     
     return q.execute().data

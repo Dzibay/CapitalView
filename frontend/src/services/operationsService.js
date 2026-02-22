@@ -13,5 +13,22 @@ export default {
     const res = await apiClient.get(API_ENDPOINTS.OPERATIONS.BASE, { params });
     // API возвращает { success: true, data: { operations: [...] } }
     return res.data?.data?.operations || res.data?.operations || res.data || [];
+  },
+
+  async addOperation(operationData) {
+    const res = await apiClient.post(API_ENDPOINTS.OPERATIONS.BASE, operationData);
+    return res.data;
+  },
+
+  async addOperationsBatch(batchData) {
+    const res = await apiClient.post(API_ENDPOINTS.OPERATIONS.BATCH, batchData);
+    return res.data;
+  },
+
+  async deleteOperations(operation_ids) {
+    const res = await apiClient.delete(API_ENDPOINTS.OPERATIONS.BASE, {
+      data: { ids: operation_ids }
+    });
+    return res.data;
   }
 };

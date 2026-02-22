@@ -177,7 +177,7 @@ watch(() => props.chartData, () => {
       </p>
 
       <div class="capital-growth">
-        <p>Прибыль: {{ formatCurrency(profitAbs) }}</p>
+        <p>Прирост: {{ formatCurrency(profitAbs) }}</p>
         <ValueChange 
           :value="profitPercent" 
           :is-positive="profitAbs >= 0"

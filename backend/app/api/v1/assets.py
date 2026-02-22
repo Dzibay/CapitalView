@@ -4,11 +4,11 @@ API endpoints для работы с активами.
 """
 from fastapi import APIRouter, Query, HTTPException, Depends
 from app.domain.services.assets_service import (
-    delete_asset, create_asset, add_asset_price,
+    delete_asset, create_asset, add_asset_price, add_asset_prices_batch,
     get_asset_info, get_asset_price_history, get_portfolio_asset_info,
-    move_asset_to_portfolio
+    move_asset_to_portfolio, get_asset_daily_values
 )
-from app.domain.models.asset_models import AddAssetPriceRequest, MoveAssetRequest
+from app.domain.models.asset_models import AddAssetPriceRequest, MoveAssetRequest, BatchAddPriceRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.core.dependencies import get_current_user
 from app.utils.response import success_response
@@ -100,6 +100,30 @@ async def add_asset_price_route(
     )
 
 
+@router.post("/prices/batch", status_code=HTTPStatus.CREATED)
+async def add_asset_prices_batch_route(
+    data: BatchAddPriceRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Массовое добавление цен актива."""
+    logger.debug(f"Получены данные для массового добавления цен: asset_id={data.asset_id}, count={len(data.prices)}")
+    
+    res = add_asset_prices_batch(data.asset_id, data.prices)
+    
+    if res.get("success") is False:
+        logger.warning(f"Ошибка при массовом добавлении цен: {res.get('error')}")
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=res.get("error", "Ошибка при массовом добавлении цен")
+        )
+    
+    return success_response(
+        data=res,
+        message=f"Успешно добавлено {res.get('count', 0)} цен",
+        status_code=HTTPStatus.CREATED
+    )
+
+
 @router.get("/{asset_id}")
 async def get_asset_info_route(
     asset_id: int,
@@ -133,6 +157,25 @@ async def get_asset_price_history_route(
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail=result.get("error", "Ошибка при получении истории цен")
+        )
+    
+    return success_response(data=result)
+
+
+@router.get("/portfolio/{portfolio_asset_id}/daily-values")
+async def get_asset_daily_values_route(
+    portfolio_asset_id: int,
+    user: dict = Depends(get_current_user),
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None)
+):
+    """Получение истории стоимости актива для графика."""
+    result = get_asset_daily_values(portfolio_asset_id, from_date, to_date)
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=result.get("error", "Ошибка при получении истории стоимости актива")
         )
     
     return success_response(data=result)
