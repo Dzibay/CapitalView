@@ -328,6 +328,26 @@ async def update_history_prices() -> int:
                 logger.info(f"  ✅ Обновлено {min(i + batch_size, len(updated_asset_ids))}/{len(updated_asset_ids)} валют")
             except Exception as e:
                 logger.error(f"  ⚠️ Ошибка при обновлении батча {i//batch_size + 1}: {type(e).__name__}: {e}")
+        
+        # Обновляем портфели с обновленными валютами
+        if updated_asset_ids:
+            # Находим минимальную дату для всех валют
+            min_date = min(asset_date_map.values())
+            from_date = min_date[:10] if isinstance(min_date, str) else str(min_date)[:10]
+            
+            logger.info(f"🔄 Обновление портфелей с валютами (с даты {from_date})...")
+            try:
+                update_results = await db_rpc('update_assets_daily_values', {
+                    'p_asset_ids': updated_asset_ids,
+                    'p_from_date': from_date
+                })
+                if update_results:
+                    updated_count = len([r for r in update_results if r.get("updated", False)])
+                    logger.info(f"  ✅ Обновлено портфелей: {updated_count}")
+                else:
+                    logger.warning("  ⚠️ Не удалось обновить портфели")
+            except Exception as e:
+                logger.error(f"  ❌ Ошибка при обновлении портфелей: {type(e).__name__}: {e}")
     
     logger.info(f"✅ Обработано валют: успешно {success_count}, ошибок {error_count}, без новых данных {len(assets) - success_count - error_count}")
     
@@ -400,6 +420,22 @@ async def update_today_prices() -> int:
             logger.info(f"  ✅ Обновлено {len(updated_ids)} валют")
         except Exception as e:
             logger.error(f"  ⚠️ Ошибка при обновлении: {type(e).__name__}: {e}")
+        
+        # Обновляем портфели с обновленными валютами
+        logger.info(f"🔄 Обновление портфелей с валютами...")
+        try:
+            today = date.today().isoformat()
+            update_results = await db_rpc('update_assets_daily_values', {
+                'p_asset_ids': updated_ids,
+                'p_from_date': today
+            })
+            if update_results:
+                updated_count = len([r for r in update_results if r.get("updated", False)])
+                logger.info(f"  ✅ Обновлено портфелей: {updated_count}")
+            else:
+                logger.warning("  ⚠️ Не удалось обновить портфели")
+        except Exception as e:
+            logger.error(f"  ❌ Ошибка при обновлении портфелей: {type(e).__name__}: {e}")
     
     logger.info(f"✅ Обработано валют: успешно {len(updated_ids)}, ошибок 0, без новых данных {len(assets) - len(updated_ids)}")
     logger.info(f"📊 Активов с новыми данными: {len(updated_ids)}/{len(assets)}")

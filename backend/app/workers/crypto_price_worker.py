@@ -408,40 +408,31 @@ async def update_history_prices() -> int:
             logger.error(f"Ошибка при обновлении батча {i//batch_size + 1}: {e}")
             continue
 
-    portfolio_dates = await get_portfolios_with_assets(updated_assets)
-    
-    if not portfolio_dates:
-        return success_count
-    update_tasks = []
-    for portfolio_id, min_date in portfolio_dates.items():
+    # Обновляем портфели с обновленными активами используя новую оптимальную функцию
+    if updated_assets:
+        # Находим минимальную дату для всех активов
+        min_date = min(updated_assets.values())
         from_date = normalize_date_to_string(min_date) or str(min_date)[:10]
         
-        async def update_portfolio_with_sem(pid, fdate):
+        # Собираем список всех активов
+        asset_ids = list(updated_assets.keys())
+        
+        # Используем оптимальную функцию update_assets_daily_values
+        # Это обновит portfolio_daily_values для всех портфелей с активом одним вызовом
+        logger.info(f"🔄 Обновление портфелей с криптовалютами (с даты {from_date})...")
+        try:
             async with db_sem:
-                return await db_rpc('update_portfolio_values_from_date', {
-                    'p_portfolio_id': pid,
-                    'p_from_date': fdate
+                update_results = await db_rpc('update_assets_daily_values', {
+                    'p_asset_ids': asset_ids,
+                    'p_from_date': from_date
                 })
-        
-        update_tasks.append(update_portfolio_with_sem(portfolio_id, from_date))
-
-    if update_tasks:
-        sem_portfolio = asyncio.Semaphore(10)
-        
-        async def update_with_sem(task):
-            async with sem_portfolio:
-                return await task
-        
-        portfolio_results = await asyncio.gather(
-            *[update_with_sem(task) for task in update_tasks],
-            return_exceptions=True
-        )
-        
-        success_count = sum(1 for r in portfolio_results if not isinstance(r, Exception))
-        error_count = sum(1 for r in portfolio_results if isinstance(r, Exception))
-        
-        if error_count > 0:
-            logger.warning(f"Ошибок при обновлении портфелей: {error_count}")
+                if update_results:
+                    updated_count = len([r for r in update_results if r.get("updated", False)])
+                    logger.info(f"  ✅ Обновлено портфелей: {updated_count}")
+                else:
+                    logger.warning("  ⚠️ Не удалось обновить портфели")
+        except Exception as e:
+            logger.error(f"  ❌ Ошибка при обновлении портфелей: {type(e).__name__}: {e}")
 
     return success_count
 
@@ -596,8 +587,6 @@ async def update_today_prices() -> int:
             }
         
         deduplicated_updates = list(unique_updates.values())
-        
-        if len(deduplicated_updates) < len(updates_batch):
         
         pack = []
         for row in deduplicated_updates:
