@@ -4,6 +4,9 @@ API endpoints для работы с транзакциями.
 """
 from fastapi import APIRouter, Query, HTTPException, Depends, Body
 from app.domain.services.transactions_service import get_transactions, create_transaction, update_transaction, delete_transactions_batch
+from app.domain.services.access_control_service import (
+    check_portfolio_asset_access, check_transaction_access, check_multiple_transactions_access
+)
 from app.domain.models.transaction_models import CreateTransactionRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.core.dependencies import get_current_user
@@ -34,6 +37,11 @@ async def get_transactions_route(
     limit: Optional[int] = Query(None)
 ):
     """Получение списка транзакций пользователя."""
+    # Проверяем доступ к портфелю, если указан
+    if portfolio_id:
+        from app.domain.services.access_control_service import check_portfolio_access
+        check_portfolio_access(portfolio_id, user["id"])
+    
     start_date_parsed, end_date_parsed = parse_date_range(start_date, end_date)
 
     data = get_transactions(
@@ -54,6 +62,9 @@ async def add_transaction_route(
     user: dict = Depends(get_current_user)
 ):
     """Создание новой транзакции."""
+    # Проверяем доступ к портфельному активу
+    check_portfolio_asset_access(data.portfolio_asset_id, user["id"])
+    
     logger.info(f"Получен запрос на создание транзакции: {data.model_dump()}")
 
     transaction_date_str = data.transaction_date
@@ -96,6 +107,13 @@ async def update_transaction_route(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="transaction_id is required"
         )
+    
+    # Проверяем доступ к транзакции
+    check_transaction_access(transaction_id, user["id"])
+    
+    # Если меняется portfolio_asset_id, проверяем доступ к новому активу
+    if portfolio_asset_id:
+        check_portfolio_asset_access(portfolio_asset_id, user["id"])
 
     tx_id = update_transaction(
         transaction_id=transaction_id,
@@ -127,6 +145,9 @@ async def delete_transactions_route(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="ids must be a non-empty array"
         )
+    
+    # Проверяем доступ ко всем транзакциям
+    check_multiple_transactions_access(ids, user["id"])
     
     try:
         # Используем batch удаление для оптимизации

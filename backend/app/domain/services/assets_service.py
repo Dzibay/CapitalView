@@ -691,4 +691,36 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
     except Exception as e:
         logger.error(f"Ошибка при перемещении актива: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
+
+
+def get_asset_in_all_portfolios(asset_id: int, user_id: str):
+    """
+    Получает информацию об активе во всех портфелях пользователя.
+    
+    Args:
+        asset_id: ID актива
+        user_id: ID пользователя (UUID - str)
+        
+    Returns:
+        dict с ключами:
+            - success: bool
+            - portfolios: list - список портфелей с информацией об активе
+            - error: str (если success=False)
+    """
+    try:
+        user_id_str = str(user_id) if user_id else None
+        
+        # Получаем все портфели пользователя, где есть этот актив
+        result = rpc("get_asset_in_all_portfolios", {
+            "p_asset_id": asset_id,
+            "p_user_id": user_id_str
+        })
+        
+        if result is None:
+            return {"success": False, "error": "Не удалось получить данные"}
+        
+        return {"success": True, "portfolios": result if result else []}
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации об активе в портфелях: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
     

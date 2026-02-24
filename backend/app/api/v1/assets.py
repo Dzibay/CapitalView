@@ -6,7 +6,10 @@ from fastapi import APIRouter, Query, HTTPException, Depends
 from app.domain.services.assets_service import (
     delete_asset, create_asset, add_asset_price, add_asset_prices_batch,
     get_asset_info, get_asset_price_history, get_portfolio_asset_info,
-    move_asset_to_portfolio, get_asset_daily_values
+    move_asset_to_portfolio, get_asset_daily_values, get_asset_in_all_portfolios
+)
+from app.domain.services.access_control_service import (
+    check_portfolio_access, check_portfolio_asset_access, check_asset_access
 )
 from app.domain.models.asset_models import AddAssetPriceRequest, MoveAssetRequest, BatchAddPriceRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
@@ -47,6 +50,9 @@ async def delete_asset_route(
     user: dict = Depends(get_current_user)
 ):
     """Удаление актива."""
+    # Проверяем доступ к портфельному активу
+    check_portfolio_asset_access(asset_id, user["id"])
+    
     logger.debug(f"Попытка удаления актива (portfolio_asset_id): {asset_id}")
     
     res = delete_asset(asset_id)
@@ -69,6 +75,9 @@ async def add_asset_price_route(
     user: dict = Depends(get_current_user)
 ):
     """Добавление цены актива."""
+    # Проверяем доступ к активу (для кастомных активов)
+    check_asset_access(data.asset_id, user["id"])
+    
     logger.debug(f"Получены данные для добавления цены: {data.model_dump()}")
     
     if hasattr(data.date, 'isoformat'):
@@ -106,6 +115,9 @@ async def add_asset_prices_batch_route(
     user: dict = Depends(get_current_user)
 ):
     """Массовое добавление цен актива."""
+    # Проверяем доступ к активу (для кастомных активов)
+    check_asset_access(data.asset_id, user["id"])
+    
     logger.debug(f"Получены данные для массового добавления цен: asset_id={data.asset_id}, count={len(data.prices)}")
     
     res = add_asset_prices_batch(data.asset_id, data.prices)
@@ -130,6 +142,9 @@ async def get_asset_info_route(
     user: dict = Depends(get_current_user)
 ):
     """Получение информации об активе."""
+    # Проверяем доступ к активу (для кастомных активов)
+    check_asset_access(asset_id, user["id"])
+    
     result = get_asset_info(asset_id)
     
     if not result.get("success"):
@@ -151,6 +166,9 @@ async def get_asset_price_history_route(
     limit: int = Query(1000, ge=1)
 ):
     """Получение истории цен актива."""
+    # Проверяем доступ к активу (для кастомных активов)
+    check_asset_access(asset_id, user["id"])
+    
     result = get_asset_price_history(asset_id, start_date, end_date, limit)
     
     if not result.get("success"):
@@ -170,6 +188,9 @@ async def get_asset_daily_values_route(
     to_date: Optional[str] = Query(None)
 ):
     """Получение истории стоимости актива для графика."""
+    # Проверяем доступ к портфельному активу
+    check_portfolio_asset_access(portfolio_asset_id, user["id"])
+    
     result = get_asset_daily_values(portfolio_asset_id, from_date, to_date)
     
     if not result.get("success"):
@@ -187,6 +208,9 @@ async def get_portfolio_asset_info_route(
     user: dict = Depends(get_current_user)
 ):
     """Получение информации о портфельном активе (оптимизированная версия)."""
+    # Проверяем доступ к портфельному активу
+    check_portfolio_asset_access(portfolio_asset_id, user["id"])
+    
     result = get_portfolio_asset_info(portfolio_asset_id, user["id"])
     
     if not result.get("success"):
@@ -206,6 +230,11 @@ async def move_asset_route(
     user: dict = Depends(get_current_user)
 ):
     """Перемещение актива в другой портфель."""
+    # Проверяем доступ к портфельному активу
+    check_portfolio_asset_access(portfolio_asset_id, user["id"])
+    # Проверяем доступ к целевому портфелю
+    check_portfolio_access(data.target_portfolio_id, user["id"])
+    
     result = move_asset_to_portfolio(
         portfolio_asset_id=portfolio_asset_id,
         target_portfolio_id=data.target_portfolio_id,
@@ -237,6 +266,9 @@ async def get_asset_in_all_portfolios_route(
     user: dict = Depends(get_current_user)
 ):
     """Получение информации об активе во всех портфелях пользователя."""
+    # Проверяем доступ к активу (для кастомных активов)
+    check_asset_access(asset_id, user["id"])
+    
     result = get_asset_in_all_portfolios(asset_id, user["id"])
     
     if not result.get("success"):

@@ -17,6 +17,7 @@ from app.domain.services.portfolio_service import (
     get_portfolio_summary
 )
 from app.domain.services.task_service import create_import_task
+from app.domain.services.access_control_service import check_portfolio_access
 from app.domain.models.portfolio_models import (
     CreatePortfolioRequest,
     UpdatePortfolioDescriptionRequest,
@@ -46,7 +47,10 @@ async def add_portfolio_route(
     user_id = user["id"]
     parent_portfolio_id = data.parent_portfolio_id
 
-    if not parent_portfolio_id:
+    if parent_portfolio_id:
+        # Проверяем доступ к родительскому портфелю
+        check_portfolio_access(parent_portfolio_id, user_id)
+    else:
         parent_portfolio = await get_user_portfolio_parent(user["email"])
         parent_portfolio_id = parent_portfolio["id"]
 
@@ -78,6 +82,9 @@ async def get_portfolio_route(
     user: dict = Depends(get_current_user)
 ):
     """Получает информацию о портфеле."""
+    # Проверяем доступ к портфелю
+    check_portfolio_access(portfolio_id, user["id"])
+    
     info = get_portfolio_info(portfolio_id)
     if not info.get("success"):
         raise HTTPException(status_code=404, detail=info.get("error"))
@@ -90,6 +97,9 @@ async def delete_portfolio_route(
     user: dict = Depends(get_current_user)
 ):
     """Удаление портфеля."""
+    # Проверяем доступ к портфелю
+    check_portfolio_access(portfolio_id, user["id"])
+    
     logger.info(f"Запрос удаления портфеля {portfolio_id}")
     if not table_select("portfolios", "parent_portfolio_id", {"id": portfolio_id})[0]['parent_portfolio_id']:
         raise HTTPException(status_code=400, detail=ErrorMessages.PARENT_PORTFOLIO_CANNOT_BE_DELETED)
@@ -104,6 +114,9 @@ async def portfolio_clear_route(
     user: dict = Depends(get_current_user)
 ):
     """Очистка портфеля (удаление всех активов и транзакций)."""
+    # Проверяем доступ к портфелю
+    check_portfolio_access(portfolio_id, user["id"])
+    
     logger.info(f"Запрос очистки портфеля {portfolio_id}")
     rpc("clear_portfolio_full", {"p_portfolio_id": portfolio_id})
     return success_response(message="Портфель успешно очищен")
@@ -115,6 +128,9 @@ async def get_portfolio_assets_route(
     user: dict = Depends(get_current_user)
 ):
     """Получает активы портфеля."""
+    # Проверяем доступ к портфелю
+    check_portfolio_access(portfolio_id, user["id"])
+    
     assets = await get_portfolio_assets(portfolio_id)
     return success_response(data={"assets": assets})
 
@@ -126,6 +142,9 @@ async def update_portfolio_description_route(
     user: dict = Depends(get_current_user)
 ):
     """Обновление описания портфеля."""
+    # Проверяем доступ к портфелю
+    check_portfolio_access(portfolio_id, user["id"])
+    
     updated = update_portfolio_description(
         portfolio_id,
         text=data.text,
@@ -151,6 +170,9 @@ async def get_portfolio_history_route(
     user: dict = Depends(get_current_user)
 ):
     """Получает историю стоимости портфеля."""
+    # Проверяем доступ к портфелю
+    check_portfolio_access(portfolio_id, user["id"])
+    
     history = await get_portfolio_value_history(portfolio_id)
     return success_response(data={"history": history})
 
@@ -161,6 +183,9 @@ async def get_portfolio_summary_route(
     user: dict = Depends(get_current_user)
 ):
     """Получает краткую сводку по портфелю."""
+    # Проверяем доступ к портфелю
+    check_portfolio_access(portfolio_id, user["id"])
+    
     summary = get_portfolio_summary(portfolio_id)
     if not summary.get("success"):
         raise HTTPException(status_code=404, detail=summary.get("error"))
@@ -173,6 +198,9 @@ async def get_portfolio_transactions_route(
     user: dict = Depends(get_current_user)
 ):
     """Получает транзакции портфеля."""
+    # Проверяем доступ к портфелю
+    check_portfolio_access(portfolio_id, user["id"])
+    
     transactions = await get_portfolio_transactions(portfolio_id)
     return success_response(data={"transactions": transactions})
 

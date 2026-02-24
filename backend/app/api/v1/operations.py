@@ -4,6 +4,10 @@ API endpoints для работы с операциями по активам.
 """
 from fastapi import APIRouter, Query, HTTPException, Depends, Body
 from app.domain.services.operations_service import get_operations, create_operation, create_operations_batch, delete_operations_batch
+from app.domain.services.access_control_service import (
+    check_portfolio_access, check_portfolio_asset_access, check_asset_access,
+    check_operation_access, check_multiple_operations_access
+)
 from app.domain.models.operation_models import CreateOperationRequest, BatchCreateOperationRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.core.dependencies import get_current_user
@@ -27,6 +31,10 @@ async def get_operations_route(
     limit: Optional[int] = Query(None)
 ):
     """Получение списка операций пользователя."""
+    # Проверяем доступ к портфелю, если указан
+    if portfolio_id:
+        check_portfolio_access(portfolio_id, user["id"])
+    
     start_date_parsed, end_date_parsed = parse_date_range(start_date, end_date)
 
     data = get_operations(
@@ -46,6 +54,14 @@ async def add_operation_route(
     user: dict = Depends(get_current_user)
 ):
     """Создание новой операции по активу."""
+    # Проверяем доступ к ресурсам операции
+    if data.portfolio_id:
+        check_portfolio_access(data.portfolio_id, user["id"])
+    if data.portfolio_asset_id:
+        check_portfolio_asset_access(data.portfolio_asset_id, user["id"])
+    if data.asset_id:
+        check_asset_access(data.asset_id, user["id"])
+    
     logger.info(f"Получен запрос на создание операции: {data.model_dump()}")
     
     # Валидация операции происходит автоматически через model_post_init
@@ -96,6 +112,14 @@ async def add_operations_batch_route(
     user: dict = Depends(get_current_user)
 ):
     """Массовое создание повторяющихся операций (ежемесячно)."""
+    # Проверяем доступ к ресурсам операции
+    if data.portfolio_id:
+        check_portfolio_access(data.portfolio_id, user["id"])
+    if data.portfolio_asset_id:
+        check_portfolio_asset_access(data.portfolio_asset_id, user["id"])
+    if data.asset_id:
+        check_asset_access(data.asset_id, user["id"])
+    
     logger.info(f"Получен запрос на массовое создание операций: operation_type={data.operation_type}, start_date={data.start_date}, end_date={data.end_date}")
     
     try:
@@ -151,6 +175,9 @@ async def delete_operations_route(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="ids must be a non-empty array"
         )
+    
+    # Проверяем доступ ко всем операциям
+    check_multiple_operations_access(ids, user["id"])
     
     try:
         result = delete_operations_batch(ids)
