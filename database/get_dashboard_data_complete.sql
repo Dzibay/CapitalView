@@ -54,6 +54,7 @@ portfolio_assets_data AS (
                 'ticker', a.ticker,
                 'type', at.name,
                 'properties', a.properties,
+                'is_custom', CASE WHEN a.user_id IS NOT NULL THEN true ELSE false END,
                 'quantity', COALESCE(pa.quantity, 0),
                 'leverage', COALESCE(pa.leverage, 1.0),
                 'average_price', COALESCE(pa.average_price, 0),

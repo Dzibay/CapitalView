@@ -150,6 +150,19 @@ def add_asset_price(data):
         return {"success": False, "error": "price должен быть больше 0"}
     if not date:
         return {"success": False, "error": "date обязателен"}
+    
+    # Проверяем, что актив не является системным (user_id IS NULL)
+    try:
+        asset = table_select("assets", "id, user_id", filters={"id": asset_id})
+        if not asset or len(asset) == 0:
+            return {"success": False, "error": "Актив не найден"}
+        
+        asset_data = asset[0]
+        if asset_data.get("user_id") is None:
+            return {"success": False, "error": "Невозможно изменить цену системного актива"}
+    except Exception as e:
+        logger.error(f"Ошибка при проверке актива {asset_id}: {e}")
+        return {"success": False, "error": "Ошибка при проверке актива"}
 
     price_data = {
         "asset_id": asset_id,
@@ -201,6 +214,19 @@ def add_asset_prices_batch(asset_id: int, prices: list):
         return {"success": False, "error": "asset_id обязателен"}
     if not prices or len(prices) == 0:
         return {"success": False, "error": "prices не может быть пустым"}
+    
+    # Проверяем, что актив не является системным (user_id IS NULL)
+    try:
+        asset = table_select("assets", "id, user_id", filters={"id": asset_id})
+        if not asset or len(asset) == 0:
+            return {"success": False, "error": "Актив не найден"}
+        
+        asset_data = asset[0]
+        if asset_data.get("user_id") is None:
+            return {"success": False, "error": "Невозможно изменить цену системного актива"}
+    except Exception as e:
+        logger.error(f"Ошибка при проверке актива {asset_id}: {e}")
+        return {"success": False, "error": "Ошибка при проверке актива"}
     
     # Подготавливаем данные для upsert
     price_data_list = []

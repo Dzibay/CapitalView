@@ -221,6 +221,13 @@ const handleAddTransaction = (asset) => {
 };
 
 const handleAddPrice = (asset) => {
+  // Проверяем, что актив является кастомным (is_custom === true)
+  const assetData = asset?.asset || asset;
+  if (assetData?.is_custom === false || asset?.is_custom === false) {
+    // Системный актив - не позволяем изменять цену
+    console.warn('Попытка изменить цену системного актива:', assetData)
+    return;
+  }
   selectedAsset.value = asset;
   openModal('addPrice');
 };

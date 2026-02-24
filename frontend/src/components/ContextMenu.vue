@@ -116,7 +116,12 @@ onBeforeUnmount(() => {
           <span class="item-icon">💰</span>
           <span class="item-text">Добавить транзакцию</span>
         </button>
-        <button class="item" @click="closeMenu(); $emit('addPrice', menu.payload)">
+        <!-- Скрываем кнопку "Изменить цену" для системных активов (is_custom === false) -->
+        <button 
+          v-if="menu.payload?.asset?.is_custom !== false && menu.payload?.is_custom !== false"
+          class="item" 
+          @click="closeMenu(); $emit('addPrice', menu.payload)"
+        >
           <span class="item-icon">📈</span>
           <span class="item-text">Изменить цену</span>
         </button>
