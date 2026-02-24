@@ -189,7 +189,10 @@
               <span class="label-icon">📅</span>
               Дата добавления
             </label>
-            <DateInput v-model="form.date" required />
+            <DateInput v-model="form.date" :min="minDate" required />
+            <small v-if="minDate && assetTypeChoice === 'system'" class="form-hint" style="margin-top: 4px;">
+              Первая доступная дата: {{ minDate }}
+            </small>
           </div>
         </div>
 
@@ -211,6 +214,7 @@
 
 <script setup>
 import { reactive, ref, computed, watch } from 'vue'
+import { normalizeDateToString } from '../../utils/date'
 import { Check } from 'lucide-vue-next'
 import { Button, ToggleSwitch, DateInput } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
@@ -236,7 +240,7 @@ const initialFormState = {
   currency: null,
   quantity: 0,
   average_price: 0,
-  date: new Date().toISOString().slice(0, 10)
+  date: normalizeDateToString(new Date()) || ''
 }
 
 const form = reactive({ ...initialFormState })
@@ -245,10 +249,12 @@ const searchQuery = ref("")
 const assetTypeChoice = ref("system") // 'system' или 'custom' - по умолчанию системный
 
 // Использование рыночной цены для системных активов
-const useMarketPrice = ref(false) // Переключатель для автоматической загрузки рыночной цены
+const useMarketPrice = ref(true) // Переключатель для автоматической загрузки рыночной цены (включен по умолчанию)
+const lastMarketPrice = ref(null) // Последняя загруженная рыночная цена
 const loadingPrice = ref(false) // Состояние загрузки рыночной цены
 const priceHistoryCache = ref(null) // Кэш истории цен актива
 const isLoadingHistory = ref(false) // Флаг для предотвращения двойной загрузки истории
+const minDate = ref(null) // Минимальная дата (первая цена в истории)
 
 // Фильтруем валюты: исключаем криптовалюты (asset_type_id = 6), оставляем только фиатные валюты (asset_type_id = 7)
 const fiatCurrencies = computed(() => {
@@ -290,6 +296,12 @@ const submitForm = async () => {
     return;
   }
   
+  // Проверка для системного актива: дата не должна быть раньше первой цены
+  if (assetTypeChoice.value === 'system' && minDate.value && form.date && new Date(form.date) < new Date(minDate.value)) {
+    alert(`Дата добавления не может быть раньше первой доступной даты: ${minDate.value}`);
+    return;
+  }
+  
   // Для кастомного актива: заполняем asset_id как null и убираем ticker
   if (assetTypeChoice.value === 'custom') {
       form.asset_id = null;
@@ -299,7 +311,7 @@ const submitForm = async () => {
   if (!props.onSave) return
   saving.value = true
   try {
-    await props.onSave({ ...form })  // ждём промис от родителя
+    await props.onSave({ ...form })  // ждём промис от родителя
     emit('close')
   } catch (err) {
     console.error(err)
@@ -319,7 +331,7 @@ const filteredAssets = computed(() => {
   )
 })
 
-const selectAsset = (asset) => {
+const selectAsset = async (asset) => {
   form.asset_id = asset.id
   // Устанавливаем name, ticker и currency для системного актива, 
   // чтобы передать их на backend (если это требуется) и для отображения в поле поиска
@@ -331,11 +343,17 @@ const selectAsset = (asset) => {
   
   // Очищаем кэш истории цен при выборе нового актива
   priceHistoryCache.value = null
-  // Если переключатель включен, загружаем историю для нового актива
-  if (useMarketPrice.value && form.date) {
-    loadPriceHistory().then(() => {
-      loadMarketPrice(true)
-    })
+  minDate.value = null
+  lastMarketPrice.value = null
+  
+  // Загружаем историю цен для системного актива
+  if (asset.user_id === null || asset.is_custom === false) {
+    await loadPriceHistoryForDateRestriction()
+    // Загружаем рыночную цену по умолчанию, если тумблер включен
+    if (useMarketPrice.value && form.date) {
+      await loadPriceHistory()
+      await loadMarketPrice(true)
+    }
   }
 }
 
@@ -369,7 +387,7 @@ async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
       // Используем дату на день позже, чтобы включить саму дату операции
       const targetDateObj = new Date(targetDate)
       targetDateObj.setHours(23, 59, 59, 999) // Конец дня, чтобы включить саму дату
-      const endDateStr = targetDateObj.toISOString().slice(0, 10) // YYYY-MM-DD
+      const endDateStr = normalizeDateToString(targetDateObj) || '' // YYYY-MM-DD
       
       const priceHistoryResponse = await assetsService.getAssetPriceHistory(
         assetId,
@@ -505,6 +523,55 @@ async function loadPriceHistory() {
   }
 }
 
+// Функция для загрузки истории цен и установки ограничения даты
+async function loadPriceHistoryForDateRestriction() {
+  if (!form.asset_id) {
+    return
+  }
+  
+  try {
+    isLoadingHistory.value = true
+    
+    // Загружаем полную историю цен актива
+    const priceHistoryResponse = await assetsService.getAssetPriceHistory(
+      form.asset_id,
+      null, // start_date - не ограничиваем
+      null, // end_date - не ограничиваем, загружаем всю историю
+      10000 // Большой лимит для получения всей истории
+    )
+    
+    if (priceHistoryResponse.success && priceHistoryResponse.prices && priceHistoryResponse.prices.length > 0) {
+      // Сохраняем историю в кэш
+      priceHistoryCache.value = priceHistoryResponse.prices
+      
+      // Находим первую дату с ценой (самую раннюю)
+      const sortedPrices = [...priceHistoryResponse.prices].sort((a, b) => {
+        const dateA = new Date(a.trade_date)
+        const dateB = new Date(b.trade_date)
+        return dateA - dateB
+      })
+      
+      if (sortedPrices.length > 0) {
+        const firstPriceDate = sortedPrices[0].trade_date
+        minDate.value = firstPriceDate
+        
+        // Если текущая дата раньше первой цены, обновляем её
+        if (form.date && new Date(form.date) < new Date(firstPriceDate)) {
+          form.date = firstPriceDate
+        }
+      }
+    } else {
+      // Если истории цен нет, сбрасываем ограничение
+      minDate.value = null
+    }
+  } catch (e) {
+    console.error('Ошибка при загрузке истории цен для ограничения даты:', e)
+    minDate.value = null
+  } finally {
+    isLoadingHistory.value = false
+  }
+}
+
 // Функция для получения рыночной цены на дату транзакции и заполнения поля цены
 async function loadMarketPrice(silent = false) {
   if (!form.asset_id) {
@@ -529,6 +596,7 @@ async function loadMarketPrice(silent = false) {
     
     if (marketPrice && marketPrice > 0) {
       form.average_price = marketPrice
+      lastMarketPrice.value = marketPrice
       return true
     }
     
@@ -545,9 +613,9 @@ async function loadMarketPrice(silent = false) {
 
 // Автоматическая загрузка истории цен и рыночной цены при включении переключателя
 watch(useMarketPrice, async (newValue, oldValue) => {
-  // Загружаем историю цен и цену только при включении переключателя (переходе с false на true)
+  // Загружаем историю цен и цену при включении переключателя
   // Только для системных активов
-  if (newValue && !oldValue && assetTypeChoice.value === 'system' && form.asset_id && form.date) {
+  if (newValue && assetTypeChoice.value === 'system' && form.asset_id && form.date) {
     // Загружаем историю цен один раз при включении переключателя (если еще не загружена)
     const historyLoaded = await loadPriceHistory()
     
@@ -557,6 +625,16 @@ watch(useMarketPrice, async (newValue, oldValue) => {
     }
   }
   // При выключении переключателя НЕ очищаем кэш - сохраняем для повторного использования
+})
+
+// Отслеживание ручного изменения цены
+watch(() => form.average_price, (newPrice, oldPrice) => {
+  // Если цена изменена вручную и отличается от последней рыночной цены, выключаем тумблер
+  if (useMarketPrice.value && lastMarketPrice.value !== null && 
+      Math.abs(newPrice - lastMarketPrice.value) > 0.0001 && 
+      oldPrice !== undefined) {
+    useMarketPrice.value = false
+  }
 })
 
 // Автоматическое обновление цены при изменении даты, если переключатель включен
@@ -569,9 +647,10 @@ watch(() => form.date, async (newDate, oldDate) => {
 }, { immediate: false })
 
 // Очистка кэша истории цен при изменении актива
-watch(() => form.asset_id, (newAssetId, oldAssetId) => {
+watch(() => form.asset_id, async (newAssetId, oldAssetId) => {
   if (newAssetId !== oldAssetId) {
     priceHistoryCache.value = null
+    minDate.value = null
     // Если переключатель включен и актив изменился, загружаем новую историю
     if (useMarketPrice.value && assetTypeChoice.value === 'system' && newAssetId && form.date) {
       loadPriceHistory().then(() => {
@@ -586,6 +665,7 @@ watch(assetTypeChoice, (newChoice) => {
   if (newChoice === 'custom') {
     useMarketPrice.value = false
     priceHistoryCache.value = null
+    minDate.value = null
   }
 })
 

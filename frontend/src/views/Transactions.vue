@@ -12,6 +12,7 @@ import { DateInput } from '../components/base'
 import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
+import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
 
 // Используем stores вместо inject
 const dashboardStore = useDashboardStore()
@@ -226,11 +227,7 @@ const normalizeType = (type) => {
 
 // Функция для получения даты в формате YYYY-MM-DD по локальному времени пользователя
 const getLocalYMD = (dateObj) => {
-  if (!dateObj) return ''
-  const year = dateObj.getFullYear()
-  const month = String(dateObj.getMonth() + 1).padStart(2, '0') // Месяцы 0-11
-  const day = String(dateObj.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return normalizeDateToString(dateObj) || ''
 }
 
 // --- ПРЕСЕТЫ ПЕРИОДОВ ---
@@ -268,7 +265,7 @@ const setPeriodPreset = (preset) => {
 }
 
 // --- формат даты ---
-const formatDate = (date) => new Date(date).toLocaleDateString()
+const formatDate = formatDateForDisplay
 
 // --- функции для отображения операций в выбранной валюте ---
 // Получаем сумму операции в выбранной валюте
@@ -590,10 +587,9 @@ const openEditModal = (tx) => {
   // Копируем транзакцию и преобразуем дату в формат YYYY-MM-DD для DateInput
   const txCopy = { ...tx }
   if (txCopy.transaction_date) {
-    // Если дата в формате ISO или timestamp, преобразуем в YYYY-MM-DD
-    const date = new Date(txCopy.transaction_date)
-    if (!isNaN(date.getTime())) {
-      txCopy.transaction_date = date.toISOString().split('T')[0]
+    const normalizedDate = normalizeDateToString(txCopy.transaction_date)
+    if (normalizedDate) {
+      txCopy.transaction_date = normalizedDate
     }
   }
   currentTransaction.value = txCopy
@@ -624,11 +620,11 @@ const handleSaveEdit = async (newTx) => {
     transaction_date: newTx.transaction_date || originalTx.transaction_date
   }
   
-  // Преобразуем дату в ISO формат, если нужно
-  if (txData.transaction_date && !txData.transaction_date.includes('T')) {
-    const date = new Date(txData.transaction_date)
-    if (!isNaN(date.getTime())) {
-      txData.transaction_date = date.toISOString()
+  // Нормализуем дату в формат YYYY-MM-DD
+  if (txData.transaction_date) {
+    const normalizedDate = normalizeDateToString(txData.transaction_date)
+    if (normalizedDate) {
+      txData.transaction_date = normalizedDate
     }
   }
   

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
 import { formatCurrency, formatOperationAmount } from '../../../utils/formatCurrency'
+import { formatDateForDisplay } from '../../../utils/date'
 import EmptyState from '../base/EmptyState.vue'
 
 const props = defineProps({
@@ -39,14 +40,7 @@ const getPayoutTypeClass = (type) => {
   return 'other'
 }
 
-const formatDate = (date) => {
-  if (!date) return '-'
-  return new Date(date).toLocaleDateString('ru-RU', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-}
+const formatDate = formatDateForDisplay
 </script>
 
 <template>

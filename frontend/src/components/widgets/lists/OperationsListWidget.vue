@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
+import { formatDateForDisplay } from '../../../utils/date'
 import { formatCurrency, formatOperationAmount } from '../../../utils/formatCurrency'
 import EmptyState from '../base/EmptyState.vue'
 
@@ -67,10 +68,7 @@ const props = defineProps({
   // Функция для форматирования даты
   formatDate: {
     type: Function,
-    default: (date) => {
-      if (!date) return '-'
-      return new Date(date).toLocaleDateString('ru-RU')
-    }
+    default: formatDateForDisplay
   },
   // Функция для форматирования суммы операции (опционально, для кастомного форматирования с валютой)
   formatAmount: {

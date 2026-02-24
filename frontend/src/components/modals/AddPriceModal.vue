@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { Button, DateInput } from '../base'
 import assetsService from '../../services/assetsService'
+import { normalizeDateToString } from '../../utils/date'
 
 const props = defineProps({
   asset: Object,
@@ -15,14 +16,14 @@ const mode = ref('single')
 
 // Поля для одиночной цены
 const price = ref(0)
-const date = ref(new Date().toISOString().slice(0, 10))
+const date = ref(normalizeDateToString(new Date()) || '')
 
 // Поля для динамики цены
 // Инициализируем начальную цену из average_price актива, если доступна
 const startPrice = ref(0)
 const endPrice = ref(0)
 const startDate = ref('')
-const endDate = ref(new Date().toISOString().slice(0, 10))
+const endDate = ref(normalizeDateToString(new Date()) || '')
 const interval = ref('month') // 'day', 'week', 'month'
 
 const error = ref('')
@@ -42,7 +43,7 @@ const initializeDefaults = () => {
     if (props.asset.first_purchase_date) {
       const date = new Date(props.asset.first_purchase_date)
       if (!isNaN(date.getTime())) {
-        startDate.value = date.toISOString().slice(0, 10)
+        startDate.value = normalizeDateToString(date) || ''
       }
     }
   }
@@ -121,7 +122,7 @@ const generatePricePoints = () => {
     const interpolatedPrice = startPrice.value + (priceDiff * progress)
     
     points.push({
-      date: currentDate.toISOString().slice(0, 10),
+      date: normalizeDateToString(currentDate) || '',
       price: Math.max(0.01, parseFloat(interpolatedPrice.toFixed(2))) // Минимум 0.01
     })
     

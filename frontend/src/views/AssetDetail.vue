@@ -22,6 +22,7 @@ import assetsService from '../services/assetsService'
 import operationsService from '../services/operationsService'
 import PageLayout from '../components/PageLayout.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
+import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
 
 const route = useRoute()
 const router = useRouter()
@@ -275,7 +276,7 @@ const firstTransactionDate = computed(() => {
   // Находим самую раннюю дату
   const firstDate = new Date(Math.min(...dates))
   firstDate.setHours(0, 0, 0, 0)
-  return firstDate.toISOString().split('T')[0]
+  return normalizeDateToString(firstDate) || ''
 })
 
 // Вычисляем накопленное количество на каждую дату для выбранного портфеля
@@ -288,7 +289,7 @@ const quantityByDate = computed(() => {
   const txList = [...transactions]
     .map(tx => ({
       ...tx,
-      date: new Date(tx.transaction_date).toISOString().split('T')[0]
+      date: normalizeDateToString(tx.transaction_date) || ''
     }))
     .sort((a, b) => a.date.localeCompare(b.date))
   
@@ -300,7 +301,7 @@ const quantityByDate = computed(() => {
   const priceDates = [...new Set(priceHistory.value.map(p => {
     const date = new Date(p.trade_date)
     date.setHours(0, 0, 0, 0)
-    return date.toISOString().split('T')[0]
+    return normalizeDateToString(date) || ''
   }))].sort()
   
   let txIndex = 0
@@ -435,13 +436,13 @@ const chartData = computed(() => {
       // Нормализуем дату для поиска в quantityMap
       const dateObj = new Date(date)
       dateObj.setHours(0, 0, 0, 0)
-      const normalizedDate = dateObj.toISOString().split('T')[0]
+      const normalizedDate = normalizeDateToString(dateObj) || ''
       
       const qty = quantities[normalizedDate] || 0
       const price = filteredPrices.find(p => {
         const pDate = new Date(p.trade_date)
         pDate.setHours(0, 0, 0, 0)
-        return pDate.toISOString().split('T')[0] === normalizedDate
+        return normalizeDateToString(pDate) === normalizedDate
       })?.price || 0
       return (qty * price / leverage) * currencyRate
     })
@@ -491,7 +492,7 @@ const chartData = computed(() => {
       // Нормализуем дату для поиска в quantityMap
       const dateObj = new Date(date)
       dateObj.setHours(0, 0, 0, 0)
-      const normalizedDate = dateObj.toISOString().split('T')[0]
+      const normalizedDate = normalizeDateToString(dateObj) || ''
       return quantities[normalizedDate] || 0
     })
     
@@ -1273,7 +1274,7 @@ const getPayoutTypeClass = (type) => {
 
 const formatPayoutDate = (date) => {
   if (!date) return '-'
-  return new Date(date).toLocaleDateString('ru-RU')
+  return formatDateForDisplay(date)
 }
 
 // Нормализация типа операции (как на странице Transactions)
@@ -1328,14 +1329,7 @@ const normalizeType = (type, opType = null) => {
 }
 
 // Форматирование даты
-const formatDate = (date) => {
-  if (!date) return '—'
-  return new Date(date).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  })
-}
+const formatDate = formatDateForDisplay
 
 // Получение текстового названия типа операции для отображения
 const getOperationTypeLabel = (op) => {

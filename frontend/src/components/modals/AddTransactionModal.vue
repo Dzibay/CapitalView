@@ -8,6 +8,7 @@ import { useDashboardStore } from '../../stores/dashboard.store'
 import { useAssetsStore } from '../../stores/assets.store'
 import transactionsService from '../../services/transactionsService'
 import assetsService from '../../services/assetsService'
+import { normalizeDateToString } from '../../utils/date'
 
 const props = defineProps({
   asset: Object,
@@ -41,16 +42,27 @@ const quantity = ref(0)
 const price = ref(0)
 const amount = ref(0)
 const dividendYield = ref(null)
-const date = ref(new Date().toISOString().slice(0, 10))
+const date = ref(normalizeDateToString(new Date()) || '')
 const error = ref('')
 const saving = ref(false)
 const loadingPrice = ref(false) // Состояние загрузки рыночной цены
 const priceHistoryCache = ref(null) // Кэш истории цен актива
 const isLoadingHistory = ref(false) // Флаг для предотвращения двойной загрузки истории
+const minDate = ref(null) // Минимальная дата (первая цена в истории)
+const isSystemAsset = computed(() => {
+  // Системный актив - это актив без user_id или с is_custom === false
+  if (!props.asset?.asset_id) return false
+  const refData = dashboardStore.referenceData
+  if (refData?.assets) {
+    const asset = refData.assets.find(a => a.id === props.asset.asset_id)
+    return asset && (asset.user_id === null || asset.is_custom === false)
+  }
+  return false
+})
 
 // Поля для повторяющихся операций
 const startDate = ref('')
-const endDate = ref(new Date().toISOString().slice(0, 10))
+const endDate = ref(normalizeDateToString(new Date()) || '')
 const dayOfMonth = ref(new Date().getDate()) // День месяца по умолчанию - сегодняшний день
 
 // Инициализация начальной даты из данных актива
@@ -58,32 +70,47 @@ const initializeStartDate = () => {
   if (props.asset) {
     // Начальная дата = дата первой покупки (first_purchase_date)
     if (props.asset.first_purchase_date) {
-      const date = new Date(props.asset.first_purchase_date)
-      if (!isNaN(date.getTime())) {
-        startDate.value = date.toISOString().slice(0, 10)
+      const normalizedDate = normalizeDateToString(props.asset.first_purchase_date)
+      if (normalizedDate) {
+        startDate.value = normalizedDate
         // Устанавливаем день месяца по умолчанию на день первой покупки
-        dayOfMonth.value = date.getDate()
+        const dateObj = new Date(normalizedDate + 'T00:00:00')
+        dayOfMonth.value = dateObj.getDate()
         return
       }
     }
     
     // Если first_purchase_date нет, используем сегодняшнюю дату
     if (!startDate.value) {
-      startDate.value = new Date().toISOString().slice(0, 10)
+      startDate.value = normalizeDateToString(new Date()) || ''
     }
   } else {
     // Если asset нет, используем сегодняшнюю дату
-    startDate.value = new Date().toISOString().slice(0, 10)
+    startDate.value = normalizeDateToString(new Date()) || ''
   }
 }
 
 // Инициализируем при монтировании и при изменении asset
-onMounted(() => {
+onMounted(async () => {
   initializeStartDate()
+  // Загружаем историю цен для системного актива при открытии модалки
+  if (isSystemAsset.value && props.asset?.asset_id) {
+    await loadPriceHistoryForDateRestriction()
+  }
+  // Загружаем рыночную цену по умолчанию, если тумблер включен
+  if (useMarketPrice.value && isTransaction.value && props.asset?.asset_id && date.value) {
+    await loadMarketPrice(true)
+  }
 })
 
-watch(() => props.asset, () => {
+watch(() => props.asset, async (newAsset) => {
   initializeStartDate()
+  // Загружаем историю цен для системного актива при изменении актива
+  if (isSystemAsset.value && newAsset?.asset_id) {
+    await loadPriceHistoryForDateRestriction()
+  } else {
+    minDate.value = null
+  }
 }, { immediate: true, deep: true })
 
 // Валюты
@@ -92,13 +119,24 @@ const currencyId = ref(47) // RUB по умолчанию
 const createAssetFromCurrency = ref(false) // Автоматически создать актив из валюты
 
 // Использование рыночной цены для транзакций
-const useMarketPrice = ref(false) // Переключатель для автоматической загрузки рыночной цены
+const useMarketPrice = ref(true) // Переключатель для автоматической загрузки рыночной цены (включен по умолчанию)
+const lastMarketPrice = ref(null) // Последняя загруженная рыночная цена
 
 // Автоматическая загрузка рыночной цены при включении переключателя
 watch(useMarketPrice, async (newValue) => {
   if (newValue && isTransaction.value && props.asset?.asset_id && date.value) {
-    // Загружаем цену один раз при включении переключателя
+    // Загружаем цену при включении переключателя
     await loadMarketPrice(true) // silent = true, чтобы не показывать ошибки при автоматической загрузке
+  }
+})
+
+// Отслеживание ручного изменения цены
+watch(() => price.value, (newPrice, oldPrice) => {
+  // Если цена изменена вручную и отличается от последней рыночной цены, выключаем тумблер
+  if (useMarketPrice.value && lastMarketPrice.value !== null && 
+      Math.abs(newPrice - lastMarketPrice.value) > 0.0001 && 
+      oldPrice !== undefined) {
+    useMarketPrice.value = false
   }
 })
 
@@ -484,7 +522,7 @@ async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
       // Используем дату на день позже, чтобы включить саму дату операции
       const targetDateObj = new Date(targetDate)
       targetDateObj.setHours(23, 59, 59, 999) // Конец дня, чтобы включить саму дату
-      const endDateStr = targetDateObj.toISOString().slice(0, 10) // YYYY-MM-DD
+      const endDateStr = normalizeDateToString(targetDateObj) || '' // YYYY-MM-DD
       
       const priceHistoryResponse = await assetsService.getAssetPriceHistory(
         assetId,
@@ -620,6 +658,55 @@ async function loadPriceHistory() {
   }
 }
 
+// Функция для загрузки истории цен и установки ограничения даты
+async function loadPriceHistoryForDateRestriction() {
+  if (!props.asset?.asset_id) {
+    return
+  }
+  
+  try {
+    isLoadingHistory.value = true
+    
+    // Загружаем полную историю цен актива
+    const priceHistoryResponse = await assetsService.getAssetPriceHistory(
+      props.asset.asset_id,
+      null, // start_date - не ограничиваем
+      null, // end_date - не ограничиваем, загружаем всю историю
+      10000 // Большой лимит для получения всей истории
+    )
+    
+    if (priceHistoryResponse.success && priceHistoryResponse.prices && priceHistoryResponse.prices.length > 0) {
+      // Сохраняем историю в кэш
+      priceHistoryCache.value = priceHistoryResponse.prices
+      
+      // Находим первую дату с ценой (самую раннюю)
+      const sortedPrices = [...priceHistoryResponse.prices].sort((a, b) => {
+        const dateA = new Date(a.trade_date)
+        const dateB = new Date(b.trade_date)
+        return dateA - dateB
+      })
+      
+      if (sortedPrices.length > 0) {
+        const firstPriceDate = sortedPrices[0].trade_date
+        minDate.value = firstPriceDate
+        
+        // Если текущая дата раньше первой цены, обновляем её
+        if (date.value && new Date(date.value) < new Date(firstPriceDate)) {
+          date.value = firstPriceDate
+        }
+      }
+    } else {
+      // Если истории цен нет, сбрасываем ограничение
+      minDate.value = null
+    }
+  } catch (e) {
+    console.error('Ошибка при загрузке истории цен для ограничения даты:', e)
+    minDate.value = null
+  } finally {
+    isLoadingHistory.value = false
+  }
+}
+
 // Функция для получения рыночной цены на дату транзакции и заполнения поля цены
 async function loadMarketPrice(silent = false) {
   if (!props.asset?.asset_id) {
@@ -651,6 +738,7 @@ async function loadMarketPrice(silent = false) {
     
     if (marketPrice && marketPrice > 0) {
       price.value = marketPrice
+      lastMarketPrice.value = marketPrice
       return true
     } else {
       if (!silent) {
@@ -695,14 +783,19 @@ watch(date, async (newDate, oldDate) => {
 }, { immediate: false })
 
 // Очистка кэша истории цен при изменении актива
-watch(() => props.asset?.asset_id, (newAssetId, oldAssetId) => {
+watch(() => props.asset?.asset_id, async (newAssetId, oldAssetId) => {
   if (newAssetId !== oldAssetId) {
     priceHistoryCache.value = null
+    minDate.value = null
     // Если переключатель включен и актив изменился, загружаем новую историю
     if (useMarketPrice.value && isTransaction.value && newAssetId && date.value) {
       loadPriceHistory().then(() => {
         loadMarketPrice(true)
       })
+    }
+    // Загружаем историю для ограничения даты для системных активов
+    if (isSystemAsset.value && newAssetId) {
+      await loadPriceHistoryForDateRestriction()
     }
   }
 })
@@ -795,6 +888,11 @@ const handleSubmit = async () => {
     }
     if (!price.value || price.value <= 0) {
       error.value = 'Введите цену'
+      return
+    }
+    // Проверка для системных активов: дата не должна быть раньше первой цены
+    if (isSystemAsset.value && minDate.value && date.value && new Date(date.value) < new Date(minDate.value)) {
+      error.value = `Дата транзакции не может быть раньше первой доступной даты: ${minDate.value}`
       return
     }
   }
@@ -897,7 +995,7 @@ const handleSubmit = async () => {
         for (let i = 0; i < dates.length; i += batchSize) {
           const batch = dates.slice(i, i + batchSize)
           await Promise.all(batch.map(async (opDate) => {
-            const dateStr = opDate.toISOString().slice(0, 10)
+            const dateStr = normalizeDateToString(opDate) || ''
             await createBuyTransaction(
               currencyAsset.asset_id,
               currencyAsset.portfolio_asset_id,
@@ -1091,7 +1189,10 @@ const handleSubmit = async () => {
               <span class="label-icon">📅</span>
               Дата транзакции
             </label>
-            <DateInput v-model="date" required />
+            <DateInput v-model="date" :min="minDate" required />
+            <small v-if="minDate" class="form-hint" style="margin-top: 4px;">
+              Первая доступная дата: {{ minDate }}
+            </small>
           </div>
         </div>
 
