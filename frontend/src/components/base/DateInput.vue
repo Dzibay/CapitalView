@@ -1,5 +1,6 @@
 <script setup>
 import { computed, watch } from 'vue'
+import { normalizeDateToString, extractDateFromString } from '../../utils/date'
 
 const props = defineProps({
   modelValue: {
@@ -49,18 +50,23 @@ const emit = defineEmits(['update:modelValue'])
 // Вычисляем максимальную дату (сегодня по умолчанию)
 const maxDate = computed(() => {
   if (props.max !== null && props.max !== undefined) {
-    return props.max
+    // Нормализуем дату, если она передана
+    const normalized = normalizeDateToString(props.max)
+    return normalized || props.max
   }
   // По умолчанию - сегодняшняя дата в формате YYYY-MM-DD
-  const today = new Date()
-  return today.toISOString().split('T')[0]
+  return normalizeDateToString(new Date()) || ''
 })
 
-// Вычисляем минимальную дату (только если она установлена)
+// Вычисляем минимальную дату (ВАЖНО: всегда возвращаем строку или undefined, но не null)
+// Нормализуем дату, извлекая только YYYY-MM-DD из строки (например, из "2024-11-08T00:00:00")
 const minDate = computed(() => {
   if (props.min !== null && props.min !== undefined && props.min !== '') {
-    return props.min
+    // Используем утилиту для нормализации даты (извлекает YYYY-MM-DD из ISO строки)
+    const normalized = normalizeDateToString(props.min)
+    return normalized || undefined
   }
+  // Если min не задан, возвращаем undefined, чтобы атрибут min не устанавливался
   return undefined
 })
 
@@ -73,34 +79,46 @@ const inputClass = computed(() => {
 // Обработчик изменения значения
 const handleInput = (event) => {
   const newValue = event.target.value
-  // Валидация: если выбрана дата раньше minDate, корректируем её
-  if (minDate.value && newValue && new Date(newValue) < new Date(minDate.value)) {
-    event.target.value = minDate.value
-    emit('update:modelValue', minDate.value)
-    return
+  
+  // Валидация минимальной даты (используем нормализованные даты для сравнения)
+  if (minDate.value && newValue) {
+    const normalizedNewValue = normalizeDateToString(newValue)
+    const normalizedMinDate = normalizeDateToString(minDate.value)
+    
+    if (normalizedNewValue && normalizedMinDate && normalizedNewValue < normalizedMinDate) {
+      // Устанавливаем минимальную дату
+      event.target.value = normalizedMinDate
+      emit('update:modelValue', normalizedMinDate)
+      return
+    }
   }
-  emit('update:modelValue', newValue)
+  
+  // Нормализуем значение перед отправкой
+  const normalizedValue = normalizeDateToString(newValue) || newValue
+  emit('update:modelValue', normalizedValue)
 }
 
 // Автоматическая корректировка даты при изменении min
-// НЕ используем immediate: true, чтобы не сбрасывать дату при инициализации
 watch(() => props.min, (newMin, oldMin) => {
-  // Корректируем дату только если min действительно изменился (не при первой установке)
   if (newMin && props.modelValue && oldMin !== undefined) {
-    const currentDate = new Date(props.modelValue)
-    const minDate = new Date(newMin)
-    // Если текущая дата раньше минимальной, обновляем её
-    if (currentDate < minDate) {
-      emit('update:modelValue', newMin)
+    const normalizedCurrent = normalizeDateToString(props.modelValue)
+    const normalizedMin = normalizeDateToString(newMin)
+    
+    if (normalizedCurrent && normalizedMin && normalizedCurrent < normalizedMin) {
+      emit('update:modelValue', normalizedMin)
     }
   }
 })
 
 // Валидация при изменении значения
 watch(() => props.modelValue, (newValue) => {
-  if (minDate.value && newValue && new Date(newValue) < new Date(minDate.value)) {
-    // Если дата раньше минимальной, корректируем её
-    emit('update:modelValue', minDate.value)
+  if (minDate.value && newValue) {
+    const normalizedNewValue = normalizeDateToString(newValue)
+    const normalizedMinDate = normalizeDateToString(minDate.value)
+    
+    if (normalizedNewValue && normalizedMinDate && normalizedNewValue < normalizedMinDate) {
+      emit('update:modelValue', normalizedMinDate)
+    }
   }
 })
 </script>
@@ -112,7 +130,7 @@ watch(() => props.modelValue, (newValue) => {
     type="date"
     :value="modelValue"
     :max="maxDate"
-    :min="minDate || undefined"
+    :min="minDate"
     :required="required"
     :disabled="disabled"
     :placeholder="placeholder"
