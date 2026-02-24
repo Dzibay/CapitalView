@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { PieChart } from 'lucide-vue-next'
 import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, DoughnutController } from 'chart.js'
 import Widget from '../base/Widget.vue'
@@ -83,7 +84,7 @@ watch(() => props.assetAllocation, () => {
 </script>
 
 <template>
-  <Widget title="Распределение активов">
+  <Widget title="Распределение активов" :icon="PieChart">
     <div v-if="assetAllocation && assetAllocation.labels" class="allocation-container">
       <div class="chart-wrapper">
         <Doughnut :data="chartData" :options="chartOptions" />

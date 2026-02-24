@@ -6,6 +6,7 @@ import DisplayModeToggle from '../base/DisplayModeToggle.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
 import EmptyState from '../base/EmptyState.vue'
 import ToggleSwitch from '../../base/ToggleSwitch.vue'
+import { Coins } from 'lucide-vue-next'
 
 const props = defineProps({
   assetReturns: {
@@ -452,7 +453,7 @@ const percentPlugin = {
 </script>
 
 <template>
-  <Widget title="Прибыльность активов">
+  <Widget title="Прибыльность активов", :icon="Coins">
     <template #header>
       <div class="widget-controls">
         <ToggleSwitch v-model="showSoldAssets" label="Отображать проданные" />

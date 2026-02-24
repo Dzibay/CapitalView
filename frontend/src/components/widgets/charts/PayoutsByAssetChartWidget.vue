@@ -4,6 +4,7 @@ import BarChart from '../../charts/BarChart.vue'
 import Widget from '../base/Widget.vue'
 import EmptyState from '../base/EmptyState.vue'
 import { formatMoney } from '../../../utils/formatCurrency.js'
+import { HandCoins } from 'lucide-vue-next'
 
 // Фирменные цвета для типов выплат
 const payoutColors = {
@@ -68,7 +69,7 @@ const chartDatasets = computed(() => {
 </script>
 
 <template>
-  <Widget title="Выплаты по активам">
+  <Widget title="Выплаты по активам", :icon="HandCoins">
     <div class="chart-container">
       <BarChart
         v-if="payoutsByAsset && payoutsByAsset.length > 0"

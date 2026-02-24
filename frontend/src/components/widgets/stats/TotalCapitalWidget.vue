@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { Wallet } from 'lucide-vue-next'
 import StatCardWidget from '../base/StatCardWidget.vue'
 
 const props = defineProps({
@@ -32,6 +33,7 @@ const tooltipText = computed(() => {
 <template>
   <StatCardWidget
     title="Общий капитал"
+    :icon="Wallet"
     :main-value="totalAmount"
     main-value-format="currency"
     :change-value="profitPercent"

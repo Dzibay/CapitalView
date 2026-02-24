@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { LineChart } from 'lucide-vue-next'
 import MultiLineChart from '../../MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
 import ValueChange from '../base/ValueChange.vue'
@@ -169,7 +170,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <Widget title="Динамика капитала">
+  <Widget title="Динамика капитала" :icon="LineChart">
     <template #header>
       <PeriodFilters v-model="selectedPeriod" />
     </template>

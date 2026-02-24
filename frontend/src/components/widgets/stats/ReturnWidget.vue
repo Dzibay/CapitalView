@@ -1,4 +1,5 @@
 <script setup>
+import { Percent } from 'lucide-vue-next'
 import StatCardWidget from '../base/StatCardWidget.vue'
 
 const props = defineProps({
@@ -24,6 +25,7 @@ const props = defineProps({
 <template>
   <StatCardWidget
     title="Доходность"
+    :icon="Percent"
     :main-value="returnPercent"
     main-value-format="percent"
     main-value-tooltip="Средневзвешенная годовая доходность всех активов в портфеле (на основе текущей стоимости активов и средней дивидендной доходности за 5 лет). Учитывается только дивидендная и купонная доходность"

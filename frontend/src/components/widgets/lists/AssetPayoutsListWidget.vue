@@ -4,6 +4,7 @@ import Widget from '../base/Widget.vue'
 import { formatCurrency, formatOperationAmount } from '../../../utils/formatCurrency'
 import { formatDateForDisplay } from '../../../utils/date'
 import EmptyState from '../base/EmptyState.vue'
+import { Coins } from 'lucide-vue-next'
 
 const props = defineProps({
   payouts: {
@@ -44,7 +45,7 @@ const formatDate = formatDateForDisplay
 </script>
 
 <template>
-  <Widget title="История выплат">
+  <Widget title="История выплат", :icon="Coins">
     <div v-if="sortedPayouts.length > 0" class="payouts-list">
       <div 
         v-for="(payout, index) in sortedPayouts" 

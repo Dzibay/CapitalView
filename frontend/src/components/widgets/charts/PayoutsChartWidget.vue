@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
+import { HandCoins } from 'lucide-vue-next'
 import BarChart from '../../charts/BarChart.vue'
 import CustomSelect from '../../base/CustomSelect.vue'
 import Widget from '../base/Widget.vue'
@@ -267,7 +268,7 @@ const chartDatasets = computed(() => {
 </script>
 
 <template>
-  <Widget :title="title">
+  <Widget :title="title" :icon="HandCoins">
     <template #header>
       <CustomSelect
         v-model="selectedPeriod"

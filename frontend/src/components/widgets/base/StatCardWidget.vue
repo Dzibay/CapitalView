@@ -10,6 +10,10 @@ const props = defineProps({
     type: String,
     required: true
   },
+  icon: {
+    type: Object,
+    default: null
+  },
   // Основное значение
   mainValue: {
     type: [Number, String],
@@ -154,7 +158,7 @@ const computedChangeIsPositive = computed(() => {
 </script>
 
 <template>
-  <Widget :title="title" compact>
+  <Widget :title="title" :icon="icon" compact>
     <div 
       class="stat-card-content"
       :class="{ 'change-below': changePosition === 'below' }"

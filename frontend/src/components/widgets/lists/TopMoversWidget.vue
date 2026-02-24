@@ -4,6 +4,7 @@ import { getCurrencySymbol } from '../../../utils/currencySymbols.js'
 import Widget from '../base/Widget.vue'
 import ValueChange from '../base/ValueChange.vue'
 import DisplayModeToggle from '../base/DisplayModeToggle.vue'
+import { ArrowUp, ArrowDown } from 'lucide-vue-next'
 
 const props = defineProps({
   assets: { type: Array, required: true },
@@ -56,7 +57,7 @@ const topAssets = computed(() => {
 </script>
 
 <template>
-  <Widget :title="title">
+  <Widget :title="title" :icon="direction === 'up' ? ArrowUp : ArrowDown">
     <template #header>
       <DisplayModeToggle v-model="displayMode" />
     </template>

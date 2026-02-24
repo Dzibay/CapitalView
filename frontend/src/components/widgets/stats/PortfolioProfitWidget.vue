@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { TrendingDown, TrendingUp } from 'lucide-vue-next'
 import StatCardWidget from '../base/StatCardWidget.vue'
 
 const props = defineProps({
@@ -93,6 +94,7 @@ const profitBreakdownTooltip = computed(() => {
 <template>
   <StatCardWidget
     title="Прибыль"
+    :icon="profitToInvestedPercent >= 0 ? TrendingUp : TrendingDown"
     :main-value="`${totalProfit.toFixed(2)} ₽`"
     main-value-format="custom"
     :main-value-tooltip="profitBreakdownTooltip"

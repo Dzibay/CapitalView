@@ -8,6 +8,10 @@ const props = defineProps({
     type: String,
     required: true
   },
+  icon: {
+    type: Object,
+    default: null
+  },
   items: {
     type: Array,
     required: true,
@@ -62,7 +66,7 @@ const formatValue = (item) => {
 </script>
 
 <template>
-  <Widget :title="title">
+  <Widget :title="title" :icon="icon">
     <div class="metrics-section">
       <div 
         v-for="(item, index) in items" 

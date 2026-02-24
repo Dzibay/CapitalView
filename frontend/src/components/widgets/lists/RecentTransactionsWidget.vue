@@ -1,4 +1,5 @@
 <script setup>
+import { History } from 'lucide-vue-next'
 import Widget from '../base/Widget.vue'
 
 const props = defineProps({
@@ -7,7 +8,7 @@ const props = defineProps({
 </script>
 
 <template>
-  <Widget title="Последние операции">
+  <Widget title="Последние операции" :icon="History">
     <ul class="transactions-list">
       <li v-for="tx in transactions.slice(0, 4)" :key="tx.id" class="transaction-item">
         <div class="tx-info">

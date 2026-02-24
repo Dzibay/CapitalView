@@ -4,6 +4,7 @@ import MultiLineChart from '../../MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
 import ValueChange from '../base/ValueChange.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
+import { TrendingUp } from 'lucide-vue-next'
 
 // --------------------------------------------------------------
 // ПРОПСЫ
@@ -166,7 +167,7 @@ watch(() => props.chartData, () => {
 </script>
 
 <template>
-  <Widget title="Динамика прибыли">
+  <Widget title="Динамика прибыли", :icon="TrendingUp">
     <template #header>
       <PeriodFilters v-model="selectedPeriod" />
     </template>

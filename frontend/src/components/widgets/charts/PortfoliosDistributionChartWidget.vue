@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import DoughnutChart from '../../charts/DoughnutChart.vue'
 import Widget from '../base/Widget.vue'
+import { PieChart } from 'lucide-vue-next'
 
 const props = defineProps({
   portfolios: {
@@ -90,7 +91,7 @@ const total = computed(() => {
 </script>
 
 <template>
-  <Widget title="Распределение портфелей">
+  <Widget title="Распределение портфелей", :icon="PieChart">
     <div v-if="portfolioValues && portfolioValues.length" class="allocation-container">
       <div class="chart-section">
         <DoughnutChart

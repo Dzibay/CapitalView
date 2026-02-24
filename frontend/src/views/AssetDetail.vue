@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Building2, PieChart, TrendingDown, Hash, History } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import MultiLineChart from '../components/MultiLineChart.vue'
@@ -1528,7 +1529,7 @@ async function handlePortfolioChange(portfolioId) {
 
         <!-- Описание актива (заглушка) -->
         <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-large)">
-          <Widget title="Описание актива">
+          <Widget title="Описание актива" :icon="Hash">
             <div class="asset-description-placeholder">
               <p>Описание актива будет здесь</p>
             </div>
@@ -1540,24 +1541,24 @@ async function handlePortfolioChange(portfolioId) {
       <div class="widgets-grid">
         <!-- Основная информация -->
         <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <MetricsWidget title="Основная информация" :items="basicInfoItems" />
+          <MetricsWidget title="Основная информация" :icon="Building2" :items="basicInfoItems" />
         </WidgetContainer>
 
         <!-- Вклад в портфель -->
         <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <MetricsWidget title="Вклад в портфель" :items="contributionItems" />
+          <MetricsWidget title="Вклад в портфель" :icon="PieChart" :items="contributionItems" />
         </WidgetContainer>
 
         <!-- Прибыль и убытки -->
         <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <MetricsWidget title="Прибыль и убытки" :items="profitLossItems" />
+          <MetricsWidget title="Прибыль и убытки" :icon="TrendingDown" :items="profitLossItems" />
         </WidgetContainer>
       </div>
 
       <!-- Операции (транзакции + все операции) -->
       <div class="widgets-grid">
         <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
-          <Widget title="Операции">
+          <Widget title="Операции" :icon="History">
             <div class="table-container">
               <table class="transactions-table">
                 <thead>

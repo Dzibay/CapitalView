@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { Hash } from 'lucide-vue-next'
 import EditGoalModal from '../../modals/EditGoalModal.vue'
 import GoalProgressChart from '../../charts/GoalProgressChart.vue'
 import Widget from '../base/Widget.vue'
@@ -363,7 +364,7 @@ const formatAmountShort = (value) => {
 </script>
 
 <template>
-  <Widget title="Прогноз достижения цели">
+  <Widget title="Прогноз достижения цели" :icon="Hash">
     <template #header>
       <button @click="openModal" class="edit-button">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
