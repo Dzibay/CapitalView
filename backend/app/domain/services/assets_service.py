@@ -131,7 +131,8 @@ def delete_asset(portfolio_asset_id: int):
 
 def add_asset_price(data):
     """
-    Добавляет цену актива и обновляет последнюю цену.
+    Добавляет или обновляет цену актива и обновляет последнюю цену.
+    Если цена для данной даты уже существует, она будет перезаписана.
     
     Args:
         data: Словарь с полями:
@@ -164,32 +165,39 @@ def add_asset_price(data):
         logger.error(f"Ошибка при проверке актива {asset_id}: {e}")
         return {"success": False, "error": "Ошибка при проверке актива"}
 
-    price_data = {
+    # Нормализуем дату для RPC функции
+    if hasattr(date, 'isoformat'):
+        date_str = date.isoformat()
+    elif isinstance(date, str):
+        date_str = date
+    else:
+        date_str = str(date)
+    
+    price_data_list = [{
         "asset_id": asset_id,
-        "price": price,
-        "trade_date": date
-    }
+        "price": float(price),
+        "trade_date": date_str
+    }]
 
     try:
-        res = table_insert("asset_prices", price_data)
+        # Используем RPC функцию для upsert (перезаписывает существующие цены)
+        result = rpc("upsert_asset_prices", {"p_prices": price_data_list})
         
-        # Обновляем только один актив
-        # Если RPC выбросит исключение, это не критично - цена уже добавлена
+        if result is False:
+            return {"success": False, "error": "Ошибка при добавлении цены"}
+        
+        # Обновляем последнюю цену актива
         try:
             update_result = rpc('update_asset_latest_price', {'p_asset_id': asset_id})
-            # Если функция возвращает boolean False, это ошибка
             if update_result is False:
                 logger.warning(f"RPC функция вернула False для актива {asset_id}")
-                # Не возвращаем ошибку, так как цена уже добавлена
         except Exception as rpc_error:
-            # Если RPC выбросил исключение, логируем, но не прерываем выполнение
             logger.warning(f"Ошибка при обновлении цены актива {asset_id}: {rpc_error}")
-            # Продолжаем выполнение, так как цена уже добавлена
         
         # Находим все портфели, содержащие этот актив, и обновляем их
-        update_portfolios_with_asset(asset_id, date)
+        update_portfolios_with_asset(asset_id, date_str)
         
-        return {"success": True, "message": "Цена успешно добавлена", "data": res}
+        return {"success": True, "message": "Цена успешно добавлена/обновлена"}
     except Exception as e:
         logger.error(f"Ошибка при добавлении цены актива: {e}", exc_info=True)
         import traceback
@@ -199,7 +207,8 @@ def add_asset_price(data):
 
 def add_asset_prices_batch(asset_id: int, prices: list):
     """
-    Массовое добавление цен актива.
+    Массовое добавление/обновление цен актива.
+    Если цена для данной даты уже существует, она будет перезаписана.
     
     Args:
         asset_id: ID актива
