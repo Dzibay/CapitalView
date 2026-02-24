@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { Check } from 'lucide-vue-next'
-import { Button } from '../base'
+import { Button, DateInput } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
 
 const props = defineProps({
@@ -93,7 +93,7 @@ const handleSave = () => {
               <span class="label-icon">📅</span>
               Дата
             </label>
-            <input type="date" v-model="editedTx.transaction_date" class="form-input" />
+            <DateInput v-model="editedTx.transaction_date" />
           </div>
         </div>
 

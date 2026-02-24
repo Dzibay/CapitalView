@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { Check } from 'lucide-vue-next'
-import { Button, ToggleSwitch } from '../base'
+import { Button, ToggleSwitch, DateInput } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
 import { useTransactionsStore } from '../../stores/transactions.store'
 import { useDashboardStore } from '../../stores/dashboard.store'
@@ -1091,7 +1091,7 @@ const handleSubmit = async () => {
               <span class="label-icon">📅</span>
               Дата транзакции
             </label>
-            <input type="date" v-model="date" required class="form-input" />
+            <DateInput v-model="date" required />
           </div>
         </div>
 
@@ -1193,7 +1193,7 @@ const handleSubmit = async () => {
               <span class="label-icon">📅</span>
               Дата операции
             </label>
-            <input type="date" v-model="date" required class="form-input" />
+            <DateInput v-model="date" required />
           </div>
         </div>
 
@@ -1207,14 +1207,14 @@ const handleSubmit = async () => {
                   <span class="label-icon">📅</span>
                   Начальная дата
                 </label>
-                <input type="date" v-model="startDate" required class="form-input" />
+                <DateInput v-model="startDate" required />
               </div>
               <div class="form-field">
                 <label class="form-label">
                   <span class="label-icon">📅</span>
                   Конечная дата
                 </label>
-                <input type="date" v-model="endDate" required class="form-input" />
+                <DateInput v-model="endDate" required />
               </div>
             </div>
           </div>

@@ -189,7 +189,7 @@
               <span class="label-icon">📅</span>
               Дата добавления
             </label>
-            <input v-model="form.date" type="date" required class="form-input" />
+            <DateInput v-model="form.date" required />
           </div>
         </div>
 
@@ -212,7 +212,7 @@
 <script setup>
 import { reactive, ref, computed, watch } from 'vue'
 import { Check } from 'lucide-vue-next'
-import { Button, ToggleSwitch } from '../base'
+import { Button, ToggleSwitch, DateInput } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
 import assetsService from '../../services/assetsService'
 import { useDashboardStore } from '../../stores/dashboard.store'

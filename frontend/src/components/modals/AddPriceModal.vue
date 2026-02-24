@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { Button } from '../base'
+import { Button, DateInput } from '../base'
 import assetsService from '../../services/assetsService'
 
 const props = defineProps({
@@ -305,7 +305,7 @@ const onModeChange = () => {
                   <span class="label-icon">📅</span>
                   Дата
                 </label>
-                <input type="date" v-model="date" required class="form-input" />
+                <DateInput v-model="date" required />
               </div>
             </div>
           </div>
@@ -341,14 +341,14 @@ const onModeChange = () => {
                   <span class="label-icon">📅</span>
                   Начальная дата
                 </label>
-                <input type="date" v-model="startDate" required class="form-input" />
+                <DateInput v-model="startDate" required />
               </div>
               <div class="form-field">
                 <label class="form-label">
                   <span class="label-icon">📅</span>
                   Конечная дата
                 </label>
-                <input type="date" v-model="endDate" required class="form-input" />
+                <DateInput v-model="endDate" required />
               </div>
             </div>
           </div>

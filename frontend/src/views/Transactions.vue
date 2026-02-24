@@ -8,6 +8,7 @@ import ContextMenu from '../components/ContextMenu.vue'
 import operationsService from '../services/operationsService'
 import transactionsService from '../services/transactionsService'
 import CustomSelect from '../components/base/CustomSelect.vue'
+import { DateInput } from '../components/base'
 import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
@@ -586,7 +587,7 @@ const deleteOneOperation = (opId) => {
 
 // модалка
 const openEditModal = (tx) => {
-  // Копируем транзакцию и преобразуем дату в формат YYYY-MM-DD для input[type="date"]
+  // Копируем транзакцию и преобразуем дату в формат YYYY-MM-DD для DateInput
   const txCopy = { ...tx }
   if (txCopy.transaction_date) {
     // Если дата в формате ISO или timestamp, преобразуем в YYYY-MM-DD
@@ -911,9 +912,9 @@ const transactionsSummary = computed(() => {
           </div>
           
            <div v-if="periodPreset === 'custom'" class="date-range">
-            <input type="date" v-model="startDate" class="form-input date-input" />
+            <DateInput v-model="startDate" class="date-input" />
             <span class="separator">—</span>
-            <input type="date" v-model="endDate" class="form-input date-input" />
+            <DateInput v-model="endDate" class="date-input" />
           </div>
             </div>
           </div>
