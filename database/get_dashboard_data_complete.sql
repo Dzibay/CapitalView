@@ -1,6 +1,7 @@
 -- ============================================================================
 -- Оптимизированная функция для получения всех данных дашборда одним запросом
 -- Объединяет: портфели, активы, историю, аналитику, транзакции, connections
+-- ОПТИМИЗИРОВАНО: выплаты по активам вынесены в CTE вместо подзапросов
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION get_dashboard_data_complete(p_user_id uuid)
@@ -42,7 +43,32 @@ first_purchase_data AS (
     ORDER BY t.portfolio_asset_id, t.transaction_date ASC, t.id ASC
 ),
 
--- 4. Активы портфелей (встроенный запрос вместо функции)
+-- 4. ОПТИМИЗИРОВАНО: Выплаты по активам (вынесено в CTE вместо подзапроса)
+asset_payouts_data AS (
+    SELECT 
+        ap.asset_id,
+        jsonb_agg(
+            jsonb_build_object(
+                'last_buy_date', ap.last_buy_date,
+                'record_date', ap.record_date,
+                'payment_date', ap.payment_date,
+                'value', ap.value,
+                'dividend_yield', ap.dividend_yield,
+                'type', ap.type
+            )
+            ORDER BY ap.payment_date DESC
+        ) AS dividends
+    FROM asset_payouts ap
+    WHERE ap.asset_id IN (
+        SELECT DISTINCT pa.asset_id
+        FROM portfolio_assets pa
+        JOIN portfolios_base pb ON pb.id = pa.portfolio_id
+        WHERE pa.asset_id IS NOT NULL
+    )
+    GROUP BY ap.asset_id
+),
+
+-- 5. Активы портфелей (расчеты на лету - быстрее для небольших объемов)
 portfolio_assets_data AS (
     SELECT 
         pa.portfolio_id,
@@ -71,21 +97,7 @@ portfolio_assets_data AS (
                     * COALESCE(pa.quantity, 0) * COALESCE(curr.curr_price, 1)),
                 'first_purchase_date', fpd.first_purchase_date,
                 'first_purchase_price', COALESCE(fpd.first_purchase_price, 0),
-                'dividends', COALESCE((
-                    SELECT jsonb_agg(
-                        jsonb_build_object(
-                            'last_buy_date', ap.last_buy_date,
-                            'record_date', ap.record_date,
-                            'payment_date', ap.payment_date,
-                            'value', ap.value,
-                            'dividend_yield', ap.dividend_yield,
-                            'type', ap.type
-                        )
-                        ORDER BY ap.payment_date DESC
-                    )
-                    FROM asset_payouts ap
-                    WHERE ap.asset_id = pa.asset_id
-                ), '[]'::jsonb)
+                'dividends', COALESCE(apd.dividends, '[]'::jsonb)
             )
             ORDER BY pa.id
         ) AS assets
@@ -97,10 +109,11 @@ portfolio_assets_data AS (
     LEFT JOIN assets qa ON qa.id = a.quote_asset_id
     LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
     LEFT JOIN first_purchase_data fpd ON fpd.portfolio_asset_id = pa.id
+    LEFT JOIN asset_payouts_data apd ON apd.asset_id = pa.asset_id
     GROUP BY pa.portfolio_id
 ),
 
--- 5. История портфелей (встроенный запрос вместо функции)
+-- 6. История портфелей
 portfolio_history_data AS (
     SELECT 
         pv.portfolio_id,
@@ -122,14 +135,12 @@ portfolio_history_data AS (
     GROUP BY pv.portfolio_id
 ),
 
--- 6. Полная аналитика портфелей (используем get_user_portfolios_analytics для полной структуры)
--- Это даст нам все нужные поля: totals, monthly_flow, monthly_payouts, asset_distribution, etc.
+-- 7. Полная аналитика портфелей (используем get_user_portfolios_analytics для полной структуры)
 full_analytics_data AS (
     SELECT get_user_portfolios_analytics(p_user_id) AS analytics_json
 ),
 
--- 7. Преобразуем JSON массив аналитики в map по portfolio_id для JOIN
--- И заменяем null на пустые массивы для полей, которые должны быть массивами
+-- 8. Преобразуем JSON массив аналитики в map по portfolio_id для JOIN
 portfolio_analytics_map AS (
     SELECT 
         (elem->>'portfolio_id')::int AS portfolio_id,
@@ -166,13 +177,13 @@ portfolio_analytics_map AS (
     LATERAL json_array_elements(analytics_json::json) AS elem
 ),
 
--- 8. Финальная аналитика для JOIN
+-- 9. Финальная аналитика для JOIN
 portfolio_analytics_final AS (
     SELECT portfolio_id, analytics
     FROM portfolio_analytics_map
 ),
 
--- 9. Последние транзакции (по 5 для каждого портфеля)
+-- 10. Последние транзакции (по 5 для каждого портфеля)
 recent_transactions AS (
     SELECT jsonb_agg(
         jsonb_build_object(
@@ -217,7 +228,7 @@ recent_transactions AS (
     WHERE tx.rn <= 5
 )
 
--- 10. Финальная сборка результата
+-- 11. Финальная сборка результата
 SELECT jsonb_build_object(
     'portfolios', COALESCE(
         jsonb_agg(
@@ -246,4 +257,4 @@ $$ LANGUAGE sql;
 
 -- Комментарий к функции
 COMMENT ON FUNCTION get_dashboard_data_complete(uuid) IS 
-'Оптимизированная функция для получения всех данных дашборда одним запросом. Возвращает портфели с активами, историей, аналитикой, connections и последние транзакции.';
+'Оптимизированная функция для получения всех данных дашборда одним запросом. Выплаты по активам вынесены в CTE для оптимизации. Возвращает портфели с активами, историей, аналитикой, connections и последние транзакции.';
