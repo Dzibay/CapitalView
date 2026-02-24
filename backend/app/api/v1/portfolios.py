@@ -185,6 +185,31 @@ async def import_broker_route(
     """Создает задачу импорта портфеля от брокера."""
     logger.info(f"📥 Запрос создания задачи импорта портфеля от брокера {data.broker_id}")
     
+    # Проверяем, не используется ли уже этот токен у пользователя
+    from app.domain.services.broker_connections_service import check_broker_token_exists
+    
+    token_check = check_broker_token_exists(
+        user_id=user["id"],
+        broker_id=data.broker_id,
+        broker_token=data.token
+    )
+    
+    if token_check["exists"]:
+        portfolio_name = token_check.get("portfolio_name", "неизвестный портфель")
+        portfolio_id = token_check.get("portfolio_id")
+        
+        error_message = (
+            f"Токен уже используется для портфеля '{portfolio_name}'"
+            + (f" (ID: {portfolio_id})" if portfolio_id else "")
+        )
+        
+        logger.warning(f"⚠️ Попытка повторного импорта: {error_message}, user_id={user['id']}")
+        
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=error_message
+        )
+    
     task = create_import_task(
         user_id=user["id"],
         broker_id=data.broker_id,
