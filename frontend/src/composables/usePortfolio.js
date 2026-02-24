@@ -90,7 +90,7 @@ export function usePortfolio(dashboardData, selectedPortfolioId) {
         } else {
           // Родитель не существует - это "сирота", не добавляем в дерево
           // (портфель останется в массиве, но не будет отображаться)
-          if (import.meta.env.DEV) {
+          if (import.meta.env.VITE_APP_DEV) {
             console.warn(`Портфель ${p.id} (${p.name}) имеет несуществующего родителя ${p.parent_portfolio_id} - скрыт из дерева`)
           }
         }

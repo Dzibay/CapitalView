@@ -5,9 +5,10 @@
 import axios from 'axios';
 
 // В режиме разработки используем прокси из Vite, в продакшене - полный URL
-const API_BASE_URL = import.meta.env.PROD 
-  ? (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1')
-  : '/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+// Таймаут из переменных окружения или по умолчанию 30 секунд
+const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '30000', 10);
 
 // Создаем экземпляр axios с базовой конфигурацией
 const apiClient = axios.create({
@@ -15,7 +16,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 секунд таймаут
+  timeout: API_TIMEOUT,
 });
 
 // Interceptor для добавления токена авторизации к каждому запросу

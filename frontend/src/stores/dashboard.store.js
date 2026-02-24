@@ -9,7 +9,7 @@ export const useDashboardStore = defineStore('dashboard', {
     referenceData: {},
     analytics: [],
     lastFetch: null,
-    cacheTimeout: 60000, // 1 минута кеширования
+    cacheTimeout: parseInt(import.meta.env.VITE_DASHBOARD_CACHE_TIMEOUT || '60000', 10), // Время кеширования из env или 1 минута по умолчанию
     transactionsLoaded: false,
     analyticsLoaded: false
   }),
@@ -46,6 +46,12 @@ export const useDashboardStore = defineStore('dashboard', {
       try {
         const data = await fetchDashboardData()
         
+        // Выводим dashboard data в консоль для отладки
+        if (import.meta.env.VITE_DEBUG_DASHBOARD_DATA) {
+          console.log('📊 Dashboard Data:', JSON.parse(JSON.stringify(data)))
+          
+        }
+        
         if (data?.data) {
           this.portfolios = data.data.portfolios || []
           // Транзакции теперь приходят вместе с dashboard
@@ -69,7 +75,7 @@ export const useDashboardStore = defineStore('dashboard', {
         this.lastFetch = Date.now()
         
       } catch (err) {
-        if (import.meta.env.DEV && (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error'))) {
+        if (import.meta.env.VITE_APP_DEV && (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error'))) {
             console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
         }
         throw err

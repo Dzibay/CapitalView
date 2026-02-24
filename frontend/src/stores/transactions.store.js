@@ -18,7 +18,7 @@ export const useTransactionsStore = defineStore('transactions', {
         uiStore.setLoading(true)
         await dashboardStore.reloadDashboard()
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка добавления транзакции:', err)
         }
         throw err
@@ -36,7 +36,7 @@ export const useTransactionsStore = defineStore('transactions', {
         uiStore.setLoading(true)
         await dashboardStore.reloadDashboard()
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка добавления операции:', err)
         }
         throw err
@@ -54,7 +54,7 @@ export const useTransactionsStore = defineStore('transactions', {
         uiStore.setLoading(true)
         await dashboardStore.reloadDashboard()
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка массового добавления операций:', err)
         }
         throw err
@@ -72,7 +72,7 @@ export const useTransactionsStore = defineStore('transactions', {
         uiStore.setLoading(true)
         await dashboardStore.reloadDashboard()
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка редактирования транзакции:', err)
         }
         throw err
@@ -91,7 +91,7 @@ export const useTransactionsStore = defineStore('transactions', {
         uiStore.setLoading(true)
         await dashboardStore.reloadDashboard()
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка удаления транзакций:', err)
         }
         throw err
@@ -109,7 +109,7 @@ export const useTransactionsStore = defineStore('transactions', {
         uiStore.setLoading(true)
         await dashboardStore.reloadDashboard()
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка удаления операций:', err)
         }
         throw err

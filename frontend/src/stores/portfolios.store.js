@@ -15,7 +15,7 @@ export const usePortfoliosStore = defineStore('portfolios', {
         }
         return res
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка создания портфеля:', err)
         }
         throw err
@@ -61,7 +61,7 @@ export const usePortfoliosStore = defineStore('portfolios', {
         
         return res
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка удаления портфеля:', err)
         }
         throw err
@@ -80,7 +80,7 @@ export const usePortfoliosStore = defineStore('portfolios', {
         await dashboardStore.reloadDashboard()
         return res
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка очистки портфеля:', err)
         }
         throw err
@@ -98,7 +98,7 @@ export const usePortfoliosStore = defineStore('portfolios', {
         // Теперь импорт выполняется асинхронно через систему задач
         return res
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка импорта портфеля:', err)
         }
         throw err

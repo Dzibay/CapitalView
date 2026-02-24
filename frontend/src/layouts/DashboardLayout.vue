@@ -48,7 +48,7 @@ onMounted(async () => {
       uiStore.initSelectedPortfolioId(dashboardStore.portfolios)
     }
   } catch (err) {
-    if (import.meta.env.DEV) {
+    if (import.meta.env.VITE_APP_DEV) {
       console.error('Ошибка при загрузке данных:', err)
     }
     // При ошибке сети не перенаправляем на логин, просто показываем ошибку

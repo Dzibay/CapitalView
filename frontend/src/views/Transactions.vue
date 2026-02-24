@@ -43,7 +43,7 @@ const loadTransactions = async () => {
     dashboardStore.transactions = normalizedTransactions
     dashboardStore.transactionsLoaded = true
   } catch (err) {
-    if (import.meta.env.DEV) {
+    if (import.meta.env.VITE_APP_DEV) {
       console.error('Ошибка загрузки транзакций:', err)
     }
   } finally {
@@ -65,7 +65,7 @@ const loadOperations = async () => {
     const response = await operationsService.getOperations({ limit: 2000 })
     operations.value = response?.operations || response || []
   } catch (err) {
-    if (import.meta.env.DEV) {
+    if (import.meta.env.VITE_APP_DEV) {
       console.error('Ошибка загрузки операций:', err)
     }
   } finally {
