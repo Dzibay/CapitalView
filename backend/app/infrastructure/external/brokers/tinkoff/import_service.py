@@ -7,6 +7,7 @@ from t_tech.invest import Client, InstrumentIdType
 
 OPERATION_CLASSIFICATION = {
     "OPERATION_TYPE_BUY": "Buy",
+    "OPERATION_TYPE_BUY_CARD": "Buy",
     "OPERATION_TYPE_SELL": "Sell",
     "OPERATION_TYPE_DIVIDEND": "Dividend",
     "OPERATION_TYPE_DIV_EXT": "Dividend",
@@ -55,7 +56,7 @@ def resolve_instrument(client, figi, cache):
         return None
 
 
-def get_tinkoff_portfolio(token, days=365):
+def get_tinkoff_portfolio(token):
     """Получает данные портфеля от брокера Tinkoff."""
     print("📥 Получаем данные от брокера Tinkoff...")
 
@@ -68,7 +69,7 @@ def get_tinkoff_portfolio(token, days=365):
             return {}
 
         now = datetime.utcnow()
-        from_date = now - timedelta(days=days)
+        # from_date = now - timedelta(days=days)
 
         for account in accounts:
             acc_id = account.id
@@ -95,8 +96,8 @@ def get_tinkoff_portfolio(token, days=365):
             # ОПЕРАЦИИ
             ops_raw = client.operations.get_operations(
                 account_id=acc_id,
-                from_=from_date,
-                to=now
+                # from_=from_date,
+                # to=now
             ).operations
 
             transactions = []

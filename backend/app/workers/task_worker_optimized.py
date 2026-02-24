@@ -77,10 +77,10 @@ async def upsert_broker_connection_async(user_id, broker_id: int, portfolio_id: 
     )
 
 
-async def get_tinkoff_portfolio_async(token: str, days: int = 365) -> dict:
+async def get_tinkoff_portfolio_async(token: str) -> dict:
     """Асинхронная обертка для get_tinkoff_portfolio (может быть очень медленным)."""
     from app.infrastructure.external.brokers.tinkoff import get_tinkoff_portfolio
-    return await asyncio.to_thread(get_tinkoff_portfolio, token, days)
+    return await asyncio.to_thread(get_tinkoff_portfolio, token)
 
 
 async def process_import_task(task: dict) -> bool:
@@ -126,7 +126,7 @@ async def process_import_task(task: dict) -> bool:
         broker_id_int = int(broker_id) if isinstance(broker_id, str) else broker_id
         
         if broker_id_int == BrokerID.TINKOFF:
-            broker_data = await get_tinkoff_portfolio_async(broker_token, 365)
+            broker_data = await get_tinkoff_portfolio_async(broker_token)
         else:
             raise Exception(f"Импорт для брокера {broker_id_int} не реализован")
         
