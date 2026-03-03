@@ -4,7 +4,7 @@
 
 # Виртуальное окружение
 venv/
-.env
+backend/.env
 
 # Python cache
 __pycache__/
@@ -24,6 +24,7 @@ __pycache__/
 
 frontend/.vscode/
 frontend/.vite/
+frontend/.env
 
 
 # Node modules
