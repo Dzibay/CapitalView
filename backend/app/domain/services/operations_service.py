@@ -62,15 +62,16 @@ def create_operation(
     
     Поддерживает все типы операций:
     - Buy (1) / Sell (2): создает transaction + cash_operation
+    - Ammortization (9): создает transaction типа Redemption (3) + cash_operation
     - Dividend (3) / Coupon (4): создает cash_operation (без записи в asset_payouts)
     - Commission (7) / Tax (8): создает cash_operation
     - Deposit (5) / Withdraw (6): создает cash_operation
-    - Other (9): создает cash_operation
+    - Other (10): создает cash_operation
     
     Args:
         user_id: ID пользователя
         portfolio_id: ID портфеля (опционален, если передан portfolio_asset_id)
-        operation_type: Тип операции (1-9)
+        operation_type: Тип операции (1-10: 1=Buy, 2=Sell, 3=Dividend, 4=Coupon, 5=Deposit, 6=Withdraw, 7=Commission, 8=Tax, 9=Ammortization, 10=Other)
         amount: Сумма операции (до 6 знаков после запятой для выплат)
         currency_id: ID валюты (по умолчанию 47 = RUB, может быть любой валютой включая криптовалюты)
         operation_date: Дата операции
@@ -106,16 +107,22 @@ def create_operation(
     if not portfolio_id:
         raise ValueError("Необходимо указать либо portfolio_id, либо portfolio_asset_id")
     
-    # Buy/Sell - создаем через существующую функцию транзакций
-    if operation_type in [1, 2]:  # Buy или Sell
+    # Buy/Sell/Redemption - создаем через существующую функцию транзакций
+    if operation_type in [1, 2, 9]:  # Buy, Sell или Ammortization (обрабатывается как Redemption транзакция)
         if not portfolio_asset_id:
-            raise ValueError("portfolio_asset_id обязателен для Buy/Sell")
+            raise ValueError("portfolio_asset_id обязателен для Buy/Sell/Redemption")
         if not asset_id:
-            raise ValueError("asset_id обязателен для Buy/Sell")
+            raise ValueError("asset_id обязателен для Buy/Sell/Redemption")
         if not quantity:
-            raise ValueError("quantity обязателен для Buy/Sell")
+            raise ValueError("quantity обязателен для Buy/Sell/Redemption")
         if not price:
-            raise ValueError("price обязателен для Buy/Sell")
+            raise ValueError("price обязателен для Buy/Sell/Redemption")
+        
+        # Маппинг типов: Buy=1, Sell=2, Ammortization=9 -> Redemption=3
+        if operation_type == 9:
+            transaction_type = 3  # Redemption
+        else:
+            transaction_type = operation_type  # 1 = buy, 2 = sell (тип 9 обрабатывается выше как 3 = redemption)
         
         # Используем существующую функцию создания транзакций
         # Она автоматически создаст cash_operation через триггер
@@ -123,7 +130,7 @@ def create_operation(
             user_id=user_id,
             portfolio_asset_id=portfolio_asset_id,
             asset_id=asset_id,
-            transaction_type=operation_type,  # 1 = buy, 2 = sell
+            transaction_type=transaction_type,
             quantity=quantity,
             price=price,
             transaction_date=operation_date
@@ -171,7 +178,7 @@ def create_operations_batch(
     Args:
         user_id: ID пользователя
         portfolio_id: ID портфеля (опционален, если передан portfolio_asset_id)
-        operation_type: Тип операции (1-9)
+        operation_type: Тип операции (1-10: 1=Buy, 2=Sell, 3=Dividend, 4=Coupon, 5=Deposit, 6=Withdraw, 7=Commission, 8=Tax, 9=Ammortization, 10=Other)
         amount: Сумма операции
         currency_id: ID валюты (по умолчанию 47 = RUB)
         start_date: Дата начала повторения

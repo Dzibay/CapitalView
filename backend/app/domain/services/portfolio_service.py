@@ -562,7 +562,25 @@ async def import_broker_portfolio(
         min_op_date = None  # Самая старая дата новой денежной операции
         failed_count = 0  # Счетчик ошибок при вставке транзакций (для проверки перед rebuild_fifo)
 
-        for tx in pdata["transactions"]:
+        # Создаем карту позиций брокера для использования при расчете количества для Redemption операций
+        broker_positions_map = {}
+        if "positions" in pdata:
+            for pos in pdata["positions"]:
+                pos_isin = pos.get("isin")
+                if pos_isin and pos_isin in isin_to_asset:
+                    asset_id_from_pos = isin_to_asset[pos_isin]
+                    broker_positions_map[asset_id_from_pos] = {
+                        "quantity": float(pos.get("quantity", 0)),
+                        "average_price": float(pos.get("average_price", 0))
+                    }
+
+        # Сортируем транзакции по дате для правильной обработки (Buy должен быть раньше Redemption)
+        sorted_transactions = sorted(
+            pdata["transactions"],
+            key=lambda x: (x.get("date", ""), x.get("type", ""))
+        )
+
+        for tx in sorted_transactions:
             tx_type = tx["type"]
             tx_date = tx["date"]
             isin = tx.get("isin")
@@ -581,8 +599,8 @@ async def import_broker_portfolio(
                 if tx_date_parsed <= filter_datetime:
                     continue  # Пропускаем транзакции до или в момент последней известной операции
 
-            # Покупка / продажа
-            if tx_type in ("Buy", "Sell"):
+            # Покупка / продажа / погашение (транзакции, которые изменяют количество актива)
+            if tx_type in ("Buy", "Sell", "Redemption"):
                 if not isin or isin not in isin_to_asset:
                     continue
 
@@ -608,15 +626,103 @@ async def import_broker_portfolio(
                         logger.debug(f"Пропущена транзакция из-за невалидной даты: type={tx_type}, date={tx_date}, isin={isin}")
                         continue
                 
-                price = round(float(tx["price"]), 6)
-                qty = round(float(tx["quantity"]), 6)
-                tx_type_id = 1 if tx_type == "Buy" else 2
+                # Для Redemption операций рассчитываем quantity из позиций портфеля на момент погашения
+                if tx_type == "Redemption":
+                    payment = float(tx.get("payment") or 0)
+                    op_quantity = float(tx.get("quantity") or 0)
+                    
+                    # Если quantity не указано в операции, рассчитываем из истории транзакций до момента погашения
+                    if op_quantity <= 0:
+                        # Рассчитываем количество облигаций на момент погашения из существующих транзакций
+                        # Используем транзакции, которые уже есть в БД до момента погашения
+                        tx_date_for_query = tx_date_normalized if tx_date_normalized else tx_date
+                        if isinstance(tx_date_for_query, str):
+                            # Преобразуем дату в формат для сравнения
+                            tx_date_sql = tx_date_for_query[:10] if len(tx_date_for_query) > 10 else tx_date_for_query
+                        else:
+                            tx_date_sql = str(tx_date_for_query)[:10]
+                        
+                        # Рассчитываем количество из существующих транзакций до даты погашения
+                        calculated_qty = 0.0
+                        existing_tx_count = 0
+                        for existing_tx_key in existing_tx_keys:
+                            existing_pa_id, existing_date, existing_type, existing_price, existing_qty = existing_tx_key
+                            if existing_pa_id == pa_id:
+                                # Сравниваем даты (только дата, без времени для сравнения)
+                                existing_date_str = str(existing_date)[:10] if len(str(existing_date)) > 10 else str(existing_date)
+                                if existing_date_str <= tx_date_sql:
+                                    existing_tx_count += 1
+                                    if existing_type == 1:  # Buy
+                                        calculated_qty += existing_qty
+                                    elif existing_type in (2, 3):  # Sell или Redemption
+                                        calculated_qty -= existing_qty
+                        
+                        # Также учитываем транзакции, которые уже добавлены в new_tx в этом же импорте
+                        # Но только те, которые идут ДО текущей Redemption операции (по дате)
+                        # ВАЖНО: Транзакции из existing_tx_keys уже учтены в БД, поэтому не учитываем их повторно
+                        # из new_tx, если они уже есть в existing_tx_keys
+                        new_tx_count = 0
+                        for new_tx_item in new_tx:
+                            if new_tx_item["portfolio_asset_id"] == pa_id:
+                                new_tx_date = new_tx_item.get("transaction_date", "")
+                                new_tx_date_str = str(new_tx_date)[:10] if len(str(new_tx_date)) > 10 else str(new_tx_date)
+                                # Сравниваем даты: транзакция должна быть строго ДО текущей Redemption операции
+                                # (не включая саму Redemption операцию)
+                                if new_tx_date_str < tx_date_sql:
+                                    # Проверяем, не является ли эта транзакция дубликатом из existing_tx_keys
+                                    new_tx_type = new_tx_item.get("transaction_type")
+                                    new_tx_price = new_tx_item.get("price", 0)
+                                    new_tx_qty = new_tx_item.get("quantity", 0)
+                                    new_tx_key = (pa_id, new_tx_date, new_tx_type, new_tx_price, new_tx_qty)
+                                    
+                                    # Учитываем только если транзакция еще не была обработана (не в existing_tx_keys)
+                                    # или если это новая транзакция из этого импорта
+                                    if new_tx_key not in existing_tx_keys:
+                                        new_tx_count += 1
+                                        if new_tx_type == 1:  # Buy
+                                            calculated_qty += new_tx_qty
+                                        elif new_tx_type in (2, 3):  # Sell или Redemption
+                                            calculated_qty -= new_tx_qty
+                        
+                        # Если расчет из транзакций дал 0, используем позиции брокера как fallback
+                        if calculated_qty <= 0:
+                            if asset_id in broker_positions_map:
+                                broker_pos = broker_positions_map[asset_id]
+                                broker_qty = broker_pos.get("quantity", 0)
+                                if broker_qty > 0:
+                                    calculated_qty = broker_qty
+                        
+                        if calculated_qty > 0:
+                            op_quantity = calculated_qty
+                            # Рассчитываем price из payment / quantity
+                            calculated_price = payment / op_quantity if op_quantity > 0 else 0
+                            price = round(calculated_price, 6)
+                            qty = round(op_quantity, 6)
+                        else:
+                            logger.warning(f"Redemption операция: количество облигаций на момент погашения = {calculated_qty}, пропускаем: tx={tx}")
+                            continue
+                    else:
+                        # Если quantity указано в операции, используем его
+                        # Рассчитываем price из payment / quantity
+                        calculated_price = payment / op_quantity if op_quantity > 0 else 0
+                        price = round(calculated_price, 6)
+                        qty = round(op_quantity, 6)
+                else:
+                    # Для Buy и Sell используем стандартную логику
+                    price = round(float(tx.get("price") or 0), 6)
+                    qty = round(float(tx.get("quantity") or 0), 6)
+                # Маппинг типов транзакций: Buy=1, Sell=2, Redemption=3
+                if tx_type == "Buy":
+                    tx_type_id = 1
+                elif tx_type == "Sell":
+                    tx_type_id = 2
+                else:  # Redemption
+                    tx_type_id = 3
                 
                 # Проверяем, существует ли уже такая транзакция
                 # Используем полную дату с временем для различения транзакций в один день
                 tx_key = (pa_id, tx_date_normalized, tx_type_id, price, qty)
                 if tx_key in existing_tx_keys:
-                    logger.debug(f"Пропущена дубликат транзакции: portfolio_asset_id={pa_id}, date={tx_date_normalized}, type={tx_type_id}, price={price}, qty={qty}")
                     continue  # Пропускаем дубликат
 
                 # Добавляем в множество существующих, чтобы не дублировать в рамках одного импорта
@@ -627,16 +733,21 @@ async def import_broker_portfolio(
                 if min_tx_date is None or tx_date_normalized < min_tx_date:
                     min_tx_date = tx_date_normalized
 
-                new_tx.append({
+                # Для Redemption операций используем рассчитанные price и qty, а не значения из tx
+                tx_price = price if tx_type == "Redemption" else float(tx["price"])
+                tx_quantity = qty if tx_type == "Redemption" else float(tx["quantity"])
+                
+                tx_data = {
                     "portfolio_asset_id": pa_id,
                     "transaction_type": tx_type_id,
-                    "price": float(tx["price"]),
-                    "quantity": float(tx["quantity"]),
+                    "price": tx_price,
+                    "quantity": tx_quantity,
                     # КРИТИЧНО: Используем нормализованную дату с временем для сохранения полного timestamp
                     # Это позволяет различать транзакции с разницей во времени (например, 1 минута)
                     "transaction_date": tx_date_normalized if tx_date_normalized else tx_date,
                     "user_id": user_id
-                })
+                }
+                new_tx.append(tx_data)
 
             else:
                 # Денежные операции
@@ -724,6 +835,7 @@ async def import_broker_portfolio(
             # Используем батч-вставку через SQL функцию для ACID-совместимости
             # Функция автоматически создает FIFO-лоты и обрабатывает продажи
             logger.debug(f"Добавляем {len(new_tx_sorted)} транзакций батчем...")
+            
             try:
                 # Supabase автоматически преобразует Python dict/list в jsonb
                 # Передаем список транзакций напрямую
@@ -735,25 +847,42 @@ async def import_broker_portfolio(
                     inserted_count = result.get("inserted_count", 0)
                     failed_count = result.get("failed_count", 0)
                     failed_tx = result.get("failed_transactions", [])
+                    tx_ids = result.get("transaction_ids", [])
+                    
+                    logger.debug(f"Результат apply_transactions_batch: inserted_count={inserted_count}, "
+                               f"failed_count={failed_count}, transaction_ids count={len(tx_ids) if tx_ids else 0}, "
+                               f"failed_transactions count={len(failed_tx)}")
                     
                     if inserted_count > 0:
-                        logger.debug(f"Успешно добавлено {inserted_count} транзакций")
+                        logger.debug(f"Успешно добавлено {inserted_count} транзакций из {len(new_tx_sorted)}")
                     
                     if failed_count > 0:
-                        logger.warning(f"Пропущено {failed_count} транзакций из-за ошибок")
+                        logger.warning(f"Пропущено {failed_count} транзакций из {len(new_tx_sorted)} из-за ошибок")
                         for failed in failed_tx:
                             error_msg = failed.get("error", "Unknown error")
                             tx_data = failed.get("transaction", {})
+                            tx_type = tx_data.get("transaction_type")
+                            tx_type_name = "Buy" if tx_type == 1 else ("Sell" if tx_type == 2 else "Redemption")
+                            
                             if "Not enough quantity" in error_msg or "P0001" in error_msg:
                                 logger.warning(
-                                    f"Пропущена продажа из-за недостаточного количества: "
+                                    f"Пропущена {tx_type_name} транзакция из-за недостаточного количества: "
                                     f"portfolio_asset_id={tx_data.get('portfolio_asset_id')}, "
                                     f"quantity={tx_data.get('quantity')}, "
+                                    f"price={tx_data.get('price')}, "
                                     f"date={tx_data.get('transaction_date')}. Ошибка: {error_msg}"
+                                )
+                            elif "duplicate" in error_msg.lower() or "already exists" in error_msg.lower():
+                                logger.debug(
+                                    f"Пропущена {tx_type_name} транзакция как дубликат: "
+                                    f"portfolio_asset_id={tx_data.get('portfolio_asset_id')}, "
+                                    f"quantity={tx_data.get('quantity')}, "
+                                    f"price={tx_data.get('price')}, "
+                                    f"date={tx_data.get('transaction_date')}"
                                 )
                             else:
                                 logger.error(
-                                    f"Ошибка при добавлении транзакции: {error_msg}, "
+                                    f"Ошибка при добавлении {tx_type_name} транзакции: {error_msg}, "
                                     f"transaction: {tx_data}"
                                 )
                 else:

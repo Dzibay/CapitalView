@@ -52,9 +52,9 @@ begin
       );
 
     ----------------------------------------------------------------
-    -- SELL
+    -- SELL или REDEMPTION
     ----------------------------------------------------------------
-    elsif tx.transaction_type = 2 then
+    elsif tx.transaction_type IN (2, 3) then
       v_remaining := tx.quantity;
       v_realized := 0;
 
@@ -68,19 +68,24 @@ begin
       loop
         exit when v_remaining <= 0;
 
-        if lot.remaining_qty <= v_remaining then
-          v_realized := v_realized +
-            lot.remaining_qty * (tx.price - lot.price);
+        -- Для SELL и REDEMPTION рассчитываем realized_pnl
+        if tx.transaction_type IN (2, 3) then
+          if lot.remaining_qty <= v_remaining then
+            v_realized := v_realized +
+              lot.remaining_qty * (tx.price - lot.price);
+          else
+            v_realized := v_realized +
+              v_remaining * (tx.price - lot.price);
+          end if;
+        end if;
 
+        if lot.remaining_qty <= v_remaining then
           v_remaining := v_remaining - lot.remaining_qty;
 
           update fifo_lots
           set remaining_qty = 0
           where id = lot.id;
         else
-          v_realized := v_realized +
-            v_remaining * (tx.price - lot.price);
-
           update fifo_lots
           set remaining_qty = lot.remaining_qty - v_remaining
           where id = lot.id;
@@ -91,13 +96,17 @@ begin
 
       if v_remaining > 0 then
         raise exception
-          'Not enough quantity to sell (portfolio_asset_id=%, tx_id=%)',
+          'Not enough quantity to % (portfolio_asset_id=%, tx_id=%)',
+          CASE WHEN tx.transaction_type = 2 THEN 'sell' ELSE 'redeem' END,
           p_portfolio_asset_id, tx.id;
       end if;
 
-      update transactions
-      set realized_pnl = v_realized
-      where id = tx.id;
+      -- Обновляем realized_pnl для SELL и REDEMPTION
+      if tx.transaction_type IN (2, 3) and v_realized != 0 then
+        update transactions
+        set realized_pnl = v_realized
+        where id = tx.id;
+      end if;
     end if;
   end loop;
   return true;

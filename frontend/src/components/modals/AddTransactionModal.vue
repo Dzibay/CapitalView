@@ -31,7 +31,8 @@ const operationTypes = [
   { value: 8, label: 'Налог', category: 'expense' },
   { value: 5, label: 'Пополнение', category: 'cash' },
   { value: 6, label: 'Вывод', category: 'cash' },
-  { value: 9, label: 'Другое', category: 'other' }
+  { value: 9, label: 'Погашение', category: 'transaction' },  // Ammortization/Redemption - обрабатывается как транзакция
+  { value: 10, label: 'Другое', category: 'other' }
 ]
 
 // Режим: 'single' - одна операция, 'recurring' - повторяющиеся операции
@@ -308,7 +309,7 @@ const selectedOperation = computed(() => {
 })
 
 const isTransaction = computed(() => {
-  return operationType.value === 1 || operationType.value === 2
+  return operationType.value === 1 || operationType.value === 2 || operationType.value === 9  // Buy, Sell, Redemption
 })
 
 const isPayout = computed(() => {
@@ -324,7 +325,7 @@ const isCashOperation = computed(() => {
 })
 
 const isOther = computed(() => {
-  return operationType.value === 9
+  return operationType.value === 10  // Other (тип 9 теперь Погашение - транзакция)
 })
 
 const requiresQuantity = computed(() => {
@@ -875,9 +876,9 @@ function generateRecurringDates(startDate, endDate, dayOfMonth) {
 const handleSubmit = async () => {
   error.value = ''
   
-  // Валидация для транзакций (Buy/Sell) - не поддерживаются в режиме повторения
+  // Валидация для транзакций (Buy/Sell/Redemption) - не поддерживаются в режиме повторения
   if (isTransaction.value && mode.value === 'recurring') {
-    error.value = 'Повторяющиеся операции не поддерживаются для транзакций (Покупка/Продажа)'
+    error.value = 'Повторяющиеся операции не поддерживаются для транзакций (Покупка/Продажа/Погашение)'
     return
   }
   
@@ -934,12 +935,18 @@ const handleSubmit = async () => {
   saving.value = true
 
   try {
-    // Для Buy/Sell используем старый метод через onSubmit
+    // Для Buy/Sell/Redemption используем старый метод через onSubmit
     if (isTransaction.value) {
+      // Маппинг типов: Buy=1, Sell=2, Ammortization=9 -> Redemption=3
+      let transactionType = operationType.value
+      if (operationType.value === 9) {
+        transactionType = 3  // Redemption
+      }
+      
       await props.onSubmit({
         asset_id: props.asset.asset_id,
         portfolio_asset_id: props.asset.portfolio_asset_id,
-        transaction_type: operationType.value,
+        transaction_type: transactionType,
         quantity: quantity.value,
         price: price.value,
         transaction_date: date.value,

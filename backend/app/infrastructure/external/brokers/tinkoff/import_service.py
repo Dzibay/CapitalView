@@ -30,7 +30,8 @@ OPERATION_CLASSIFICATION = {
     "OPERATION_TYPE_TAX_BACK": "Tax",
     "OPERATION_TYPE_TAX": "Tax",
     "OPERATION_TYPE_BENEFIT_TAX": "Tax",
-    "OPERATION_TYPE_BOND_REPAYMENT_FULL": "Ammortization"
+    "OPERATION_TYPE_BOND_REPAYMENT_FULL": "Redemption",
+    "OPERATION_TYPE_BOND_REPAYMENT": "Redemption"
 }
 
 
@@ -142,13 +143,29 @@ def get_tinkoff_portfolio(token):
                         "type": classified
                     }
 
-                    # BUY / SELL
-                    if classified in ("Buy", "Sell"):
-                        tx.update({
-                            "price": price_obj.units + price_obj.nano / 1e9 if price_obj else None,
-                            "quantity": (quantity or 0) - (quantity_rest or 0),
-                            "payment": 0,
-                        })
+                    # BUY / SELL / REDEMPTION (транзакции, которые изменяют количество актива)
+                    if classified in ("Buy", "Sell", "Redemption"):
+                        if classified == "Redemption":
+                            # Для операций погашения облигаций quantity может быть 0,
+                            # но есть payment (сумма выплаты).
+                            # Количество будет рассчитано в portfolio_service из позиций портфеля на момент погашения
+                            payment = op.payment.units + op.payment.nano / 1e9 if op.payment else 0
+                            op_quantity = (quantity or 0) - (quantity_rest or 0)
+                            
+                            # Передаем payment для расчета количества в portfolio_service
+                            # quantity будет рассчитано из позиций портфеля на момент погашения
+                            tx.update({
+                                "price": 0,  # Будет рассчитано из payment / quantity в portfolio_service
+                                "quantity": op_quantity if op_quantity > 0 else 0,  # Если есть - используем, иначе будет рассчитано
+                                "payment": payment,
+                            })
+                        else:
+                            # Для Buy и Sell используем стандартную логику
+                            tx.update({
+                                "price": price_obj.units + price_obj.nano / 1e9 if price_obj else None,
+                                "quantity": (quantity or 0) - (quantity_rest or 0),
+                                "payment": 0,
+                            })
                     # Денежные операции
                     else:
                         payment = op.payment.units + op.payment.nano / 1e9 if op.payment else 0

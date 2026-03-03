@@ -1,7 +1,7 @@
 create or replace function apply_transaction(
   p_user_id uuid,
   p_portfolio_asset_id bigint,
-  p_transaction_type int,   -- 1=buy, 2=sell
+  p_transaction_type int,   -- 1=buy, 2=sell, 3=redemption
   p_quantity numeric,
   p_price numeric,
   p_transaction_date date
@@ -92,7 +92,7 @@ begin
     -- Если новая транзакция нарушает порядок - пересчитываем FIFO для всех транзакций
     PERFORM rebuild_fifo_for_portfolio_asset(p_portfolio_asset_id);
   ELSE
-    -- Обычная обработка: создаем лот для покупки или обрабатываем продажу
+    -- Обычная обработка: создаем лот для покупки или обрабатываем продажу/погашение
     IF p_transaction_type = 1 THEN
       -- BUY → FIFO-лот
       insert into fifo_lots (
@@ -107,8 +107,8 @@ begin
         p_price,
         p_transaction_date
       );
-    ELSIF p_transaction_type = 2 THEN
-      -- SELL → FIFO
+    ELSIF p_transaction_type IN (2, 3) THEN
+      -- SELL или REDEMPTION → FIFO (уменьшаем количество)
       v_remaining := p_quantity;
 
       for lot in
@@ -122,8 +122,11 @@ begin
         exit when v_remaining <= 0;
 
         if lot.remaining_qty <= v_remaining then
-          v_realized := v_realized +
-            lot.remaining_qty * (p_price - lot.price);
+          -- Для SELL и REDEMPTION рассчитываем realized_pnl
+          IF p_transaction_type IN (2, 3) THEN
+            v_realized := v_realized +
+              lot.remaining_qty * (p_price - lot.price);
+          END IF;
 
           v_remaining := v_remaining - lot.remaining_qty;
 
@@ -131,8 +134,11 @@ begin
           set remaining_qty = 0
           where id = lot.id;
         else
-          v_realized := v_realized +
-            v_remaining * (p_price - lot.price);
+          -- Частичное использование лота
+          IF p_transaction_type IN (2, 3) THEN
+            v_realized := v_realized +
+              v_remaining * (p_price - lot.price);
+          END IF;
 
           update fifo_lots
           set remaining_qty = lot.remaining_qty - v_remaining
@@ -142,15 +148,25 @@ begin
         end if;
       end loop;
 
+      -- Обновляем realized_pnl для SELL и REDEMPTION
+      IF p_transaction_type IN (2, 3) AND v_realized != 0 THEN
+        update transactions
+        set realized_pnl = v_realized
+        where id = v_tx_id;
+      END IF;
+
+      -- Проверяем, что достаточно количества для продажи/погашения
       if v_remaining > 0 then
         raise exception
-          'Not enough quantity to sell (portfolio_asset_id=%)',
-          p_portfolio_asset_id;
+          'Not enough quantity to % (portfolio_asset_id=%, remaining=%)',
+          CASE WHEN p_transaction_type = 2 THEN 'sell' ELSE 'redeem' END,
+          p_portfolio_asset_id,
+          v_remaining;
       end if;
-
-      update transactions
-      set realized_pnl = v_realized
-      where id = v_tx_id;
+    ELSE
+      RAISE EXCEPTION
+        'Invalid transaction_type: % (expected 1=buy, 2=sell, 3=redemption)',
+        p_transaction_type;
     END IF;
   END IF;
 
@@ -181,6 +197,7 @@ begin
   -- Получаем ID типов операций
   SELECT id INTO v_buy_op_type_id FROM operations_type WHERE name = 'Buy' LIMIT 1;
   SELECT id INTO v_sell_op_type_id FROM operations_type WHERE name = 'Sell' LIMIT 1;
+  SELECT id INTO v_op_type_id FROM operations_type WHERE name = 'Redemption' LIMIT 1;
   
   -- Определяем тип операции и сумму в валюте актива
   IF p_transaction_type = 1 THEN
@@ -188,6 +205,12 @@ begin
     v_cash_amount := -(p_price * p_quantity);
   ELSIF p_transaction_type = 2 THEN
     v_op_type_id := v_sell_op_type_id;
+    v_cash_amount := (p_price * p_quantity);
+  ELSIF p_transaction_type = 3 THEN
+    -- Redemption: используем тип операции Redemption (или Ammortization для обратной совместимости)
+    IF v_op_type_id IS NULL THEN
+      SELECT id INTO v_op_type_id FROM operations_type WHERE name = 'ammortization' LIMIT 1;
+    END IF;
     v_cash_amount := (p_price * p_quantity);
   END IF;
   

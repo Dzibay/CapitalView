@@ -17,7 +17,7 @@ const props = defineProps({
         </div>
         <div class="tx-info-right">
           <span>{{ tx.transaction_date }}</span>
-          <span class="tx-amount" :class="tx.transaction_type == 'Покупка' ? 'buy' : 'sell'">
+          <span class="tx-amount" :class="tx.transaction_type == 'Покупка' ? 'buy' : (tx.transaction_type === 'Погашение' ? 'redemption' : 'sell')">
             {{ tx.transaction_type === 'Покупка' ? '-' : '+' }} {{ (tx.quantity * tx.price).toFixed(2) }} RUB
           </span>
         </div>

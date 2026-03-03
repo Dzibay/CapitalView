@@ -21,8 +21,8 @@ BEGIN
             total_cost := total_cost + r.q * r.p;
             total_quantity := total_quantity + r.q;
 
-        ELSIF r.transaction_type = 2 THEN
-            -- 🔴 Продажа — уменьшаем количество и стоимость
+        ELSIF r.transaction_type IN (2, 3) THEN
+            -- 🔴 Продажа или Погашение — уменьшаем количество и стоимость
             IF total_quantity > 0 THEN
                 avg_price := total_cost / total_quantity;
 

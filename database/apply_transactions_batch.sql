@@ -7,7 +7,7 @@
 --       {
 --         "user_id": "uuid",
 --         "portfolio_asset_id": bigint,
---         "transaction_type": int,  -- 1=buy, 2=sell
+--         "transaction_type": int,  -- 1=buy, 2=sell, 3=redemption
 --         "quantity": numeric,
 --         "price": numeric,
 --         "transaction_date": date
@@ -28,7 +28,7 @@
 -- 1. Все операции выполняются в одной транзакции (ACID)
 -- 2. Транзакции сортируются по дате
 -- 3. Покупки вставляются батчем и создают FIFO-лоты
--- 4. Продажи обрабатываются по одной с проверкой количества
+-- 4. Продажи и погашения обрабатываются по одной с проверкой количества
 -- 5. Денежные операции создаются автоматически через триггер
 
 CREATE OR REPLACE FUNCTION apply_transactions_batch(
@@ -53,6 +53,7 @@ DECLARE
     v_tx_date timestamp without time zone;  -- Для преобразования даты в timestamp
     v_buy_op_type_id bigint;
     v_sell_op_type_id bigint;
+    v_redemption_op_type_id bigint;
 BEGIN
     -- Проверяем входные данные
     IF p_transactions IS NULL OR jsonb_array_length(p_transactions) = 0 THEN
@@ -194,16 +195,25 @@ BEGIN
     END IF;
 
     -- ========================================================================
-    -- 2. ОБРАБОТКА ПРОДАЖ С ПРОВЕРКОЙ КОЛИЧЕСТВА
+    -- 2. ОБРАБОТКА ПРОДАЖ И ПОГАШЕНИЙ С ПРОВЕРКОЙ КОЛИЧЕСТВА
     -- ========================================================================
-    IF EXISTS (SELECT 1 FROM temp_sorted_tx WHERE transaction_type = 2) THEN
+    IF EXISTS (SELECT 1 FROM temp_sorted_tx WHERE transaction_type IN (2, 3)) THEN
         FOR v_tx_item IN 
             SELECT original_json 
             FROM temp_sorted_tx 
-            WHERE transaction_type = 2
+            WHERE transaction_type IN (2, 3)
             ORDER BY transaction_date
         LOOP
             BEGIN
+                -- Логируем обработку Redemption транзакций для отладки
+                IF (v_tx_item->>'transaction_type')::int = 3 THEN
+                    -- Используем RAISE NOTICE для логирования (в production можно отключить)
+                    -- RAISE NOTICE 'Processing Redemption: portfolio_asset_id=%, date=%, price=%, quantity=%',
+                    --     (v_tx_item->>'portfolio_asset_id')::bigint,
+                    --     v_tx_item->>'transaction_date',
+                    --     (v_tx_item->>'price')::numeric,
+                    --     (v_tx_item->>'quantity')::numeric;
+                END IF;
                 -- Получаем portfolio_id
                 SELECT portfolio_id
                 INTO v_portfolio_id
@@ -263,8 +273,13 @@ BEGIN
                     0
                 )
                 RETURNING id INTO v_tx_id;
+                
+                -- Проверяем, что транзакция была успешно вставлена
+                IF v_tx_id IS NULL THEN
+                    RAISE EXCEPTION 'Failed to insert transaction: transaction_id is NULL';
+                END IF;
 
-                -- Обрабатываем FIFO для продажи
+                -- Обрабатываем FIFO для продажи или погашения
                 v_remaining := (v_tx_item->>'quantity')::numeric;
                 v_realized := 0;
 
@@ -278,18 +293,25 @@ BEGIN
                 LOOP
                     EXIT WHEN v_remaining <= 0;
 
+                    -- Для SELL и REDEMPTION рассчитываем realized_pnl
+                    IF (v_tx_item->>'transaction_type')::int IN (2, 3) THEN
+                        IF lot.remaining_qty <= v_remaining THEN
+                            v_realized := v_realized + lot.remaining_qty * (
+                                (v_tx_item->>'price')::numeric - lot.price
+                            );
+                        ELSE
+                            v_realized := v_realized + v_remaining * (
+                                (v_tx_item->>'price')::numeric - lot.price
+                            );
+                        END IF;
+                    END IF;
+
                     IF lot.remaining_qty <= v_remaining THEN
-                        v_realized := v_realized + lot.remaining_qty * (
-                            (v_tx_item->>'price')::numeric - lot.price
-                        );
                         v_remaining := v_remaining - lot.remaining_qty;
                         UPDATE fifo_lots
                         SET remaining_qty = 0
                         WHERE id = lot.id;
                     ELSE
-                        v_realized := v_realized + v_remaining * (
-                            (v_tx_item->>'price')::numeric - lot.price
-                        );
                         UPDATE fifo_lots
                         SET remaining_qty = lot.remaining_qty - v_remaining
                         WHERE id = lot.id;
@@ -298,14 +320,18 @@ BEGIN
                 END LOOP;
 
                 IF v_remaining > 0 THEN
-                    RAISE EXCEPTION 'Not enough quantity to sell (portfolio_asset_id=%)', 
-                        (v_tx_item->>'portfolio_asset_id')::bigint;
+                    RAISE EXCEPTION 'Not enough quantity to % (portfolio_asset_id=%, remaining=%)',
+                        CASE WHEN (v_tx_item->>'transaction_type')::int = 2 THEN 'sell' ELSE 'redeem' END,
+                        (v_tx_item->>'portfolio_asset_id')::bigint,
+                        v_remaining;
                 END IF;
 
-                -- Обновляем realized_pnl
-                UPDATE transactions
-                SET realized_pnl = v_realized
-                WHERE id = v_tx_id;
+                -- Обновляем realized_pnl для SELL и REDEMPTION
+                IF (v_tx_item->>'transaction_type')::int IN (2, 3) AND v_realized != 0 THEN
+                    UPDATE transactions
+                    SET realized_pnl = v_realized
+                    WHERE id = v_tx_id;
+                END IF;
 
                 -- Добавляем ID успешной транзакции
                 v_tx_ids := array_append(v_tx_ids, v_tx_id);
@@ -336,6 +362,12 @@ BEGIN
         SELECT id INTO v_buy_op_type_id FROM operations_type WHERE name = 'Buy' LIMIT 1;
         SELECT id INTO v_sell_op_type_id FROM operations_type WHERE name = 'Sell' LIMIT 1;
         
+        -- Получаем ID типа операции Redemption (или Ammortization для обратной совместимости)
+        SELECT id INTO v_redemption_op_type_id FROM operations_type WHERE name = 'Redemption' LIMIT 1;
+        IF v_redemption_op_type_id IS NULL THEN
+            SELECT id INTO v_redemption_op_type_id FROM operations_type WHERE name = 'ammortization' LIMIT 1;
+        END IF;
+        
         -- Создаем cash_operations батчем для всех вставленных транзакций
         INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id)
         SELECT
@@ -344,10 +376,11 @@ BEGIN
             CASE 
                 WHEN t.transaction_type = 1 THEN v_buy_op_type_id
                 WHEN t.transaction_type = 2 THEN v_sell_op_type_id
+                WHEN t.transaction_type = 3 THEN v_redemption_op_type_id
             END,
             CASE 
                 WHEN t.transaction_type = 1 THEN -(t.price * t.quantity)
-                WHEN t.transaction_type = 2 THEN (t.price * t.quantity)
+                WHEN t.transaction_type IN (2, 3) THEN (t.price * t.quantity)
             END,
             47, -- RUB
             t.transaction_date,
@@ -356,7 +389,7 @@ BEGIN
         FROM transactions t
         JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
         WHERE t.id = ANY(v_tx_ids)
-          AND t.transaction_type IN (1, 2)  -- Только Buy и Sell
+          AND t.transaction_type IN (1, 2, 3)  -- Buy, Sell и Redemption
           AND NOT EXISTS (
               SELECT 1 
               FROM cash_operations co 
@@ -384,5 +417,5 @@ END;
 $$;
 
 -- Комментарий к функции
-COMMENT ON FUNCTION batch_insert_transactions_with_fifo IS 
+COMMENT ON FUNCTION apply_transactions_batch IS 
 'Батч-вставка транзакций с автоматическим созданием FIFO-лотов. Обеспечивает ACID-совместимость и правильную обработку FIFO. Все операции выполняются в одной транзакции БД.';

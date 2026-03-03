@@ -214,6 +214,7 @@ recent_transactions AS (
             CASE t.transaction_type
                 WHEN 1 THEN 'Покупка'
                 WHEN 2 THEN 'Продажа'
+                WHEN 3 THEN 'Погашение'
                 ELSE 'Неизвестно'
             END AS transaction_type_name,
             t.price,

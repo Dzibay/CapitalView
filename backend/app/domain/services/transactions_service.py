@@ -75,7 +75,7 @@ def create_transaction(
     user_id: int,
     portfolio_asset_id: int,
     asset_id: int,
-    transaction_type: int,   # 1 = buy, 2 = sell
+    transaction_type: int,   # 1 = buy, 2 = sell, 3 = redemption
     quantity: float,
     price: float,
     transaction_date: str

@@ -613,7 +613,8 @@ const handleSaveEdit = async (newTx) => {
     portfolio_asset_id: newTx.portfolio_asset_id || originalTx.portfolio_asset_id,
     asset_id: newTx.asset_id || originalTx.asset_id,
     transaction_type: typeof newTx.transaction_type === 'string' 
-      ? (newTx.transaction_type === 'Покупка' || newTx.transaction_type.toLowerCase().includes('buy') ? 1 : 2)
+      ? (newTx.transaction_type === 'Покупка' || newTx.transaction_type.toLowerCase().includes('buy') ? 1 
+        : (newTx.transaction_type === 'Погашение' || newTx.transaction_type.toLowerCase().includes('redemption') || newTx.transaction_type.toLowerCase().includes('погаш') || newTx.transaction_type.toLowerCase().includes('амортиз') ? 3 : 2))
       : (newTx.transaction_type || 1),
     quantity: parseFloat(newTx.quantity) || 0,
     price: parseFloat(newTx.price) || 0,

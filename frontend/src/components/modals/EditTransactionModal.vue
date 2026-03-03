@@ -341,7 +341,8 @@ const handleSave = () => {
             v-model="editedTx.transaction_type"
             :options="[
               { value: 'Покупка', label: 'Покупка' },
-              { value: 'Продажа', label: 'Продажа' }
+              { value: 'Продажа', label: 'Продажа' },
+              { value: 'Погашение', label: 'Погашение' }
             ]"
             placeholder="Выберите тип"
             :show-empty-option="false"

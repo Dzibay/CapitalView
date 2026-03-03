@@ -39,6 +39,9 @@ BEGIN
             WHEN 'Tax' THEN 'Налог'
             WHEN 'Buy' THEN 'Покупка'
             WHEN 'Sell' THEN 'Продажа'
+            WHEN 'Redemption' THEN 'Погашение'
+            WHEN 'ammortization' THEN 'Погашение'  -- Для обратной совместимости со старыми данными
+            WHEN 'Ammortization' THEN 'Погашение'  -- Для обратной совместимости со старыми данными
             ELSE ot.name
         END AS operation_type,
         ot.id AS operation_type_id,

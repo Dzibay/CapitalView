@@ -273,7 +273,7 @@ asset_quantities_periods AS (
       SUM(
         CASE 
           WHEN t.transaction_type = 1 THEN t.quantity
-          WHEN t.transaction_type = 2 THEN -t.quantity
+          WHEN t.transaction_type IN (2, 3) THEN -t.quantity
           ELSE 0
         END
       ) AS current_quantity,
@@ -283,7 +283,7 @@ asset_quantities_periods AS (
           WHEN t.transaction_date::date <= CURRENT_DATE - INTERVAL '1 month' THEN
             CASE 
               WHEN t.transaction_type = 1 THEN t.quantity
-              WHEN t.transaction_type = 2 THEN -t.quantity
+              WHEN t.transaction_type IN (2, 3) THEN -t.quantity
               ELSE 0
             END
           ELSE 0
@@ -295,7 +295,7 @@ asset_quantities_periods AS (
           WHEN t.transaction_date::date <= CURRENT_DATE - INTERVAL '1 year' THEN
             CASE 
               WHEN t.transaction_type = 1 THEN t.quantity
-              WHEN t.transaction_type = 2 THEN -t.quantity
+              WHEN t.transaction_type IN (2, 3) THEN -t.quantity
               ELSE 0
             END
           ELSE 0

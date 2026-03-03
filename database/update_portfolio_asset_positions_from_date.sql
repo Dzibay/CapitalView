@@ -112,7 +112,7 @@ BEGIN
             GREATEST(0, v_base_qty + CASE WHEN transaction_type = 1 THEN qty ELSE -qty END) AS current_qty,
             CASE
                 WHEN transaction_type = 1 THEN v_base_inv + amount_rub
-                WHEN transaction_type = 2 AND v_base_qty > 0
+                WHEN transaction_type IN (2, 3) AND v_base_qty > 0
                     THEN v_base_inv - (qty * (v_base_inv / v_base_qty))
                 ELSE v_base_inv
             END AS current_inv
@@ -128,7 +128,7 @@ BEGIN
             GREATEST(0, p.current_qty + CASE WHEN c.transaction_type = 1 THEN c.qty ELSE -c.qty END) AS current_qty,
             CASE
                 WHEN c.transaction_type = 1 THEN p.current_inv + c.amount_rub
-                WHEN c.transaction_type = 2 AND p.current_qty > 0
+                WHEN c.transaction_type IN (2, 3) AND p.current_qty > 0
                     THEN p.current_inv - (c.qty * (p.current_inv / p.current_qty))
                 ELSE p.current_inv
             END AS current_inv
@@ -175,7 +175,7 @@ BEGIN
             ) AS realized_day
         FROM transactions t
         WHERE t.portfolio_asset_id = p_portfolio_asset_id
-          AND t.transaction_type = 2
+          AND t.transaction_type IN (2, 3)
           AND t.realized_pnl IS NOT NULL
           AND t.transaction_date::date >= p_from_date
         GROUP BY t.transaction_date::date

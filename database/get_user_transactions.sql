@@ -12,6 +12,7 @@ BEGIN
         CASE t.transaction_type
             WHEN 1 THEN 'Покупка'
             WHEN 2 THEN 'Продажа'
+            WHEN 3 THEN 'Погашение'
             ELSE 'Неизвестно'
         END AS transaction_type,
         t.price::numeric(20,6) AS price,
