@@ -4,6 +4,8 @@
 """
 from datetime import datetime, timedelta
 from t_tech.invest import Client, InstrumentIdType
+from t_tech.invest.exceptions import RequestError
+from grpc import StatusCode
 
 OPERATION_CLASSIFICATION = {
     "OPERATION_TYPE_BUY": "Buy",
@@ -76,74 +78,100 @@ def get_tinkoff_portfolio(token):
             acc_name = account.name or f"Account {acc_id}"
             print(f"🔹 Счёт: {acc_name}")
 
-            # ПОЗИЦИИ
-            portfolio = client.operations.get_portfolio(account_id=acc_id)
-            positions = []
+            try:
+                # ПОЗИЦИИ
+                try:
+                    portfolio = client.operations.get_portfolio(account_id=acc_id)
+                    positions = []
 
-            for p in portfolio.positions:
-                inst = resolve_instrument(client, p.figi, instrument_cache)
+                    for p in portfolio.positions:
+                        inst = resolve_instrument(client, p.figi, instrument_cache)
 
-                positions.append({
-                    "figi": p.figi,
-                    "ticker": inst["ticker"] if inst else None,
-                    "name": inst["name"] if inst else None,
-                    "isin": inst["isin"] if inst else None,
-                    "quantity": p.quantity.units + p.quantity.nano / 1e9,
-                    "average_price": p.average_position_price.units + p.average_position_price.nano / 1e9,
-                    "current_price": p.current_price.units + p.current_price.nano / 1e9,
-                })
+                        positions.append({
+                            "figi": p.figi,
+                            "ticker": inst["ticker"] if inst else None,
+                            "name": inst["name"] if inst else None,
+                            "isin": inst["isin"] if inst else None,
+                            "quantity": p.quantity.units + p.quantity.nano / 1e9,
+                            "average_price": p.average_position_price.units + p.average_position_price.nano / 1e9,
+                            "current_price": p.current_price.units + p.current_price.nano / 1e9,
+                        })
+                except RequestError as e:
+                    # Если счет недоступен для получения портфеля, пропускаем его
+                    if e.code == StatusCode.NOT_FOUND and e.details == "50004":
+                        print(f"⚠️  Счёт {acc_name} недоступен (Account not found), пропускаем")
+                        continue
+                    raise
 
-            # ОПЕРАЦИИ
-            ops_raw = client.operations.get_operations(
-                account_id=acc_id,
-                # from_=from_date,
-                # to=now
-            ).operations
+                # ОПЕРАЦИИ
+                try:
+                    ops_raw = client.operations.get_operations(
+                        account_id=acc_id,
+                        # from_=from_date,
+                        # to=now
+                    ).operations
+                except RequestError as e:
+                    # Если счет недоступен для получения операций, используем пустой список операций
+                    if e.code == StatusCode.NOT_FOUND and e.details == "50004":
+                        print(f"⚠️  Операции для счёта {acc_name} недоступны (Account not found), используем пустой список")
+                        ops_raw = []
+                    else:
+                        raise
 
-            transactions = []
+                transactions = []
 
-            for op in ops_raw:
-                figi = getattr(op, "figi", None)
-                price_obj = getattr(op, "price", None)
-                quantity = getattr(op, "quantity", None)
-                quantity_rest = getattr(op, "quantity_rest", None)
+                for op in ops_raw:
+                    figi = getattr(op, "figi", None)
+                    price_obj = getattr(op, "price", None)
+                    quantity = getattr(op, "quantity", None)
+                    quantity_rest = getattr(op, "quantity_rest", None)
 
-                inst = resolve_instrument(client, figi, instrument_cache)
+                    inst = resolve_instrument(client, figi, instrument_cache)
 
-                classified = OPERATION_CLASSIFICATION[op.operation_type.name] if op.operation_type.name in OPERATION_CLASSIFICATION else op.operation_type.name
+                    classified = OPERATION_CLASSIFICATION[op.operation_type.name] if op.operation_type.name in OPERATION_CLASSIFICATION else op.operation_type.name
 
-                tx = {
-                    "figi": figi,
-                    "ticker": inst["ticker"] if inst else None,
-                    "name": inst["name"] if inst else None,
-                    "isin": inst["isin"] if inst else None,
-                    "date": op.date.isoformat() if op.date else None,
-                    "type": classified
+                    tx = {
+                        "figi": figi,
+                        "ticker": inst["ticker"] if inst else None,
+                        "name": inst["name"] if inst else None,
+                        "isin": inst["isin"] if inst else None,
+                        "date": op.date.isoformat() if op.date else None,
+                        "type": classified
+                    }
+
+                    # BUY / SELL
+                    if classified in ("Buy", "Sell"):
+                        tx.update({
+                            "price": price_obj.units + price_obj.nano / 1e9 if price_obj else None,
+                            "quantity": (quantity or 0) - (quantity_rest or 0),
+                            "payment": 0,
+                        })
+                    # Денежные операции
+                    else:
+                        payment = op.payment.units + op.payment.nano / 1e9 if op.payment else 0
+                        tx.update({
+                            "price": None,
+                            "quantity": None,
+                            "payment": payment,
+                            "currency": op.currency,
+                        })
+
+                    transactions.append(tx)
+
+                result[acc_name] = {
+                    "account_id": acc_id,
+                    "positions": positions,
+                    "transactions": transactions
                 }
-
-                # BUY / SELL
-                if classified in ("Buy", "Sell"):
-                    tx.update({
-                        "price": price_obj.units + price_obj.nano / 1e9 if price_obj else None,
-                        "quantity": (quantity or 0) - (quantity_rest or 0),
-                        "payment": 0,
-                    })
-                # Денежные операции
-                else:
-                    payment = op.payment.units + op.payment.nano / 1e9 if op.payment else 0
-                    tx.update({
-                        "price": None,
-                        "quantity": None,
-                        "payment": payment,
-                        "currency": op.currency,
-                    })
-
-                transactions.append(tx)
-
-            result[acc_name] = {
-                "account_id": acc_id,
-                "positions": positions,
-                "transactions": transactions
-            }
+            except RequestError as e:
+                # Обработка других ошибок RequestError
+                print(f"❌ Ошибка при обработке счёта {acc_name}: {e.code.name} - {e.details}")
+                # Пропускаем этот счет и продолжаем обработку остальных
+                continue
+            except Exception as e:
+                # Обработка любых других неожиданных ошибок
+                print(f"❌ Неожиданная ошибка при обработке счёта {acc_name}: {str(e)}")
+                # Пропускаем этот счет и продолжаем обработку остальных
+                continue
 
     return result
