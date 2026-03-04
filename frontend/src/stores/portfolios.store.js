@@ -23,12 +23,12 @@ export const usePortfoliosStore = defineStore('portfolios', {
     },
 
     async deletePortfolio(portfolioId) {
+      const dashboardStore = useDashboardStore()
+      const uiStore = useUIStore()
+      
       try {
         const res = await portfolioService.deletePortfolio(portfolioId)
         if (!res.success) throw new Error(res.error || 'Ошибка удаления портфеля')
-        
-        const dashboardStore = useDashboardStore()
-        const uiStore = useUIStore()
         
         // Собираем все ID портфелей, которые будут удалены (родитель + дочерние)
         const idsToRemove = new Set([portfolioId])
@@ -58,6 +58,13 @@ export const usePortfoliosStore = defineStore('portfolios', {
             uiStore.setSelectedPortfolioId(null)
           }
         }
+        
+        // Обновляем dashboard_data в фоне без показа загрузочного экрана
+        dashboardStore.reloadDashboard(false).catch(err => {
+          if (import.meta.env.VITE_APP_DEV) {
+            console.error('Ошибка обновления dashboard после удаления портфеля:', err)
+          }
+        })
         
         return res
       } catch (err) {

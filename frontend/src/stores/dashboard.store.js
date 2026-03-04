@@ -33,7 +33,7 @@ export const useDashboardStore = defineStore('dashboard', {
   },
 
   actions: {
-    async fetchDashboard(force = false) {
+    async fetchDashboard(force = false, showLoading = true) {
       const uiStore = useUIStore()
       
       // Кеширование: не загружаем, если данные свежие
@@ -42,7 +42,9 @@ export const useDashboardStore = defineStore('dashboard', {
         return
       }
 
-      uiStore.setLoading(true)
+      if (showLoading) {
+        uiStore.setLoading(true)
+      }
       try {
         const data = await fetchDashboardData()
         
@@ -80,12 +82,14 @@ export const useDashboardStore = defineStore('dashboard', {
         }
         throw err
       } finally {
-        uiStore.setLoading(false)
+        if (showLoading) {
+          uiStore.setLoading(false)
+        }
       }
     },
 
-    async reloadDashboard() {
-      return this.fetchDashboard(true)
+    async reloadDashboard(showLoading = true) {
+      return this.fetchDashboard(true, showLoading)
     },
 
     // Оптимистичное обновление: добавляем актив локально без перезагрузки

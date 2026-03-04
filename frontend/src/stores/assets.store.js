@@ -42,8 +42,12 @@ export const useAssetsStore = defineStore('assets', {
         // Оптимистичное удаление
         dashboardStore.removeAsset(portfolioAssetId)
         
-        // Фоновая перезагрузка
-        await dashboardStore.reloadDashboard()
+        // Обновляем dashboard_data в фоне без показа загрузочного экрана
+        dashboardStore.reloadDashboard(false).catch(err => {
+          if (import.meta.env.VITE_APP_DEV) {
+            console.error('Ошибка обновления dashboard после удаления актива:', err)
+          }
+        })
         
         return res
       } catch (err) {
