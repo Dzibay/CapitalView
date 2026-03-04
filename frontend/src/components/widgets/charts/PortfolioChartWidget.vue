@@ -5,6 +5,7 @@ import MultiLineChart from '../../MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
 import ValueChange from '../base/ValueChange.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
+import ToggleSwitch from '../../base/ToggleSwitch.vue'
 
 const props = defineProps({
   chartData: {
@@ -14,6 +15,7 @@ const props = defineProps({
 })
 
 const selectedPeriod = ref("All")
+const includeBalance = ref(true) // Переключатель: показывать ли стоимость с учетом баланса (по умолчанию включен)
 
 // --------------------------
 // Формат валюты
@@ -130,17 +132,32 @@ const formattedChartData = computed(() => {
   if (!props.chartData?.labels?.length) return { labels: [], datasets: [] }
 
   const labels = props.chartData.labels
+  
+  // Базовые данные
+  const valueData = (props.chartData.data_value || []).map(v => Number(v) || 0)
+  const investedData = (props.chartData.data_invested || []).map(v => Number(v) || 0)
+  const balanceData = (props.chartData.data_balance || []).map(v => Number(v) || 0)
+  
+  // Агрегируем данные с балансом на фронтенде (оптимально)
+  // Аналогично как для инвестиций: если включен баланс, добавляем его к стоимости и инвестициям
+  const valueWithBalance = includeBalance.value
+    ? valueData.map((val, index) => val + (balanceData[index] || 0))
+    : valueData
+  
+  const investedWithBalance = includeBalance.value
+    ? investedData.map((inv, index) => inv + (balanceData[index] || 0))
+    : investedData
 
   const datasets = [
     {
-      label: "Капитал",
-      data: (props.chartData.data_value || []).map(v => Number(v) || 0),
+      label: includeBalance.value ? "Капитал (с балансом)" : "Капитал",
+      data: valueWithBalance,
       color: '#3b82f6',
       fill: true
     },
     {
-      label: "Инвестиции",
-      data: (props.chartData.data_invested || []).map(v => Number(v) || 0),
+      label: includeBalance.value ? "Инвестиции (с балансом)" : "Инвестиции",
+      data: investedWithBalance,
       color: '#10b981',
       fill: false
     }
@@ -151,16 +168,32 @@ const formattedChartData = computed(() => {
 
 // Обновляем статистику при изменении данных или периода
 const updateStatsForPeriod = () => {
-  if (!props.chartData?.labels?.length || !props.chartData?.data_value) {
+  if (!props.chartData?.labels?.length) {
     updateStats([], [], selectedPeriod.value)
     return
   }
-  updateStats(props.chartData.labels, props.chartData.data_value, selectedPeriod.value)
+  
+  // Агрегируем данные с балансом на фронтенде (аналогично графику)
+  const valueData = (props.chartData.data_value || []).map(v => Number(v) || 0)
+  const balanceData = (props.chartData.data_balance || []).map(v => Number(v) || 0)
+  
+  // Если включен баланс, добавляем его к стоимости портфеля
+  const valueWithBalance = includeBalance.value
+    ? valueData.map((val, index) => val + (balanceData[index] || 0))
+    : valueData
+  
+  if (!valueWithBalance || valueWithBalance.length === 0) {
+    updateStats([], [], selectedPeriod.value)
+    return
+  }
+  
+  updateStats(props.chartData.labels, valueWithBalance, selectedPeriod.value)
 }
 
-// Следим за изменениями данных и периода
+// Следим за изменениями данных, периода и переключателя баланса
 watch(() => props.chartData, updateStatsForPeriod, { deep: true })
 watch(() => selectedPeriod.value, updateStatsForPeriod)
+watch(() => includeBalance.value, updateStatsForPeriod)
 
 // Инициализация при монтировании
 onMounted(() => {
@@ -172,7 +205,13 @@ onMounted(() => {
 <template>
   <Widget title="Динамика капитала" :icon="LineChart">
     <template #header>
-      <PeriodFilters v-model="selectedPeriod" />
+      <div class="header-controls">
+        <ToggleSwitch 
+          v-model="includeBalance"
+          label="С балансом"
+        />
+        <PeriodFilters v-model="selectedPeriod" />
+      </div>
     </template>
 
     <div class="capital-info">
@@ -214,5 +253,11 @@ onMounted(() => {
   flex: 1; 
   position: relative; 
   min-height: 0; /* Позволяет графику правильно сжиматься */
+}
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 </style>

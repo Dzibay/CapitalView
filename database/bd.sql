@@ -1,16 +1,6 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
-CREATE TABLE public.accounts (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  portfolio_id bigint,
-  name text,
-  balance real,
-  currency_id bigint,
-  CONSTRAINT accounts_pkey PRIMARY KEY (id),
-  CONSTRAINT accounts_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id),
-  CONSTRAINT accounts_currency_id_fkey FOREIGN KEY (currency_id) REFERENCES public.assets(id)
-);
 CREATE TABLE public.asset_latest_prices_full (
   asset_id bigint NOT NULL,
   today_price real,
@@ -74,11 +64,12 @@ CREATE TABLE public.cash_operations (
   user_id uuid,
   portfolio_id bigint,
   type bigint,
-  amount real,
+  amount numeric,
   currency bigint,
   date timestamp without time zone,
   transaction_id bigint,
   asset_id bigint,
+  amount_rub real,
   CONSTRAINT cash_operations_pkey PRIMARY KEY (id),
   CONSTRAINT cash_operations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT cash_operations_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id),
@@ -158,9 +149,10 @@ CREATE TABLE public.portfolio_daily_values (
   total_invested numeric,
   total_payouts numeric,
   total_realized numeric,
-  total_commissions numeric,
-  total_taxes numeric,
   total_pnl numeric,
+  total_commissions numeric DEFAULT 0,
+  total_taxes numeric DEFAULT 0,
+  balance numeric DEFAULT 0,
   CONSTRAINT portfolio_daily_values_pkey PRIMARY KEY (portfolio_id, report_date)
 );
 CREATE TABLE public.portfolios (

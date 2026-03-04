@@ -54,6 +54,7 @@ DECLARE
     v_buy_op_type_id bigint;
     v_sell_op_type_id bigint;
     v_redemption_op_type_id bigint;
+    v_tx_record RECORD;
 BEGIN
     -- Проверяем входные данные
     IF p_transactions IS NULL OR jsonb_array_length(p_transactions) = 0 THEN
@@ -89,6 +90,19 @@ BEGIN
         transaction_date,  -- Сортируем по timestamp (включая время)
         (tx->>'portfolio_asset_id')::bigint,
         (tx->>'transaction_type')::int;
+    
+    -- Создаем временную таблицу для хранения соответствия между вставленными транзакциями и исходными данными
+    -- Это позволит надежно сопоставить payment из original_json с вставленными транзакциями
+    CREATE TEMP TABLE temp_tx_payment_map (
+        transaction_id bigint PRIMARY KEY,
+        payment numeric,
+        user_id uuid,
+        portfolio_asset_id bigint,
+        transaction_type int,
+        transaction_date timestamp without time zone,
+        price numeric,
+        quantity numeric
+    );
 
     -- ========================================================================
     -- 1. ВСТАВКА ПОКУПОК БАТЧЕМ С АТОМАРНОЙ ПРОВЕРКОЙ ДУБЛИКАТОВ
@@ -140,7 +154,9 @@ BEGIN
               )
             RETURNING 
                 id,
+                user_id,
                 portfolio_asset_id,
+                transaction_type,
                 quantity,
                 price,
                 transaction_date
@@ -159,6 +175,60 @@ BEGIN
             price,
             transaction_date
         FROM inserted_transactions;
+        
+        -- Сохраняем соответствие между вставленными транзакциями и payment из исходных данных
+        -- Используем temp_inserted_buy_tx и LEFT JOIN с temp_sorted_tx для получения payment
+        -- КРИТИЧНО: Используем LEFT JOIN, чтобы не потерять транзакции, если JOIN не найдет совпадение
+        -- Также используем более гибкое сравнение для transaction_date (с учетом возможных различий в миллисекундах)
+        INSERT INTO temp_tx_payment_map (transaction_id, payment, user_id, portfolio_asset_id, transaction_type, transaction_date, price, quantity)
+        SELECT 
+            tibt.tx_id,
+            COALESCE((tst.original_json->>'payment')::numeric, 0),
+            t.user_id,
+            tibt.portfolio_asset_id,
+            1,  -- transaction_type = 1 для Buy транзакций
+            tibt.transaction_date,
+            tibt.price,
+            tibt.quantity
+        FROM temp_inserted_buy_tx tibt
+        JOIN transactions t ON t.id = tibt.tx_id
+        LEFT JOIN temp_sorted_tx tst ON 
+            tst.portfolio_asset_id = tibt.portfolio_asset_id
+            AND tst.transaction_type = 1  -- Buy транзакции
+            -- Более гибкое сравнение transaction_date: учитываем возможные различия в миллисекундах
+            AND (
+                tst.transaction_date = tibt.transaction_date
+                OR ABS(EXTRACT(EPOCH FROM (tst.transaction_date - tibt.transaction_date))) < 1  -- Разница менее 1 секунды
+            )
+            AND ABS(COALESCE(tst.price, 0) - COALESCE(tibt.price, 0)) < 0.0001
+            AND ABS(COALESCE(tst.quantity, 0) - COALESCE(tibt.quantity, 0)) < 0.0001;
+        
+        -- Попытка найти payment для транзакций, которые не были найдены первым способом
+        -- Используем более широкий поиск (по дате без времени)
+        INSERT INTO temp_tx_payment_map (transaction_id, payment, user_id, portfolio_asset_id, transaction_type, transaction_date, price, quantity)
+        SELECT DISTINCT ON (tibt.tx_id)
+            tibt.tx_id,
+            COALESCE((tst.original_json->>'payment')::numeric, 0),
+            t.user_id,
+            tibt.portfolio_asset_id,
+            1,
+            tibt.transaction_date,
+            tibt.price,
+            tibt.quantity
+        FROM temp_inserted_buy_tx tibt
+        JOIN transactions t ON t.id = tibt.tx_id
+        LEFT JOIN temp_sorted_tx tst ON 
+            tst.portfolio_asset_id = tibt.portfolio_asset_id
+            AND tst.transaction_type = 1
+            AND tst.transaction_date::date = tibt.transaction_date::date
+            AND ABS(COALESCE(tst.price, 0) - COALESCE(tibt.price, 0)) < 0.0001
+            AND ABS(COALESCE(tst.quantity, 0) - COALESCE(tibt.quantity, 0)) < 0.0001
+        WHERE NOT EXISTS (
+            SELECT 1 FROM temp_tx_payment_map tpm WHERE tpm.transaction_id = tibt.tx_id
+        )
+        AND (tst.original_json->>'payment') IS NOT NULL
+        AND (tst.original_json->>'payment')::numeric != 0
+        ORDER BY tibt.tx_id, ABS(EXTRACT(EPOCH FROM (tst.transaction_date - tibt.transaction_date)));
         
         -- Подсчитываем количество вставленных транзакций
         SELECT COUNT(*) INTO v_inserted_count FROM temp_inserted_buy_tx;
@@ -205,15 +275,6 @@ BEGIN
             ORDER BY transaction_date
         LOOP
             BEGIN
-                -- Логируем обработку Redemption транзакций для отладки
-                IF (v_tx_item->>'transaction_type')::int = 3 THEN
-                    -- Используем RAISE NOTICE для логирования (в production можно отключить)
-                    -- RAISE NOTICE 'Processing Redemption: portfolio_asset_id=%, date=%, price=%, quantity=%',
-                    --     (v_tx_item->>'portfolio_asset_id')::bigint,
-                    --     v_tx_item->>'transaction_date',
-                    --     (v_tx_item->>'price')::numeric,
-                    --     (v_tx_item->>'quantity')::numeric;
-                END IF;
                 -- Получаем portfolio_id
                 SELECT portfolio_id
                 INTO v_portfolio_id
@@ -278,6 +339,26 @@ BEGIN
                 IF v_tx_id IS NULL THEN
                     RAISE EXCEPTION 'Failed to insert transaction: transaction_id is NULL';
                 END IF;
+                
+                -- Сохраняем соответствие между вставленной транзакцией и payment из исходных данных
+                INSERT INTO temp_tx_payment_map (transaction_id, payment, user_id, portfolio_asset_id, transaction_type, transaction_date, price, quantity)
+                SELECT 
+                    v_tx_id,
+                    COALESCE((tst.original_json->>'payment')::numeric, 0),
+                    (v_tx_item->>'user_id')::uuid,
+                    (v_tx_item->>'portfolio_asset_id')::bigint,
+                    (v_tx_item->>'transaction_type')::int,
+                    v_tx_date,
+                    (v_tx_item->>'price')::numeric,
+                    (v_tx_item->>'quantity')::numeric
+                FROM temp_sorted_tx tst
+                WHERE tst.user_id = (v_tx_item->>'user_id')::uuid
+                  AND tst.portfolio_asset_id = (v_tx_item->>'portfolio_asset_id')::bigint
+                  AND tst.transaction_type = (v_tx_item->>'transaction_type')::int
+                  AND tst.transaction_date = v_tx_date
+                  AND ABS(COALESCE(tst.price, 0) - COALESCE((v_tx_item->>'price')::numeric, 0)) < 0.0001
+                  AND ABS(COALESCE(tst.quantity, 0) - COALESCE((v_tx_item->>'quantity')::numeric, 0)) < 0.0001
+                LIMIT 1;
 
                 -- Обрабатываем FIFO для продажи или погашения
                 v_remaining := (v_tx_item->>'quantity')::numeric;
@@ -369,6 +450,11 @@ BEGIN
         END IF;
         
         -- Создаем cash_operations батчем для всех вставленных транзакций
+        -- ВАЖНО: Используем ТОЛЬКО payment из исходных данных транзакции
+        -- Это необходимо для облигаций с накопленным купонным доходом (НКД),
+        -- где payment может отличаться от price * quantity
+        -- КРИТИЧНО: Для импорта от брокера payment всегда должен быть передан
+        -- Используем temp_tx_payment_map для надежного сопоставления payment с транзакциями
         INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id)
         SELECT
             t.user_id,
@@ -378,16 +464,16 @@ BEGIN
                 WHEN t.transaction_type = 2 THEN v_sell_op_type_id
                 WHEN t.transaction_type = 3 THEN v_redemption_op_type_id
             END,
-            CASE 
-                WHEN t.transaction_type = 1 THEN -(t.price * t.quantity)
-                WHEN t.transaction_type IN (2, 3) THEN (t.price * t.quantity)
-            END,
+            -- Используем payment из temp_tx_payment_map (надежное сопоставление по transaction_id)
+            -- Если payment не найден - логируем ошибку и используем 0
+            COALESCE(tpm.payment, 0),
             47, -- RUB
             t.transaction_date,
             t.id,
             pa.asset_id
         FROM transactions t
         JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
+        LEFT JOIN temp_tx_payment_map tpm ON tpm.transaction_id = t.id
         WHERE t.id = ANY(v_tx_ids)
           AND t.transaction_type IN (1, 2, 3)  -- Buy, Sell и Redemption
           AND NOT EXISTS (
@@ -395,10 +481,12 @@ BEGIN
               FROM cash_operations co 
               WHERE co.transaction_id = t.id
           );
+        
     END IF;
 
-    -- Удаляем временную таблицу
+    -- Удаляем временные таблицы
     DROP TABLE IF EXISTS temp_sorted_tx;
+    DROP TABLE IF EXISTS temp_tx_payment_map;
 
     -- Возвращаем результат
     RETURN jsonb_build_object(
@@ -412,6 +500,7 @@ EXCEPTION
     WHEN OTHERS THEN
         -- В случае ошибки откатываем транзакцию
         DROP TABLE IF EXISTS temp_sorted_tx;
+        DROP TABLE IF EXISTS temp_tx_payment_map;
         RAISE;
 END;
 $$;

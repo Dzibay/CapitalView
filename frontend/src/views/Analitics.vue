@@ -113,16 +113,17 @@ const calculatedAnnualDividends = computed(() => {
 
 // Получаем данные для графика динамики капитала (в формате для PortfolioChartWidget)
 const portfolioChartData = computed(() => {
-  if (!uiStore.selectedPortfolioId) return { labels: [], data_value: [], data_invested: [] }
+  if (!uiStore.selectedPortfolioId) return { labels: [], data_value: [], data_invested: [], data_balance: [] }
   const portfolio = portfolios.value.find(p => p.id === uiStore.selectedPortfolioId)
-  if (!portfolio?.history) return { labels: [], data_value: [], data_invested: [] }
+  if (!portfolio?.history) return { labels: [], data_value: [], data_invested: [], data_balance: [] }
   
   // Если история уже в нужном формате
   if (portfolio.history.labels && portfolio.history.data_value) {
     return {
       labels: portfolio.history.labels || [],
       data_value: portfolio.history.data_value || [],
-      data_invested: portfolio.history.data_invested || []
+      data_invested: portfolio.history.data_invested || [],
+      data_balance: portfolio.history.data_balance || []
     }
   }
   
@@ -131,11 +132,12 @@ const portfolioChartData = computed(() => {
     return {
       labels: portfolio.history.map(h => h.date || h.month || ''),
       data_value: portfolio.history.map(h => h.value || h.total_value || 0),
-      data_invested: portfolio.history.map(h => h.invested || h.total_invested || 0)
+      data_invested: portfolio.history.map(h => h.invested || h.total_invested || 0),
+      data_balance: portfolio.history.map(h => h.balance || 0)
     }
   }
   
-  return { labels: [], data_value: [], data_invested: [] }
+  return { labels: [], data_value: [], data_invested: [], data_balance: [] }
 })
 
 // Получаем выбранный портфель
@@ -166,11 +168,13 @@ const profitWidgetData = computed(() => {
       analytics: {}
     }
   }
+  const balance = selectedPortfolio.value.balance || selectedPortfolio.value.analytics?.totals?.balance || 0
+  
   return {
-    totalAmount: selectedPortfolio.value.total_value || 0,
+    totalAmount: selectedPortfolio.value.total_value || 0, // total_value уже включает баланс на бэкенде
     totalProfit: selectedPortfolio.value.analytics?.totals?.total_profit || selectedPortfolio.value.analytics?.total_profit || 0,
     monthlyChange: selectedPortfolio.value.monthly_change || 0,
-    investedAmount: selectedPortfolio.value.total_invested || 0,
+    investedAmount: (selectedPortfolio.value.total_invested || 0) + balance, // investedAmount + баланс
     analytics: selectedPortfolio.value.analytics || {}
   }
 })

@@ -694,7 +694,8 @@ portfolio_latest_values AS (
     pv.total_realized,
     pv.total_commissions,
     COALESCE(pv.total_taxes, 0) AS total_taxes,
-    pv.total_pnl
+    pv.total_pnl,
+    COALESCE(pv.balance, 0) AS balance
   FROM portfolio_daily_values pv
   WHERE pv.portfolio_id IN (SELECT id FROM p)
   ORDER BY pv.portfolio_id, pv.report_date DESC
@@ -708,7 +709,8 @@ portfolio_analytics_optimized AS (
     plv.total_realized AS realized_pl,
     -- total_pnl из portfolio_daily_values уже включает: unrealized + realized + payouts - commissions - taxes
     -- Всегда используем total_pnl напрямую из таблицы
-    plv.total_pnl AS total_profit
+    plv.total_pnl AS total_profit,
+    plv.balance
   FROM p
   INNER JOIN portfolio_latest_values plv ON plv.portfolio_id = p.id
   LEFT JOIN totals t ON t.portfolio_id = p.id
@@ -736,6 +738,7 @@ SELECT json_agg(
       - COALESCE(t.total_taxes,0),
       'total_invested', COALESCE(pa.total_invested, 0),
       'total_value', COALESCE(pa.total_value, 0),
+      'balance', COALESCE(pa.balance, 0),
       'return_percent', (
         SELECT CASE 
           WHEN SUM(ay.quantity * ay.current_price * ay.currency_rate / ay.leverage) > 0

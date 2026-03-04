@@ -219,6 +219,15 @@ const getDividendYield5Y = (asset) => {
               </tbody>
             </table>
           </div>
+          <!-- Баланс портфеля - отображается внизу, под активами -->
+          <div v-if="portfolio.balance !== undefined && portfolio.balance !== null && portfolio.balance !== 0" class="portfolio-balance-section">
+            <div class="balance-row">
+              <span class="balance-label">Свободный баланс:</span>
+              <span class="balance-amount">
+                {{ portfolio.balance.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ₽
+              </span>
+            </div>
+          </div>
           <div v-if="portfolio.children && portfolio.children.length" class="child-portfolios">
             <PortfolioTree
               :portfolios="portfolio.children"
@@ -312,6 +321,13 @@ const getDividendYield5Y = (asset) => {
   color: #1e293b;
 }
 
+.portfolio-values {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+}
+
 .portfolio-value {
   font-size: 14px;
   color: #64748b;
@@ -325,6 +341,33 @@ const getDividendYield5Y = (asset) => {
 /* --- Body --- */
 .portfolio-body {
   border-top: 1px solid #eef0f2;
+}
+
+/* --- Баланс портфеля --- */
+.portfolio-balance-section {
+  padding: 12px 20px;
+  border-top: 1px solid #eef0f2;
+  background: #fafbfc;
+  font-size: 13px;
+}
+
+.balance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.balance-label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.balance-amount {
+  color: #1e293b;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace;
 }
 
 .empty-state {

@@ -166,10 +166,11 @@ BEGIN
                 ORDER BY portfolio_asset_id, report_date DESC
             ) pdp2 ON TRUE
             -- ОПТИМИЗИРОВАНО: используем portfolio_daily_values для total_value портфеля
+            -- total_value включает баланс портфеля (total_capital = стоимость активов + баланс)
             -- Используем DISTINCT ON для оптимизации (быстрее с индексом idx_portfolio_daily_values_portfolio_date_desc)
             LEFT JOIN LATERAL (
                 SELECT DISTINCT ON (portfolio_id)
-                    total_value
+                    total_value + COALESCE(balance, 0) AS total_value
                 FROM portfolio_daily_values
                 WHERE portfolio_id = p2.id
                 ORDER BY portfolio_id, report_date DESC

@@ -123,9 +123,11 @@ const parsedDashboard = computed(() => {
   // Фильтруем транзакции по всем id портфелей
   const transactions = (dashboardStore.transactions ?? []).filter(t => portfolioIds.includes(t.portfolio_id))
 
+  const balance = Number(selectedPortfolio.value.balance || selectedPortfolio.value.analytics?.totals?.balance || 0)
+  
   return {
-    totalAmount: Number(selectedPortfolio.value.total_value || 0),
-    investedAmount: Number(selectedPortfolio.value.total_invested || 0),
+    totalAmount: Number(selectedPortfolio.value.total_value || 0), // total_value уже включает баланс на бэкенде
+    investedAmount: Number(selectedPortfolio.value.total_invested || 0) + balance, // investedAmount + баланс
     monthlyChange: selectedPortfolio.value.monthly_change || 0,
     assetAllocation: selectedPortfolio.value.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] },
     portfolioChart: selectedPortfolio.value.history ?? { labels: [], data: [] },
@@ -137,14 +139,14 @@ const parsedDashboard = computed(() => {
 const goalData = computed(() => {
   if (!selectedPortfolio.value) return null
 
-  const desc = selectedPortfolio.value.description || {} // если пустой, используем пустой объект
-  
-  const result = {
-    portfolioId: selectedPortfolio.value.id,
-    title: desc.capital_target_name || desc.text || 'Цель не задана',
-    targetAmount: desc.capital_target_value || 0,
-    currentAmount: selectedPortfolio.value.total_value || 0,
-    deadline: desc.capital_target_deadline || null,
+    const desc = selectedPortfolio.value.description || {} // если пустой, используем пустой объект
+    
+    const result = {
+      portfolioId: selectedPortfolio.value.id,
+      title: desc.capital_target_name || desc.text || 'Цель не задана',
+      targetAmount: desc.capital_target_value || 0,
+      currentAmount: selectedPortfolio.value.total_value || 0, // total_value уже включает баланс на бэкенде
+      deadline: desc.capital_target_deadline || null,
     currency: desc.capital_target_currency || 'RUB',
     monthlyContribution: desc.monthly_contribution || 0,
     annualReturn: desc.annual_return || 0,

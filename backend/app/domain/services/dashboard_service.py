@@ -61,7 +61,8 @@ def forward_fill_history(history_list):
         "value": 0.0,
         "invested": 0.0,
         "payouts": 0.0,
-        "pnl": 0.0
+        "pnl": 0.0,
+        "balance": 0.0
     }
     
     current_date = first_date
@@ -75,7 +76,8 @@ def forward_fill_history(history_list):
                 "value": float(h.get("value") or 0),
                 "invested": float(h.get("invested") or 0),
                 "payouts": float(h.get("payouts") or 0),
-                "pnl": float(h.get("pnl") or 0)
+                "pnl": float(h.get("pnl") or 0),
+                "balance": float(h.get("balance") or 0)
             }
         # Иначе используем последние известные значения (forward fill)
         
@@ -84,7 +86,8 @@ def forward_fill_history(history_list):
             "value": current_values["value"],
             "invested": current_values["invested"],
             "payouts": current_values["payouts"],
-            "pnl": current_values["pnl"]
+            "pnl": current_values["pnl"],
+            "balance": current_values["balance"]
         })
         
         current_date += timedelta(days=1)
@@ -94,7 +97,13 @@ def forward_fill_history(history_list):
 
 def aggregate_and_sort_history_list(history_list):
     """Агрегирует историю по датам: стоимость + инвестиции, и сортирует"""
-    combined = defaultdict(lambda: {"value": 0.0, "invested": 0.0, "payouts": 0.0, "pnl": 0.0})
+    combined = defaultdict(lambda: {
+        "value": 0.0, 
+        "invested": 0.0, 
+        "payouts": 0.0, 
+        "pnl": 0.0,
+        "balance": 0.0
+    })
 
     for h in history_list or []:
         date_raw = h.get("date") or h.get("report_date")
@@ -110,10 +119,17 @@ def aggregate_and_sort_history_list(history_list):
         combined[date]["invested"] += float(h.get("invested") or 0)
         combined[date]["payouts"] += float(h.get("payouts") or 0)
         combined[date]["pnl"] += float(h.get("pnl") or 0)
+        combined[date]["balance"] += float(h.get("balance") or 0)
 
     return [
-        {"date": d, "value": round(v["value"], 2), "invested": round(v["invested"], 2), 
-         "payouts": round(v["payouts"], 2), "pnl": round(v["pnl"], 2)}
+        {
+            "date": d, 
+            "value": round(v["value"], 2), 
+            "invested": round(v["invested"], 2), 
+            "payouts": round(v["payouts"], 2), 
+            "pnl": round(v["pnl"], 2),
+            "balance": round(v["balance"], 2)
+        }
         for d, v in sorted(combined.items())
     ]
 
@@ -141,6 +157,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
         "taxes": float(totals.get("taxes", analytics.get("taxes", 0))),
         "inflow": float(totals.get("inflow", (analytics.get("cash_flow") or {}).get("inflow", 0))),
         "outflow": float(totals.get("outflow", (analytics.get("cash_flow") or {}).get("outflow", 0))),
+        "balance": float(portfolio.get("balance", totals.get("balance", 0)) or 0),
     }
     
     # Словари для агрегации массивов аналитики
@@ -426,6 +443,9 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
         combined_analytics["taxes"] += float(child_totals.get("taxes", 0) or 0)
         combined_analytics["inflow"] += float(child_totals.get("inflow", 0) or 0)
         combined_analytics["outflow"] += float(child_totals.get("outflow", 0) or 0)
+        # Агрегируем баланс дочерних портфелей
+        child_balance = float(child.get("balance", child_totals.get("balance", 0)) or 0)
+        combined_analytics["balance"] += child_balance
         
         # Агрегируем массивы аналитики из дочернего портфеля
         # Используем аналитику из portfolio_map, которая уже обновлена рекурсивно
@@ -545,13 +565,14 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
                     ) * 100
 
     # 5️⃣ После объединения активов — пересчёт общей стоимости
+    # total_value = стоимость активов + баланс (total_capital)
     total_value = sum(
         float(a.get("quantity") or 0)
         * float(a.get("last_price") or 0)
         * float(a.get("currency_rate_to_rub") or 1)
         / float(a.get("leverage") or 1)
         for a in combined_assets
-    )
+    ) + combined_analytics["balance"]
 
     total_invested = sum(
         float(a.get("quantity") or 0)
@@ -666,8 +687,9 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
             return_percent_on_invested = 0
 
     # 7️⃣ Сохраняем результат в текущем портфеле
-    portfolio["total_value"] = round(total_value, 2)
+    portfolio["total_value"] = round(total_value, 2)  # total_value уже включает баланс
     portfolio["total_invested"] = round(total_invested, 2)
+    portfolio["balance"] = round(combined_analytics["balance"], 2)  # Сохраняем баланс отдельно
     portfolio["combined_assets"] = combined_assets
     
     # Агрегируем историю
@@ -787,6 +809,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
             "return_percent_on_invested": return_percent_on_invested,
             "inflow": combined_analytics["inflow"],
             "outflow": combined_analytics["outflow"],
+            "balance": combined_analytics["balance"],
         })
         
         # Обновляем массивы аналитики
@@ -814,6 +837,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
                 "return_percent_on_invested": return_percent_on_invested,
                 "inflow": combined_analytics["inflow"],
                 "outflow": combined_analytics["outflow"],
+                "balance": combined_analytics["balance"],
             },
             "monthly_flow": monthly_flow_list,
             "monthly_payouts": monthly_payouts_list,
@@ -974,12 +998,16 @@ async def get_dashboard_data(user_email: str):
             key=lambda x: x['date']
         )
 
+        # Формируем данные для графика
+        # Баланс передается отдельно, агрегация value + balance происходит на фронтенде
         p['history'] = {
             'labels': [h['date'] for h in sorted_hist],
             'data_value': [h['value'] for h in sorted_hist],
             'data_invested': [h['invested'] for h in sorted_hist],
             'data_payouts': [h['payouts'] for h in sorted_hist],
-            'data_pnl': [h['pnl'] for h in sorted_hist]
+            'data_pnl': [h['pnl'] for h in sorted_hist],
+            # Баланс передается отдельно для агрегации на фронтенде
+            'data_balance': [h.get('balance', 0) for h in sorted_hist]
         }
         p['monthly_change'] = calculate_monthly_change(sorted_hist)
         p['asset_allocation'] = calculate_asset_allocation(p.get('combined_assets') or p.get('assets', []))

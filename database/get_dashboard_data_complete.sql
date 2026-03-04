@@ -113,7 +113,7 @@ portfolio_assets_data AS (
     GROUP BY pa.portfolio_id
 ),
 
--- 6. История портфелей
+-- 6. История портфелей и последний баланс
 portfolio_history_data AS (
     SELECT 
         pv.portfolio_id,
@@ -126,10 +126,19 @@ portfolio_history_data AS (
                 'realized', pv.total_realized,
                 'commissions', pv.total_commissions,
                 'taxes', COALESCE(pv.total_taxes, 0),
-                'pnl', pv.total_pnl
+                'pnl', pv.total_pnl,
+                'balance', COALESCE(pv.balance, 0)
             )
             ORDER BY pv.report_date
-        ) AS history
+        ) AS history,
+        -- Последний баланс портфеля
+        COALESCE((
+            SELECT balance 
+            FROM portfolio_daily_values pdv 
+            WHERE pdv.portfolio_id = pv.portfolio_id 
+            ORDER BY pdv.report_date DESC 
+            LIMIT 1
+        ), 0) AS balance
     FROM portfolio_daily_values pv
     JOIN portfolios_base pb ON pb.id = pv.portfolio_id
     GROUP BY pv.portfolio_id
@@ -241,7 +250,8 @@ SELECT jsonb_build_object(
                 'assets', COALESCE(pad.assets, '[]'::jsonb),
                 'history', COALESCE(phd.history, '[]'::jsonb),
                 'analytics', COALESCE(paf.analytics, '{}'::jsonb),
-                'connection', COALESCE(cd.connection, '{}'::jsonb)
+                'connection', COALESCE(cd.connection, '{}'::jsonb),
+                'balance', COALESCE(phd.balance, 0)
             )
             ORDER BY p.id
         ),

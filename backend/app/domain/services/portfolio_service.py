@@ -719,13 +719,12 @@ async def import_broker_portfolio(
                 else:  # Redemption
                     tx_type_id = 3
                 
-                # Проверяем, существует ли уже такая транзакция
+                # УБРАНА ПРОВЕРКА ДУБЛИКАТОВ для транзакций при импорте от брокера
+                # Брокер может отправлять несколько транзакций с одинаковыми параметрами
+                # но разным временем (например, с разницей в 1 минуту), и все они должны быть учтены
                 # Используем полную дату с временем для различения транзакций в один день
+                # Добавляем в множество существующих только для отслеживания в рамках текущего импорта
                 tx_key = (pa_id, tx_date_normalized, tx_type_id, price, qty)
-                if tx_key in existing_tx_keys:
-                    continue  # Пропускаем дубликат
-
-                # Добавляем в множество существующих, чтобы не дублировать в рамках одного импорта
                 existing_tx_keys.add(tx_key)
                 affected_pa.add(pa_id)
 
@@ -737,11 +736,24 @@ async def import_broker_portfolio(
                 tx_price = price if tx_type == "Redemption" else float(tx["price"])
                 tx_quantity = qty if tx_type == "Redemption" else float(tx["quantity"])
                 
+                # Для Buy/Sell операций сохраняем payment (общая сумма операции) для использования в cash_operations
+                # payment может отличаться от price * quantity из-за накопленного купонного дохода (НКД) у облигаций
+                # КРИТИЧНО: При импорте от брокера payment ВСЕГДА должен быть передан из import_service
+                tx_payment = tx.get("payment")
+                if tx_payment is None:
+                    logger.error(
+                        f"payment не найден для транзакции {tx_type} "
+                        f"(portfolio_asset_id: {pa_id}, date: {tx_date_normalized}). "
+                        f"Используется значение 0 для cash_operation."
+                    )
+                    tx_payment = 0
+                
                 tx_data = {
                     "portfolio_asset_id": pa_id,
                     "transaction_type": tx_type_id,
                     "price": tx_price,
                     "quantity": tx_quantity,
+                    "payment": tx_payment,  # Общая сумма операции (для cash_operation, учитывает НКД)
                     # КРИТИЧНО: Используем нормализованную дату с временем для сохранения полного timestamp
                     # Это позволяет различать транзакции с разницей во времени (например, 1 минута)
                     "transaction_date": tx_date_normalized if tx_date_normalized else tx_date,
@@ -770,13 +782,17 @@ async def import_broker_portfolio(
                     if op_date_parsed <= filter_datetime:
                         continue  # Пропускаем операции до или в момент последней известной операции
 
-                # Нормализуем дату и значения для проверки дубликатов
-                # Для проверки дубликатов используем только дату (без времени), так как денежные операции
-                # обычно не имеют точного времени, и проверка по времени может привести к ложным дубликатам
-                op_date_normalized = normalize_date_to_day_string(tx_date)
+                # Нормализуем дату с временем для денежных операций при импорте от брокера
+                # УБРАНА ПРОВЕРКА ДУБЛИКАТОВ: брокер может отправлять несколько операций с одинаковой суммой
+                # но разным временем (например, с разницей в 1 минуту), и все они должны быть учтены
+                # Используем полную дату с временем, чтобы различать операции
+                op_date_normalized = normalize_date_to_string(tx_date, include_time=True)
                 if not op_date_normalized:
-                    logger.debug(f"Пропущена денежная операция из-за невалидной даты: type={tx_type}, date={tx_date}")
-                    continue
+                    # Если не удалось нормализовать с временем, пробуем без времени (для совместимости)
+                    op_date_normalized = normalize_date_to_day_string(tx_date)
+                    if not op_date_normalized:
+                        logger.debug(f"Пропущена денежная операция из-за невалидной даты: type={tx_type}, date={tx_date}")
+                        continue
                 
                 # Округляем amount до 2 знаков для денежных операций (копейки)
                 # Это решает проблему с разной точностью хранения в БД
@@ -787,15 +803,9 @@ async def import_broker_portfolio(
                 op_type_id_int = int(op_type_id) if op_type_id else 0
                 asset_id_normalized = int(asset_id) if asset_id is not None else None
                 
-                # Проверяем, существует ли уже такая операция
-                op_key = (portfolio_id_int, op_type_id_int, op_date_normalized, amount, asset_id_normalized)
-                
-                # Проверяем точное совпадение
-                if op_key in existing_ops_keys:
-                    continue  # Пропускаем дубликат
-                
-                # Добавляем в множество существующих
-                existing_ops_keys.add(op_key)
+                # УБРАНА ПРОВЕРКА ДУБЛИКАТОВ: при импорте от брокера все операции должны быть добавлены
+                # даже если они имеют одинаковые параметры, так как брокер может отправлять несколько операций
+                # с одинаковой суммой, но разным временем (например, с разницей в 1 минуту)
                 
                 # Обновляем минимальную дату для денежных операций
                 if min_op_date is None or op_date_normalized < min_op_date:
@@ -834,7 +844,17 @@ async def import_broker_portfolio(
             
             # Используем батч-вставку через SQL функцию для ACID-совместимости
             # Функция автоматически создает FIFO-лоты и обрабатывает продажи
-            logger.debug(f"Добавляем {len(new_tx_sorted)} транзакций батчем...")
+            if new_tx_sorted:
+                # Проверяем, что payment присутствует во всех транзакциях Buy/Sell/Redemption
+                tx_without_payment = [tx for tx in new_tx_sorted 
+                                     if tx.get('transaction_type') in (1, 2, 3) 
+                                     and tx.get('payment') is None]
+                
+                if tx_without_payment:
+                    logger.error(
+                        f"Найдено {len(tx_without_payment)} транзакций без payment из {len(new_tx_sorted)}. "
+                        f"Это приведет к использованию payment=0 в cash_operations."
+                    )
             
             try:
                 # Supabase автоматически преобразует Python dict/list в jsonb

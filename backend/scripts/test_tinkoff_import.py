@@ -138,6 +138,67 @@ def main():
             else:
                 print("\n✅ Все типы операций известны и обработаны")
         
+        # Проверка payment для транзакций Buy/Sell/Redemption
+        print("\n" + "="*80)
+        print("ПРОВЕРКА PAYMENT ДЛЯ ТРАНЗАКЦИЙ")
+        print("="*80)
+        
+        transactions_with_zero_payment = []
+        transactions_without_payment = []
+        
+        for account_name, account_data in result.items():
+            for tx in account_data.get("transactions", []):
+                tx_type = tx.get("type")
+                if tx_type in ("Buy", "Sell", "Redemption"):
+                    payment = tx.get("payment")
+                    price = tx.get("price")
+                    quantity = tx.get("quantity")
+                    
+                    if payment is None:
+                        transactions_without_payment.append({
+                            "account": account_name,
+                            "type": tx_type,
+                            "date": tx.get("date"),
+                            "ticker": tx.get("ticker"),
+                            "price": price,
+                            "quantity": quantity
+                        })
+                    elif payment == 0 and price is not None and quantity is not None and price != 0 and quantity != 0:
+                        expected_payment = price * quantity
+                        transactions_with_zero_payment.append({
+                            "account": account_name,
+                            "type": tx_type,
+                            "date": tx.get("date"),
+                            "ticker": tx.get("ticker"),
+                            "price": price,
+                            "quantity": quantity,
+                            "payment": payment,
+                            "expected_payment": expected_payment
+                        })
+        
+        if transactions_without_payment:
+            print(f"\n❌ НАЙДЕНО {len(transactions_without_payment)} ТРАНЗАКЦИЙ БЕЗ PAYMENT:")
+            for tx in transactions_without_payment[:10]:  # Показываем первые 10
+                print(f"   - {tx['date']} | {tx['type']:10} | {tx['ticker']:10} | "
+                      f"price: {tx['price']}, quantity: {tx['quantity']}")
+            if len(transactions_without_payment) > 10:
+                print(f"   ... и ещё {len(transactions_without_payment) - 10} транзакций")
+            print("\n💡 Для импорта от брокера payment должен быть передан для всех транзакций")
+        
+        if transactions_with_zero_payment:
+            print(f"\n❌ НАЙДЕНО {len(transactions_with_zero_payment)} ТРАНЗАКЦИЙ С PAYMENT = 0:")
+            for tx in transactions_with_zero_payment[:10]:  # Показываем первые 10
+                print(f"   - {tx['date']} | {tx['type']:10} | {tx['ticker']:10} | "
+                      f"price: {tx['price']}, quantity: {tx['quantity']}, "
+                      f"payment: {tx['payment']}, ожидалось: {tx['expected_payment']:.2f}")
+            if len(transactions_with_zero_payment) > 10:
+                print(f"   ... и ещё {len(transactions_with_zero_payment) - 10} транзакций")
+            print("\n💡 Для облигаций с НКД payment может отличаться от price * quantity,")
+            print("   но payment не должен быть равен 0, если price и quantity не равны 0")
+        
+        if not transactions_without_payment and not transactions_with_zero_payment:
+            print("\n✅ Все транзакции Buy/Sell/Redemption имеют корректный payment")
+        
         print("="*80 + "\n")
         
     except Exception as e:

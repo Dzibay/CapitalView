@@ -9,7 +9,8 @@ RETURNS TABLE (
     total_realized numeric,
     total_commissions numeric,
     total_taxes numeric,
-    total_pnl numeric
+    total_pnl numeric,
+    balance numeric
 )
 LANGUAGE plpgsql
 AS $$
@@ -23,7 +24,8 @@ BEGIN
         pv.total_realized,
         pv.total_commissions,
         COALESCE(pv.total_taxes, 0) AS total_taxes,
-        pv.total_pnl
+        pv.total_pnl,
+        COALESCE(pv.balance, 0) AS balance
     FROM portfolio_daily_values pv
     WHERE pv.portfolio_id = p_portfolio_id
     ORDER BY pv.report_date;
