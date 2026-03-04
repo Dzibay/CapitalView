@@ -171,14 +171,18 @@ BEGIN
     FROM dates d
     LEFT JOIN positions_aggregated pa ON pa.report_date = d.report_date
     LEFT JOIN balance_accumulated ba ON ba.report_date = d.report_date
-    -- Вставляем записи для всех дат, где есть активы или операции
+    -- Вставляем записи для всех дат, где есть активы ИЛИ операции
     -- Это гарантирует, что история заполнена корректно
-    WHERE pa.report_date IS NOT NULL 
-       OR EXISTS (
-           SELECT 1 FROM cash_operations co 
-           WHERE co.portfolio_id = p_portfolio_id 
-           AND co.date::date = d.report_date
-       );
+    -- Важно: включаем все даты, где есть хотя бы одна операция или актив
+    WHERE EXISTS (
+        SELECT 1 FROM portfolio_daily_positions pdp 
+        WHERE pdp.portfolio_id = p_portfolio_id 
+        AND pdp.report_date = d.report_date
+    ) OR EXISTS (
+        SELECT 1 FROM cash_operations co 
+        WHERE co.portfolio_id = p_portfolio_id 
+        AND co.date::date = d.report_date
+    );
     
     RETURN true;
 END;

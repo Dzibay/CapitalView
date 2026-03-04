@@ -20,14 +20,18 @@ const transactionsStore = useTransactionsStore()
 
 // Переключатель между транзакциями и операциями
 const viewMode = ref('transactions') // 'transactions' или 'operations'
-const operations = ref([])
 const isLoadingOperations = ref(false)
 const isLoadingTransactions = ref(false)
 
 const transactions = computed(() => dashboardStore.transactions || [])
 
-// Загрузка всех транзакций
+// Загрузка всех транзакций (только если нет в кэше)
 const loadTransactions = async () => {
+  // Используем кэш из store, если транзакции уже загружены
+  if (dashboardStore.transactionsLoaded && dashboardStore.transactions.length > 0) {
+    return
+  }
+  
   if (isLoadingTransactions.value) return
   
   try {
@@ -53,19 +57,30 @@ const loadTransactions = async () => {
   }
 }
 
-// Загружаем все транзакции при открытии страницы
+// Загружаем все транзакции при открытии страницы (только если нет в кэше)
 onMounted(async () => {
   await loadTransactions()
 })
 
-// Загрузка операций
+// Используем операции из store
+const operations = computed(() => dashboardStore.operations || [])
+
+// Загрузка операций (только если нет в кэше)
 const loadOperations = async () => {
-  if (isLoadingOperations.value || operations.value.length > 0) return
+  // Используем кэш из store, если операции уже загружены
+  if (dashboardStore.operationsLoaded && dashboardStore.operations.length > 0) {
+    return
+  }
+  
+  if (isLoadingOperations.value) return
   
   try {
     isLoadingOperations.value = true
     const response = await operationsService.getOperations({ limit: 2000 })
-    operations.value = response?.operations || response || []
+    const operationsList = response?.operations || response || []
+    // Обновляем операции в store
+    dashboardStore.operations = operationsList
+    dashboardStore.operationsLoaded = true
   } catch (err) {
     if (import.meta.env.VITE_APP_DEV) {
       console.error('Ошибка загрузки операций:', err)
@@ -75,9 +90,9 @@ const loadOperations = async () => {
   }
 }
 
-// Загружаем операции при переключении на режим операций
+// Загружаем операции при переключении на режим операций (только если нет в кэше)
 watch(viewMode, (newMode) => {
-  if (newMode === 'operations' && operations.value.length === 0) {
+  if (newMode === 'operations') {
     loadOperations()
   }
 })
@@ -93,9 +108,8 @@ const deleteTransactions = async (transaction_ids) => {
 
 const deleteOperations = async (operation_ids) => {
   await transactionsStore.deleteOperations(operation_ids)
-  // Перезагружаем операции после удаления
-  operations.value = []
-  await loadOperations()
+  // Операции уже удалены из кэша в store через removeOperations
+  // Dashboard обновляется в фоне автоматически
 }
 
 const editTransaction = async (updated_transaction) => {

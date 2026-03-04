@@ -82,34 +82,59 @@ def create_transaction(
 ):
     """
     Единственный разрешённый способ создания транзакций.
+    Использует apply_transactions_batch для единообразия.
     FIFO + realized_pnl считаются в БД.
     """
+    from datetime import datetime
+    
+    # Нормализуем дату
+    if isinstance(transaction_date, datetime):
+        transaction_date_str = transaction_date.isoformat()
+    elif isinstance(transaction_date, str) and 'T' not in transaction_date:
+        transaction_date_str = f"{transaction_date}T00:00:00"
+    else:
+        transaction_date_str = transaction_date
 
-    # 1️⃣ Создаём транзакцию через FIFO-safe RPC
-    tx_id = rpc("apply_transaction", {
-        "p_user_id": user_id,
-        "p_portfolio_asset_id": portfolio_asset_id,
-        "p_transaction_type": transaction_type,
-        "p_quantity": quantity,
-        "p_price": price,
-        "p_transaction_date": transaction_date
-    })
-
-    if not tx_id:
-        raise Exception("apply_transaction failed")
+    # 1️⃣ Создаём транзакцию через batch функцию (с одним элементом)
+    tx_data = [{
+        "user_id": str(user_id),
+        "portfolio_asset_id": portfolio_asset_id,
+        "transaction_type": transaction_type,
+        "quantity": float(quantity),
+        "price": float(price),
+        "transaction_date": transaction_date_str,
+        "payment": float(price * quantity)  # Добавляем payment для корректной обработки
+    }]
+    
+    result = rpc("apply_transactions_batch", {"p_transactions": tx_data})
+    
+    if not result or result.get("inserted_count", 0) == 0:
+        error_msg = result.get("failed_transactions", [])
+        if error_msg:
+            error_msg = error_msg[0].get("error", "Unknown error") if isinstance(error_msg, list) and len(error_msg) > 0 else str(error_msg)
+        else:
+            error_msg = "apply_transactions_batch failed"
+        raise Exception(f"Ошибка создания транзакции: {error_msg}")
+    
+    # Получаем ID созданной транзакции
+    tx_ids = result.get("transaction_ids", [])
+    if not tx_ids or len(tx_ids) == 0:
+        raise Exception("Транзакция не была создана")
+    
+    tx_id = tx_ids[0]
 
     # 2️⃣ Цена актива (idempotent)
     existing_price = table_select(
         "asset_prices",
         "id",
-        filters={"asset_id": asset_id, "trade_date": transaction_date}
+        filters={"asset_id": asset_id, "trade_date": transaction_date_str.split('T')[0]}
     )
 
     if not existing_price:
         table_insert("asset_prices", {
             "asset_id": asset_id,
             "price": price,
-            "trade_date": transaction_date
+            "trade_date": transaction_date_str.split('T')[0]
         })
         
         # Обновляем последнюю цену актива в asset_latest_prices_full
@@ -119,6 +144,8 @@ def create_transaction(
             logger.warning(f"Ошибка при обновлении последней цены актива {asset_id}: {e}", exc_info=True)
 
     # 3️⃣ Инкрементальные апдейты (БЕЗ глобальных refresh)
+    # Примечание: apply_transactions_batch уже обновляет историю, но update_portfolio_asset
+    # обновляет агрегированные данные актива (quantity, average_price и т.д.)
     rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
 
     return tx_id
@@ -137,7 +164,7 @@ def update_transaction(
 ):
     """
     Обновляет существующую транзакцию.
-    Удаляет старую транзакцию и создает новую через apply_transaction.
+    Удаляет старую транзакцию и создает новую через create_transaction (которая использует apply_transactions_batch).
     """
     from datetime import datetime
     

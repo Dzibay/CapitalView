@@ -138,22 +138,36 @@ def create_operation(
         
         return {"operation_id": tx_id, "type": "transaction"}
     
-    # Для остальных типов операций создаем через SQL функцию
-    result = rpc("apply_operation", {
-        "p_user_id": user_id,
-        "p_portfolio_id": portfolio_id,
-        "p_operation_type": operation_type,
-        "p_amount": amount,
-        "p_currency_id": currency_id,
-        "p_operation_date": operation_date,
-        "p_asset_id": asset_id,
-        "p_dividend_yield": dividend_yield
-    })
+    # Для остальных типов операций создаем через batch функцию (с одним элементом)
+    op_data = [{
+        "user_id": str(user_id),
+        "portfolio_id": portfolio_id,
+        "operation_type": operation_type,
+        "amount": float(amount),
+        "currency_id": currency_id,
+        "operation_date": operation_date,
+        "asset_id": asset_id,
+        "dividend_yield": float(dividend_yield) if dividend_yield is not None else None
+    }]
     
-    if not result:
-        raise Exception("apply_operation failed")
+    result = rpc("apply_operations_batch", {"p_operations": op_data})
     
-    return {"operation_id": result, "type": "cash_operation"}
+    if not result or result.get("inserted_count", 0) == 0:
+        error_msg = result.get("failed_operations", [])
+        if error_msg:
+            error_msg = error_msg[0].get("error", "Unknown error") if isinstance(error_msg, list) and len(error_msg) > 0 else str(error_msg)
+        else:
+            error_msg = "apply_operations_batch failed"
+        raise Exception(f"Ошибка создания операции: {error_msg}")
+    
+    # Получаем ID созданной операции
+    op_ids = result.get("operation_ids", [])
+    if not op_ids or len(op_ids) == 0:
+        raise Exception("Операция не была создана")
+    
+    op_id = op_ids[0]
+    
+    return {"operation_id": op_id, "type": "cash_operation"}
 
 
 def create_operations_batch(

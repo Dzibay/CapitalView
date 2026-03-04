@@ -6,11 +6,13 @@ export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     portfolios: [],
     transactions: [],
+    operations: [], // Кэш операций
     referenceData: {},
     analytics: [],
     lastFetch: null,
     cacheTimeout: parseInt(import.meta.env.VITE_DASHBOARD_CACHE_TIMEOUT || '60000', 10), // Время кеширования из env или 1 минута по умолчанию
     transactionsLoaded: false,
+    operationsLoaded: false, // Флаг загрузки операций
     analyticsLoaded: false
   }),
 
@@ -196,6 +198,41 @@ export const useDashboardStore = defineStore('dashboard', {
           this.transactions = transactionsArray
         }
         this.transactionsLoaded = true
+      }
+    },
+
+    // Добавление операций
+    addOperations(operationsArray) {
+      if (Array.isArray(operationsArray)) {
+        // Если операции еще не загружены, заменяем массив
+        // Если уже загружены, добавляем к существующим (для обновления)
+        if (this.operationsLoaded && this.operations.length > 0) {
+          this.operations = [
+            ...this.operations,
+            ...operationsArray
+          ]
+        } else {
+          this.operations = operationsArray
+        }
+        this.operationsLoaded = true
+      }
+    },
+
+    // Удаление транзакций из кэша
+    removeTransactions(transactionIds) {
+      if (Array.isArray(transactionIds)) {
+        this.transactions = this.transactions.filter(
+          tx => !transactionIds.includes(tx.id || tx.transaction_id)
+        )
+      }
+    },
+
+    // Удаление операций из кэша
+    removeOperations(operationIds) {
+      if (Array.isArray(operationIds)) {
+        this.operations = this.operations.filter(
+          op => !operationIds.includes(op.id || op.cash_operation_id)
+        )
       }
     }
   }

@@ -27,6 +27,8 @@ DECLARE
     v_asset_name text;
     v_asset_ticker text;
     v_result text;
+    v_tx_result jsonb;
+    v_tx_ids bigint[];
 BEGIN
     -- Начинаем транзакцию (автоматически в PostgreSQL)
     
@@ -180,23 +182,34 @@ BEGIN
     END IF;
     
     -- Добавляем транзакцию покупки только если quantity > 0
-    -- apply_transaction уже обновляет историю портфеля (позиции активов и значения портфеля)
+    -- apply_transactions_batch уже обновляет историю портфеля (позиции активов и значения портфеля)
     -- Поэтому дополнительное обновление не требуется
     IF p_quantity > 0 THEN
-        v_tx_id := apply_transaction(
-            p_user_id := p_user_id,
-            p_portfolio_asset_id := v_portfolio_asset_id,
-            p_transaction_type := 1,  -- BUY
-            p_quantity := p_quantity,
-            p_price := p_price,
-            p_transaction_date := p_transaction_date
+        v_tx_result := apply_transactions_batch(
+            jsonb_build_array(
+                jsonb_build_object(
+                    'user_id', p_user_id::text,
+                    'portfolio_asset_id', v_portfolio_asset_id,
+                    'transaction_type', 1,  -- BUY
+                    'quantity', p_quantity,
+                    'price', p_price,
+                    'transaction_date', p_transaction_date::text,
+                    'payment', p_quantity * p_price
+                )
+            )
         );
+        
+        -- Извлекаем ID созданной транзакции
+        v_tx_ids := ARRAY(SELECT jsonb_array_elements_text(v_tx_result->'transaction_ids')::bigint);
+        IF array_length(v_tx_ids, 1) > 0 THEN
+            v_tx_id := v_tx_ids[1];
+        END IF;
+        
+        -- Примечание: apply_transactions_batch теперь обновляет:
+        -- 1. update_portfolio_asset_positions_from_date (позиции актива)
+        -- 2. update_portfolio_values_from_date (значения портфеля)
+        -- Поэтому дополнительное обновление не требуется
     END IF;
-    
-    -- Примечание: apply_transaction уже обновляет:
-    -- 1. update_portfolio_asset_positions_from_date (позиции актива)
-    -- 2. update_portfolio_values_from_date (значения портфеля)
-    -- Поэтому дополнительное обновление не требуется
     
     -- Получаем последнюю цену актива
     SELECT price INTO v_last_price

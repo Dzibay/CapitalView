@@ -465,8 +465,14 @@ BEGIN
                 WHEN t.transaction_type = 3 THEN v_redemption_op_type_id
             END,
             -- Используем payment из temp_tx_payment_map (надежное сопоставление по transaction_id)
-            -- Если payment не найден - логируем ошибку и используем 0
-            COALESCE(tpm.payment, 0),
+            -- ВАЖНО: Buy (покупка) - отрицательное значение (деньги уходят), Sell (продажа) - положительное (деньги приходят)
+            -- Redemption (погашение) - положительное (деньги приходят)
+            CASE 
+                WHEN t.transaction_type = 1 THEN -ABS(COALESCE(tpm.payment, 0))  -- Buy: отрицательное
+                WHEN t.transaction_type = 2 THEN ABS(COALESCE(tpm.payment, 0))    -- Sell: положительное
+                WHEN t.transaction_type = 3 THEN ABS(COALESCE(tpm.payment, 0))    -- Redemption: положительное
+                ELSE COALESCE(tpm.payment, 0)
+            END,
             47, -- RUB
             t.transaction_date,
             t.id,
@@ -482,6 +488,80 @@ BEGIN
               WHERE co.transaction_id = t.id
           );
         
+    END IF;
+
+    -- ========================================================================
+    -- 4. ОБНОВЛЕНИЕ ИСТОРИИ ПОРТФЕЛЕЙ (ШАГ 1: позиции активов)
+    -- ========================================================================
+    -- Обновляем позиции активов для всех затронутых portfolio_assets
+    -- Это нужно сделать ПЕРВЫМ, так как portfolio_daily_values агрегирует данные из portfolio_daily_positions
+    IF array_length(v_tx_ids, 1) > 0 THEN
+        DECLARE
+            v_pa_id bigint;
+            v_min_tx_date date;
+            v_pa_ids bigint[];
+        BEGIN
+            -- Получаем минимальную дату транзакций и уникальные portfolio_asset_ids
+            SELECT 
+                MIN(t.transaction_date::date),
+                array_agg(DISTINCT t.portfolio_asset_id) FILTER (WHERE t.portfolio_asset_id IS NOT NULL)
+            INTO v_min_tx_date, v_pa_ids
+            FROM transactions t
+            WHERE t.id = ANY(v_tx_ids);
+            
+            -- Обновляем позиции для каждого затронутого актива
+            IF v_min_tx_date IS NOT NULL AND array_length(v_pa_ids, 1) > 0 THEN
+                FOREACH v_pa_id IN ARRAY v_pa_ids
+                LOOP
+                    BEGIN
+                        PERFORM update_portfolio_asset_positions_from_date(
+                            v_pa_id,
+                            v_min_tx_date - 1
+                        );
+                    EXCEPTION WHEN OTHERS THEN
+                        RAISE WARNING 'Ошибка при обновлении позиций актива %: %', v_pa_id, SQLERRM;
+                    END;
+                END LOOP;
+            END IF;
+        END;
+    END IF;
+
+    -- ========================================================================
+    -- 5. ОБНОВЛЕНИЕ ИСТОРИИ ПОРТФЕЛЕЙ (ШАГ 2: значения портфелей)
+    -- ========================================================================
+    -- Обновляем значения портфелей для всех затронутых портфелей
+    -- Это агрегирует данные из portfolio_daily_positions в portfolio_daily_values
+    -- Важно: делаем это ПОСЛЕ обновления позиций активов
+    IF array_length(v_tx_ids, 1) > 0 THEN
+        DECLARE
+            v_p_id bigint;
+            v_min_tx_date date;
+            v_p_ids bigint[];
+        BEGIN
+            -- Получаем минимальную дату транзакций и уникальные portfolio_ids
+            SELECT 
+                MIN(t.transaction_date::date),
+                array_agg(DISTINCT pa.portfolio_id) FILTER (WHERE pa.portfolio_id IS NOT NULL)
+            INTO v_min_tx_date, v_p_ids
+            FROM transactions t
+            JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
+            WHERE t.id = ANY(v_tx_ids);
+            
+            -- Обновляем значения для каждого затронутого портфеля
+            IF v_min_tx_date IS NOT NULL AND array_length(v_p_ids, 1) > 0 THEN
+                FOREACH v_p_id IN ARRAY v_p_ids
+                LOOP
+                    BEGIN
+                        PERFORM update_portfolio_values_from_date(
+                            v_p_id,
+                            v_min_tx_date - 1
+                        );
+                    EXCEPTION WHEN OTHERS THEN
+                        RAISE WARNING 'Ошибка при обновлении истории портфеля %: %', v_p_id, SQLERRM;
+                    END;
+                END LOOP;
+            END IF;
+        END;
     END IF;
 
     -- Удаляем временные таблицы
