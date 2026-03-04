@@ -506,12 +506,20 @@ def get_portfolio_asset_info(portfolio_asset_id: int, user_id: str):
             "type": portfolio_asset_data.get("asset_type"),
             "transactions": result.get("transactions", []),
             "transactions_count": len(result.get("transactions", [])),
-            "payouts": result.get("all_payouts", []),  # Все выплаты из asset_payouts
+            "all_payouts": result.get("all_payouts", []),  # Все выплаты из asset_payouts (история)
             "payouts_count": len(result.get("all_payouts", [])),
             # ОПТИМИЗИРОВАНО: добавляем daily_values и cash_operations из основного запроса
             "daily_values": result.get("daily_values", []),
             "cash_operations": result.get("cash_operations", []),
-            "price_history": result.get("price_history", [])  # История цен из того же запроса
+            "price_history": result.get("price_history", []),  # История цен из того же запроса
+            # ИСПРАВЛЕНО: добавляем поля из portfolio_daily_positions для использования на фронтенде
+            "asset_value": portfolio_asset_data.get("asset_value"),
+            "invested_value": portfolio_asset_data.get("invested_value"),
+            "realized_pnl": portfolio_asset_data.get("realized_pnl"),
+            "payouts": portfolio_asset_data.get("payouts"),  # Накопленные выплаты из portfolio_daily_positions
+            "commissions": portfolio_asset_data.get("commissions"),
+            "taxes": portfolio_asset_data.get("taxes"),
+            "total_pnl": portfolio_asset_data.get("total_pnl")  # Общая прибыль из таблицы
         }
         
         # Добавляем информацию о портфелях

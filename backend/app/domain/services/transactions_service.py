@@ -111,6 +111,12 @@ def create_transaction(
             "price": price,
             "trade_date": transaction_date
         })
+        
+        # Обновляем последнюю цену актива в asset_latest_prices_full
+        try:
+            rpc("update_asset_latest_price", {"p_asset_id": asset_id})
+        except Exception as e:
+            logger.warning(f"Ошибка при обновлении последней цены актива {asset_id}: {e}", exc_info=True)
 
     # 3️⃣ Инкрементальные апдейты (БЕЗ глобальных refresh)
     rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})

@@ -917,10 +917,45 @@ async def import_broker_portfolio(
                 logger.warning(f"Всего пропущено транзакций из-за ошибок: {failed_count} из {len(new_tx_sorted)}")
 
         if new_ops:
-            logger.debug(f"Добавляем {len(new_ops)} новых денежных операций...")
+            logger.debug(f"Добавляем {len(new_ops)} новых денежных операций через batch...")
             try:
-                await table_insert_bulk_async("cash_operations", new_ops)
-                logger.debug(f"Денежные операции успешно добавлены")
+                # Преобразуем данные для batch функции
+                operations_batch = []
+                for op in new_ops:
+                    # Преобразуем дату в строку ISO формата
+                    op_date = op["date"]
+                    if isinstance(op_date, datetime):
+                        op_date_str = op_date.isoformat()
+                    elif isinstance(op_date, date):
+                        op_date_str = datetime.combine(op_date, datetime.min.time()).isoformat()
+                    else:
+                        op_date_str = str(op_date)
+                    
+                    op_data = {
+                        "user_id": str(op["user_id"]),  # UUID должен быть строкой
+                        "portfolio_id": op["portfolio_id"],
+                        "operation_type": op["type"],
+                        "amount": float(op["amount"]),
+                        "currency_id": op.get("currency", 47),
+                        "operation_date": op_date_str,
+                        "asset_id": op.get("asset_id")
+                    }
+                    operations_batch.append(op_data)
+                
+                # Используем batch функцию для создания всех операций за один раз
+                from app.infrastructure.database.supabase_service import rpc_async
+                result = await rpc_async("apply_operations_batch", {
+                    "p_operations": operations_batch
+                })
+                
+                if result:
+                    inserted_count = result.get("inserted_count", 0)
+                    failed_count = result.get("failed_count", 0)
+                    logger.debug(f"Денежные операции успешно добавлены: {inserted_count} из {len(new_ops)}, ошибок: {failed_count}")
+                    if failed_count > 0:
+                        logger.warning(f"Не удалось создать {failed_count} операций из {len(new_ops)}")
+                else:
+                    logger.error("apply_operations_batch вернула пустой результат")
             except Exception as e:
                 logger.error(f"Ошибка при добавлении денежных операций: {e}", exc_info=True)
 

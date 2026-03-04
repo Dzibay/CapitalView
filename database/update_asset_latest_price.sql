@@ -1,8 +1,9 @@
+drop function update_asset_latest_price;
 -- Функция для обновления одной записи (для частичных обновлений)
 CREATE OR REPLACE FUNCTION update_asset_latest_price(p_asset_id BIGINT)
 RETURNS VOID AS $$
 BEGIN
-    INSERT INTO asset_latest_prices_full_table (
+    INSERT INTO asset_latest_prices_full (
         asset_id,
         today_price,
         today_date,

@@ -661,22 +661,26 @@ const commissionsTotal = computed(() => {
 })
 
 // Расчет общей прибыли для выбранного портфеля
+// ИСПРАВЛЕНО: используем total_pnl из portfolio_daily_positions вместо пересчета
 const selectedTotalProfit = computed(() => {
-  if (!selectedProfitLoss.value) return null
+  if (!selectedPortfolioAsset.value) return null
   
-  const unrealized = selectedProfitLoss.value.profit
-  const realized = realizedProfit.value
-  const payoutAmount = receivedPayouts.value
-  const commissions = commissionsTotal.value
-  const total = unrealized + realized + payoutAmount - commissions
+  // Используем total_pnl из portfolio_daily_positions (уже рассчитан в БД)
+  const totalPnl = selectedPortfolioAsset.value.total_pnl || 0
+  
+  // Для совместимости разбиваем на компоненты (если нужно для отображения)
+  const unrealized = selectedProfitLoss.value?.profit || 0
+  const realized = realizedProfit.value || 0
+  const payoutAmount = selectedPortfolioAsset.value.payouts || 0
+  const commissions = Math.abs(selectedPortfolioAsset.value.commissions || 0)
   
   return {
     unrealized,
     realized,
     payouts: payoutAmount,
     commissions,
-    total,
-    isProfit: total >= 0
+    total: totalPnl,  // Используем total_pnl из таблицы
+    isProfit: totalPnl >= 0
   }
 })
 
@@ -1055,26 +1059,26 @@ const priceGrowth = computed(() => {
 })
 
 // Общая прибыль (unrealized + realized + выплаты - комиссии)
-// ОПТИМИЗИРОВАНО: используем данные из portfolio_daily_positions
+// ИСПРАВЛЕНО: используем total_pnl из portfolio_daily_positions вместо пересчета
 const totalProfit = computed(() => {
-  if (!profitLoss.value || !selectedPortfolioAsset.value) return null
+  if (!selectedPortfolioAsset.value) return null
   
-  const unrealizedProfit = profitLoss.value.profit || 0
+  // Используем total_pnl из portfolio_daily_positions (уже рассчитан в БД)
+  const totalPnl = selectedPortfolioAsset.value.total_pnl || 0
+  
+  // Для совместимости разбиваем на компоненты (если нужно для отображения)
+  const unrealizedProfit = profitLoss.value?.profit || 0
   const realized = realizedProfit.value || 0
-  // ОПТИМИЗИРОВАНО: используем payouts из portfolio_daily_positions (уже в RUB)
   const payoutAmount = selectedPortfolioAsset.value.payouts || 0
-  // ОПТИМИЗИРОВАНО: используем commissions из portfolio_daily_positions (уже в RUB)
   const commissions = selectedPortfolioAsset.value.commissions || 0
-  
-  const total = unrealizedProfit + realized + payoutAmount - commissions
   
   return {
     unrealized: unrealizedProfit,
     realized,
     payouts: payoutAmount,
     commissions,
-    total,
-    isProfit: total >= 0
+    total: totalPnl,  // Используем total_pnl из таблицы
+    isProfit: totalPnl >= 0
   }
 })
 

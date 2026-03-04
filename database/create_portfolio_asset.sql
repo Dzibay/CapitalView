@@ -180,6 +180,8 @@ BEGIN
     END IF;
     
     -- Добавляем транзакцию покупки только если quantity > 0
+    -- apply_transaction уже обновляет историю портфеля (позиции активов и значения портфеля)
+    -- Поэтому дополнительное обновление не требуется
     IF p_quantity > 0 THEN
         v_tx_id := apply_transaction(
             p_user_id := p_user_id,
@@ -191,12 +193,10 @@ BEGIN
         );
     END IF;
     
-    -- Обновляем историю портфеля с даты транзакции
-    BEGIN
-        PERFORM update_portfolio_values_from_date(p_portfolio_id, p_transaction_date);
-    EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'Ошибка при обновлении истории портфеля: %', SQLERRM;
-    END;
+    -- Примечание: apply_transaction уже обновляет:
+    -- 1. update_portfolio_asset_positions_from_date (позиции актива)
+    -- 2. update_portfolio_values_from_date (значения портфеля)
+    -- Поэтому дополнительное обновление не требуется
     
     -- Получаем последнюю цену актива
     SELECT price INTO v_last_price

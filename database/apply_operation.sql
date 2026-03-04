@@ -29,6 +29,8 @@ DECLARE
     v_currency_to_quote_rate numeric(20,6);
     v_quote_to_rub_rate numeric(20,6);
     v_amount_in_quote numeric(20,6);
+    v_portfolio_asset_id bigint;
+    v_first_buy_date date;
 BEGIN
     -- Проверяем существование портфеля
     SELECT EXISTS(SELECT 1 FROM portfolios WHERE id = p_portfolio_id AND user_id = p_user_id)
@@ -36,6 +38,31 @@ BEGIN
     
     IF NOT v_portfolio_exists THEN
         RAISE EXCEPTION 'Портфель % не найден или не принадлежит пользователю', p_portfolio_id;
+    END IF;
+    
+    -- ВАЛИДАЦИЯ: Если операция связана с активом (Commission, Tax, Dividend, Coupon),
+    -- проверяем, что есть хотя бы одна покупка этого актива в портфеле
+    -- Операции без актива (Deposit, Withdraw) можно создавать в любое время
+    IF p_asset_id IS NOT NULL AND p_operation_type IN (3, 4, 7, 8) THEN
+        -- Получаем дату первой покупки актива в портфеле
+        SELECT min(t.transaction_date::date)
+        INTO v_first_buy_date
+        FROM transactions t
+        JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
+        WHERE pa.portfolio_id = p_portfolio_id
+          AND pa.asset_id = p_asset_id
+          AND t.transaction_type = 1;  -- Только покупки (Buy)
+        
+        -- Если нет покупок, запрещаем создание операций по активу
+        IF v_first_buy_date IS NULL THEN
+            RAISE EXCEPTION 'Невозможно создать операцию по активу до первой покупки. Сначала создайте транзакцию покупки актива.';
+        END IF;
+        
+        -- Если дата операции раньше первой покупки, запрещаем
+        IF p_operation_date::date < v_first_buy_date THEN
+            RAISE EXCEPTION 'Невозможно создать операцию на дату % раньше первой покупки актива (%). Сначала создайте транзакцию покупки.', 
+                p_operation_date::date, v_first_buy_date;
+        END IF;
     END IF;
     
     -- Получаем ID типа операции из operations_type
@@ -190,7 +217,30 @@ BEGIN
     -- Примечание: запись в asset_payouts не создается
     -- Вся информация о выплатах хранится в cash_operations
     
-    -- Обновляем историю портфеля с даты операции
+    -- ШАГ 1: Если операция связана с активом (Commission/Tax/Dividend/Coupon), обновляем позиции актива
+    -- Это нужно сделать ПЕРВЫМ, так как portfolio_daily_values агрегирует данные из portfolio_daily_positions
+    IF p_asset_id IS NOT NULL AND p_operation_type IN (3, 4, 7, 8) THEN
+        -- Обновляем позиции для всех portfolio_asset_id с этим asset_id в портфеле
+        FOR v_portfolio_asset_id IN 
+            SELECT pa.id
+            FROM portfolio_assets pa
+            WHERE pa.portfolio_id = p_portfolio_id
+              AND pa.asset_id = p_asset_id
+        LOOP
+            BEGIN
+                PERFORM update_portfolio_asset_positions_from_date(
+                    v_portfolio_asset_id,
+                    p_operation_date::date - 1
+                );
+            EXCEPTION WHEN OTHERS THEN
+                RAISE WARNING 'Ошибка при обновлении позиций актива % для операции %: %', v_portfolio_asset_id, v_operation_id, SQLERRM;
+            END;
+        END LOOP;
+    END IF;
+    
+    -- ШАГ 2: Обновляем историю портфеля с даты операции
+    -- Это агрегирует данные из portfolio_daily_positions в portfolio_daily_values
+    -- Важно: делаем это ПОСЛЕ обновления позиций активов
     PERFORM update_portfolio_values_from_date(
         p_portfolio_id,
         p_operation_date::date - 1

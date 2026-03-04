@@ -20,6 +20,7 @@ DECLARE
     v_min_date date;
     v_portfolio_id bigint;
     v_portfolio_asset_id bigint;
+    v_asset_id bigint;
     v_transaction_ids bigint[];
     v_deleted_count int := 0;
     v_deleted_transactions_count int := 0;
@@ -92,14 +93,109 @@ BEGIN
         END LOOP;
     END IF;
     
-    -- 7. Обновляем историю портфелей с минимальной даты
+    -- 6.1. Удаляем операции до первой покупки для всех затронутых активов
+    -- Это необходимо, так как операции (комиссии, дивиденды) не должны существовать до первой покупки
+    IF array_length(v_portfolio_ids, 1) > 0 THEN
+        FOREACH v_portfolio_id IN ARRAY v_portfolio_ids
+        LOOP
+            -- Для каждого актива в портфеле находим первую покупку и удаляем операции до неё
+            FOR v_portfolio_asset_id, v_asset_id IN
+                SELECT DISTINCT pa.id, pa.asset_id
+                FROM portfolio_assets pa
+                WHERE pa.portfolio_id = v_portfolio_id
+            LOOP
+                -- Получаем дату первой покупки актива
+                SELECT min(t.transaction_date::date)
+                INTO v_min_date
+                FROM transactions t
+                WHERE t.portfolio_asset_id = v_portfolio_asset_id
+                  AND t.transaction_type = 1;  -- Только покупки (Buy)
+                
+                -- Если есть первая покупка, удаляем операции до неё
+                IF v_min_date IS NOT NULL THEN
+                    DELETE FROM cash_operations
+                    WHERE portfolio_id = v_portfolio_id
+                      AND asset_id = v_asset_id
+                      AND transaction_id IS NULL  -- Только операции без транзакций
+                      AND type IN (3, 4, 7, 8)  -- Dividend, Coupon, Commission, Tax
+                      AND date::date < v_min_date;
+                ELSE
+                    -- Если нет покупок, удаляем все операции по активу
+                    DELETE FROM cash_operations
+                    WHERE portfolio_id = v_portfolio_id
+                      AND asset_id = v_asset_id
+                      AND transaction_id IS NULL  -- Только операции без транзакций
+                      AND type IN (3, 4, 7, 8);  -- Dividend, Coupon, Commission, Tax
+                END IF;
+            END LOOP;
+        END LOOP;
+    END IF;
+    
+    -- 7. ШАГ 1: Обновляем позиции активов для ВСЕХ затронутых portfolio_assets
+    -- Это нужно сделать ПЕРВЫМ, так как portfolio_daily_values агрегирует данные из portfolio_daily_positions
+    -- 7.1. Обновляем позиции для транзакций (если были удалены транзакции)
+    IF v_min_date IS NOT NULL AND array_length(v_portfolio_asset_ids, 1) > 0 THEN
+        FOREACH v_portfolio_asset_id IN ARRAY v_portfolio_asset_ids
+        LOOP
+            BEGIN
+                PERFORM update_portfolio_asset_positions_from_date(
+                    v_portfolio_asset_id,
+                    v_min_date - 1
+                );
+            EXCEPTION WHEN OTHERS THEN
+                RAISE WARNING 'Ошибка при обновлении позиций актива % (транзакции): %', v_portfolio_asset_id, SQLERRM;
+            END;
+        END LOOP;
+    END IF;
+    
+    -- 7.2. Обновляем позиции для операций с asset_id (Commission/Tax/Dividend/Coupon)
+    -- Типы операций: 3=Dividend, 4=Coupon, 7=Commission, 8=Tax
+    IF v_min_date IS NOT NULL THEN
+        FOR v_portfolio_id, v_asset_id IN 
+            SELECT DISTINCT co.portfolio_id, co.asset_id
+            FROM cash_operations co
+            WHERE co.id = ANY(p_operation_ids)
+              AND co.portfolio_id IS NOT NULL
+              AND co.asset_id IS NOT NULL
+              AND co.type IN (3, 4, 7, 8)  -- Dividend, Coupon, Commission, Tax
+        LOOP
+            BEGIN
+                -- Обновляем позиции для всех portfolio_asset_id с этим asset_id в портфеле
+                FOR v_portfolio_asset_id IN 
+                    SELECT pa.id
+                    FROM portfolio_assets pa
+                    WHERE pa.portfolio_id = v_portfolio_id
+                      AND pa.asset_id = v_asset_id
+                LOOP
+                    BEGIN
+                        PERFORM update_portfolio_asset_positions_from_date(
+                            v_portfolio_asset_id,
+                            v_min_date - 1
+                        );
+                    EXCEPTION WHEN OTHERS THEN
+                        RAISE WARNING 'Ошибка при обновлении позиций актива % (операции): %', v_portfolio_asset_id, SQLERRM;
+                    END;
+                END LOOP;
+            EXCEPTION WHEN OTHERS THEN
+                RAISE WARNING 'Ошибка при обновлении позиций для портфеля % и актива %: %', v_portfolio_id, v_asset_id, SQLERRM;
+            END;
+        END LOOP;
+    END IF;
+    
+    -- 8. ШАГ 2: Обновляем историю портфелей с минимальной даты
+    -- Это агрегирует данные из portfolio_daily_positions в portfolio_daily_values
+    -- Важно: делаем это ПОСЛЕ обновления позиций активов
     IF v_min_date IS NOT NULL AND array_length(v_portfolio_ids, 1) > 0 THEN
         FOREACH v_portfolio_id IN ARRAY v_portfolio_ids
         LOOP
-            PERFORM update_portfolio_values_from_date(
-                v_portfolio_id,
-                v_min_date
-            );
+            BEGIN
+                PERFORM update_portfolio_values_from_date(
+                    v_portfolio_id,
+                    v_min_date - 1
+                );
+            EXCEPTION WHEN OTHERS THEN
+                RAISE WARNING 'Ошибка при обновлении истории портфеля %: %', v_portfolio_id, SQLERRM;
+            END;
         END LOOP;
     END IF;
     

@@ -7,6 +7,8 @@ CREATE OR REPLACE FUNCTION upsert_asset_prices(p_prices jsonb)
 RETURNS boolean
 LANGUAGE plpgsql
 AS $$
+DECLARE
+    v_asset_id bigint;
 BEGIN
     -- Используем временную таблицу для эффективного upsert
     CREATE TEMP TABLE IF NOT EXISTS temp_asset_prices (
@@ -45,6 +47,19 @@ BEGIN
         WHERE ap.asset_id = t.asset_id
           AND DATE(ap.trade_date) = DATE(t.trade_date)
     );
+    
+    -- Обновляем asset_latest_prices_full для всех затронутых активов
+    -- Используем DISTINCT, чтобы обновить каждый актив только один раз
+    FOR v_asset_id IN 
+        SELECT DISTINCT asset_id FROM temp_asset_prices
+    LOOP
+        BEGIN
+            PERFORM update_asset_latest_price(v_asset_id);
+        EXCEPTION WHEN OTHERS THEN
+            -- Логируем ошибку, но продолжаем обработку других активов
+            RAISE WARNING 'Ошибка при обновлении последней цены актива %: %', v_asset_id, SQLERRM;
+        END;
+    END LOOP;
     
     RETURN true; 
 END;

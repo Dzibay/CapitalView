@@ -27,39 +27,48 @@ export const useTransactionsStore = defineStore('transactions', {
       }
     },
 
-    async addOperation(operationData) {
+    async addOperation(operationData, skipReload = false) {
       const uiStore = useUIStore()
       const dashboardStore = useDashboardStore()
       
       try {
         await operationsService.addOperation(operationData)
-        uiStore.setLoading(true)
-        await dashboardStore.reloadDashboard()
+        if (!skipReload) {
+          uiStore.setLoading(true)
+          await dashboardStore.reloadDashboard()
+        }
       } catch (err) {
         if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка добавления операции:', err)
         }
         throw err
       } finally {
-        uiStore.setLoading(false)
+        if (!skipReload) {
+          uiStore.setLoading(false)
+        }
       }
     },
 
-    async addOperationsBatch(batchData) {
+    async addOperationsBatch(batchData, skipReload = false) {
       const uiStore = useUIStore()
       const dashboardStore = useDashboardStore()
       
       try {
-        await operationsService.addOperationsBatch(batchData)
-        uiStore.setLoading(true)
-        await dashboardStore.reloadDashboard()
+        const result = await operationsService.addOperationsBatch(batchData)
+        if (!skipReload) {
+          uiStore.setLoading(true)
+          await dashboardStore.reloadDashboard()
+        }
+        return result // Возвращаем результат с датами созданных операций
       } catch (err) {
         if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка массового добавления операций:', err)
         }
         throw err
       } finally {
-        uiStore.setLoading(false)
+        if (!skipReload) {
+          uiStore.setLoading(false)
+        }
       }
     },
 

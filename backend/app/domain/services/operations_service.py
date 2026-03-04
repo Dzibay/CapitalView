@@ -251,39 +251,36 @@ def create_operations_batch(
     if not operation_dates:
         raise ValueError("Не удалось сгенерировать даты для операций. Проверьте start_date, end_date и day_of_month")
     
-    # Создаем операции
-    created_operations = []
-    errors = []
-    
+    # Подготавливаем операции для batch вставки
+    operations_list = []
     for op_date in operation_dates:
-        try:
-            result = create_operation(
-                user_id=user_id,
-                portfolio_id=portfolio_id,
-                operation_type=operation_type,
-                amount=amount,
-                currency_id=currency_id,
-                operation_date=op_date.isoformat(),
-                portfolio_asset_id=portfolio_asset_id,
-                asset_id=asset_id,
-                quantity=quantity,
-                price=price,
-                dividend_yield=dividend_yield
-            )
-            created_operations.append({
-                "date": op_date.isoformat(),
-                "operation_id": result.get("operation_id"),
-                "type": result.get("type")
-            })
-        except Exception as e:
-            errors.append({
-                "date": op_date.isoformat(),
-                "error": str(e)
-            })
-            logger.error(f"Ошибка при создании операции на дату {op_date.isoformat()}: {e}")
+        op_data = {
+            "user_id": user_id,
+            "portfolio_id": portfolio_id,
+            "operation_type": operation_type,
+            "amount": amount,
+            "currency_id": currency_id,
+            "operation_date": op_date.isoformat(),
+            "asset_id": asset_id,
+            "dividend_yield": dividend_yield
+        }
+        operations_list.append(op_data)
+    
+    # Используем batch функцию для создания всех операций за один раз
+    from app.infrastructure.database.supabase_service import rpc
+    result = rpc("apply_operations_batch", {
+        "p_operations": operations_list
+    })
+    
+    if not result:
+        raise Exception("apply_operations_batch failed")
+    
+    # Форматируем результат для совместимости
+    created_operations = result.get("created", [])
+    errors = result.get("failed_operations", [])
     
     return {
-        "count": len(created_operations),
+        "count": result.get("inserted_count", 0),
         "total_dates": len(operation_dates),
         "created": created_operations,
         "errors": errors
