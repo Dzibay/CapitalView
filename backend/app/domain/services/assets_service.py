@@ -684,6 +684,53 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
         if update_val_result2 is False:
             logger.warning(f"Ошибка при обновлении значений портфеля {target_portfolio_id}")
         
+        # 🔟 Получаем всех родителей исходного и целевого портфелей для обновления их истории
+        def get_all_parents(portfolio_id):
+            """Рекурсивно получает всех родителей портфеля вверх по иерархии"""
+            parents = []
+            current_id = portfolio_id
+            
+            while current_id:
+                portfolio = table_select(
+                    "portfolios",
+                    select="id, parent_portfolio_id",
+                    filters={"id": current_id},
+                    limit=1
+                )
+                if not portfolio:
+                    break
+                
+                parent_id = portfolio[0].get("parent_portfolio_id")
+                if parent_id:
+                    parents.append(parent_id)
+                    current_id = parent_id
+                else:
+                    break
+            
+            return parents
+        
+        # Получаем всех родителей исходного и целевого портфелей
+        source_parents = get_all_parents(source_portfolio_id)
+        target_parents = get_all_parents(target_portfolio_id)
+        
+        # Объединяем и убираем дубликаты
+        all_parents = list(set(source_parents + target_parents))
+        
+        # Обновляем историю для всех родителей
+        for parent_id in all_parents:
+            try:
+                logger.info(f"Обновляем историю родительского портфеля {parent_id} после перемещения актива")
+                rpc("update_portfolio_positions_from_date", {
+                    "p_portfolio_id": parent_id,
+                    "p_from_date": from_date
+                })
+                rpc("update_portfolio_values_from_date", {
+                    "p_portfolio_id": parent_id,
+                    "p_from_date": from_date
+                })
+            except Exception as e:
+                logger.warning(f"Ошибка при обновлении истории родительского портфеля {parent_id}: {e}", exc_info=True)
+        
         # 9️⃣ Пересчитываем данные портфельного актива
         update_pa_result = rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
         if update_pa_result is False:
@@ -694,7 +741,8 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
             "message": "Актив успешно перемещен",
             "portfolio_asset_id": portfolio_asset_id,
             "source_portfolio_id": source_portfolio_id,
-            "target_portfolio_id": target_portfolio_id
+            "target_portfolio_id": target_portfolio_id,
+            "updated_parents": all_parents
         }
         
     except Exception as e:

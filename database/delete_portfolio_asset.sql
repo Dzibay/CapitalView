@@ -38,9 +38,14 @@ BEGIN
         )::text;
     END IF;
     
-    -- 2. Удаляем транзакции (CASCADE должен удалить связанные записи)
+    -- 2. Удаляем транзакции
     DELETE FROM transactions 
     WHERE portfolio_asset_id = p_portfolio_asset_id;
+    
+    -- 2.1. Удаляем cash_operations
+    DELETE FROM cash_operations
+    WHERE portfolio_id = v_portfolio_id
+      AND asset_id = v_asset_id;
     
     -- 3. Удаляем FIFO лоты
     DELETE FROM fifo_lots 

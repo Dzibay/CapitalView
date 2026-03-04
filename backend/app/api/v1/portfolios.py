@@ -222,21 +222,30 @@ async def import_broker_route(
         broker_token=data.token
     )
     
+    # Если токен уже используется, проверяем, не пытаемся ли мы обновить тот же портфель
     if token_check["exists"]:
+        existing_portfolio_id = token_check.get("portfolio_id")
         portfolio_name = token_check.get("portfolio_name", "неизвестный портфель")
-        portfolio_id = token_check.get("portfolio_id")
         
-        error_message = (
-            f"Токен уже используется для портфеля '{portfolio_name}'"
-            + (f" (ID: {portfolio_id})" if portfolio_id else "")
-        )
-        
-        logger.warning(f"⚠️ Попытка повторного импорта: {error_message}, user_id={user['id']}")
-        
-        raise HTTPException(
-            status_code=HTTPStatus.BAD_REQUEST,
-            detail=error_message
-        )
+        # Если указан portfolio_id и он совпадает с существующим - это обновление, разрешаем
+        if data.portfolio_id and existing_portfolio_id and data.portfolio_id == existing_portfolio_id:
+            logger.info(
+                f"✅ Обновление существующего портфеля: portfolio_id={data.portfolio_id}, "
+                f"user_id={user['id']}"
+            )
+        else:
+            # Токен используется для другого портфеля - это ошибка
+            error_message = (
+                f"Токен уже используется для портфеля '{portfolio_name}'"
+                + (f" (ID: {existing_portfolio_id})" if existing_portfolio_id else "")
+            )
+            
+            logger.warning(f"⚠️ Попытка использовать токен для другого портфеля: {error_message}, user_id={user['id']}")
+            
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=error_message
+            )
     
     task = create_import_task(
         user_id=user["id"],

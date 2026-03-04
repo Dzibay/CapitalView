@@ -334,7 +334,7 @@ BEGIN
                     0
                 )
                 RETURNING id INTO v_tx_id;
-                
+
                 -- Проверяем, что транзакция была успешно вставлена
                 IF v_tx_id IS NULL THEN
                     RAISE EXCEPTION 'Failed to insert transaction: transaction_id is NULL';
@@ -376,10 +376,10 @@ BEGIN
 
                     -- Для SELL и REDEMPTION рассчитываем realized_pnl
                     IF (v_tx_item->>'transaction_type')::int IN (2, 3) THEN
-                        IF lot.remaining_qty <= v_remaining THEN
-                            v_realized := v_realized + lot.remaining_qty * (
-                                (v_tx_item->>'price')::numeric - lot.price
-                            );
+                    IF lot.remaining_qty <= v_remaining THEN
+                        v_realized := v_realized + lot.remaining_qty * (
+                            (v_tx_item->>'price')::numeric - lot.price
+                        );
                         ELSE
                             v_realized := v_realized + v_remaining * (
                                 (v_tx_item->>'price')::numeric - lot.price
@@ -409,9 +409,9 @@ BEGIN
 
                 -- Обновляем realized_pnl для SELL и REDEMPTION
                 IF (v_tx_item->>'transaction_type')::int IN (2, 3) AND v_realized != 0 THEN
-                    UPDATE transactions
-                    SET realized_pnl = v_realized
-                    WHERE id = v_tx_id;
+                UPDATE transactions
+                SET realized_pnl = v_realized
+                WHERE id = v_tx_id;
                 END IF;
 
                 -- Добавляем ID успешной транзакции
