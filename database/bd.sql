@@ -87,9 +87,9 @@ CREATE TABLE capitalview.fifo_lots (
   CONSTRAINT fifo_lots_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES capitalview.portfolio_assets(id)
 );
 CREATE TABLE capitalview.import_tasks (
-  id integer NOT NULL DEFAULT nextval('import_tasks_id_seq'::regclass) UNIQUE,
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   user_id uuid NOT NULL,
-  portfolio_id integer,
+  portfolio_id bigint,
   task_type character varying NOT NULL,
   status character varying NOT NULL DEFAULT 'pending'::character varying CHECK (status::text = ANY (ARRAY['pending'::character varying, 'processing'::character varying, 'completed'::character varying, 'failed'::character varying, 'cancelled'::character varying]::text[])),
   broker_id character varying,

@@ -6,9 +6,9 @@
 
 CREATE OR REPLACE FUNCTION get_next_pending_task()
 RETURNS TABLE (
-    task_id INTEGER,
+    task_id BIGINT,
     user_id UUID,
-    portfolio_id INTEGER,
+    portfolio_id BIGINT,
     task_type VARCHAR,
     broker_id VARCHAR,
     broker_token TEXT,
@@ -16,7 +16,7 @@ RETURNS TABLE (
     priority INTEGER
 ) AS $$
 DECLARE
-    v_task_id INTEGER;
+    v_task_id BIGINT;
 BEGIN
     -- Атомарно получаем и обновляем задачу в одной транзакции
     -- FOR UPDATE SKIP LOCKED блокирует строку только для текущей транзакции
