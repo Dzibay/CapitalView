@@ -10,7 +10,7 @@ from app.domain.services.user_service import get_user_by_email
 from concurrent.futures import ThreadPoolExecutor
 from time import time
 from typing import Dict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from app.utils.date import normalize_date_to_day_string, normalize_date_to_string, parse_date
 from app.core.logging import get_logger
 
@@ -943,7 +943,6 @@ async def import_broker_portfolio(
                     operations_batch.append(op_data)
                 
                 # Используем batch функцию для создания всех операций за один раз
-                from app.infrastructure.database.supabase_service import rpc_async
                 result = await rpc_async("apply_operations_batch", {
                     "p_operations": operations_batch
                 })

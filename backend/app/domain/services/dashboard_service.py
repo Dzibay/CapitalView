@@ -395,7 +395,8 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
                             "value": last_values["value"],
                             "invested": last_values["invested"],
                             "payouts": last_values["payouts"],
-                            "pnl": last_values["pnl"]
+                            "pnl": last_values["pnl"],
+                            "balance": last_values.get("balance", 0)  # ВАЖНО: переносим balance при forward fill
                         })
                         current_date += timedelta(days=1)
             

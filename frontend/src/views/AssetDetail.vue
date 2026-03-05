@@ -1001,8 +1001,11 @@ const payouts = computed(() => {
   if (!assetInfo.value) return null
   
   // Получаем все выплаты из asset_payouts (не только полученные)
-  // Данные приходят из бэкенда как 'payouts' (преобразовано из 'all_payouts')
-  const payoutHistory = assetInfo.value.payouts || []
+  // Данные приходят из бэкенда как 'all_payouts' (массив объектов выплат)
+  // 'payouts' - это число (накопленная сумма), а 'all_payouts' - массив истории выплат
+  const payoutHistoryRaw = assetInfo.value.all_payouts || assetInfo.value.payouts || []
+  // Убеждаемся, что payoutHistory - это массив
+  const payoutHistory = Array.isArray(payoutHistoryRaw) ? payoutHistoryRaw : []
   
   let dividends = 0
   let coupons = 0
