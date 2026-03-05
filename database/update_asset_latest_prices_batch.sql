@@ -1,9 +1,6 @@
-drop function update_asset_latest_prices_batch;
--- Функция для массового обновления нескольких активов (для использования после массовых операций)
 CREATE OR REPLACE FUNCTION update_asset_latest_prices_batch(p_asset_ids BIGINT[])
 RETURNS VOID AS $$
 BEGIN
-    -- Используем оптимизированный запрос для обновления только указанных активов
     INSERT INTO asset_latest_prices (
         asset_id,
         today_price,

@@ -12,7 +12,7 @@ RETURNS TABLE (
     operation_type text,
     operation_type_id bigint,
     amount numeric(20,6),
-    amount_rub float4,
+    amount_rub numeric(20,2),
     currency_id bigint,
     currency_ticker text,
     currency_rate_to_rub numeric(20,6),
@@ -40,13 +40,13 @@ BEGIN
             WHEN 'Buy' THEN 'Покупка'
             WHEN 'Sell' THEN 'Продажа'
             WHEN 'Redemption' THEN 'Погашение'
-            WHEN 'ammortization' THEN 'Погашение'  -- Для обратной совместимости со старыми данными
-            WHEN 'Ammortization' THEN 'Погашение'  -- Для обратной совместимости со старыми данными
+            WHEN 'ammortization' THEN 'Погашение'
+            WHEN 'Ammortization' THEN 'Погашение'
             ELSE ot.name
         END AS operation_type,
         ot.id AS operation_type_id,
         co.amount::numeric(20,6) AS amount,
-        COALESCE(co.amount_rub, co.amount::numeric(20,6)) AS amount_rub,
+        COALESCE(co.amount_rub, co.amount::numeric(20,2))::numeric(20,2) AS amount_rub,
         co.currency AS currency_id,
         cur.ticker AS currency_ticker,
         COALESCE(curr.curr_price, 1)::numeric(20,6) AS currency_rate_to_rub,

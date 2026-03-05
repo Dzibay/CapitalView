@@ -1,15 +1,3 @@
--- ============================================================================
--- Функция получения аналитики по всем портфелям пользователя
--- ============================================================================
--- Возвращает детальную аналитику по всем портфелям пользователя, включая:
--- - Общие показатели (приток, отток, дивиденды, купоны, комиссии, налоги)
--- - Доходность портфеля
--- - Месячные потоки и выплаты
--- - Распределение по активам
--- - Выплаты по активам
--- - Будущие выплаты
--- ============================================================================
-
 CREATE OR REPLACE FUNCTION get_user_portfolios_analytics(p_user_id uuid)
 RETURNS json AS $$
 WITH p AS (
@@ -21,8 +9,6 @@ ops AS (
   SELECT
     co.portfolio_id,
     ot.name AS type,
-    -- Для выплат (Dividend, Coupon) и расходов (Commission, Tax, Withdraw, Buy, Sell) используем amount_rub
-    -- Для Deposit используем amount (пополнение в исходной валюте)
     SUM(CASE 
       WHEN ot.name IN ('Dividend','Coupon','Amortization','Commission','Commision','Tax','Withdraw','Buy','Sell') THEN COALESCE(co.amount_rub, co.amount)
       ELSE co.amount
@@ -36,7 +22,6 @@ monthly AS (
   SELECT
     co.portfolio_id,
     to_char(date_trunc('month', co.date), 'YYYY-MM') AS month,
-    -- Для Deposit используем amount, для выплат (Dividend, Coupon) используем amount_rub
     SUM(CASE 
       WHEN ot.name = 'Deposit' THEN co.amount
       WHEN ot.name IN ('Dividend','Coupon') THEN COALESCE(co.amount_rub, co.amount)
@@ -52,7 +37,6 @@ monthly_payouts AS (
   SELECT
     co.portfolio_id,
     to_char(date_trunc('month', co.date), 'YYYY-MM') AS month,
-    -- Используем amount_rub для выплат (уже переведено в рубли по курсу на дату операции)
     SUM(CASE WHEN ot.name = 'Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS dividends,
     SUM(CASE WHEN ot.name = 'Coupon' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS coupons,
     SUM(CASE WHEN ot.name = 'Amortization' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS amortizations,
@@ -78,7 +62,6 @@ totals AS (
   FROM ops o
   GROUP BY o.portfolio_id
 ),
--- ОПТИМИЗИРОВАНО: используем position_value из portfolio_daily_positions
 portfolio_assets_distribution AS (
   SELECT
     pdp.portfolio_id,
@@ -105,7 +88,6 @@ asset_payouts_by_asset AS (
     co.asset_id,
     a.name AS asset_name,
     a.ticker AS asset_ticker,
-    -- Используем amount_rub для выплат (уже переведено в рубли по курсу на дату операции)
     SUM(CASE WHEN ot.name = 'Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_dividends,
     SUM(CASE WHEN ot.name = 'Coupon' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_coupons,
     SUM(CASE WHEN ot.name IN ('Dividend','Coupon') THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_payouts
@@ -209,7 +191,6 @@ dividends_by_year AS (
   SELECT
     co.portfolio_id,
     EXTRACT(YEAR FROM co.date)::int AS year,
-    -- Используем amount_rub для выплат (уже переведено в рубли по курсу на дату операции)
     SUM(CASE WHEN ot.name = 'Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_dividends
   FROM cash_operations co
   JOIN operations_type ot ON ot.id = co.type
@@ -234,7 +215,6 @@ dividends_by_year AS (
     AND COALESCE(pa.quantity, 0) > 0
   GROUP BY pa.portfolio_id, EXTRACT(YEAR FROM CURRENT_DATE)
 ),
--- Все активы портфеля (текущие и проданные)
 all_portfolio_assets AS (
   -- Текущие активы из portfolio_assets
   SELECT DISTINCT
@@ -263,7 +243,6 @@ all_portfolio_assets AS (
     AND COALESCE(pa_check.quantity, 0) > 0
   WHERE pa_check.id IS NULL
 ),
--- Количество активов на разные даты и общая сумма покупок (оптимизировано: один проход по транзакциям)
 asset_quantities_periods AS (
   WITH transaction_quantities AS (
     SELECT
@@ -365,7 +344,6 @@ asset_quantities_periods AS (
   FROM all_portfolio_assets apa
   LEFT JOIN transaction_quantities tq ON tq.portfolio_id = apa.portfolio_id AND tq.asset_id = apa.asset_id
 ),
--- Цены за разные периоды
 asset_prices_periods AS (
   SELECT
     aqp.portfolio_id,
@@ -414,8 +392,6 @@ asset_prices_periods AS (
     LIMIT 1
   ) ap_year ON TRUE
 ),
--- ОПТИМИЗИРОВАНО: используем payouts из portfolio_daily_positions
--- Для периодов используем разницу между последним значением и значением на начало периода
 asset_payouts_periods AS (
   SELECT
     pdp.portfolio_id,
@@ -445,8 +421,6 @@ asset_payouts_periods AS (
   WHERE pdp.report_date >= CURRENT_DATE - INTERVAL '1 year'
   GROUP BY pdp.portfolio_id, pa.asset_id
 ),
--- ОПТИМИЗИРОВАНО: используем commissions из portfolio_daily_positions
--- Для периодов используем разницу между последним значением и значением на начало периода
 asset_commissions_periods AS (
   SELECT
     pdp.portfolio_id,
@@ -476,8 +450,6 @@ asset_commissions_periods AS (
   WHERE pdp.report_date >= CURRENT_DATE - INTERVAL '1 year'
   GROUP BY pdp.portfolio_id, pa.asset_id
 ),
--- ОПТИМИЗИРОВАНО: используем realized_pnl из portfolio_daily_positions
--- Для периодов используем разницу между последним значением и значением на начало периода
 asset_realized_profit AS (
   SELECT
     pdp.portfolio_id,
@@ -684,7 +656,6 @@ asset_returns AS (
   LEFT JOIN asset_commissions_periods acp ON acp.portfolio_id = app.portfolio_id AND acp.asset_id = app.asset_id
   LEFT JOIN asset_realized_profit arp ON arp.portfolio_id = app.portfolio_id AND arp.asset_id = app.asset_id
 ),
--- Оптимизация: получаем данные из portfolio_daily_values за один запрос
 portfolio_latest_values AS (
   SELECT DISTINCT ON (pv.portfolio_id)
     pv.portfolio_id,
@@ -887,6 +858,4 @@ LEFT JOIN totals t ON t.portfolio_id = p.id
 LEFT JOIN portfolio_analytics_optimized pa ON pa.portfolio_id = p.id;
 $$ LANGUAGE sql;
 
--- Комментарий к функции
-COMMENT ON FUNCTION get_user_portfolios_analytics(uuid) IS 
-'Возвращает детальную аналитику по всем портфелям пользователя, включая финансовые показатели, месячные потоки, распределение активов, выплаты и будущие выплаты';
+COMMENT ON FUNCTION get_user_portfolios_analytics(uuid) IS 'Возвращает аналитику по всем портфелям пользователя';

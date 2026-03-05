@@ -17,18 +17,15 @@ BEGIN
         ORDER BY t.transaction_date, t.id
     LOOP
         IF r.transaction_type = 1 THEN
-            -- 🟢 Покупка
             total_cost := total_cost + r.q * r.p;
             total_quantity := total_quantity + r.q;
 
         ELSIF r.transaction_type IN (2, 3) THEN
-            -- 🔴 Продажа или Погашение — уменьшаем количество и стоимость
             IF total_quantity > 0 THEN
                 avg_price := total_cost / total_quantity;
 
                 total_quantity := total_quantity - r.q;
                 IF total_quantity < 0 THEN
-                    -- защита от перехода в шорт
                     total_quantity := 0;
                     total_cost := 0;
                 ELSE

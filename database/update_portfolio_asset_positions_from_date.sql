@@ -1,10 +1,3 @@
--- ============================================================================
--- Обновление portfolio_daily_positions с расчетом аналитических данных
--- ============================================================================
--- Пересчитывает позиции portfolio_asset начиная с указанной даты
--- Заполняет данные на каждую дату (не только на даты транзакций)
--- Рассчитывает position_value и аналитические метрики (realized_pnl, payouts, commissions, taxes, total_pnl) в RUB
-
 CREATE OR REPLACE FUNCTION update_portfolio_asset_positions_from_date(
     p_portfolio_asset_id bigint,
     p_from_date date DEFAULT '0001-01-01'
@@ -25,7 +18,6 @@ DECLARE
     v_base_taxes numeric := 0;
     v_first_tx_date date;
 BEGIN
-    -- Получаем информацию об активе
     SELECT 
         pa.portfolio_id,
         pa.asset_id,
@@ -42,12 +34,10 @@ BEGIN
     JOIN assets a ON a.id = pa.asset_id
     WHERE pa.id = p_portfolio_asset_id;
     
-    -- Если актив не найден, выходим
     IF v_portfolio_id IS NULL THEN
         RETURN false;
     END IF;
     
-    -- База на момент ДО p_from_date (последнее состояние)
     SELECT 
         pdp.quantity, 
         pdp.cumulative_invested,
@@ -90,7 +80,6 @@ BEGIN
             t.quantity::numeric AS qty,
             t.price::numeric AS price,
             t.realized_pnl::numeric AS realized_pnl,
-            -- Используем amount_rub из cash_operations для расчета cumulative_invested в рублях
             COALESCE(
                 (SELECT ABS(co.amount_rub) 
                  FROM cash_operations co 
@@ -157,18 +146,15 @@ BEGIN
             SUM(
                 t.realized_pnl::numeric 
                 * COALESCE(
-                    -- Получаем курс валюты актива к RUB на дату транзакции
                     (SELECT price::numeric
                      FROM asset_prices ap
                      WHERE ap.asset_id = v_quote_asset_id
                        AND ap.trade_date <= t.transaction_date::date
                      ORDER BY ap.trade_date DESC
                      LIMIT 1),
-                    -- Если исторического курса нет, используем текущий
                     (SELECT curr_price::numeric
                      FROM asset_latest_prices
                      WHERE asset_id = v_quote_asset_id),
-                    -- Если курса нет, используем 1 (для RUB или fallback)
                     CASE WHEN v_quote_asset_id IS NULL OR v_quote_asset_id = 47 THEN 1::numeric ELSE 1::numeric END
                 )
                 / NULLIF(v_leverage, 0)
@@ -371,6 +357,4 @@ BEGIN
 END;
 $$;
 
--- Комментарий к функции
-COMMENT ON FUNCTION update_portfolio_asset_positions_from_date(bigint, date) IS 
-'Пересчитывает позиции portfolio_asset начиная с указанной даты. Заполняет данные на каждую дату от первой транзакции до текущей даты. Рассчитывает position_value и аналитические метрики (realized_pnl, payouts, commissions, taxes, total_pnl) в RUB с учетом исторических цен актива и курсов валют.';
+COMMENT ON FUNCTION update_portfolio_asset_positions_from_date(bigint, date) IS 'Пересчитывает позиции portfolio_asset с указанной даты';

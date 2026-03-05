@@ -3,7 +3,6 @@ returns trigger
 language plpgsql
 as $$
 begin
-    -- создаём главный портфель
     insert into portfolios (
         user_id,
         name,

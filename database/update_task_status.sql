@@ -1,5 +1,3 @@
--- Функция для обновления статуса задачи
-
 CREATE OR REPLACE FUNCTION update_task_status(
     p_task_id BIGINT,
     p_status VARCHAR,

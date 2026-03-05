@@ -1,13 +1,6 @@
--- ============================================================================
--- Оптимизированная функция для получения всех данных дашборда одним запросом
--- Объединяет: портфели, активы, историю, аналитику, транзакции, connections
--- ОПТИМИЗИРОВАНО: выплаты по активам вынесены в CTE вместо подзапросов
--- ============================================================================
-
 CREATE OR REPLACE FUNCTION get_dashboard_data_complete(p_user_id uuid)
 RETURNS json AS $$
 WITH 
--- 1. Портфели пользователя
 portfolios_base AS (
     SELECT 
         p.id,
@@ -18,7 +11,6 @@ portfolios_base AS (
     WHERE p.user_id = p_user_id
 ),
 
--- 2. Connections (самая свежая для каждого портфеля)
 connections_data AS (
     SELECT DISTINCT ON (ubc.portfolio_id)
         ubc.portfolio_id,
@@ -32,7 +24,6 @@ connections_data AS (
     ORDER BY ubc.portfolio_id, ubc.last_sync_at DESC
 ),
 
--- 3. Первая транзакция покупки для каждого актива
 first_purchase_data AS (
     SELECT DISTINCT ON (t.portfolio_asset_id)
         t.portfolio_asset_id,
@@ -43,7 +34,6 @@ first_purchase_data AS (
     ORDER BY t.portfolio_asset_id, t.transaction_date ASC, t.id ASC
 ),
 
--- 4. ОПТИМИЗИРОВАНО: Выплаты по активам (вынесено в CTE вместо подзапроса)
 asset_payouts_data AS (
     SELECT 
         ap.asset_id,
@@ -68,7 +58,6 @@ asset_payouts_data AS (
     GROUP BY ap.asset_id
 ),
 
--- 5. Активы портфелей (расчеты на лету - быстрее для небольших объемов)
 portfolio_assets_data AS (
     SELECT 
         pa.portfolio_id,
@@ -113,7 +102,6 @@ portfolio_assets_data AS (
     GROUP BY pa.portfolio_id
 ),
 
--- 6. История портфелей и последний баланс
 portfolio_history_data AS (
     SELECT 
         pv.portfolio_id,
@@ -144,12 +132,10 @@ portfolio_history_data AS (
     GROUP BY pv.portfolio_id
 ),
 
--- 7. Полная аналитика портфелей (используем get_user_portfolios_analytics для полной структуры)
 full_analytics_data AS (
     SELECT get_user_portfolios_analytics(p_user_id) AS analytics_json
 ),
 
--- 8. Преобразуем JSON массив аналитики в map по portfolio_id для JOIN
 portfolio_analytics_map AS (
     SELECT 
         (elem->>'portfolio_id')::int AS portfolio_id,
@@ -186,13 +172,11 @@ portfolio_analytics_map AS (
     LATERAL json_array_elements(analytics_json::json) AS elem
 ),
 
--- 9. Финальная аналитика для JOIN
 portfolio_analytics_final AS (
     SELECT portfolio_id, analytics
     FROM portfolio_analytics_map
 ),
 
--- 10. Последние транзакции (по 5 для каждого портфеля)
 recent_transactions AS (
     SELECT jsonb_agg(
         jsonb_build_object(
@@ -238,7 +222,6 @@ recent_transactions AS (
     WHERE tx.rn <= 5
 )
 
--- 11. Финальная сборка результата
 SELECT jsonb_build_object(
     'portfolios', COALESCE(
         jsonb_agg(
@@ -266,6 +249,4 @@ LEFT JOIN portfolio_analytics_final paf ON paf.portfolio_id = p.id
 LEFT JOIN connections_data cd ON cd.portfolio_id = p.id;
 $$ LANGUAGE sql;
 
--- Комментарий к функции
-COMMENT ON FUNCTION get_dashboard_data_complete(uuid) IS 
-'Оптимизированная функция для получения всех данных дашборда одним запросом. Выплаты по активам вынесены в CTE для оптимизации. Возвращает портфели с активами, историей, аналитикой, connections и последние транзакции.';
+COMMENT ON FUNCTION get_dashboard_data_complete(uuid) IS 'Возвращает все данные дашборда одним запросом';

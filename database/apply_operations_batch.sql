@@ -1,46 +1,3 @@
--- Функция для батч-вставки операций (Commission, Tax, Dividend, Coupon, Deposit, Withdraw, Other)
--- Обеспечивает ACID-совместимость и эффективную обработку множественных операций
---
--- Параметры:
---   p_operations - JSON массив операций:
---     [
---       {
---         "user_id": "uuid",
---         "portfolio_id": bigint,
---         "operation_type": int,  -- 3=Dividend, 4=Coupon, 5=Deposit, 6=Withdraw, 7=Commission, 8=Tax, 10=Other
---         "amount": numeric,
---         "currency_id": bigint DEFAULT 47,
---         "operation_date": timestamp,
---         "asset_id": bigint DEFAULT NULL,
---         "dividend_yield": numeric DEFAULT NULL
---       },
---       ...
---     ]
---
--- Возвращает:
---   JSON объект с результатами:
---     {
---       "inserted_count": integer,
---       "failed_count": integer,
---       "failed_operations": [...],
---       "operation_ids": [...],
---       "created": [
---         {
---           "date": "YYYY-MM-DD",
---           "operation_id": bigint,
---           "type": "cash_operation"
---         },
---         ...
---       ]
---     }
---
--- Логика:
--- 1. Все операции выполняются в одной транзакции (ACID)
--- 2. Операции сортируются по дате
--- 3. Операции вставляются батчем в cash_operations
--- 4. Обновляется история портфеля один раз в конце
--- 5. Обновляются позиции активов для операций с asset_id
-
 CREATE OR REPLACE FUNCTION apply_operations_batch(
     p_operations jsonb
 )
@@ -72,7 +29,6 @@ DECLARE
     v_op_record RECORD;
     v_first_buy_date date;
 BEGIN
-    -- Проверяем входные данные
     IF p_operations IS NULL OR jsonb_array_length(p_operations) = 0 THEN
         RETURN jsonb_build_object(
             'inserted_count', 0,
@@ -83,7 +39,6 @@ BEGIN
         );
     END IF;
 
-    -- Получаем ID рубля
     SELECT id INTO v_rub_currency_id
     FROM assets
     WHERE ticker = 'RUB' AND user_id IS NULL
@@ -125,7 +80,6 @@ BEGIN
             v_asset_id := v_op_record.asset_id;
             v_operation_date := v_op_record.operation_date::date;
 
-            -- Проверяем существование портфеля
             SELECT EXISTS(SELECT 1 FROM portfolios WHERE id = v_portfolio_id AND user_id = v_op_record.user_id)
             INTO v_portfolio_exists;
             
@@ -133,7 +87,6 @@ BEGIN
                 RAISE EXCEPTION 'Портфель % не найден или не принадлежит пользователю', v_portfolio_id;
             END IF;
 
-            -- Получаем ID типа операции
             SELECT id INTO v_op_type_id
             FROM operations_type
             WHERE id = v_operation_type;
@@ -143,10 +96,8 @@ BEGIN
             END IF;
             
             -- ВАЛИДАЦИЯ: Если операция связана с активом (Commission, Tax, Dividend, Coupon),
-            -- проверяем, что есть хотя бы одна покупка этого актива в портфеле
             -- Операции без актива (Deposit, Withdraw) можно создавать в любое время
             IF v_asset_id IS NOT NULL AND v_operation_type IN (3, 4, 7, 8) THEN
-                -- Получаем дату первой покупки актива в портфеле
                 SELECT min(t.transaction_date::date)
                 INTO v_first_buy_date
                 FROM transactions t
@@ -171,7 +122,6 @@ BEGIN
             IF v_op_record.currency_id = v_rub_currency_id OR v_op_record.currency_id = 47 THEN
                 v_amount_rub := v_op_record.amount;
             ELSE
-                -- Получаем quote_asset_id валюты операции
                 SELECT quote_asset_id INTO v_currency_quote_asset_id
                 FROM assets
                 WHERE id = v_op_record.currency_id;
@@ -320,7 +270,6 @@ BEGIN
 
     -- ШАГ 2: Обновляем историю портфелей один раз для всех портфелей
     -- Это агрегирует данные из portfolio_daily_positions в portfolio_daily_values
-    -- Важно: делаем это ПОСЛЕ обновления позиций активов
     FOR v_portfolio_id, v_operation_date IN 
         SELECT DISTINCT portfolio_id, operation_date::date
         FROM temp_sorted_ops
@@ -355,10 +304,3 @@ EXCEPTION
         RAISE;
 END;
 $$;
-
--- Комментарий к функции
-COMMENT ON FUNCTION apply_operations_batch(jsonb) IS 
-'Создает операции батчем. Поддерживает Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Other.
-Все операции выполняются в одной транзакции (ACID).
-История портфелей и позиции активов обновляются один раз в конце для всех операций.
-Поддерживает операции в любой валюте (включая криптовалюты: BTC, ETH и т.д.) через параметр currency_id.';

@@ -1,4 +1,3 @@
--- Удаляем функцию, если она существует (для гарантированного обновления)
 DROP FUNCTION IF EXISTS get_portfolio_analytics(bigint, uuid);
 
 CREATE OR REPLACE FUNCTION get_portfolio_analytics(
@@ -44,10 +43,8 @@ BEGIN
     -- 1️⃣ КЭШ-ОПЕРАЦИИ
     -------------------------------------------------------------------
     SELECT
-        -- Для Deposit используем amount, для остальных операций используем amount_rub (уже в рублях)
         COALESCE(SUM(CASE WHEN ot.name='Deposit'  THEN co.amount ELSE 0 END), 0),
         COALESCE(SUM(CASE WHEN ot.name='Withdraw' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
-        -- Для выплат (Dividend, Coupon) используем amount_rub (уже переведено в рубли по курсу на дату операции)
         COALESCE(SUM(CASE WHEN ot.name='Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
         COALESCE(SUM(CASE WHEN ot.name='Coupon'   THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END), 0),
         -- Комиссии - это расходы, берем абсолютное значение (на случай если они отрицательные в базе)
@@ -64,7 +61,6 @@ BEGIN
 
 
     -------------------------------------------------------------------
-    -- 2️⃣ ОПТИМИЗИРОВАНО: Используем данные из portfolio_daily_values
     -- Вместо расчетов на лету используем предрассчитанные значения
     -------------------------------------------------------------------
     -- ОПТИМИЗИРОВАНО: Используем данные из portfolio_daily_values
