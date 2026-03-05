@@ -158,7 +158,7 @@ class AssetRepository(BaseRepository):
             Последняя цена или None
         """
         result = self.client.table_select(
-            "asset_latest_prices_full",
+            "asset_latest_prices",
             select="*",
             filters={"asset_id": asset_id},
             limit=1

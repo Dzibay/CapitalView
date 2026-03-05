@@ -191,7 +191,7 @@ BEGIN
                     
                     IF v_currency_to_quote_rate IS NULL THEN
                         SELECT curr_price INTO v_currency_to_quote_rate
-                        FROM asset_latest_prices_full
+                        FROM asset_latest_prices
                         WHERE asset_id = v_op_record.currency_id;
                     END IF;
                     
@@ -231,7 +231,7 @@ BEGIN
                     
                     IF v_currency_rate IS NULL THEN
                         SELECT curr_price INTO v_currency_rate
-                        FROM asset_latest_prices_full
+                        FROM asset_latest_prices
                         WHERE asset_id = v_op_record.currency_id;
                     END IF;
                     

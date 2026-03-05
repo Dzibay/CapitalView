@@ -33,9 +33,9 @@ BEGIN
     FROM portfolios p
     LEFT JOIN portfolio_assets pa ON pa.portfolio_id = p.id
     LEFT JOIN assets a ON a.id = pa.asset_id
-    -- Используем таблицу asset_latest_prices_full вместо CTE
-    LEFT JOIN asset_latest_prices_full lp ON lp.asset_id = pa.asset_id
-    LEFT JOIN asset_latest_prices_full lqp ON lqp.asset_id = a.quote_asset_id
+    -- Используем таблицу asset_latest_prices вместо CTE
+    LEFT JOIN asset_latest_prices lp ON lp.asset_id = pa.asset_id
+    LEFT JOIN asset_latest_prices lqp ON lqp.asset_id = a.quote_asset_id
     LEFT JOIN user_broker_connections ubc 
         ON ubc.portfolio_id = p.id AND ubc.user_id = u_id
     WHERE p.user_id = u_id

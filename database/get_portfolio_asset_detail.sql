@@ -56,9 +56,9 @@ BEGIN
             JOIN portfolios p ON p.id = pa.portfolio_id
             JOIN assets a ON a.id = pa.asset_id
             LEFT JOIN asset_types at ON at.id = a.asset_type_id
-            LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
+            LEFT JOIN asset_latest_prices apf ON apf.asset_id = pa.asset_id
             LEFT JOIN assets qa ON qa.id = a.quote_asset_id
-            LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
+            LEFT JOIN asset_latest_prices curr ON curr.asset_id = a.quote_asset_id
             -- ОПТИМИЗИРОВАНО: получаем последние значения из portfolio_daily_positions
             -- Используем DISTINCT ON для оптимизации (быстрее с индексом idx_portfolio_daily_positions_asset_date_desc)
             -- Если данных нет - это ошибка системы
@@ -146,9 +146,9 @@ BEGIN
             FROM portfolios p2
             INNER JOIN portfolio_assets pa2 ON pa2.portfolio_id = p2.id
             LEFT JOIN assets a2 ON a2.id = pa2.asset_id
-            LEFT JOIN asset_latest_prices_full apf2 ON apf2.asset_id = pa2.asset_id
+            LEFT JOIN asset_latest_prices apf2 ON apf2.asset_id = pa2.asset_id
             LEFT JOIN assets qa2 ON qa2.id = a2.quote_asset_id
-            LEFT JOIN asset_latest_prices_full curr2 ON curr2.asset_id = a2.quote_asset_id
+            LEFT JOIN asset_latest_prices curr2 ON curr2.asset_id = a2.quote_asset_id
             -- ОПТИМИЗИРОВАНО: получаем последние значения из portfolio_daily_positions для каждого актива
             -- Используем DISTINCT ON для оптимизации (быстрее с индексом idx_portfolio_daily_positions_asset_date_desc)
             -- Если данных нет - это ошибка системы
@@ -255,7 +255,7 @@ BEGIN
             JOIN portfolios p ON p.id = pa.portfolio_id
             LEFT JOIN assets a ON a.id = co.asset_id
             LEFT JOIN assets cur ON cur.id = co.currency
-            LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = co.currency
+            LEFT JOIN asset_latest_prices curr ON curr.asset_id = co.currency
             WHERE co.user_id = p_user_id
               AND co.portfolio_id = pa.portfolio_id
               -- ОПТИМИЗИРОВАНО: исключаем операции без привязки к активу (Deposit, Withdraw)

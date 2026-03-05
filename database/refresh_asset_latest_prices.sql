@@ -2,8 +2,8 @@
 CREATE OR REPLACE FUNCTION refresh_asset_latest_prices()
 RETURNS VOID AS $$
 BEGIN
-    -- Используем оптимизированный запрос из asset_latest_prices_full_optimized.sql
-    INSERT INTO asset_latest_prices_full (
+    -- Используем оптимизированный запрос из asset_latest_prices_optimized.sql
+    INSERT INTO asset_latest_prices (
         asset_id,
         today_price,
         today_date,

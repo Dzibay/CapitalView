@@ -4,7 +4,7 @@ CREATE OR REPLACE FUNCTION update_asset_latest_prices_batch(p_asset_ids BIGINT[]
 RETURNS VOID AS $$
 BEGIN
     -- Используем оптимизированный запрос для обновления только указанных активов
-    INSERT INTO asset_latest_prices_full (
+    INSERT INTO asset_latest_prices (
         asset_id,
         today_price,
         today_date,

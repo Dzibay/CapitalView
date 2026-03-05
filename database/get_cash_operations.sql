@@ -61,7 +61,7 @@ BEGIN
         ON ot.id = co.type
     LEFT JOIN assets cur
         ON cur.id = co.currency
-    LEFT JOIN asset_latest_prices_full curr
+    LEFT JOIN asset_latest_prices curr
         ON curr.asset_id = co.currency
     LEFT JOIN assets a
         ON a.id = co.asset_id

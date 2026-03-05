@@ -166,7 +166,7 @@ BEGIN
                      LIMIT 1),
                     -- Если исторического курса нет, используем текущий
                     (SELECT curr_price::numeric
-                     FROM asset_latest_prices_full
+                     FROM asset_latest_prices
                      WHERE asset_id = v_quote_asset_id),
                     -- Если курса нет, используем 1 (для RUB или fallback)
                     CASE WHEN v_quote_asset_id IS NULL OR v_quote_asset_id = 47 THEN 1::numeric ELSE 1::numeric END

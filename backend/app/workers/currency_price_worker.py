@@ -62,7 +62,7 @@ async def get_currency_assets() -> List[Dict]:
 
 async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, Dict]:
     """
-    Получает последние курсы и даты для валют из таблицы asset_latest_prices_full.
+    Получает последние курсы и даты для валют из таблицы asset_latest_prices.
     
     Args:
         asset_ids: Список ID валютных активов
@@ -77,7 +77,7 @@ async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, 
     
     try:
         result = await db_select(
-            "asset_latest_prices_full",
+            "asset_latest_prices",
             "asset_id, curr_price, curr_date",
             in_filters={"asset_id": asset_ids}
         )
@@ -314,7 +314,7 @@ async def update_history_prices() -> int:
         total_inserted = await upsert_asset_prices(all_new_prices)
         logger.info(f"✅ Вставлено курсов: {total_inserted}")
     
-    # Обновляем asset_latest_prices_full для обновленных валют
+    # Обновляем asset_latest_prices для обновленных валют
     if asset_date_map:
         updated_asset_ids = list(asset_date_map.keys())
         logger.info(f"🔄 Обновление цен для {len(updated_asset_ids)} валют...")
@@ -410,7 +410,7 @@ async def update_today_prices() -> int:
     
     updated_ids = list({row["asset_id"] for row in unique_updates})
     
-    # Обновляем asset_latest_prices_full
+    # Обновляем asset_latest_prices
     if updated_ids:
         logger.info(f"🔄 Обновление цен для {len(updated_ids)} валют...")
         try:

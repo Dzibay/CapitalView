@@ -1,7 +1,7 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
-CREATE TABLE capitalview.asset_latest_prices_full (
+CREATE TABLE capitalview.asset_latest_prices (
   asset_id bigint NOT NULL,
   today_price numeric(20,6),
   today_date date,
@@ -12,8 +12,8 @@ CREATE TABLE capitalview.asset_latest_prices_full (
   prev_price numeric(20,6),
   prev_date date,
   updated_at timestamp(0) without time zone DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT asset_latest_prices_full_pkey PRIMARY KEY (asset_id),
-  CONSTRAINT asset_latest_prices_full_table_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES capitalview.assets(id)
+  CONSTRAINT asset_latest_prices_pkey PRIMARY KEY (asset_id),
+  CONSTRAINT asset_latest_prices_table_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES capitalview.assets(id)
 );
 CREATE TABLE capitalview.asset_payouts (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,

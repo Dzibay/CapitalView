@@ -70,8 +70,8 @@ BEGIN
             DELETE FROM asset_prices 
             WHERE asset_id = v_asset_id;
             
-            -- Удаляем запись из asset_latest_prices_full
-            DELETE FROM asset_latest_prices_full 
+            -- Удаляем запись из asset_latest_prices
+            DELETE FROM asset_latest_prices 
             WHERE asset_id = v_asset_id;
             
             -- Удаляем сам актив

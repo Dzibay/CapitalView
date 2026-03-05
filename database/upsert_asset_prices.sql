@@ -49,7 +49,7 @@ BEGIN
     ON CONFLICT (asset_id, trade_date) DO UPDATE
     SET price = EXCLUDED.price;
     
-    -- Обновляем asset_latest_prices_full для всех затронутых активов
+    -- Обновляем asset_latest_prices для всех затронутых активов
     -- Используем DISTINCT, чтобы обновить каждый актив только один раз
     FOR v_asset_id IN 
         SELECT DISTINCT asset_id FROM temp_asset_prices

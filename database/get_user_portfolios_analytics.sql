@@ -200,8 +200,8 @@ asset_yields AS (
   JOIN p ON p.id = pa.portfolio_id
   JOIN assets a ON a.id = pa.asset_id
   LEFT JOIN asset_types at ON at.id = a.asset_type_id
-  LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
-  LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
+  LEFT JOIN asset_latest_prices apf ON apf.asset_id = pa.asset_id
+  LEFT JOIN asset_latest_prices curr ON curr.asset_id = a.quote_asset_id
   WHERE COALESCE(pa.quantity, 0) > 0
 ),
 dividends_by_year AS (
@@ -393,8 +393,8 @@ asset_prices_periods AS (
     aqp.leverage
   FROM asset_quantities_periods aqp
   JOIN assets a ON a.id = aqp.asset_id
-  LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = aqp.asset_id
-  LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
+  LEFT JOIN asset_latest_prices apf ON apf.asset_id = aqp.asset_id
+  LEFT JOIN asset_latest_prices curr ON curr.asset_id = a.quote_asset_id
   -- Цена месяц назад
   LEFT JOIN LATERAL (
     SELECT ap1.price

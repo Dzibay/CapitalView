@@ -46,9 +46,9 @@ def parse_properties(props) -> dict:
 
 async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, Dict]:
     """
-    Получает последние цены и даты (curr_price, curr_date) для активов из таблицы asset_latest_prices_full.
+    Получает последние цены и даты (curr_price, curr_date) для активов из таблицы asset_latest_prices.
     
-    Если записи для актива нет в asset_latest_prices_full, значит истории цен еще нет в базе.
+    Если записи для актива нет в asset_latest_prices, значит истории цен еще нет в базе.
     В этом случае asset_id не будет в возвращаемом словаре, что корректно обрабатывается
     в update_asset_history (запрашивается вся история за последние 365 дней).
     
@@ -74,7 +74,7 @@ async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, 
         try:
             async with db_sem:
                 result = await db_select(
-                    "asset_latest_prices_full",
+                    "asset_latest_prices",
                     "asset_id, curr_price, curr_date",
                     in_filters={"asset_id": batch}
                 )
@@ -136,7 +136,7 @@ async def update_asset_history(
         return False, None, []
 
     # Получаем последнюю известную дату из предзагруженного словаря
-    # Если записи нет в asset_latest_prices_full, last_date будет None
+    # Если записи нет в asset_latest_prices, last_date будет None
     # и будет запрошена вся история за последние 365 дней (первое обновление)
     last_date = last_date_map.get(asset_id)
 
@@ -316,7 +316,7 @@ async def update_history_prices() -> int:
 
     asset_ids = [a["id"] for a in assets]
     
-    # Получаем последние цены и даты из asset_latest_prices_full
+    # Получаем последние цены и даты из asset_latest_prices
     last_prices = await get_last_prices_from_latest_prices(asset_ids)
     
     # Извлекаем только даты для истории
@@ -469,7 +469,7 @@ def process_today_price(
         return None
 
     # берем предварительно загруженную последнюю цену
-    # Если записи нет в asset_latest_prices_full, last будет None
+    # Если записи нет в asset_latest_prices, last будет None
     # и prev_price/prev_date будут None (анти-скачок не сработает, что корректно для первого обновления)
     last = last_map.get(asset_id)
     prev_price = last.get("price") if last else None

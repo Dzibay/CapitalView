@@ -105,9 +105,9 @@ portfolio_assets_data AS (
     JOIN portfolios_base pb ON pb.id = pa.portfolio_id
     LEFT JOIN assets a ON a.id = pa.asset_id
     LEFT JOIN asset_types at ON at.id = a.asset_type_id
-    LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
+    LEFT JOIN asset_latest_prices apf ON apf.asset_id = pa.asset_id
     LEFT JOIN assets qa ON qa.id = a.quote_asset_id
-    LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
+    LEFT JOIN asset_latest_prices curr ON curr.asset_id = a.quote_asset_id
     LEFT JOIN first_purchase_data fpd ON fpd.portfolio_asset_id = pa.id
     LEFT JOIN asset_payouts_data apd ON apd.asset_id = pa.asset_id
     GROUP BY pa.portfolio_id

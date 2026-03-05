@@ -318,7 +318,7 @@ def get_asset_info(asset_id: int):
         
         # Получаем последнюю цену
         latest_price = table_select(
-            "asset_latest_prices_full",
+            "asset_latest_prices",
             select="*",
             filters={"asset_id": asset_id},
             limit=1

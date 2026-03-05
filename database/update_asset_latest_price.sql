@@ -3,7 +3,7 @@ drop function update_asset_latest_price;
 CREATE OR REPLACE FUNCTION update_asset_latest_price(p_asset_id BIGINT)
 RETURNS VOID AS $$
 BEGIN
-    INSERT INTO asset_latest_prices_full (
+    INSERT INTO asset_latest_prices (
         asset_id,
         today_price,
         today_date,

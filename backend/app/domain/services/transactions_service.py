@@ -137,7 +137,7 @@ def create_transaction(
             "trade_date": transaction_date_str.split('T')[0]
         })
         
-        # Обновляем последнюю цену актива в asset_latest_prices_full
+        # Обновляем последнюю цену актива в asset_latest_prices
         try:
             rpc("update_asset_latest_price", {"p_asset_id": asset_id})
         except Exception as e:
