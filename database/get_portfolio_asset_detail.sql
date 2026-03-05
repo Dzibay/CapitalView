@@ -182,14 +182,13 @@ BEGIN
             WHEN p_include_price_history AND v_asset_id IS NOT NULL THEN (
                 SELECT COALESCE(jsonb_agg(
                     jsonb_build_object(
-                        'id', ap.id,
                         'price', ap.price,
                         'trade_date', ap.trade_date
                     )
                     ORDER BY ap.trade_date DESC
                 ), '[]'::jsonb)
                 FROM (
-                    SELECT ap.id, ap.price, ap.trade_date
+                    SELECT ap.price, ap.trade_date
                     FROM asset_prices ap
                     WHERE ap.asset_id = v_asset_id
                     ORDER BY ap.trade_date DESC

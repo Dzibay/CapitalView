@@ -13,8 +13,8 @@ BEGIN
     -- Используем временную таблицу для эффективного upsert
     CREATE TEMP TABLE IF NOT EXISTS temp_asset_prices (
         asset_id bigint,
-        price real,
-        trade_date timestamp
+        price numeric(20,6),
+        trade_date date
     ) ON COMMIT DROP;
     
     -- Очищаем временную таблицу
@@ -24,18 +24,17 @@ BEGIN
     INSERT INTO temp_asset_prices (asset_id, price, trade_date)
     SELECT 
         (x->>'asset_id')::bigint,
-        (x->>'price')::real,
-        (x->>'trade_date')::timestamp
+        (x->>'price')::numeric(20,6),
+        (x->>'trade_date')::date
     FROM jsonb_array_elements(p_prices) t(x);
     
-    -- Обновляем существующие записи (по дате без учета времени)
+    -- Обновляем существующие записи (по дате)
     UPDATE asset_prices ap
     SET 
-        price = t.price,
-        trade_date = t.trade_date
+        price = t.price
     FROM temp_asset_prices t
     WHERE ap.asset_id = t.asset_id
-      AND DATE(ap.trade_date) = DATE(t.trade_date);
+      AND ap.trade_date = t.trade_date;
     
     -- Вставляем новые записи (которые не были обновлены)
     INSERT INTO asset_prices (asset_id, price, trade_date)
@@ -45,8 +44,10 @@ BEGIN
         SELECT 1 
         FROM asset_prices ap
         WHERE ap.asset_id = t.asset_id
-          AND DATE(ap.trade_date) = DATE(t.trade_date)
-    );
+          AND ap.trade_date = t.trade_date
+    )
+    ON CONFLICT (asset_id, trade_date) DO UPDATE
+    SET price = EXCLUDED.price;
     
     -- Обновляем asset_latest_prices_full для всех затронутых активов
     -- Используем DISTINCT, чтобы обновить каждый актив только один раз

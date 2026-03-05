@@ -20,10 +20,10 @@ BEGIN
             asset_id,
             price,
             trade_date,
-            trade_date::date AS price_date,
-            ROW_NUMBER() OVER (PARTITION BY asset_id, trade_date::date ORDER BY trade_date DESC) AS date_rank,
+            trade_date AS price_date,
+            ROW_NUMBER() OVER (PARTITION BY asset_id, trade_date ORDER BY trade_date DESC) AS date_rank,
             ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY trade_date DESC) AS all_rank,
-            CASE WHEN trade_date::date IN (CURRENT_DATE, CURRENT_DATE - 1)
+            CASE WHEN trade_date IN (CURRENT_DATE, CURRENT_DATE - 1)
                  THEN ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY trade_date DESC)
                  ELSE NULL
             END AS recent_rank

@@ -161,7 +161,7 @@ BEGIN
                     (SELECT price::numeric
                      FROM asset_prices ap
                      WHERE ap.asset_id = v_quote_asset_id
-                       AND CAST(ap.trade_date AS date) <= t.transaction_date::date
+                       AND ap.trade_date <= t.transaction_date::date
                      ORDER BY ap.trade_date DESC
                      LIMIT 1),
                     -- Если исторического курса нет, используем текущий
@@ -277,9 +277,9 @@ BEGIN
     price_ranges AS (
         SELECT
             price::numeric,
-            trade_date::date AS valid_from,
+            trade_date AS valid_from,
             COALESCE(
-                LEAD(trade_date::date) OVER (ORDER BY trade_date::date),
+                LEAD(trade_date) OVER (ORDER BY trade_date),
                 CURRENT_DATE + 1
             ) AS valid_to
         FROM asset_prices
@@ -295,7 +295,7 @@ BEGIN
                     (SELECT price::numeric
                      FROM asset_prices ap
                      WHERE ap.asset_id = v_quote_asset_id
-                       AND CAST(ap.trade_date AS date) <= dp.report_date
+                       AND ap.trade_date <= dp.report_date
                      ORDER BY ap.trade_date DESC
                      LIMIT 1),
                     (SELECT price::numeric

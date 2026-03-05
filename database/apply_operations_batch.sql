@@ -185,7 +185,7 @@ BEGIN
                     SELECT price INTO v_currency_to_quote_rate
                     FROM asset_prices
                     WHERE asset_id = v_op_record.currency_id
-                      AND CAST(trade_date AS date) <= v_operation_date
+                      AND trade_date <= v_operation_date
                     ORDER BY trade_date DESC
                     LIMIT 1;
                     
@@ -205,7 +205,7 @@ BEGIN
                     SELECT price INTO v_quote_to_rub_rate
                     FROM asset_prices
                     WHERE asset_id = v_currency_quote_asset_id
-                      AND CAST(trade_date AS date) <= v_operation_date
+                      AND trade_date <= v_operation_date
                     ORDER BY trade_date DESC
                     LIMIT 1;
                     
@@ -225,7 +225,7 @@ BEGIN
                     SELECT price INTO v_currency_rate
                     FROM asset_prices
                     WHERE asset_id = v_op_record.currency_id
-                      AND CAST(trade_date AS date) <= v_operation_date
+                      AND trade_date <= v_operation_date
                     ORDER BY trade_date DESC
                     LIMIT 1;
                     
