@@ -1,5 +1,5 @@
 import json
-from app.infrastructure.database.supabase_service import rpc, table_insert, table_select, table_update
+from app.infrastructure.database.postgres_service import rpc, table_insert, table_select, table_update
 from app.domain.services.user_service import get_user_by_email
 from datetime import datetime
 from app.utils.date import normalize_date_to_string
@@ -574,20 +574,21 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
         asset_created_at = meta.get("created_at")
         
         # Получаем дату первой транзакции по перемещенному активу через прямой SQL запрос
-        from app.infrastructure.database.supabase_service import get_supabase_client
-        supabase = get_supabase_client()
+        from app.infrastructure.database.postgres_service import get_db_connection
+        from psycopg2.extras import RealDictCursor
         
-        first_tx_result = supabase.table("transactions")\
-            .select("transaction_date")\
-            .eq("portfolio_asset_id", portfolio_asset_id)\
-            .order("transaction_date", desc=False)\
-            .limit(1)\
-            .execute()
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT transaction_date FROM transactions WHERE portfolio_asset_id = %s ORDER BY transaction_date ASC LIMIT 1",
+                    (portfolio_asset_id,)
+                )
+                result = cur.fetchone()
         
         # Используем дату первой транзакции, если она есть, иначе дату создания актива
         first_tx_date = None
-        if first_tx_result.data and len(first_tx_result.data) > 0:
-            tx_date = first_tx_result.data[0].get("transaction_date")
+        if result:
+            tx_date = result.get("transaction_date")
             if tx_date:
                 # Преобразуем в строку формата YYYY-MM-DD
                 if isinstance(tx_date, str):

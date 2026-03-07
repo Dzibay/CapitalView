@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, date
 from typing import Optional, Dict, List, Tuple
 from tqdm.asyncio import tqdm_asyncio
 
-from app.infrastructure.database.supabase_async import db_select, db_rpc
+from app.infrastructure.database.postgres_async import db_select, db_rpc
 from app.infrastructure.external.crypto.price_service import get_price_crypto_history, get_price_crypto, get_prices_crypto_batch
 from app.utils.date import parse_date as normalize_date, normalize_date_to_string
 from app.core.logging import get_logger

@@ -23,7 +23,7 @@ BEGIN
         -- total_value включает баланс портфеля (total_capital = стоимость активов + баланс)
         COALESCE(SUM(pa.quantity * COALESCE(lp.curr_price, 0) / pa.leverage * COALESCE(lqp.curr_price, 1))::numeric(20,2), 0) 
         + COALESCE((
-            SELECT balance 
+            SELECT pdv.balance 
             FROM portfolio_daily_values pdv 
             WHERE pdv.portfolio_id = p.id 
             ORDER BY pdv.report_date DESC 
@@ -32,7 +32,7 @@ BEGIN
         COALESCE(SUM(pa.quantity * pa.average_price / pa.leverage * COALESCE(lqp.curr_price, 1))::numeric(20,2), 0) AS total_invested,
         -- Последний баланс портфеля
         COALESCE((
-            SELECT balance 
+            SELECT pdv.balance 
             FROM portfolio_daily_values pdv 
             WHERE pdv.portfolio_id = p.id 
             ORDER BY pdv.report_date DESC 

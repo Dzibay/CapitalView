@@ -3,7 +3,7 @@
 Перенесено из supabase_data/update_coupons.py
 """
 import asyncio
-from app.infrastructure.database.supabase_async import db_select, db_insert, db_update
+from app.infrastructure.database.postgres_async import db_select, db_insert, db_update
 from tqdm.asyncio import tqdm_asyncio
 from app.infrastructure.external.moex.client import create_moex_session, fetch_json
 from app.utils.date import parse_date as normalize_date, normalize_date_to_string as format_date
@@ -97,3 +97,8 @@ async def update_all_coupons():
     
     finally:
         await session.close()
+
+
+if __name__ == "__main__":
+    from app.utils.async_runner import run_async
+    run_async(update_all_coupons())

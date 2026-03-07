@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, time, date
 from typing import Optional, Dict, List, Tuple
 from tqdm.asyncio import tqdm_asyncio
 
-from app.infrastructure.database.supabase_async import db_select, db_rpc
+from app.infrastructure.database.postgres_async import db_select, db_rpc
 from app.infrastructure.external.moex.client import create_moex_session
 from app.infrastructure.external.moex.price_service import get_price_moex_history, get_price_moex
 from app.utils.date import parse_date as normalize_date, normalize_date_to_string as format_date

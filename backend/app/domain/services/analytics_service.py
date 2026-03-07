@@ -1,7 +1,7 @@
 import asyncio
 from collections import defaultdict
 from copy import deepcopy
-from app.infrastructure.database.supabase_async import rpc_async, table_select_async
+from app.infrastructure.database.postgres_async import rpc_async, table_select_async
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

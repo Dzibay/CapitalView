@@ -3,7 +3,7 @@
 Перенесено из supabase_data/update_moex_assets.py
 """
 import asyncio
-from app.infrastructure.database.supabase_async import table_select_async, table_insert_async, table_update_async
+from app.infrastructure.database.postgres_async import table_select_async, table_insert_async, table_update_async
 from app.infrastructure.external.moex.client import create_moex_session, fetch_json
 from app.core.logging import get_logger
 
@@ -123,7 +123,7 @@ async def process_group(session, url, type_name, existing_assets, type_map):
             "name": name,
             "ticker": ticker,
             "properties": props,
-            "quote_asset_id": 47 if currency in ("RUB", "SUR") else None,
+            "quote_asset_id": 1 if currency in ("RUB", "SUR") else None,
         }
 
         result = await upsert_asset(asset, existing_assets)
@@ -163,4 +163,5 @@ async def import_moex_assets_async():
 
 
 if __name__ == "__main__":
-    asyncio.run(import_moex_assets_async())
+    from app.utils.async_runner import run_async
+    run_async(import_moex_assets_async())

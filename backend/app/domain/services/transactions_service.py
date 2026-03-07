@@ -2,7 +2,7 @@
 Доменный сервис для работы с транзакциями.
 Перенесено из app/services/transactions_service.py
 """
-from app.infrastructure.database.supabase_service import table_select, table_insert, rpc
+from app.infrastructure.database.postgres_service import table_select, table_insert, rpc
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -124,9 +124,10 @@ def create_transaction(
     tx_id = tx_ids[0]
 
     # 2️⃣ Цена актива (idempotent)
+    # Таблица asset_prices не имеет столбца id, первичный ключ составной (asset_id, trade_date)
     existing_price = table_select(
         "asset_prices",
-        "id",
+        "asset_id",
         filters={"asset_id": asset_id, "trade_date": transaction_date_str.split('T')[0]}
     )
 

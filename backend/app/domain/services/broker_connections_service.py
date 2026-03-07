@@ -2,7 +2,7 @@
 Доменный сервис для работы с соединениями пользователей с брокерами.
 Перенесено из app/services/broker_connections_service.py
 """
-from app.infrastructure.database.supabase_service import table_select, table_insert, table_update
+from app.infrastructure.database.postgres_service import table_select, table_insert, table_update, table_delete
 from datetime import datetime
 
 
@@ -58,14 +58,29 @@ def check_broker_token_exists(user_id: str, broker_id: int, broker_token: str) -
     
     if existing_connection:
         portfolio_id = existing_connection[0].get("portfolio_id")
-        # Получаем название портфеля
+        # Получаем название портфеля и проверяем, существует ли портфель
         portfolio = table_select(
             "portfolios",
             select="id, name",
             filters={"id": portfolio_id},
             limit=1
         )
-        portfolio_name = portfolio[0].get("name") if portfolio else None
+        
+        # Если портфель не существует, удаляем запись из user_broker_connections
+        # (это может произойти, если портфель был удален, но запись осталась)
+        if not portfolio:
+            table_delete(
+                "user_broker_connections",
+                filters={"user_id": user_id_str, "broker_id": broker_id, "api_key": broker_token}
+            )
+            # Портфель не существует, токен не используется
+            return {
+                "exists": False,
+                "portfolio_id": None,
+                "portfolio_name": None
+            }
+        
+        portfolio_name = portfolio[0].get("name")
         
         return {
             "exists": True,

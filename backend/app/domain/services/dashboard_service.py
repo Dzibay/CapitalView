@@ -4,7 +4,7 @@ from time import time
 import copy
 from app.domain.services.reference_service import get_reference_data_cached
 from app.domain.services.user_service import get_user_by_email
-from app.infrastructure.database.supabase_service import rpc
+from app.infrastructure.database.postgres_service import rpc
 from app.core.logging import get_logger
 from app.utils.date import normalize_date_to_day_string
 

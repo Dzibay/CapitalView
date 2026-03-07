@@ -2,7 +2,7 @@
 Доменный сервис для работы с денежными операциями.
 Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Other.
 """
-from app.infrastructure.database.supabase_service import rpc, table_insert
+from app.infrastructure.database.postgres_service import rpc, table_insert
 from app.domain.services.transactions_service import create_transaction
 from app.utils.date import normalize_date_to_string, normalize_date
 from typing import Optional, Union
@@ -49,7 +49,7 @@ def create_operation(
     portfolio_id: Optional[int] = None,
     operation_type: int,
     amount: float,
-    currency_id: int = 47,
+    currency_id: int = 1,
     operation_date: str,
     portfolio_asset_id: Optional[int] = None,
     asset_id: Optional[int] = None,
@@ -73,7 +73,7 @@ def create_operation(
         portfolio_id: ID портфеля (опционален, если передан portfolio_asset_id)
         operation_type: Тип операции (1-10: 1=Buy, 2=Sell, 3=Dividend, 4=Coupon, 5=Deposit, 6=Withdraw, 7=Commission, 8=Tax, 9=Ammortization, 10=Other)
         amount: Сумма операции (до 6 знаков после запятой для выплат)
-        currency_id: ID валюты (по умолчанию 47 = RUB, может быть любой валютой включая криптовалюты)
+        currency_id: ID валюты (по умолчанию 1 = RUB, может быть любой валютой включая криптовалюты)
         operation_date: Дата операции
         portfolio_asset_id: ID портфельного актива (обязателен для Buy/Sell, опционален для остальных)
         asset_id: ID актива (обязателен для Buy/Sell/Dividend/Coupon)
@@ -92,7 +92,7 @@ def create_operation(
     
     # Если portfolio_id не передан, но есть portfolio_asset_id, получаем portfolio_id из него
     if not portfolio_id and portfolio_asset_id:
-        from app.infrastructure.database.supabase_service import table_select
+        from app.infrastructure.database.postgres_service import table_select
         pa_data = table_select(
             "portfolio_assets",
             select="portfolio_id",
@@ -176,7 +176,7 @@ def create_operations_batch(
     portfolio_id: Optional[int] = None,
     operation_type: int,
     amount: float,
-    currency_id: int = 47,
+    currency_id: int = 1,
     start_date: Union[datetime, str],
     end_date: Union[datetime, str],
     day_of_month: int,
@@ -194,7 +194,7 @@ def create_operations_batch(
         portfolio_id: ID портфеля (опционален, если передан portfolio_asset_id)
         operation_type: Тип операции (1-10: 1=Buy, 2=Sell, 3=Dividend, 4=Coupon, 5=Deposit, 6=Withdraw, 7=Commission, 8=Tax, 9=Ammortization, 10=Other)
         amount: Сумма операции
-        currency_id: ID валюты (по умолчанию 47 = RUB)
+        currency_id: ID валюты (по умолчанию 1 = RUB)
         start_date: Дата начала повторения
         end_date: Дата окончания повторения
         day_of_month: День месяца для создания операции (1-31)
@@ -281,7 +281,7 @@ def create_operations_batch(
         operations_list.append(op_data)
     
     # Используем batch функцию для создания всех операций за один раз
-    from app.infrastructure.database.supabase_service import rpc
+    from app.infrastructure.database.postgres_service import rpc
     result = rpc("apply_operations_batch", {
         "p_operations": operations_list
     })

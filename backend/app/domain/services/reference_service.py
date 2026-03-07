@@ -3,7 +3,7 @@
 Перенесено из app/services/reference_service.py
 """
 import asyncio
-from app.infrastructure.database.supabase_service import rpc
+from app.infrastructure.database.postgres_service import rpc
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

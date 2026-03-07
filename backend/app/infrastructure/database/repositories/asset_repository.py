@@ -3,7 +3,7 @@
 """
 from typing import List, Optional, Dict, Any
 from app.infrastructure.database.repositories.base import BaseRepository
-from app.infrastructure.database.supabase_client import SupabaseClient
+from app.infrastructure.database.postgres_client import PostgresClient
 
 
 class AssetRepository(BaseRepository):
@@ -12,14 +12,14 @@ class AssetRepository(BaseRepository):
     Инкапсулирует логику работы с таблицей assets.
     """
     
-    def __init__(self, client: SupabaseClient = None):
+    def __init__(self, client: PostgresClient = None):
         """
         Инициализирует репозиторий.
         
         Args:
-            client: Клиент Supabase (по умолчанию создается новый)
+            client: Клиент PostgreSQL (по умолчанию создается новый)
         """
-        self.client = client or SupabaseClient()
+        self.client = client or PostgresClient()
     
     async def get_by_id(self, id: int) -> Optional[Dict[str, Any]]:
         """Получает актив по ID."""

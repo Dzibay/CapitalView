@@ -23,12 +23,13 @@ from app.domain.services.portfolio_service import import_broker_portfolio
 from app.domain.services.user_service import get_user_by_id
 from app.domain.services.broker_connections_service import upsert_broker_connection
 from app.constants import BrokerID
-from app.infrastructure.database.supabase_async import rpc_async, table_insert_async, table_update_async, table_select_async
+from app.infrastructure.database.postgres_async import rpc_async, table_insert_async, table_update_async, table_select_async
 
 logger = logging.getLogger(__name__)
 
 # Настройки воркера
-POLL_INTERVAL = 5  # Интервал опроса очереди (секунды)
+POLL_INTERVAL = 10  # Интервал опроса очереди когда нет задач (секунды)
+POLL_INTERVAL_WHEN_BUSY = 2  # Интервал опроса когда есть активные задачи (секунды)
 MAX_CONCURRENT_TASKS = 3  # Максимальное количество одновременных задач
 MAX_RETRIES = 3  # Максимальное количество попыток
 
@@ -290,8 +291,11 @@ async def worker_loop():
                     task_id = task["task_id"]
                     
                     # Проверяем, не обрабатывается ли уже эта задача
+                    # Это может произойти, если задача была получена несколько раз до обновления статуса
                     if task_id in active_tasks:
-                        logger.warning(f"Задача {task_id} уже в обработке, пропускаем")
+                        logger.debug(f"Задача {task_id} уже в обработке в этом воркере, пропускаем")
+                        # Делаем небольшую задержку перед следующей попыткой
+                        await asyncio.sleep(1)
                         continue
                     
                     # КРИТИЧНО: Обновляем статус на processing СРАЗУ после получения задачи
@@ -306,7 +310,10 @@ async def worker_loop():
                     
                     if not status_updated:
                         # Не удалось обновить статус - возможно, задача уже обрабатывается другим воркером
-                        logger.warning(f"Не удалось обновить статус задачи {task_id}, возможно уже обрабатывается, пропускаем")
+                        # Это нормальная ситуация при параллельной работе нескольких воркеров
+                        logger.debug(f"Не удалось обновить статус задачи {task_id}, возможно уже обрабатывается другим воркером, пропускаем")
+                        # Делаем небольшую задержку перед следующей попыткой
+                        await asyncio.sleep(1)
                         continue
                     
                     logger.info(f"Найдена задача {task_id}, статус обновлен на processing, начинаем обработку")
@@ -317,10 +324,13 @@ async def worker_loop():
                     )
                 else:
                     # Нет задач, ждем перед следующей проверкой
-                    await asyncio.sleep(POLL_INTERVAL)
+                    # Используем больший интервал, если нет активных задач
+                    interval = POLL_INTERVAL_WHEN_BUSY if len(active_tasks) > 0 else POLL_INTERVAL
+                    await asyncio.sleep(interval)
             else:
                 # Все слоты заняты, ждем перед следующей проверкой
-                await asyncio.sleep(POLL_INTERVAL)
+                # Используем меньший интервал, так как есть активные задачи
+                await asyncio.sleep(POLL_INTERVAL_WHEN_BUSY)
             
             # Убрана дополнительная задержка - она уже есть в if/else выше
             

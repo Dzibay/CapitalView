@@ -1,6 +1,6 @@
 import asyncio
-from app.infrastructure.database.supabase_service import rpc, table_select, table_update
-from app.infrastructure.database.supabase_async import (
+from app.infrastructure.database.postgres_service import rpc, table_select, table_update
+from app.infrastructure.database.postgres_async import (
     rpc_async, 
     table_select_async, 
     table_insert_async,
@@ -816,7 +816,7 @@ async def import_broker_portfolio(
                     "portfolio_id": portfolio_id,
                     "type": op_type_id,
                     "amount": payment,
-                    "currency": 47,   # рубли
+                    "currency": 1,   # рубли
                     "date": tx_date,
                     "asset_id": asset_id,
                     "transaction_id": None
@@ -857,7 +857,7 @@ async def import_broker_portfolio(
                     )
             
             try:
-                # Supabase автоматически преобразует Python dict/list в jsonb
+                # PostgreSQL автоматически преобразует Python dict/list в jsonb
                 # Передаем список транзакций напрямую
                 result = await rpc_async("apply_transactions_batch", {
                     "p_transactions": new_tx_sorted
@@ -936,7 +936,7 @@ async def import_broker_portfolio(
                         "portfolio_id": op["portfolio_id"],
                         "operation_type": op["type"],
                         "amount": float(op["amount"]),
-                        "currency_id": op.get("currency", 47),
+                        "currency_id": op.get("currency", 1),
                         "operation_date": op_date_str,
                         "asset_id": op.get("asset_id")
                     }

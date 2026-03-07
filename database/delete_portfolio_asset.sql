@@ -35,13 +35,22 @@ BEGIN
         )::text;
     END IF;
     
+    -- 1. Сначала удаляем cash_operations, связанные с транзакциями через transaction_id
+    DELETE FROM cash_operations
+    WHERE transaction_id IN (
+        SELECT id FROM transactions WHERE portfolio_asset_id = p_portfolio_asset_id
+    );
+    
+    -- 2. Удаляем транзакции
     DELETE FROM transactions 
     WHERE portfolio_asset_id = p_portfolio_asset_id;
     
+    -- 3. Удаляем остальные cash_operations, связанные с портфелем и активом (но не с транзакциями)
     DELETE FROM cash_operations
     WHERE portfolio_id = v_portfolio_id
       AND asset_id = v_asset_id;
     
+    -- 4. Удаляем fifo_lots
     DELETE FROM fifo_lots 
     WHERE portfolio_asset_id = p_portfolio_asset_id;
     

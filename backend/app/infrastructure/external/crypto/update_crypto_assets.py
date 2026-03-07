@@ -5,7 +5,7 @@
 import asyncio
 import aiohttp
 from typing import Optional, Dict, List
-from app.infrastructure.database.supabase_async import table_select_async, table_insert_async, table_update_async
+from app.infrastructure.database.postgres_async import table_select_async, table_insert_async, table_update_async
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -264,4 +264,5 @@ async def import_crypto_assets_async():
 
 
 if __name__ == "__main__":
-    asyncio.run(import_crypto_assets_async())
+    from app.utils.async_runner import run_async
+    run_async(import_crypto_assets_async())

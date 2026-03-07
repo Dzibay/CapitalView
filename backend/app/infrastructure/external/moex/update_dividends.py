@@ -7,7 +7,7 @@ import aiohttp
 import random
 from bs4 import BeautifulSoup
 from datetime import datetime, date
-from app.infrastructure.database.supabase_async import table_select_async, table_insert_async
+from app.infrastructure.database.postgres_async import table_select_async, table_insert_async
 
 # URL страниц
 SMARTLAB_INDEX_URL = "https://smart-lab.ru/dividends/index/order_by_yield/desc/"
@@ -250,4 +250,5 @@ async def update_forecasts():
 
 
 if __name__ == "__main__":
-    asyncio.run(update_forecasts())
+    from app.utils.async_runner import run_async
+    run_async(update_forecasts())

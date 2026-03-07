@@ -18,7 +18,7 @@ from app.domain.services.portfolio_service import import_broker_portfolio
 from app.domain.services.user_service import get_user_by_id
 from app.domain.services.broker_connections_service import upsert_broker_connection
 from app.constants import BrokerID
-from app.infrastructure.database.supabase_async import table_select_async, table_insert_async
+from app.infrastructure.database.postgres_async import table_select_async, table_insert_async
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +181,7 @@ async def process_import_task(task: dict) -> bool:
             logger.info(f"Повторная попытка {new_retry_count}/{MAX_RETRIES} для задачи {task_id}")
             
             # Обновляем retry_count и возвращаем задачу в pending
-            from app.infrastructure.database.supabase_service import table_update
+            from app.infrastructure.database.postgres_service import table_update
             table_update(
                 "import_tasks",
                 {"retry_count": new_retry_count, "status": TaskStatus.PENDING.value},

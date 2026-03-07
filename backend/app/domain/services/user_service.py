@@ -3,7 +3,7 @@
 Перенесено из app/services/user_service.py
 """
 from app.extensions import bcrypt
-from app.infrastructure.database.supabase_service import table_select, table_insert, table_update
+from app.infrastructure.database.postgres_service import table_select, table_insert, table_update
 
 
 def get_user_by_email(email: str):

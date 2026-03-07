@@ -52,7 +52,7 @@ BEGIN
         COALESCE(curr.curr_price, 1)::numeric(20,6) AS currency_rate_to_rub,
         a.id AS asset_id,
         a.name AS asset_name,
-        co.date AS operation_date,
+        co.date::timestamp AS operation_date,
         co.transaction_id AS transaction_id
     FROM cash_operations co
     JOIN portfolios p

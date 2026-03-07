@@ -11,7 +11,7 @@ from datetime import datetime, date, timedelta
 from typing import Optional, Dict, List, Tuple
 from tqdm.asyncio import tqdm_asyncio
 
-from app.infrastructure.database.supabase_async import db_select, db_rpc, table_insert_async
+from app.infrastructure.database.postgres_async import db_select, db_rpc, table_insert_async
 from app.infrastructure.external.currency.price_service import (
     get_currency_rate,
     get_currency_rate_history,
