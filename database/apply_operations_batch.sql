@@ -45,7 +45,7 @@ BEGIN
     LIMIT 1;
     
     IF v_rub_currency_id IS NULL THEN
-        v_rub_currency_id := 47;
+        v_rub_currency_id := 1;
     END IF;
 
     -- Сортируем операции по дате
@@ -55,7 +55,7 @@ BEGIN
         (op->>'portfolio_id')::bigint as portfolio_id,
         (op->>'operation_type')::int as operation_type,
         (op->>'amount')::numeric as amount,
-        COALESCE((op->>'currency_id')::bigint, 47) as currency_id,
+        COALESCE((op->>'currency_id')::bigint, 1) as currency_id,
         CASE 
             WHEN (op->>'operation_date')::text ~ 'T' OR (op->>'operation_date')::text ~ ' ' THEN
                 (op->>'operation_date')::timestamp without time zone
@@ -119,7 +119,7 @@ BEGIN
             END IF;
 
             -- Рассчитываем amount_rub
-            IF v_op_record.currency_id = v_rub_currency_id OR v_op_record.currency_id = 47 THEN
+            IF v_op_record.currency_id = v_rub_currency_id OR v_op_record.currency_id = 1 THEN
                 v_amount_rub := v_op_record.amount;
             ELSE
                 SELECT quote_asset_id INTO v_currency_quote_asset_id
@@ -129,7 +129,7 @@ BEGIN
                 -- Двухшаговая конвертация через quote_asset (например, BTC -> USD -> RUB)
                 IF v_currency_quote_asset_id IS NOT NULL 
                    AND v_currency_quote_asset_id != v_rub_currency_id 
-                   AND v_currency_quote_asset_id != 47 
+                   AND v_currency_quote_asset_id != 1 
                    AND v_currency_quote_asset_id > 0 THEN
                     -- ШАГ 1: Конвертируем валюту операции в quote_asset
                     SELECT price INTO v_currency_to_quote_rate

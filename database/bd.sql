@@ -47,7 +47,7 @@ CREATE TABLE public.assets (
   name text,
   ticker text,
   properties jsonb,
-  quote_asset_id bigint DEFAULT '47'::bigint,
+  quote_asset_id bigint DEFAULT '1'::bigint,
   CONSTRAINT assets_pkey PRIMARY KEY (id),
   CONSTRAINT assets1_asset_type_id_fkey FOREIGN KEY (asset_type_id) REFERENCES public.asset_types(id),
   CONSTRAINT assets1_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),

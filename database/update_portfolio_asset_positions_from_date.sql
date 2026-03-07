@@ -155,7 +155,7 @@ BEGIN
                     (SELECT curr_price::numeric
                      FROM asset_latest_prices
                      WHERE asset_id = v_quote_asset_id),
-                    CASE WHEN v_quote_asset_id IS NULL OR v_quote_asset_id = 47 THEN 1::numeric ELSE 1::numeric END
+                    CASE WHEN v_quote_asset_id IS NULL OR v_quote_asset_id = 1 THEN 1::numeric ELSE 1::numeric END
                 )
                 / NULLIF(v_leverage, 0)
             ) AS realized_day
@@ -276,7 +276,7 @@ BEGIN
         SELECT
             dp.report_date,
             CASE 
-                WHEN v_quote_asset_id IS NULL OR v_quote_asset_id = 47 THEN 1::numeric
+                WHEN v_quote_asset_id IS NULL OR v_quote_asset_id = 1 THEN 1::numeric
                 ELSE COALESCE(
                     (SELECT price::numeric
                      FROM asset_prices ap

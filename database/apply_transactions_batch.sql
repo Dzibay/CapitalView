@@ -376,7 +376,7 @@ BEGIN
                 WHEN t.transaction_type = 3 THEN ABS(COALESCE(tpm.payment, 0))    -- Redemption: положительное
                 ELSE COALESCE(tpm.payment, 0)
             END,
-            47, -- RUB
+            1, -- RUB
             t.transaction_date,
             t.id,
             pa.asset_id
