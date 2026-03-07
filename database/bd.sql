@@ -1,7 +1,7 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
-CREATE TABLE capitalview.asset_latest_prices (
+CREATE TABLE public.asset_latest_prices (
   asset_id bigint NOT NULL,
   today_price numeric(20,6),
   today_date date,
@@ -13,9 +13,9 @@ CREATE TABLE capitalview.asset_latest_prices (
   prev_date date,
   updated_at timestamp(0) without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT asset_latest_prices_pkey PRIMARY KEY (asset_id),
-  CONSTRAINT asset_latest_prices_table_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES capitalview.assets(id)
+  CONSTRAINT asset_latest_prices_table_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id)
 );
-CREATE TABLE capitalview.asset_payouts (
+CREATE TABLE public.asset_payouts (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   asset_id bigint,
   value numeric(20,6),
@@ -25,22 +25,22 @@ CREATE TABLE capitalview.asset_payouts (
   payment_date date,
   type text,
   CONSTRAINT asset_payouts_pkey PRIMARY KEY (id),
-  CONSTRAINT asset_payouts_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES capitalview.assets(id)
+  CONSTRAINT asset_payouts_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id)
 );
-CREATE TABLE capitalview.asset_prices (
+CREATE TABLE public.asset_prices (
   asset_id bigint NOT NULL,
   price numeric(20,6) NOT NULL,
   trade_date date NOT NULL,
   CONSTRAINT asset_prices_pkey PRIMARY KEY (asset_id, trade_date),
-  CONSTRAINT asset_prices_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES capitalview.assets(id)
+  CONSTRAINT asset_prices_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id)
 );
-CREATE TABLE capitalview.asset_types (
+CREATE TABLE public.asset_types (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   name text,
   is_custom boolean,
   CONSTRAINT asset_types_pkey PRIMARY KEY (id)
 );
-CREATE TABLE capitalview.assets (
+CREATE TABLE public.assets (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   asset_type_id bigint,
   user_id uuid,
@@ -49,16 +49,16 @@ CREATE TABLE capitalview.assets (
   properties jsonb,
   quote_asset_id bigint DEFAULT '47'::bigint,
   CONSTRAINT assets_pkey PRIMARY KEY (id),
-  CONSTRAINT assets1_asset_type_id_fkey FOREIGN KEY (asset_type_id) REFERENCES capitalview.asset_types(id),
-  CONSTRAINT assets1_user_id_fkey FOREIGN KEY (user_id) REFERENCES capitalview.users(id),
-  CONSTRAINT assets_quote_asset_id_fkey FOREIGN KEY (quote_asset_id) REFERENCES capitalview.assets(id)
+  CONSTRAINT assets1_asset_type_id_fkey FOREIGN KEY (asset_type_id) REFERENCES public.asset_types(id),
+  CONSTRAINT assets1_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT assets_quote_asset_id_fkey FOREIGN KEY (quote_asset_id) REFERENCES public.assets(id)
 );
-CREATE TABLE capitalview.brokers (
+CREATE TABLE public.brokers (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   name text,
   CONSTRAINT brokers_pkey PRIMARY KEY (id)
 );
-CREATE TABLE capitalview.cash_operations (
+CREATE TABLE public.cash_operations (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   user_id uuid,
   portfolio_id bigint,
@@ -70,23 +70,23 @@ CREATE TABLE capitalview.cash_operations (
   asset_id bigint,
   amount_rub numeric(20,2),
   CONSTRAINT cash_operations_pkey PRIMARY KEY (id),
-  CONSTRAINT cash_operations_user_id_fkey FOREIGN KEY (user_id) REFERENCES capitalview.users(id),
-  CONSTRAINT cash_operations_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES capitalview.portfolios(id),
-  CONSTRAINT cash_operations_currency_fkey FOREIGN KEY (currency) REFERENCES capitalview.assets(id),
-  CONSTRAINT cash_operations_type_fkey FOREIGN KEY (type) REFERENCES capitalview.operations_type(id),
-  CONSTRAINT cash_operations_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES capitalview.transactions(id),
-  CONSTRAINT cash_operations_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES capitalview.assets(id)
+  CONSTRAINT cash_operations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT cash_operations_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id),
+  CONSTRAINT cash_operations_currency_fkey FOREIGN KEY (currency) REFERENCES public.assets(id),
+  CONSTRAINT cash_operations_type_fkey FOREIGN KEY (type) REFERENCES public.operations_type(id),
+  CONSTRAINT cash_operations_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.transactions(id),
+  CONSTRAINT cash_operations_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id)
 );
-CREATE TABLE capitalview.fifo_lots (
+CREATE TABLE public.fifo_lots (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   portfolio_asset_id bigint,
   remaining_qty numeric,
   price numeric,
   created_at timestamp without time zone,
   CONSTRAINT fifo_lots_pkey PRIMARY KEY (id),
-  CONSTRAINT fifo_lots_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES capitalview.portfolio_assets(id)
+  CONSTRAINT fifo_lots_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES public.portfolio_assets(id)
 );
-CREATE TABLE capitalview.import_tasks (
+CREATE TABLE public.import_tasks (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   user_id uuid NOT NULL,
   portfolio_id bigint,
@@ -106,15 +106,15 @@ CREATE TABLE capitalview.import_tasks (
   progress_message text,
   portfolio_name character varying,
   CONSTRAINT import_tasks_pkey PRIMARY KEY (id),
-  CONSTRAINT import_tasks_user_id_fkey FOREIGN KEY (user_id) REFERENCES capitalview.users(id),
-  CONSTRAINT import_tasks_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES capitalview.portfolios(id)
+  CONSTRAINT import_tasks_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT import_tasks_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id)
 );
-CREATE TABLE capitalview.operations_type (
+CREATE TABLE public.operations_type (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   name text,
   CONSTRAINT operations_type_pkey PRIMARY KEY (id)
 );
-CREATE TABLE capitalview.portfolio_assets (
+CREATE TABLE public.portfolio_assets (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   portfolio_id bigint,
   asset_id bigint,
@@ -123,10 +123,10 @@ CREATE TABLE capitalview.portfolio_assets (
   created_at timestamp(0) without time zone DEFAULT CURRENT_TIMESTAMP,
   leverage bigint DEFAULT '1'::bigint,
   CONSTRAINT portfolio_assets_pkey PRIMARY KEY (id),
-  CONSTRAINT portfolio_assets_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES capitalview.portfolios(id),
-  CONSTRAINT portfolio_assets_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES capitalview.assets(id)
+  CONSTRAINT portfolio_assets_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id),
+  CONSTRAINT portfolio_assets_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id)
 );
-CREATE TABLE capitalview.portfolio_daily_positions (
+CREATE TABLE public.portfolio_daily_positions (
   portfolio_id bigint NOT NULL,
   portfolio_asset_id bigint NOT NULL,
   report_date date NOT NULL,
@@ -141,7 +141,7 @@ CREATE TABLE capitalview.portfolio_daily_positions (
   total_pnl numeric,
   CONSTRAINT portfolio_daily_positions_pkey PRIMARY KEY (portfolio_asset_id, report_date)
 );
-CREATE TABLE capitalview.portfolio_daily_values (
+CREATE TABLE public.portfolio_daily_values (
   portfolio_id bigint NOT NULL,
   report_date date NOT NULL,
   total_value numeric,
@@ -154,17 +154,17 @@ CREATE TABLE capitalview.portfolio_daily_values (
   balance numeric DEFAULT 0,
   CONSTRAINT portfolio_daily_values_pkey PRIMARY KEY (portfolio_id, report_date)
 );
-CREATE TABLE capitalview.portfolios (
+CREATE TABLE public.portfolios (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   user_id uuid,
   parent_portfolio_id bigint,
   name text,
   description jsonb,
   CONSTRAINT portfolios_pkey PRIMARY KEY (id),
-  CONSTRAINT portfolios_user_id_fkey FOREIGN KEY (user_id) REFERENCES capitalview.users(id),
-  CONSTRAINT portfolios_parent_portfolio_id_fkey FOREIGN KEY (parent_portfolio_id) REFERENCES capitalview.portfolios(id)
+  CONSTRAINT portfolios_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT portfolios_parent_portfolio_id_fkey FOREIGN KEY (parent_portfolio_id) REFERENCES public.portfolios(id)
 );
-CREATE TABLE capitalview.transactions (
+CREATE TABLE public.transactions (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   portfolio_asset_id bigint,
   transaction_type bigint,
@@ -174,16 +174,16 @@ CREATE TABLE capitalview.transactions (
   user_id uuid,
   realized_pnl numeric(20,6),
   CONSTRAINT transactions_pkey PRIMARY KEY (id),
-  CONSTRAINT transactions_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES capitalview.portfolio_assets(id),
-  CONSTRAINT transactions_transaction_type_fkey FOREIGN KEY (transaction_type) REFERENCES capitalview.transactions_type(id),
-  CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES capitalview.users(id)
+  CONSTRAINT transactions_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES public.portfolio_assets(id),
+  CONSTRAINT transactions_transaction_type_fkey FOREIGN KEY (transaction_type) REFERENCES public.transactions_type(id),
+  CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
-CREATE TABLE capitalview.transactions_type (
+CREATE TABLE public.transactions_type (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   name text,
   CONSTRAINT transactions_type_pkey PRIMARY KEY (id)
 );
-CREATE TABLE capitalview.user_broker_connections (
+CREATE TABLE public.user_broker_connections (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   user_id uuid,
   broker_id bigint,
@@ -191,11 +191,11 @@ CREATE TABLE capitalview.user_broker_connections (
   api_key text,
   last_sync_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP(0),
   CONSTRAINT user_broker_connections_pkey PRIMARY KEY (id),
-  CONSTRAINT user_broker_connections_user_id_fkey FOREIGN KEY (user_id) REFERENCES capitalview.users(id),
-  CONSTRAINT user_broker_connections_broker_id_fkey FOREIGN KEY (broker_id) REFERENCES capitalview.brokers(id),
-  CONSTRAINT user_broker_connections_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES capitalview.portfolios(id)
+  CONSTRAINT user_broker_connections_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT user_broker_connections_broker_id_fkey FOREIGN KEY (broker_id) REFERENCES public.brokers(id),
+  CONSTRAINT user_broker_connections_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id)
 );
-CREATE TABLE capitalview.users (
+CREATE TABLE public.users (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   email text NOT NULL UNIQUE,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
