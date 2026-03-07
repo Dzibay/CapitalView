@@ -139,7 +139,7 @@ def create_transaction(
         
         # Обновляем последнюю цену актива в asset_latest_prices
         try:
-            rpc("update_asset_latest_price", {"p_asset_id": asset_id})
+            rpc("update_asset_latest_prices_batch", {"p_asset_ids": [asset_id]})
         except Exception as e:
             logger.warning(f"Ошибка при обновлении последней цены актива {asset_id}: {e}", exc_info=True)
 

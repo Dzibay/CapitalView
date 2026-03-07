@@ -17,3 +17,11 @@ begin
     return new;
 end;
 $$;
+
+-- Триггер для автоматического создания корневого портфеля при создании пользователя
+drop trigger if exists trigger_create_root_portfolio_for_user on users;
+
+create trigger trigger_create_root_portfolio_for_user
+    after insert on users
+    for each row
+    execute function create_root_portfolio_for_user();

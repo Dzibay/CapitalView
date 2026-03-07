@@ -188,7 +188,7 @@ def add_asset_price(data):
         
         # Обновляем последнюю цену актива
         try:
-            update_result = rpc('update_asset_latest_price', {'p_asset_id': asset_id})
+            update_result = rpc('update_asset_latest_prices_batch', {'p_asset_ids': [asset_id]})
             if update_result is False:
                 logger.warning(f"RPC функция вернула False для актива {asset_id}")
         except Exception as rpc_error:
@@ -275,7 +275,7 @@ def add_asset_prices_batch(asset_id: int, prices: list):
         
         # Обновляем последнюю цену актива
         try:
-            update_result = rpc('update_asset_latest_price', {'p_asset_id': asset_id})
+            update_result = rpc('update_asset_latest_prices_batch', {'p_asset_ids': [asset_id]})
             if update_result is False:
                 logger.warning(f"RPC функция вернула False для актива {asset_id}")
         except Exception as rpc_error:

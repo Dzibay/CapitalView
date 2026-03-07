@@ -26,15 +26,14 @@ BEGIN
     ON CONFLICT (asset_id, trade_date) DO UPDATE
     SET price = EXCLUDED.price;
     
-    FOR v_asset_id IN 
-        SELECT DISTINCT asset_id FROM temp_asset_prices
-    LOOP
-        BEGIN
-            PERFORM update_asset_latest_price(v_asset_id);
-        EXCEPTION WHEN OTHERS THEN
-            RAISE WARNING 'Ошибка при обновлении последней цены актива %: %', v_asset_id, SQLERRM;
-        END;
-    END LOOP;
+    -- Оптимизировано: один batch-вызов вместо цикла
+    BEGIN
+        PERFORM update_asset_latest_prices_batch(
+            ARRAY(SELECT DISTINCT asset_id FROM temp_asset_prices)
+        );
+    EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING 'Ошибка при обновлении последних цен активов: %', SQLERRM;
+    END;
     
     RETURN true; 
 END;

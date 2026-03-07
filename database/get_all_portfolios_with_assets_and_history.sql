@@ -1,5 +1,11 @@
+CREATE OR REPLACE FUNCTION get_all_portfolios_with_assets_and_history(
+    p_user_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
 BEGIN
-    RETURN (
+    RETURN COALESCE((
         SELECT jsonb_agg(
             jsonb_build_object(
                 'id', p.id,
@@ -10,6 +16,7 @@ BEGIN
                 'history', COALESCE(h.history_json, '[]'::jsonb),
                 'analytics', COALESCE(an.analytics_json, '{}'::jsonb)
             )
+            ORDER BY p.id
         )
         FROM portfolios p
 
@@ -43,5 +50,8 @@ BEGIN
         ) an ON TRUE
 
         WHERE p.user_id = p_user_id
-    );
+    ), '[]'::jsonb);
 END;
+$$;
+
+COMMENT ON FUNCTION get_all_portfolios_with_assets_and_history(uuid) IS 'Возвращает все портфели пользователя с активами, историей стоимости и аналитикой';

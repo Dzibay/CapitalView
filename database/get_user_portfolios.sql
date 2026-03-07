@@ -1,3 +1,18 @@
+CREATE OR REPLACE FUNCTION get_user_portfolios(
+    u_id uuid
+)
+RETURNS TABLE (
+    id bigint,
+    name text,
+    parent_portfolio_id bigint,
+    description jsonb,
+    total_value numeric(20,2),
+    total_invested numeric(20,2),
+    balance numeric(20,2),
+    connection jsonb
+)
+LANGUAGE plpgsql
+AS $$
 BEGIN
     RETURN QUERY
     SELECT 
@@ -41,3 +56,6 @@ BEGIN
     WHERE p.user_id = u_id
     GROUP BY p.id, ubc.broker_id, ubc.api_key, ubc.last_sync_at;
 END;
+$$;
+
+COMMENT ON FUNCTION get_user_portfolios(uuid) IS 'Возвращает все портфели пользователя с расчетом стоимости, инвестиций, баланса и информации о подключении к брокеру';

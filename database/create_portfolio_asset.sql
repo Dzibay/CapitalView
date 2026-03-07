@@ -91,7 +91,7 @@ BEGIN
             p_transaction_date
         );
         
-        PERFORM update_asset_latest_price(v_asset_id);
+        PERFORM update_asset_latest_prices_batch(ARRAY[v_asset_id]);
         
         v_asset_name := p_name;
         v_asset_ticker := NULL;
@@ -124,7 +124,7 @@ BEGIN
                 p_transaction_date
             );
             
-            PERFORM update_asset_latest_price(v_asset_id);
+            PERFORM update_asset_latest_prices_batch(ARRAY[v_asset_id]);
         END IF;
     END IF;
     

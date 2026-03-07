@@ -1,4 +1,24 @@
-
+CREATE OR REPLACE FUNCTION get_user_transactions(
+    p_user_id uuid,
+    p_limit integer DEFAULT 1000
+)
+RETURNS TABLE (
+    transaction_id bigint,
+    portfolio_asset_id bigint,
+    portfolio_id bigint,
+    asset_id bigint,
+    portfolio_name text,
+    asset_name text,
+    ticker text,
+    transaction_type text,
+    transaction_type_id bigint,
+    price numeric(20,6),
+    quantity numeric(20,6),
+    transaction_date timestamp without time zone,
+    realized_pnl numeric(20,6)
+)
+LANGUAGE plpgsql
+AS $$
 BEGIN
     RETURN QUERY
     SELECT 
@@ -13,12 +33,13 @@ BEGIN
             WHEN 1 THEN 'Покупка'
             WHEN 2 THEN 'Продажа'
             WHEN 3 THEN 'Погашение'
-            ELSE 'Неизвестно'
+            ELSE COALESCE(tt.name, 'Неизвестно')
         END AS transaction_type,
+        t.transaction_type AS transaction_type_id,
         t.price::numeric(20,6) AS price,
         t.quantity::numeric(20,6) AS quantity,
-        -- возвращаем timestamp без таймзоны, как в таблице
-        t.transaction_date
+        t.transaction_date,
+        COALESCE(t.realized_pnl, 0)::numeric(20,6) AS realized_pnl
     FROM transactions t
     JOIN portfolio_assets pa 
         ON pa.id = t.portfolio_asset_id
@@ -26,7 +47,11 @@ BEGIN
         ON p.id = pa.portfolio_id
     JOIN assets a 
         ON a.id = pa.asset_id
+    LEFT JOIN transactions_type tt ON tt.id = t.transaction_type
     WHERE p.user_id = p_user_id
     ORDER BY t.transaction_date DESC
     LIMIT p_limit;
 END;
+$$;
+
+COMMENT ON FUNCTION get_user_transactions(uuid, integer) IS 'Возвращает транзакции пользователя с информацией об активах, портфелях и типах транзакций';

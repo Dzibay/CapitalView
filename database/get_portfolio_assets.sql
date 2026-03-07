@@ -1,3 +1,26 @@
+CREATE OR REPLACE FUNCTION get_portfolio_assets(
+    p_portfolio_id bigint
+)
+RETURNS TABLE (
+    portfolio_asset_id bigint,
+    asset_id bigint,
+    name text,
+    ticker text,
+    type text,
+    properties jsonb,
+    quantity numeric(20,6),
+    leverage numeric(20,2),
+    average_price numeric(20,6),
+    last_price numeric(20,6),
+    daily_change numeric(20,6),
+    profit numeric(20,2),
+    currency_ticker text,
+    currency_rate_to_rub numeric(20,6),
+    profit_rub numeric(20,2),
+    dividends jsonb
+)
+LANGUAGE plpgsql
+AS $$
 BEGIN
     RETURN QUERY
     SELECT
@@ -57,3 +80,6 @@ BEGIN
     WHERE pa.portfolio_id = p_portfolio_id;
     -- ✅ Включаем все активы, включая проданные (quantity = 0)
 END;
+$$;
+
+COMMENT ON FUNCTION get_portfolio_assets(bigint) IS 'Возвращает все активы портфеля с информацией о ценах, прибыли и выплатах';

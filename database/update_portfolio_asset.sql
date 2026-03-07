@@ -1,3 +1,7 @@
+CREATE OR REPLACE FUNCTION update_portfolio_asset(pa_id bigint)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
 DECLARE
     total_quantity numeric := 0;
     total_cost numeric := 0;
@@ -45,3 +49,6 @@ BEGIN
         created_at = COALESCE(first_tx_date, pa.created_at)
     WHERE pa.id = pa_id;
 END;
+$$;
+
+COMMENT ON FUNCTION update_portfolio_asset(bigint) IS 'Пересчитывает quantity и average_price для portfolio_asset на основе всех транзакций. Использует FIFO метод для расчета средней цены при продажах';

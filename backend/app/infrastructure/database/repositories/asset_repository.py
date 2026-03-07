@@ -175,5 +175,5 @@ class AssetRepository(BaseRepository):
         Returns:
             True если успешно
         """
-        result = self.client.rpc("update_asset_latest_price", {"p_asset_id": asset_id})
+        result = self.client.rpc("update_asset_latest_prices_batch", {"p_asset_ids": [asset_id]})
         return result is not False
