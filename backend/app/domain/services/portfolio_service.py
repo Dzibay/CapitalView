@@ -514,9 +514,8 @@ async def import_broker_portfolio(
                         qty = round(float(tx.get("quantity") or 0), 6)
                         tx_type = tx.get("transaction_type")
                         # Ключ уникальности: (portfolio_asset_id, date_with_time, type, price, quantity)
-                        existing_tx_keys.add((tx["portfolio_asset_id"], tx_date, tx_type, price, qty))
-                
-                logger.debug(f"Загружено {len(existing_tx_keys)} существующих транзакций для проверки дубликатов")
+                        tx_key = (tx["portfolio_asset_id"], tx_date, tx_type, price, qty)
+                        existing_tx_keys.add(tx_key)
 
                 # Загружаем существующие денежные операции
                 existing_ops = await table_select_async(
@@ -525,17 +524,18 @@ async def import_broker_portfolio(
                     filters={"portfolio_id": portfolio_id}
                 )
                 
-                logger.debug(f"Загружено {len(existing_ops)} существующих денежных операций из БД")
-                
                 for op in existing_ops:
-                    # Нормализуем дату до дня
-                    op_date = normalize_date_to_day_string(op["date"])
-                    if not op_date:
+                    # Нормализуем дату с временем для проверки дубликатов
+                    op_date_with_time = normalize_date_to_string(op["date"], include_time=True)
+                    op_date_day_only = normalize_date_to_day_string(op["date"])
+                    
+                    if not op_date_with_time and not op_date_day_only:
                         logger.warning(
                             f"Пропущена операция из-за невалидной даты (portfolio_id={op.get('portfolio_id')}, "
                             f"type={op.get('type')}, date={op.get('date')}): {op}"
                         )
                         continue
+                    
                     # Округляем amount до 2 знаков для денежных операций (копейки)
                     # Это решает проблему с разной точностью хранения в БД
                     amount = round(float(op.get("amount") or 0), 2)
@@ -545,11 +545,15 @@ async def import_broker_portfolio(
                     # Нормализуем asset_id: приводим к int или None
                     asset_id_raw = op.get("asset_id")
                     asset_id = int(asset_id_raw) if asset_id_raw is not None else None
-                    # Ключ уникальности: (portfolio_id, type, date, amount, asset_id)
-                    key = (op_portfolio_id, op_type, op_date, amount, asset_id)
-                    existing_ops_keys.add(key)
-
-                logger.debug(f"Найдено существующих: {len(existing_tx_keys)} транзакций, {len(existing_ops_keys)} операций")
+                    
+                    # Добавляем оба ключа для совместимости (с временем и без)
+                    # Это позволяет находить дубликаты независимо от того, как хранится дата
+                    if op_date_with_time:
+                        key_with_time = (op_portfolio_id, op_type, op_date_with_time, amount, asset_id)
+                        existing_ops_keys.add(key_with_time)
+                    if op_date_day_only:
+                        key_day_only = (op_portfolio_id, op_type, op_date_day_only, amount, asset_id)
+                        existing_ops_keys.add(key_day_only)
 
         # ========================
         # 3. Фильтруем и добавляем только новые транзакции брокера
@@ -595,9 +599,11 @@ async def import_broker_portfolio(
                 if not tx_date_parsed or not filter_datetime:
                     continue  # Пропускаем транзакции с невалидной датой
                 
-                # Сравниваем по timestamp (с временем) - включаем только транзакции ПОСЛЕ последней известной операции
+                # Сравниваем по timestamp (с временем) - включаем только транзакции СТРОГО ПОСЛЕ последней известной операции
                 if tx_date_parsed <= filter_datetime:
-                    continue  # Пропускаем транзакции до или в момент последней известной операции
+                    # Пропускаем транзакции до или в момент последней известной операции
+                    # Такие транзакции уже должны быть в БД и будут найдены в existing_tx_keys
+                    continue
 
             # Покупка / продажа / погашение (транзакции, которые изменяют количество актива)
             if tx_type in ("Buy", "Sell", "Redemption"):
@@ -719,12 +725,21 @@ async def import_broker_portfolio(
                 else:  # Redemption
                     tx_type_id = 3
                 
-                # УБРАНА ПРОВЕРКА ДУБЛИКАТОВ для транзакций при импорте от брокера
-                # Брокер может отправлять несколько транзакций с одинаковыми параметрами
-                # но разным временем (например, с разницей в 1 минуту), и все они должны быть учтены
+                # Проверяем дубликаты ПЕРЕД добавлением транзакции
                 # Используем полную дату с временем для различения транзакций в один день
-                # Добавляем в множество существующих только для отслеживания в рамках текущего импорта
                 tx_key = (pa_id, tx_date_normalized, tx_type_id, price, qty)
+                
+                # Если транзакция уже существует в БД или была добавлена в этом импорте - пропускаем
+                if tx_key in existing_tx_keys:
+                    logger.warning(
+                        f"⚠️ Дубликат транзакции пропущен: "
+                        f"pa_id={pa_id}, date={tx_date_normalized[:19]}, "
+                        f"type={tx_type_id}, price={price}, qty={qty}, isin={isin}"
+                    )
+                    continue
+                
+                # Добавляем в множество существующих для отслеживания в рамках текущего импорта
+                # ВАЖНО: Добавляем ДО добавления в new_tx, чтобы предотвратить дубликаты в рамках одного импорта
                 existing_tx_keys.add(tx_key)
                 affected_pa.add(pa_id)
 
@@ -782,10 +797,7 @@ async def import_broker_portfolio(
                     if op_date_parsed <= filter_datetime:
                         continue  # Пропускаем операции до или в момент последней известной операции
 
-                # Нормализуем дату с временем для денежных операций при импорте от брокера
-                # УБРАНА ПРОВЕРКА ДУБЛИКАТОВ: брокер может отправлять несколько операций с одинаковой суммой
-                # но разным временем (например, с разницей в 1 минуту), и все они должны быть учтены
-                # Используем полную дату с временем, чтобы различать операции
+                # Нормализуем дату с временем для проверки дубликатов (как в existing_ops_keys)
                 op_date_normalized = normalize_date_to_string(tx_date, include_time=True)
                 if not op_date_normalized:
                     # Если не удалось нормализовать с временем, пробуем без времени (для совместимости)
@@ -803,9 +815,19 @@ async def import_broker_portfolio(
                 op_type_id_int = int(op_type_id) if op_type_id else 0
                 asset_id_normalized = int(asset_id) if asset_id is not None else None
                 
-                # УБРАНА ПРОВЕРКА ДУБЛИКАТОВ: при импорте от брокера все операции должны быть добавлены
-                # даже если они имеют одинаковые параметры, так как брокер может отправлять несколько операций
-                # с одинаковой суммой, но разным временем (например, с разницей в 1 минуту)
+                # Проверяем дубликаты: используем тот же ключ, что и при загрузке существующих операций
+                # Проверяем как с временем, так и без (для совместимости со старыми данными)
+                op_key_with_time = (portfolio_id_int, op_type_id_int, op_date_normalized, amount, asset_id_normalized)
+                op_date_day_only = normalize_date_to_day_string(tx_date)
+                op_key_day_only = (portfolio_id_int, op_type_id_int, op_date_day_only, amount, asset_id_normalized) if op_date_day_only else None
+                
+                if op_key_with_time in existing_ops_keys or (op_key_day_only and op_key_day_only in existing_ops_keys):
+                    logger.debug(
+                        f"Пропущена денежная операция как дубликат: "
+                        f"portfolio_id={portfolio_id_int}, type={op_type_id_int}, "
+                        f"date={op_date_normalized}, amount={amount}, asset_id={asset_id_normalized}"
+                    )
+                    continue
                 
                 # Обновляем минимальную дату для денежных операций
                 if min_op_date is None or op_date_normalized < min_op_date:
@@ -873,9 +895,6 @@ async def import_broker_portfolio(
                                f"failed_count={failed_count}, transaction_ids count={len(tx_ids) if tx_ids else 0}, "
                                f"failed_transactions count={len(failed_tx)}")
                     
-                    if inserted_count > 0:
-                        logger.debug(f"Успешно добавлено {inserted_count} транзакций из {len(new_tx_sorted)}")
-                    
                     if failed_count > 0:
                         logger.warning(f"Пропущено {failed_count} транзакций из {len(new_tx_sorted)} из-за ошибок")
                         for failed in failed_tx:
@@ -917,7 +936,6 @@ async def import_broker_portfolio(
                 logger.warning(f"Всего пропущено транзакций из-за ошибок: {failed_count} из {len(new_tx_sorted)}")
 
         if new_ops:
-            logger.debug(f"Добавляем {len(new_ops)} новых денежных операций через batch...")
             try:
                 # Преобразуем данные для batch функции
                 operations_batch = []
@@ -961,24 +979,17 @@ async def import_broker_portfolio(
         # --- 7. Проверяем, есть ли данные для вставки ---
         if not new_tx and not new_ops:
             if has_connection:
-                logger.debug(
-                    f"Портфель '{portfolio_name}' связан с брокером, но новых транзакций и операций не найдено. "
-                    f"Обновляем last_sync_at."
-                )
                 await table_update_async(
                     "user_broker_connections",
                     {"last_sync_at": datetime.utcnow().isoformat()},
                     filters={"id": connection["id"]}
                 )
-            else:
-                logger.debug("Новых транзакций и операций не найдено")
             continue
 
         # ========================
         # 4. Пересчёт активов (только для затронутых активов)
         # ========================
         if affected_pa:
-            logger.debug(f"Пересчитываем {len(affected_pa)} активов...")
             # Выполняем пересчет параллельно для ускорения и снижения нагрузки
             # Ограничиваем количество одновременных запросов для избежания перегрузки
             semaphore = asyncio.Semaphore(5)  # Максимум 5 параллельных запросов
@@ -1008,31 +1019,48 @@ async def import_broker_portfolio(
         elif min_op_date:
             min_date = min_op_date
         
-        if min_date:
-            logger.debug(f"Обновляем историю портфеля с даты {min_date}...")
+        # Если были добавлены транзакции или операции, обновляем историю портфеля
+        # Также обновляем, если был инкрементальный импорт (filter_from_date установлен)
+        if min_date or (filter_from_date and (len(new_tx) > 0 or len(new_ops) > 0)):
+            # Если min_date не установлена, но был инкрементальный импорт, используем filter_from_date
+            if not min_date and filter_from_date:
+                if isinstance(filter_from_date, datetime):
+                    min_date = filter_from_date
+                elif isinstance(filter_from_date, str):
+                    min_date = parse_date(filter_from_date) or filter_from_date
+                else:
+                    min_date = filter_from_date
             
-            # Преобразуем дату в формат для SQL функции (YYYY-MM-DD)
-            if isinstance(min_date, str):
-                from_date_str = min_date[:10] if len(min_date) > 10 else min_date
-            elif hasattr(min_date, 'isoformat'):
-                from_date_str = min_date.isoformat()[:10]
+            if min_date:
+                # Преобразуем дату в формат для SQL функции (YYYY-MM-DD)
+                if isinstance(min_date, str):
+                    from_date_str = min_date[:10] if len(min_date) > 10 else min_date
+                elif isinstance(min_date, datetime):
+                    from_date_str = min_date.date().isoformat() if hasattr(min_date, 'date') else min_date.isoformat()[:10]
+                elif hasattr(min_date, 'isoformat'):
+                    from_date_str = min_date.isoformat()[:10]
+                else:
+                    from_date_str = str(min_date)[:10]
+                
+                # Обновляем позиции активов (portfolio_daily_positions)
+                try:
+                    await rpc_async("update_portfolio_positions_from_date", {
+                        "p_portfolio_id": portfolio_id,
+                        "p_from_date": from_date_str
+                    })
+                except Exception as e:
+                    logger.error(f'Ошибка обновления позиций активов: {e}', exc_info=True)
+                
+                # Обновляем значения портфеля (portfolio_daily_values)
+                try:
+                    await rpc_async("update_portfolio_values_from_date", {
+                        "p_portfolio_id": portfolio_id, 
+                        "p_from_date": from_date_str
+                    })
+                except Exception as e:
+                    logger.error(f'Ошибка обновления значений портфеля: {e}', exc_info=True)
             else:
-                from_date_str = str(min_date)[:10]
-            
-            # Примечание: rebuild_fifo_for_portfolio НЕ нужен, т.к. apply_transactions_batch
-            # уже создает FIFO-лоты правильно для покупок и обрабатывает продажи корректно.
-            # Rebuild удалил бы существующие лоты, что проблематично при инкрементальном импорте.
-            
-            # Обновляем позиции и значения
-            try:
-                await rpc_async("update_portfolio_positions_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": from_date_str})
-            except Exception as e:
-                logger.warning(f'Ошибка обновления позиций: {e}', exc_info=True)
-            
-            try:
-                await rpc_async("update_portfolio_values_from_date", {"p_portfolio_id": portfolio_id, "p_from_date": from_date_str})
-            except Exception as e:
-                logger.warning(f'Ошибка обновления значений: {e}', exc_info=True)
+                logger.warning(f"Не удалось определить дату для обновления портфеля {portfolio_id}")
 
         logger.info(f"Портфель '{portfolio_name}': добавлено {len(new_tx)} транзакций, {len(new_ops)} операций")
         

@@ -556,8 +556,18 @@ def get_portfolio_asset_info(portfolio_asset_id: int, user_id: str):
         # Добавляем информацию о портфелях
         portfolios_data = result.get("portfolios", [])
         for portfolio in portfolios_data:
-            portfolio_total = portfolio.get("portfolio_total_value", 0)
-            asset_value = portfolio.get("asset_value", 0)
+            # Обрабатываем случай, когда portfolio_total_value может быть None
+            portfolio_total = portfolio.get("portfolio_total_value") or 0
+            asset_value = portfolio.get("asset_value") or 0
+            
+            # Преобразуем в числа для безопасного сравнения
+            try:
+                portfolio_total = float(portfolio_total) if portfolio_total is not None else 0
+                asset_value = float(asset_value) if asset_value is not None else 0
+            except (ValueError, TypeError):
+                portfolio_total = 0
+                asset_value = 0
+            
             if portfolio_total > 0:
                 portfolio["percentage_in_portfolio"] = round((asset_value / portfolio_total) * 100, 2)
             else:

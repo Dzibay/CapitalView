@@ -97,7 +97,21 @@ async def rpc_async(fn_name: str, params: dict):
                             # Пустой список - оставляем как есть (asyncpg обработает)
                             pg_params[key] = value
                     else:
-                        pg_params[key] = value
+                        # Обрабатываем строковые даты для параметров, которые ожидают date
+                        # Проверяем, является ли параметр датой (по имени параметра или значению)
+                        if isinstance(value, str) and ('date' in key.lower() or 'from_date' in key.lower() or 'to_date' in key.lower()):
+                            # Пытаемся распарсить строку как дату
+                            parsed_date = parse_date(value)
+                            if parsed_date:
+                                # Если это timestamp, берем только дату
+                                if isinstance(parsed_date, datetime):
+                                    pg_params[key] = parsed_date.date()
+                                else:
+                                    pg_params[key] = parsed_date
+                            else:
+                                pg_params[key] = value
+                        else:
+                            pg_params[key] = value
                 
                 # Формируем вызов функции
                 param_names = list(pg_params.keys())
@@ -284,8 +298,11 @@ def _prepare_value(value, table: str = None, column: str = None):
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False)
     
-    # Если это уже date/datetime, оставляем как есть
-    if isinstance(value, (date, datetime)):
+    # Если это уже date/datetime, обрезаем микросекунды для единообразия
+    if isinstance(value, datetime):
+        # Убираем микросекунды, чтобы избежать проблем с дубликатами
+        return value.replace(microsecond=0)
+    if isinstance(value, date):
         return value
     
     # Если это строка

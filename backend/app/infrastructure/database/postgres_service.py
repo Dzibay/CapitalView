@@ -324,8 +324,11 @@ def _prepare_value_sync(value, table: str = None, column: str = None):
     if isinstance(value, (dict, list)):
         return Json(value)
     
-    # Если это уже date/datetime, оставляем как есть
-    if isinstance(value, (date, datetime)):
+    # Если это уже date/datetime, обрезаем микросекунды для единообразия
+    if isinstance(value, datetime):
+        # Убираем микросекунды, чтобы избежать проблем с дубликатами
+        return value.replace(microsecond=0)
+    if isinstance(value, date):
         return value
     
     # Если это строка

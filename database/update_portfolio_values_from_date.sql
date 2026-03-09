@@ -21,7 +21,7 @@ BEGIN
         INTO v_base_balance
         FROM cash_operations co
         WHERE co.portfolio_id = p_portfolio_id
-          AND co.date < p_from_date;
+          AND co.date::date < p_from_date;
     END IF;
     
     v_base_balance := COALESCE(v_base_balance, 0);
@@ -51,7 +51,7 @@ BEGIN
                 WHERE portfolio_id = p_portfolio_id
             ), '9999-12-31'::date),
             COALESCE((
-                SELECT min(co.date)
+                SELECT min(co.date::date)
                 FROM cash_operations co
                 WHERE co.portfolio_id = p_portfolio_id
             ), '9999-12-31'::date)
@@ -91,7 +91,7 @@ BEGIN
     
     cash_operations_daily AS (
         SELECT
-            co.date AS operation_date,
+            co.date::date AS operation_date,
             SUM(COALESCE(co.amount_rub, co.amount)) AS daily_amount
         FROM cash_operations co
         WHERE co.portfolio_id = p_portfolio_id
@@ -148,7 +148,7 @@ BEGIN
     ) OR EXISTS (
         SELECT 1 FROM cash_operations co 
         WHERE co.portfolio_id = p_portfolio_id 
-          AND co.date = d.report_date
+          AND co.date::date = d.report_date
     );
     
     RETURN true;

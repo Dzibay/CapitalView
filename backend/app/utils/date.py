@@ -27,9 +27,9 @@ def parse_date(date_value: Union[str, datetime, date, None]) -> Optional[datetim
     if date_value is None:
         return None
     
-    # Если уже datetime, возвращаем как есть
+    # Если уже datetime, убираем микросекунды для единообразия
     if isinstance(date_value, datetime):
-        return date_value
+        return date_value.replace(microsecond=0)
     
     # Если date, преобразуем в datetime
     if isinstance(date_value, date) and not isinstance(date_value, datetime):
@@ -41,10 +41,10 @@ def parse_date(date_value: Union[str, datetime, date, None]) -> Optional[datetim
         if not date_str or date_str == '-':
             return None
         
-        # Нормализуем формат даты для корректного парсинга
-        # Исправляем неполные миллисекунды/микросекунды (например, .9 -> .900000)
+        # Убираем дробную часть (микросекунды) из строки даты для единообразия
+        # Это важно для корректного сравнения ключей транзакций
         if '.' in date_str and 'T' in date_str:
-            # Находим позицию точки и следующего за ней символа
+            # Находим позицию точки и удаляем дробную часть до секунд
             dot_pos = date_str.find('.')
             if dot_pos != -1:
                 # Ищем конец дробной части (до 'Z', '+' или конца строки)
@@ -53,20 +53,10 @@ def parse_date(date_value: Union[str, datetime, date, None]) -> Optional[datetim
                     pos = date_str.find(char, dot_pos)
                     if pos != -1:
                         end_pos = min(end_pos, pos)
+                        break
                 
-                # Извлекаем дробную часть
-                fractional = date_str[dot_pos + 1:end_pos]
-                if fractional:
-                    # Нормализуем до 6 знаков (микросекунды)
-                    # Если меньше 6 знаков, дополняем нулями
-                    if len(fractional) < 6:
-                        fractional = fractional.ljust(6, '0')
-                    elif len(fractional) > 6:
-                        # Если больше 6 знаков, обрезаем до 6
-                        fractional = fractional[:6]
-                    
-                    # Собираем строку обратно
-                    date_str = date_str[:dot_pos + 1] + fractional + date_str[end_pos:]
+                # Удаляем дробную часть полностью (оставляем только до точки)
+                date_str = date_str[:dot_pos] + date_str[end_pos:]
         
         try:
             # Пробуем ISO формат с timezone
@@ -74,11 +64,13 @@ def parse_date(date_value: Union[str, datetime, date, None]) -> Optional[datetim
                 # Заменяем Z на +00:00 для корректного парсинга
                 normalized = date_str.replace('Z', '+00:00')
                 dt = datetime.fromisoformat(normalized)
-                return dt
+                # Убираем микросекунды для единообразия
+                return dt.replace(microsecond=0)
             else:
                 # Пробуем ISO формат без времени
                 dt = datetime.fromisoformat(date_str)
-                return dt
+                # Убираем микросекунды для единообразия
+                return dt.replace(microsecond=0)
         except ValueError:
             try:
                 # Пробуем формат YYYY-MM-DD
@@ -135,7 +127,11 @@ def normalize_date_to_string(
     
     # Форматируем
     if include_time and isinstance(dt, datetime):
-        return dt.isoformat()
+        # Нормализуем формат: всегда БЕЗ микросекунд для единообразия
+        # Это важно для корректного сравнения ключей транзакций
+        # Обрезаем микросекунды, оставляя только секунды
+        dt_without_microseconds = dt.replace(microsecond=0)
+        return dt_without_microseconds.isoformat()
     else:
         # Возвращаем только дату
         if isinstance(dt, datetime):

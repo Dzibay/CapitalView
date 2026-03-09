@@ -19,7 +19,7 @@ DECLARE
     v_quote_to_rub_rate numeric(20,6);
     v_amount_in_quote numeric(20,6);
     v_portfolio_id bigint;
-    v_operation_date date;
+    v_operation_date timestamp without time zone;
     v_asset_id bigint;
     v_operation_type int;
     v_portfolio_asset_id bigint;
@@ -27,7 +27,7 @@ DECLARE
     v_op_type_id bigint;
     v_portfolio_exists boolean;
     v_op_record RECORD;
-    v_first_buy_date date;
+    v_first_buy_date timestamp without time zone;
 BEGIN
     IF p_operations IS NULL OR jsonb_array_length(p_operations) = 0 THEN
         RETURN jsonb_build_object(
@@ -80,7 +80,8 @@ BEGIN
             v_operation_type := v_op_record.operation_type;
             v_asset_id := v_op_record.asset_id;
             v_portfolio_asset_id := v_op_record.portfolio_asset_id;
-            v_operation_date := v_op_record.operation_date::date;
+            -- Сохраняем полную дату с временем (не обрезаем до date)
+            v_operation_date := v_op_record.operation_date;
 
             -- Если asset_id не передан, но есть portfolio_asset_id, получаем asset_id из portfolio_assets
             IF v_asset_id IS NULL AND v_portfolio_asset_id IS NOT NULL THEN
@@ -107,7 +108,7 @@ BEGIN
             -- ВАЛИДАЦИЯ: Если операция связана с активом (Commission, Tax, Dividend, Coupon),
             -- Операции без актива (Deposit, Withdraw) можно создавать в любое время
             IF v_asset_id IS NOT NULL AND v_operation_type IN (3, 4, 7, 8) THEN
-                SELECT min(t.transaction_date::date)
+                SELECT min(t.transaction_date)
                 INTO v_first_buy_date
                 FROM transactions t
                 JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
@@ -121,6 +122,7 @@ BEGIN
                 END IF;
                 
                 -- Если дата операции раньше первой покупки, запрещаем
+                -- Сравниваем timestamp с timestamp (сохраняем время)
                 IF v_operation_date < v_first_buy_date THEN
                     RAISE EXCEPTION 'Невозможно создать операцию на дату % раньше первой покупки актива (%). Сначала создайте транзакцию покупки.', 
                         v_operation_date, v_first_buy_date;
@@ -144,7 +146,7 @@ BEGIN
                     SELECT price INTO v_currency_to_quote_rate
                     FROM asset_prices
                     WHERE asset_id = v_op_record.currency_id
-                      AND trade_date <= v_operation_date
+                      AND trade_date <= v_operation_date::date
                     ORDER BY trade_date DESC
                     LIMIT 1;
                     
@@ -164,7 +166,7 @@ BEGIN
                     SELECT price INTO v_quote_to_rub_rate
                     FROM asset_prices
                     WHERE asset_id = v_currency_quote_asset_id
-                      AND trade_date <= v_operation_date
+                      AND trade_date <= v_operation_date::date
                     ORDER BY trade_date DESC
                     LIMIT 1;
                     
@@ -184,7 +186,7 @@ BEGIN
                     SELECT price INTO v_currency_rate
                     FROM asset_prices
                     WHERE asset_id = v_op_record.currency_id
-                      AND trade_date <= v_operation_date
+                      AND trade_date <= v_operation_date::date
                     ORDER BY trade_date DESC
                     LIMIT 1;
                     
@@ -266,7 +268,7 @@ BEGIN
                 BEGIN
                     PERFORM update_portfolio_asset_positions_from_date(
                         v_portfolio_asset_id,
-                        v_operation_date - 1
+                        (v_operation_date - INTERVAL '1 day')::date
                     );
                 EXCEPTION WHEN OTHERS THEN
                     RAISE WARNING 'Ошибка при обновлении позиций актива %: %', v_portfolio_asset_id, SQLERRM;
@@ -287,7 +289,7 @@ BEGIN
         BEGIN
             PERFORM update_portfolio_values_from_date(
                 v_portfolio_id,
-                v_operation_date - 1
+                (v_operation_date - INTERVAL '1 day')::date
             );
         EXCEPTION WHEN OTHERS THEN
             RAISE WARNING 'Ошибка при обновлении истории портфеля %: %', v_portfolio_id, SQLERRM;
