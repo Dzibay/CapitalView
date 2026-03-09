@@ -80,16 +80,47 @@ def create_asset(email: str, data: dict):
         # RPC функция возвращает text (JSON строка), нужно распарсить
         if isinstance(result, str):
             try:
-                return json.loads(result)
+                parsed_result = json.loads(result)
             except json.JSONDecodeError as e:
                 logger.error(f"Ошибка при парсинге JSON из RPC: {e}, result: {result}")
                 return {"success": False, "error": f"Ошибка при парсинге ответа от RPC: {str(e)}"}
         elif isinstance(result, dict):
-            return result
+            parsed_result = result
         elif isinstance(result, list) and len(result) > 0:
-            return result[0]
+            parsed_result = result[0]
         else:
             return {"success": False, "error": f"Некорректный формат ответа от RPC: {type(result)}"}
+        
+        # Создаем операцию пополнения, если запрошено и есть транзакция покупки
+        create_deposit_operation = data.get("create_deposit_operation", False)
+        if create_deposit_operation and quantity > 0 and price > 0:
+            try:
+                from app.domain.services.operations_service import create_operation
+                
+                asset_info = parsed_result.get("asset", {})
+                asset_id_from_result = asset_info.get("asset_id")
+                portfolio_asset_id_from_result = asset_info.get("portfolio_asset_id")
+                
+                if asset_id_from_result and portfolio_id:
+                    deposit_amount = float(quantity * price)
+                    # Для операции пополнения всегда используем RUB, так как это пополнение счета в рублях
+                    # Важно: currency_id=1 (RUB) независимо от валюты актива, чтобы сумма не конвертировалась
+                    create_operation(
+                        user_id=str(user_id),
+                        portfolio_id=portfolio_id,
+                        operation_type=5,  # Deposit
+                        amount=deposit_amount,
+                        currency_id=1,  # RUB - операция пополнения всегда в рублях, независимо от валюты актива
+                        operation_date=transaction_date,
+                        asset_id=asset_id_from_result,  # Привязываем к активу для удаления при удалении актива
+                        portfolio_asset_id=portfolio_asset_id_from_result,  # Привязываем к портфельному активу
+                        create_deposit_operation=False  # Не создаем рекурсивно
+                    )
+            except Exception as e:
+                logger.warning(f"Ошибка при создании операции пополнения для актива: {e}", exc_info=True)
+                # Не прерываем выполнение, так как актив уже создан
+        
+        return parsed_result
 
     except Exception as e:
         logger.error(f"Ошибка при добавлении актива: {e}", exc_info=True)

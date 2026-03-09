@@ -324,21 +324,11 @@ const submitForm = async () => {
   if (!props.onSave) return
   saving.value = true
   try {
-    // Сначала создаем операцию пополнения на сумму покупки, если галочка включена и есть покупка
-    // skipReload=true, так как dashboard обновится после создания актива
-    if (createDepositOperation.value && form.quantity > 0 && form.average_price > 0) {
-      const depositAmount = form.quantity * form.average_price
-      await transactionsStore.addOperation({
-        portfolio_id: form.portfolio_id,
-        operation_type: 5, // Пополнение
-        amount: depositAmount,
-        operation_date: form.date,
-        currency_id: 47 // RUB по умолчанию
-      }, true) // skipReload=true - dashboard обновится после создания актива
-    }
-    
-    // Затем создаем актив (он обновит dashboard один раз после всех операций)
-    await props.onSave({ ...form })  // ждём промис от родителя
+    // Создаем актив с флагом создания операции пополнения
+    await props.onSave({ 
+      ...form,
+      create_deposit_operation: createDepositOperation.value && form.quantity > 0 && form.average_price > 0
+    })  // ждём промис от родителя
     
     emit('close')
   } catch (err) {

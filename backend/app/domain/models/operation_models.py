@@ -24,6 +24,9 @@ class CreateOperationRequest(BaseModel):
     # Поля для выплат (Dividend/Coupon)
     dividend_yield: Optional[float] = Field(None, description="Дивидендная доходность (для Dividend/Coupon, опционально, рассчитывается автоматически)")
     
+    # Флаг для создания операции пополнения
+    create_deposit_operation: bool = Field(False, description="Создать операцию пополнения для комиссии/налога (только для operation_type=7 или 8)")
+    
     @field_validator('operation_type', mode='before')
     @classmethod
     def parse_operation_type(cls, v):

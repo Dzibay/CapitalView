@@ -174,7 +174,7 @@ watch(() => operationType.value, (newType) => {
 
 // Валюты
 const useCustomCurrency = ref(false)
-const currencyId = ref(47) // RUB по умолчанию
+const currencyId = ref(1) // RUB по умолчанию
 const createAssetFromCurrency = ref(false) // Автоматически создать актив из валюты
 
 // Использование рыночной цены для транзакций
@@ -315,8 +315,8 @@ const operationsCount = computed(() => {
 watch([amount, assetPrice, assetQuantity, currencyId, useCustomCurrency, operationType], () => {
   if (isPayout.value && amount.value && assetPrice.value && assetQuantity.value) {
     // Получаем валюту актива
-    const assetCurrencyId = props.asset?.quote_asset_id || 47 // По умолчанию RUB
-    const payoutCurrencyId = useCustomCurrency.value ? currencyId.value : 47
+    const assetCurrencyId = props.asset?.quote_asset_id || 1 // По умолчанию RUB
+    const payoutCurrencyId = useCustomCurrency.value ? currencyId.value : 1
     
     // Получаем тикеры валют из referenceData
     const refData = dashboardStore.referenceData
@@ -1037,21 +1037,7 @@ const handleSubmit = async () => {
         transactionType = 3  // Redemption
       }
       
-      // Сначала создаем операцию пополнения на сумму покупки, если галочка включена
-      // skipReload=true, так как dashboard обновится после создания транзакции
-      if (createDepositOperation.value && operationType.value === 1) {
-        const portfolioId = props.asset?.portfolio_id || getPortfolioId()
-        const depositAmount = quantity.value * price.value
-        await transactionsStore.addOperation({
-          portfolio_id: portfolioId,
-          operation_type: 5, // Пополнение
-          amount: depositAmount,
-          operation_date: date.value,
-          currency_id: 47 // RUB по умолчанию
-        }, true) // skipReload=true - dashboard обновится после создания транзакции
-      }
-      
-      // Затем создаем транзакцию (она обновит dashboard один раз после всех операций)
+      // Создаем транзакцию с флагом создания операции пополнения (если нужно)
       await props.onSubmit({
         asset_id: props.asset.asset_id,
         portfolio_asset_id: props.asset.portfolio_asset_id,
@@ -1059,7 +1045,8 @@ const handleSubmit = async () => {
         quantity: quantity.value,
         price: price.value,
         transaction_date: date.value,
-        date: date.value
+        date: date.value,
+        create_deposit_operation: createDepositOperation.value && operationType.value === 1
       })
     } else if (mode.value === 'recurring') {
       // Для повторяющихся операций используем batch API
@@ -1073,7 +1060,7 @@ const handleSubmit = async () => {
         start_date: startDate.value,
         end_date: endDate.value,
         day_of_month: dayOfMonth.value,
-        currency_id: useCustomCurrency.value ? currencyId.value : 47
+        currency_id: useCustomCurrency.value ? currencyId.value : 1
       }
       
       // Добавляем asset_id если есть
@@ -1091,42 +1078,14 @@ const handleSubmit = async () => {
         batchData.dividend_yield = dividendYield.value
       }
       
-      // Сначала создаем основные операции через batch API
-      // Создаем операции дивидендов по первоначальному активу (props.asset.asset_id) через batch API
-      // Это важно: операции дивидендов всегда привязаны к активу, по которому выплачиваются дивиденды
-      // skipReload=true если будут создаваться операции пополнения - dashboard обновится один раз после всех операций
-      const willCreateDeposits = createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)
-      const batchResult = await transactionsStore.addOperationsBatch(batchData, willCreateDeposits)
-      
-      // Затем создаем операции пополнения для каждой созданной операции (комиссия/налог), если галочка включена
-      // Используем даты из ответа batch API, чтобы гарантировать точное совпадение дат
-      if (willCreateDeposits) {
-        const depositAmount = Math.abs(amount.value)
-        // Формат ответа: { success: true, count: N, created: [{ date: "...", operation_id: ... }, ...] }
-        // success_response объединяет data с response, поэтому created будет напрямую в batchResult
-        const createdOperations = batchResult?.created || batchResult?.data?.created || []
-        
-        // Создаем операции пополнения для каждой даты из batch операций
-        for (const op of createdOperations) {
-          const opDate = op.date || op.operation_date
-          if (opDate) {
-            await transactionsStore.addOperation({
-              portfolio_id: portfolioId,
-              operation_type: 5, // Пополнение
-              amount: depositAmount,
-              operation_date: opDate,
-              currency_id: useCustomCurrency.value ? currencyId.value : 47
-            }, true) // skipReload=true - dashboard обновится один раз после всех операций
-          }
-        }
-        
-        // Перезагружаем dashboard один раз после создания всех операций (batch + пополнения)
-        if (createdOperations.length > 0) {
-          uiStore.setLoading(true)
-          await dashboardStore.reloadDashboard()
-          uiStore.setLoading(false)
-        }
+      // Добавляем флаг создания операций пополнения для комиссий/налогов
+      if (createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)) {
+        batchData.create_deposit_operation = true
       }
+      
+      // Создаем операции через batch API
+      // Операции пополнения будут созданы автоматически на сервере, если установлен флаг
+      await transactionsStore.addOperationsBatch(batchData, false)
       
       // Если нужно создать актив из валюты для повторяющихся операций
       // Это создает транзакции покупки актива валюты (например, BTC) для каждой даты выплаты дивидендов
@@ -1162,25 +1121,13 @@ const handleSubmit = async () => {
       // Получаем portfolio_id из актива или портфелей
       const portfolioId = props.asset?.portfolio_id || getPortfolioId()
       
-      // Сначала создаем операцию пополнения на сумму операции (комиссия/налог), если галочка включена
-      // skipReload=true, так как dashboard обновится после создания основной операции
-      const willCreateDeposit = createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)
-      if (willCreateDeposit) {
-        await transactionsStore.addOperation({
-          portfolio_id: portfolioId,
-          operation_type: 5, // Пополнение
-          amount: Math.abs(amount.value),
-          operation_date: date.value,
-          currency_id: useCustomCurrency.value ? currencyId.value : 47
-        }, true) // skipReload=true - dashboard обновится после создания основной операции
-      }
-      
       const operationData = {
         portfolio_id: portfolioId,
         operation_type: operationType.value,
         amount: amount.value,
         operation_date: date.value,
-        currency_id: useCustomCurrency.value ? currencyId.value : 47 // Выбранная валюта или RUB по умолчанию
+        currency_id: useCustomCurrency.value ? currencyId.value : 1, // Выбранная валюта или RUB по умолчанию
+        create_deposit_operation: createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)
       }
       
       // Добавляем asset_id если есть
@@ -1198,8 +1145,7 @@ const handleSubmit = async () => {
         operationData.dividend_yield = dividendYield.value
       }
       
-      // Затем создаем основную операцию (она обновит dashboard один раз после всех операций)
-      // skipReload=false для последней операции - обновим dashboard один раз
+      // Создаем операцию (она обновит dashboard один раз после всех операций)
       await transactionsStore.addOperation(operationData, false) // skipReload=false - это последняя операция, обновим dashboard
       
       // Если нужно создать актив из валюты для одиночной операции

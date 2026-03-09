@@ -78,12 +78,16 @@ def create_transaction(
     transaction_type: int,   # 1 = buy, 2 = sell, 3 = redemption
     quantity: float,
     price: float,
-    transaction_date: str
+    transaction_date: str,
+    create_deposit_operation: bool = False
 ):
     """
     Единственный разрешённый способ создания транзакций.
     Использует apply_transactions_batch для единообразия.
     FIFO + realized_pnl считаются в БД.
+    
+    Args:
+        create_deposit_operation: Если True и transaction_type=1 (Buy), создает операцию пополнения
     """
     from datetime import datetime
     
@@ -148,6 +152,37 @@ def create_transaction(
     # Примечание: apply_transactions_batch уже обновляет историю, но update_portfolio_asset
     # обновляет агрегированные данные актива (quantity, average_price и т.д.)
     rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
+
+    # 4️⃣ Создаем операцию пополнения, если запрошено (только для покупки)
+    if create_deposit_operation and transaction_type == 1:
+        from app.domain.services.operations_service import create_operation
+        
+        # Получаем portfolio_id из portfolio_asset_id
+        pa_data = table_select(
+            "portfolio_assets",
+            select="portfolio_id",
+            filters={"id": portfolio_asset_id},
+            limit=1
+        )
+        
+        if pa_data:
+            portfolio_id = pa_data[0].get("portfolio_id")
+            deposit_amount = float(quantity * price)
+            
+            try:
+                create_operation(
+                    user_id=str(user_id),
+                    portfolio_id=portfolio_id,
+                    operation_type=5,  # Deposit
+                    amount=deposit_amount,
+                    currency_id=1,  # RUB - операция пополнения всегда в рублях, независимо от валюты актива
+                    operation_date=transaction_date_str,
+                    asset_id=asset_id,  # Привязываем к активу для удаления при удалении актива
+                    portfolio_asset_id=portfolio_asset_id  # Привязываем к портфельному активу
+                )
+            except Exception as e:
+                logger.warning(f"Ошибка при создании операции пополнения для транзакции {tx_id}: {e}", exc_info=True)
+                # Не прерываем выполнение, так как транзакция уже создана
 
     return tx_id
 

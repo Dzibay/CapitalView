@@ -55,7 +55,8 @@ def create_operation(
     asset_id: Optional[int] = None,
     quantity: Optional[float] = None,
     price: Optional[float] = None,
-    dividend_yield: Optional[float] = None
+    dividend_yield: Optional[float] = None,
+    create_deposit_operation: bool = False
 ):
     """
     Создает операцию по активу.
@@ -133,7 +134,8 @@ def create_operation(
             transaction_type=transaction_type,
             quantity=quantity,
             price=price,
-            transaction_date=operation_date
+            transaction_date=operation_date,
+            create_deposit_operation=create_deposit_operation and operation_type == 1  # Только для покупки
         )
         
         return {"operation_id": tx_id, "type": "transaction"}
@@ -147,6 +149,7 @@ def create_operation(
         "currency_id": currency_id,
         "operation_date": operation_date,
         "asset_id": asset_id,
+        "portfolio_asset_id": portfolio_asset_id,
         "dividend_yield": float(dividend_yield) if dividend_yield is not None else None
     }]
     
@@ -166,6 +169,29 @@ def create_operation(
         raise Exception("Операция не была создана")
     
     op_id = op_ids[0]
+    
+    # Создаем операцию пополнения для комиссии/налога, если запрошено
+    if create_deposit_operation and operation_type in [7, 8]:  # Commission или Tax
+        try:
+            deposit_amount = abs(float(amount))
+            # Операция пополнения привязана к активу для удаления при удалении актива
+            # Важно: currency_id=1 (RUB) для операций пополнения, чтобы сумма не конвертировалась
+            create_operation(
+                user_id=user_id,
+                portfolio_id=portfolio_id,
+                operation_type=5,  # Deposit
+                amount=deposit_amount,
+                currency_id=1,  # RUB - операция пополнения всегда в рублях
+                operation_date=operation_date,
+                asset_id=asset_id,  # Привязываем к активу для удаления при удалении актива
+                portfolio_asset_id=portfolio_asset_id,  # Привязываем к портфельному активу
+                create_deposit_operation=False  # Не создаем рекурсивно
+            )
+        except Exception as e:
+            from app.core.logging import get_logger
+            logger = get_logger(__name__)
+            logger.warning(f"Ошибка при создании операции пополнения для операции {op_id}: {e}", exc_info=True)
+            # Не прерываем выполнение, так как основная операция уже создана
     
     return {"operation_id": op_id, "type": "cash_operation"}
 

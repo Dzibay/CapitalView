@@ -85,7 +85,8 @@ async def add_operation_route(
             asset_id=data.asset_id,
             quantity=data.quantity,
             price=data.price,
-            dividend_yield=data.dividend_yield
+            dividend_yield=data.dividend_yield,
+            create_deposit_operation=getattr(data, 'create_deposit_operation', False)
         )
         
         return success_response(

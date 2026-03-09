@@ -14,6 +14,7 @@ class CreateTransactionRequest(BaseModel):
     quantity: float = Field(..., gt=0, description="Количество")
     price: float = Field(..., gt=0, description="Цена за единицу")
     transaction_date: Union[datetime, str] = Field(..., description="Дата транзакции")
+    create_deposit_operation: bool = Field(False, description="Создать операцию пополнения для транзакции покупки (только для transaction_type=1)")
     
     @field_validator('transaction_type', mode='before')
     @classmethod

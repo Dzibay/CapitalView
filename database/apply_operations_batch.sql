@@ -63,6 +63,7 @@ BEGIN
                 (op->>'operation_date')::date::timestamp without time zone
         END as operation_date,
         (op->>'asset_id')::bigint as asset_id,
+        (op->>'portfolio_asset_id')::bigint as portfolio_asset_id,
         (op->>'dividend_yield')::numeric as dividend_yield,
         op as original_json
     FROM jsonb_array_elements(p_operations) op
@@ -78,7 +79,15 @@ BEGIN
             v_portfolio_id := v_op_record.portfolio_id;
             v_operation_type := v_op_record.operation_type;
             v_asset_id := v_op_record.asset_id;
+            v_portfolio_asset_id := v_op_record.portfolio_asset_id;
             v_operation_date := v_op_record.operation_date::date;
+
+            -- Если asset_id не передан, но есть portfolio_asset_id, получаем asset_id из portfolio_assets
+            IF v_asset_id IS NULL AND v_portfolio_asset_id IS NOT NULL THEN
+                SELECT asset_id INTO v_asset_id
+                FROM portfolio_assets
+                WHERE id = v_portfolio_asset_id;
+            END IF;
 
             SELECT EXISTS(SELECT 1 FROM portfolios WHERE id = v_portfolio_id AND user_id = v_op_record.user_id)
             INTO v_portfolio_exists;

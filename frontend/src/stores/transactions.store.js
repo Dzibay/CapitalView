@@ -7,13 +7,13 @@ import { useUIStore } from './ui.store'
 
 export const useTransactionsStore = defineStore('transactions', {
   actions: {
-    async addTransaction({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date, transaction_date }) {
+    async addTransaction({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date, transaction_date, create_deposit_operation = false }) {
       const dashboardStore = useDashboardStore()
       
       try {
         // Используем transaction_date если есть, иначе date
         const txDate = transaction_date || date
-        await transactionsService.addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, txDate)
+        await transactionsService.addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, txDate, create_deposit_operation)
         // Обновляем dashboard_data в фоне без показа загрузочного экрана
         dashboardStore.reloadDashboard(false).catch(err => {
           if (import.meta.env.VITE_APP_DEV) {

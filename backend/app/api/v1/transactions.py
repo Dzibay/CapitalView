@@ -81,6 +81,7 @@ async def add_transaction_route(
         quantity=data.quantity,
         price=data.price,
         transaction_date=transaction_date_str,
+        create_deposit_operation=getattr(data, 'create_deposit_operation', False)
     )
 
     return success_response(
