@@ -188,12 +188,16 @@ export const useDashboardStore = defineStore('dashboard', {
     addTransactions(transactionsArray) {
       if (Array.isArray(transactionsArray)) {
         // Если транзакции еще не загружены, заменяем массив
-        // Если уже загружены, добавляем к существующим (для обновления)
+        // Если уже загружены, добавляем к существующим, избегая дубликатов
         if (this.transactionsLoaded && this.transactions.length > 0) {
-          this.transactions = [
-            ...this.transactions,
-            ...transactionsArray
-          ]
+          const existingIds = new Set(this.transactions.map(t => t.id || t.transaction_id))
+          const newTransactions = transactionsArray.filter(t => !existingIds.has(t.id || t.transaction_id))
+          if (newTransactions.length > 0) {
+            this.transactions = [
+              ...this.transactions,
+              ...newTransactions
+            ]
+          }
         } else {
           this.transactions = transactionsArray
         }
@@ -205,12 +209,16 @@ export const useDashboardStore = defineStore('dashboard', {
     addOperations(operationsArray) {
       if (Array.isArray(operationsArray)) {
         // Если операции еще не загружены, заменяем массив
-        // Если уже загружены, добавляем к существующим (для обновления)
+        // Если уже загружены, добавляем к существующим, избегая дубликатов
         if (this.operationsLoaded && this.operations.length > 0) {
-          this.operations = [
-            ...this.operations,
-            ...operationsArray
-          ]
+          const existingIds = new Set(this.operations.map(op => op.id || op.cash_operation_id || op.operation_id))
+          const newOperations = operationsArray.filter(op => !existingIds.has(op.id || op.cash_operation_id || op.operation_id))
+          if (newOperations.length > 0) {
+            this.operations = [
+              ...this.operations,
+              ...newOperations
+            ]
+          }
         } else {
           this.operations = operationsArray
         }

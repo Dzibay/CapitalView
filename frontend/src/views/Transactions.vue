@@ -78,9 +78,8 @@ const loadOperations = async () => {
     isLoadingOperations.value = true
     const response = await operationsService.getOperations({ limit: 2000 })
     const operationsList = response?.operations || response || []
-    // Обновляем операции в store
-    dashboardStore.operations = operationsList
-    dashboardStore.operationsLoaded = true
+    // Обновляем операции в store через метод addOperations (избегает дубликатов)
+    dashboardStore.addOperations(operationsList)
   } catch (err) {
     if (import.meta.env.VITE_APP_DEV) {
       console.error('Ошибка загрузки операций:', err)

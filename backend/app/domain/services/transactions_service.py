@@ -2,6 +2,7 @@
 Доменный сервис для работы с транзакциями.
 Перенесено из app/services/transactions_service.py
 """
+from typing import Optional
 from app.infrastructure.database.postgres_service import table_select, table_insert, rpc
 from app.core.logging import get_logger
 
@@ -191,16 +192,17 @@ def update_transaction(
     *,
     transaction_id: int,
     user_id: int,
-    portfolio_asset_id: int,
-    asset_id: int,
-    transaction_type: int,
-    quantity: float,
-    price: float,
-    transaction_date: str
+    portfolio_asset_id: Optional[int] = None,
+    asset_id: Optional[int] = None,
+    transaction_type: Optional[int] = None,
+    quantity: Optional[float] = None,
+    price: Optional[float] = None,
+    transaction_date: Optional[str] = None
 ):
     """
     Обновляет существующую транзакцию.
     Удаляет старую транзакцию и создает новую через create_transaction (которая использует apply_transactions_batch).
+    Если параметр не передан, используется значение из существующей транзакции.
     """
     from datetime import datetime
     
@@ -218,6 +220,45 @@ def update_transaction(
     old_tx = existing_tx[0]
     old_portfolio_asset_id = old_tx.get("portfolio_asset_id")
     old_transaction_date = old_tx.get("transaction_date")
+    
+    # Используем переданные значения или значения из существующей транзакции
+    final_portfolio_asset_id = portfolio_asset_id if portfolio_asset_id is not None else old_portfolio_asset_id
+    final_transaction_type = transaction_type if transaction_type is not None else old_tx.get("transaction_type")
+    final_quantity = quantity if quantity is not None else old_tx.get("quantity")
+    final_price = price if price is not None else old_tx.get("price")
+    final_transaction_date = transaction_date if transaction_date is not None else old_transaction_date
+    
+    # Получаем asset_id из portfolio_asset_id, если не передан
+    if asset_id is None:
+        if final_portfolio_asset_id:
+            pa_data = table_select(
+                "portfolio_assets",
+                select="asset_id",
+                filters={"id": final_portfolio_asset_id},
+                limit=1
+            )
+            if pa_data:
+                final_asset_id = pa_data[0].get("asset_id")
+            else:
+                raise Exception(f"Портфельный актив {final_portfolio_asset_id} не найден")
+        else:
+            raise Exception("Необходимо указать portfolio_asset_id или asset_id")
+    else:
+        final_asset_id = asset_id
+    
+    # Валидация обязательных параметров
+    if final_portfolio_asset_id is None:
+        raise Exception("portfolio_asset_id обязателен")
+    if final_asset_id is None:
+        raise Exception("asset_id обязателен")
+    if final_transaction_type is None:
+        raise Exception("transaction_type обязателен")
+    if final_quantity is None:
+        raise Exception("quantity обязателен")
+    if final_price is None:
+        raise Exception("price обязателен")
+    if final_transaction_date is None:
+        raise Exception("transaction_date обязателен")
     
     # Получаем portfolio_id для старого portfolio_asset_id
     old_portfolio_id = None
@@ -239,24 +280,31 @@ def update_transaction(
     # 3️⃣ Создаем новую транзакцию с обновленными данными
     new_tx_id = create_transaction(
         user_id=user_id,
-        portfolio_asset_id=portfolio_asset_id,
-        asset_id=asset_id,
-        transaction_type=transaction_type,
-        quantity=quantity,
-        price=price,
-        transaction_date=transaction_date
+        portfolio_asset_id=final_portfolio_asset_id,
+        asset_id=final_asset_id,
+        transaction_type=final_transaction_type,
+        quantity=final_quantity,
+        price=final_price,
+        transaction_date=final_transaction_date
     )
     
-    # 4️⃣ Если portfolio_asset_id изменился, обновляем оба
-    if old_portfolio_asset_id != portfolio_asset_id:
-        rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
+    # 4️⃣ Обновляем portfolio_asset для обоих активов (если изменился)
+    if old_portfolio_asset_id != final_portfolio_asset_id:
+        # Обновляем старый актив
+        if old_portfolio_asset_id:
+            rpc("update_portfolio_asset", {"pa_id": old_portfolio_asset_id})
+        # Обновляем новый актив
+        rpc("update_portfolio_asset", {"pa_id": final_portfolio_asset_id})
+    else:
+        # Если актив не изменился, просто обновляем его
+        rpc("update_portfolio_asset", {"pa_id": final_portfolio_asset_id})
     
     # 5️⃣ Получаем portfolio_id для нового portfolio_asset_id
     new_portfolio_id = None
     new_pa = table_select(
         "portfolio_assets",
         select="portfolio_id",
-        filters={"id": portfolio_asset_id},
+        filters={"id": final_portfolio_asset_id},
         limit=1
     )
     if new_pa:
@@ -264,12 +312,12 @@ def update_transaction(
     
     # 6️⃣ Обновляем историю портфелей с минимальной датой транзакции
     # Преобразуем дату транзакции в формат YYYY-MM-DD
-    if isinstance(transaction_date, str):
-        from_date = transaction_date[:10] if 'T' in transaction_date else transaction_date
-    elif hasattr(transaction_date, 'date'):
-        from_date = transaction_date.date().isoformat()
+    if isinstance(final_transaction_date, str):
+        from_date = final_transaction_date[:10] if 'T' in final_transaction_date else final_transaction_date
+    elif hasattr(final_transaction_date, 'date'):
+        from_date = final_transaction_date.date().isoformat()
     else:
-        from_date = str(transaction_date)[:10]
+        from_date = str(final_transaction_date)[:10]
     
     # Если есть старая дата, берем минимальную
     if old_transaction_date:
