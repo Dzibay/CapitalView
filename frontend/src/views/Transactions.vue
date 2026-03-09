@@ -26,12 +26,16 @@ const isLoadingTransactions = ref(false)
 const transactions = computed(() => dashboardStore.transactions || [])
 
 // Загрузка всех транзакций (только если нет в кэше)
+// Транзакции уже загружаются через dashboard API при старте приложения,
+// поэтому отдельная загрузка здесь не нужна, если они уже есть в store
 const loadTransactions = async () => {
   // Используем кэш из store, если транзакции уже загружены
   if (dashboardStore.transactionsLoaded && dashboardStore.transactions.length > 0) {
     return
   }
   
+  // Если транзакции не загружены, загружаем их
+  // Это может произойти, если пользователь открыл страницу до загрузки dashboard
   if (isLoadingTransactions.value) return
   
   try {
@@ -57,9 +61,14 @@ const loadTransactions = async () => {
   }
 }
 
-// Загружаем все транзакции при открытии страницы (только если нет в кэше)
+// Загружаем транзакции только если они еще не загружены через dashboard
+// Dashboard загружается при старте приложения, поэтому в большинстве случаев это не нужно
 onMounted(async () => {
-  await loadTransactions()
+  // Проверяем, загружены ли транзакции через dashboard
+  // Если нет - загружаем их отдельно (fallback для случая, когда dashboard еще не загрузился)
+  if (!dashboardStore.transactionsLoaded) {
+    await loadTransactions()
+  }
 })
 
 // Используем операции из store

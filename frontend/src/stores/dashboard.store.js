@@ -214,13 +214,23 @@ export const useDashboardStore = defineStore('dashboard', {
           const existingIds = new Set(this.operations.map(op => op.id || op.cash_operation_id || op.operation_id))
           const newOperations = operationsArray.filter(op => !existingIds.has(op.id || op.cash_operation_id || op.operation_id))
           if (newOperations.length > 0) {
+            // Объединяем операции и сортируем по дате (от новых к старым, как приходит с сервера)
             this.operations = [
               ...this.operations,
               ...newOperations
-            ]
+            ].sort((a, b) => {
+              const dateA = new Date(a.operation_date || a.date || 0).getTime()
+              const dateB = new Date(b.operation_date || b.date || 0).getTime()
+              return dateB - dateA // DESC: новые операции сверху
+            })
           }
         } else {
-          this.operations = operationsArray
+          // При первой загрузке операции уже отсортированы с сервера, но на всякий случай сортируем
+          this.operations = operationsArray.sort((a, b) => {
+            const dateA = new Date(a.operation_date || a.date || 0).getTime()
+            const dateB = new Date(b.operation_date || b.date || 0).getTime()
+            return dateB - dateA // DESC: новые операции сверху
+          })
         }
         this.operationsLoaded = true
       }

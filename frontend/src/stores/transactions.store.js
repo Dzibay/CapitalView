@@ -5,6 +5,24 @@ import analyticsService from '../services/analyticsService'
 import { useDashboardStore } from './dashboard.store'
 import { useUIStore } from './ui.store'
 
+// Вспомогательная функция для поиска portfolio_id
+function findPortfolioId(portfolios, portfolioId, portfolioAssetId) {
+  // Если portfolio_id уже есть, возвращаем его
+  if (portfolioId) {
+    return portfolioId
+  }
+  
+  // Ищем через portfolio_asset_id
+  if (portfolioAssetId) {
+    const portfolio = portfolios.find(p => 
+      p.assets?.some(a => a.portfolio_asset_id === portfolioAssetId)
+    )
+    return portfolio?.id
+  }
+  
+  return null
+}
+
 export const useTransactionsStore = defineStore('transactions', {
   actions: {
     async addTransaction({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date, transaction_date, create_deposit_operation = false }) {
@@ -13,37 +31,10 @@ export const useTransactionsStore = defineStore('transactions', {
       try {
         // Используем transaction_date если есть, иначе date
         const txDate = transaction_date || date
-        const result = await transactionsService.addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, txDate, create_deposit_operation)
-        
-        // Если транзакции уже загружены в store, обновляем список
-        if (dashboardStore.transactionsLoaded) {
-          try {
-            // Получаем portfolio_id из portfolio_asset_id для фильтрации
-            const portfolio = dashboardStore.portfolios.find(p => 
-              p.assets?.some(a => a.portfolio_asset_id === portfolio_asset_id)
-            )
-            const portfolioId = portfolio?.id
-            
-            // Загружаем транзакции с фильтром по портфелю
-            const transactionsResponse = await transactionsService.getTransactions({ 
-              portfolio_id: portfolioId,
-              limit: 1000 
-            })
-            
-            const transactions = transactionsResponse?.data?.transactions || transactionsResponse?.transactions || []
-            if (transactions.length > 0) {
-              // addTransactions автоматически избегает дубликатов
-              dashboardStore.addTransactions(transactions)
-            }
-          } catch (err) {
-            if (import.meta.env.VITE_APP_DEV) {
-              console.error('Ошибка обновления списка транзакций в store:', err)
-            }
-            // Продолжаем выполнение, даже если обновление store не удалось
-          }
-        }
+        await transactionsService.addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, txDate, create_deposit_operation)
         
         // Обновляем dashboard_data в фоне без показа загрузочного экрана
+        // reloadDashboard уже загружает транзакции, поэтому отдельный запрос getTransactions не нужен
         dashboardStore.reloadDashboard(false).catch(err => {
           if (import.meta.env.VITE_APP_DEV) {
             console.error('Ошибка обновления dashboard после добавления транзакции:', err)
@@ -63,46 +54,16 @@ export const useTransactionsStore = defineStore('transactions', {
       try {
         const result = await operationsService.addOperation(operationData)
         
-        // Если операция создала транзакцию (Buy/Sell), обновляем список транзакций
-        if (result?.type === 'transaction' && dashboardStore.transactionsLoaded && !skipReload) {
+        // Обновляем список операций в store только если они уже загружены
+        // Если операции не загружены, они будут загружены при следующем открытии страницы операций
+        if (!skipReload && dashboardStore.operationsLoaded) {
           try {
-            // Получаем portfolio_id из operationData или находим через portfolio_asset_id
-            let portfolioId = operationData.portfolio_id
-            if (!portfolioId && operationData.portfolio_asset_id) {
-              const portfolio = dashboardStore.portfolios.find(p => 
-                p.assets?.some(a => a.portfolio_asset_id === operationData.portfolio_asset_id)
-              )
-              portfolioId = portfolio?.id
-            }
-            
-            // Загружаем транзакции с фильтром по портфелю
-            const transactionsResponse = await transactionsService.getTransactions({ 
-              portfolio_id: portfolioId,
-              limit: 1000 
-            })
-            
-            const transactions = transactionsResponse?.data?.transactions || transactionsResponse?.transactions || []
-            if (transactions.length > 0) {
-              dashboardStore.addTransactions(transactions)
-            }
-          } catch (err) {
-            if (import.meta.env.VITE_APP_DEV) {
-              console.error('Ошибка обновления списка транзакций в store после создания операции:', err)
-            }
-          }
-        }
-        
-        // Обновляем список операций в store, если они уже загружены или загружаем их
-        if (!skipReload) {
-          try {
-            // Получаем portfolio_id из operationData или находим через portfolio_asset_id
-            let portfolioId = operationData.portfolio_id
-            if (!portfolioId && operationData.portfolio_asset_id) {
-              const portfolio = dashboardStore.portfolios.find(p => 
-                p.assets?.some(a => a.portfolio_asset_id === operationData.portfolio_asset_id)
-              )
-              portfolioId = portfolio?.id
-            }
+            // Получаем portfolio_id используя вспомогательную функцию
+            const portfolioId = findPortfolioId(
+              dashboardStore.portfolios,
+              operationData.portfolio_id,
+              operationData.portfolio_asset_id
+            )
             
             // Загружаем операции с фильтром по портфелю (если есть)
             // Если portfolio_id нет, загружаем все операции
@@ -127,8 +88,9 @@ export const useTransactionsStore = defineStore('transactions', {
           }
         }
         
+        // Обновляем dashboard_data в фоне без показа загрузочного экрана
+        // Это обновит транзакции, если операция создала транзакцию (Buy/Sell)
         if (!skipReload) {
-          // Обновляем dashboard_data в фоне без показа загрузочного экрана
           dashboardStore.reloadDashboard(false).catch(err => {
             if (import.meta.env.VITE_APP_DEV) {
               console.error('Ошибка обновления dashboard после добавления операции:', err)
