@@ -1,8 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { Check } from 'lucide-vue-next'
-import { Button, ToggleSwitch, DateInput } from '../base'
-import CustomSelect from '../base/CustomSelect.vue'
+import { Button, ToggleSwitch, DateInput, CustomSelect } from '../base'
 import { useTransactionsStore } from '../../stores/transactions.store'
 import { useDashboardStore } from '../../stores/dashboard.store'
 import { useUIStore } from '../../stores/ui.store'

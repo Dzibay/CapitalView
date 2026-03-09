@@ -31,6 +31,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/portfolios", tags=["portfolios"])
 
 
+@router.get("/brokers")
+async def get_brokers_route():
+    """Получает список всех доступных брокеров из кеша."""
+    from app.domain.services.reference_service import get_brokers_cached
+    brokers = get_brokers_cached()
+    return success_response(data={"brokers": brokers})
+
+
 @router.get("/")
 async def get_portfolios_route(user: dict = Depends(get_current_user)):
     """Получает все портфели пользователя."""

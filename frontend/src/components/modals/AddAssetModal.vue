@@ -2,17 +2,19 @@
   <div class="modal-overlay" @click.self="$emit('close')">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>Добавить актив</h2>
+        <div class="header-content">
+          <div class="header-icon-wrapper">
+            <PlusCircle :size="20" />
+          </div>
+          <h2>Добавить актив</h2>
+        </div>
         <button class="close-btn" @click="$emit('close')" aria-label="Закрыть">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <X :size="16" />
         </button>
       </div>
 
       <div v-if="saving" class="modal-loading">
-        <div class="spinner"></div>
+        <Loader2 :size="32" class="spinner-icon" />
         <span>Сохраняем...</span>
       </div>
 
@@ -35,7 +37,7 @@
         <!-- Тип актива -->
         <div class="form-section">
           <label class="form-label">
-            <span class="label-icon">📊</span>
+            <BarChart3 :size="16" class="label-icon" />
             Тип актива
           </label>
           <div class="asset-choice">
@@ -44,30 +46,29 @@
               :class="{ active: assetTypeChoice === 'system' }"
               @click="setAssetTypeChoice('system')"
             >
-              <span class="choice-icon">🔍</span>
-              Системный
+              <Search :size="16" class="choice-icon" />
+              <span>Системный</span>
             </button>
             <button
               type="button"
               :class="{ active: assetTypeChoice === 'custom' }"
               @click="setAssetTypeChoice('custom')"
             >
-              <span class="choice-icon">✨</span>
-              Кастомный
+              <Sparkles :size="16" class="choice-icon" />
+              <span>Кастомный</span>
             </button>
           </div>
         </div>
 
         <!-- Информация об активе -->
         <div class="form-section">
-          <div class="section-divider"></div>
           <div v-if="assetTypeChoice === 'system'" class="asset-search-block">
             <label class="form-label">
-              <span class="label-icon">📈</span>
+              <TrendingUp :size="16" class="label-icon" />
               Актив
             </label>
             <div class="search-wrapper">
-              <span class="search-icon">🔍</span>
+              <Search :size="16" class="search-icon" />
               <input
                 type="text"
                 v-model="searchQuery"
@@ -82,31 +83,32 @@
                   :key="a.id"
                   @click="selectAsset(a)"
                 >
-                  <span class="asset-name">{{ a.name }}</span>
-                  <span class="asset-ticker">{{ a.ticker || '—' }}</span>
+                  <div class="asset-info-row">
+                    <span class="asset-name">{{ a.name }}</span>
+                    <span class="asset-ticker">{{ a.ticker || '—' }}</span>
+                  </div>
                 </li>
                 <li class="create-new" v-if="filteredAssets.length === 0">
-                  <span class="empty-icon">🔍</span>
-                  Актив не найден. Выберите "Кастомный" для создания нового.
+                  <Search :size="20" class="empty-icon" />
+                  <span>Актив не найден. Выберите "Кастомный" для создания нового.</span>
                 </li>
               </ul>
             </div>
             <div v-if="form.asset_id" class="selected-asset">
-              <span class="check-icon">✓</span>
+              <CheckCircle2 :size="16" class="check-icon" />
               <span>Выбран: <strong>{{ searchQuery }}</strong></span>
             </div>
           </div>
 
           <div v-if="assetTypeChoice === 'custom'" class="custom-asset-fields">
-            <div class="form-row">
-              <div class="form-field">
-                <label class="form-label">
-                  <span class="label-icon">📝</span>
-                  Название
-                </label>
-                <input v-model="form.name" type="text" required class="form-input" />
-              </div>
-            </div>
+            <FormInput
+              v-model="form.name"
+              label="Название"
+              :icon="FileText"
+              type="text"
+              placeholder="Введите название актива"
+              required
+            />
             <div class="form-row">
               <div class="form-field">
                 <CustomSelect
@@ -140,8 +142,6 @@
 
         <!-- Параметры покупки -->
         <div class="form-section">
-          <div class="section-divider"></div>
-          
           <!-- Переключатель использования рыночной цены (только для системных активов) -->
           <div v-if="assetTypeChoice === 'system'" class="toggle-wrapper">
             <ToggleSwitch v-model="useMarketPrice" />
@@ -151,56 +151,53 @@
           </div>
           
           <div class="form-row">
-            <div class="form-field">
-              <label class="form-label">
-                <span class="label-icon">🔢</span>
-                Количество
-              </label>
-              <input v-model.number="form.quantity" type="number" min="0" step="0.000001" required class="form-input" />
-              <small class="form-hint" style="margin-top: 4px;">
-                Можно вводить до 6 знаков после запятой
-              </small>
-            </div>
-            <div class="form-field">
-              <label class="form-label">
-                <span class="label-icon">💰</span>
-                Средняя цена
-                <span v-if="loadingPrice" style="margin-left: 8px; color: #3b82f6;">⏳ Загрузка...</span>
-              </label>
-              <input 
-                v-model.number="form.average_price" 
-                type="number" 
-                min="0" 
-                step="0.000001" 
-                required 
-                class="form-input"
-                :disabled="useMarketPrice && loadingPrice"
-              />
-              <small class="form-hint" style="margin-top: 4px;" v-if="useMarketPrice && assetTypeChoice === 'system'">
-                Цена автоматически обновляется при изменении даты
-              </small>
-              <small class="form-hint" style="margin-top: 4px;">
-                Можно вводить до 6 знаков после запятой
-              </small>
-            </div>
+            <FormInput
+              v-model.number="form.quantity"
+              label="Количество"
+              :icon="Hash"
+              type="number"
+              min="0"
+              step="0.000001"
+              placeholder="0.000000"
+              hint="Количество единиц актива в портфеле"
+              required
+            />
+            <FormInput
+              v-model.number="form.average_price"
+              label="Средняя цена"
+              :icon="DollarSign"
+              :loading-icon="loadingPrice ? Loader2 : null"
+              type="number"
+              min="0"
+              step="0.000001"
+              placeholder="0.00"
+              :disabled="useMarketPrice && loadingPrice"
+              :hint="useMarketPrice && assetTypeChoice === 'system' ? 'Цена автоматически обновляется при изменении даты' : 'Цена за единицу актива'"
+              required
+            />
           </div>
-          <div class="form-field">
+          <div class="form-field date-field">
             <label class="form-label">
-              <span class="label-icon">📅</span>
+              <Calendar :size="16" class="label-icon" />
               Дата добавления
             </label>
             <DateInput v-model="form.date" :min="minDate" required />
-            <small v-if="minDate && assetTypeChoice === 'system'" class="form-hint" style="margin-top: 4px;">
+            <small v-if="minDate && assetTypeChoice === 'system'" class="form-hint">
+              <CalendarDays :size="12" class="hint-icon" />
               Первая доступная дата: {{ minDate }}
             </small>
           </div>
           
           <!-- Галочка для создания операции пополнения при создании актива с покупкой -->
-          <div v-if="form.quantity > 0 && form.average_price > 0" class="toggle-wrapper" style="margin-top: 16px;">
+          <div v-if="form.quantity > 0 && form.average_price > 0" class="toggle-wrapper deposit-toggle">
             <ToggleSwitch v-model="createDepositOperation" />
-            <span class="toggle-label-text">
-              Добавить операцию пополнения на сумму покупки ({{ (form.quantity * form.average_price).toFixed(2) }} ₽)
-            </span>
+            <div class="toggle-content">
+              <Wallet :size="14" class="toggle-icon" />
+              <span class="toggle-label-text">
+                Добавить операцию пополнения на сумму покупки
+              </span>
+              <span class="toggle-amount">{{ (form.quantity * form.average_price).toFixed(2) }} ₽</span>
+            </div>
           </div>
         </div>
 
@@ -223,9 +220,26 @@
 <script setup>
 import { reactive, ref, computed, watch } from 'vue'
 import { normalizeDateToString } from '../../utils/date'
-import { Check } from 'lucide-vue-next'
+import { 
+  Check, 
+  X, 
+  PlusCircle, 
+  Loader2, 
+  BarChart3, 
+  Search, 
+  Sparkles, 
+  TrendingUp, 
+  CheckCircle2, 
+  FileText, 
+  Hash, 
+  DollarSign, 
+  Calendar, 
+  CalendarDays,
+  Wallet
+} from 'lucide-vue-next'
 import { Button, ToggleSwitch, DateInput } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
+import FormInput from '../base/FormInput.vue'
 import assetsService from '../../services/assetsService'
 import { useDashboardStore } from '../../stores/dashboard.store'
 import { useTransactionsStore } from '../../stores/transactions.store'
@@ -743,10 +757,23 @@ setAssetTypeChoice('system')
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 20px;
+  padding: 20px 24px;
   border-bottom: 1px solid #f3f4f6;
   background: #fff;
   flex-shrink: 0;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3b82f6;
 }
 
 .modal-header h2 {
@@ -788,7 +815,7 @@ setAssetTypeChoice('system')
 }
 
 .form-content {
-  padding: 20px;
+  padding: 24px;
   overflow-y: auto;
   flex: 1;
 }
@@ -811,24 +838,19 @@ setAssetTypeChoice('system')
 }
 
 .form-section {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .form-section:last-of-type {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
-.section-divider {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
-  margin: 16px 0;
-}
 
 .form-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 10px;
   font-size: 13px;
   font-weight: 600;
   color: #374151;
@@ -836,8 +858,18 @@ setAssetTypeChoice('system')
 }
 
 .label-icon {
-  font-size: 14px;
-  opacity: 0.8;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.loading-icon {
+  color: #3b82f6;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .modal-loading {
@@ -846,27 +878,36 @@ setAssetTypeChoice('system')
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  gap: 12px;
+  gap: 16px;
   font-weight: 500;
   font-size: 14px;
   color: #6b7280;
 }
 
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #e5e7eb;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.spinner-icon {
+  color: #3b82f6;
+  animation: spin 1s linear infinite;
 }
 
 .asset-search-block {
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.asset-search-block > .form-label {
+  margin-bottom: 10px;
+  margin-top: 0;
+}
+
+.asset-search-block > .search-wrapper {
+  margin-bottom: 0;
+  margin-top: 0;
+}
+
+.asset-search-block > .selected-asset {
+  margin-top: 10px;
+  margin-bottom: 0;
 }
 
 .search-wrapper {
@@ -879,7 +920,6 @@ setAssetTypeChoice('system')
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
-  font-size: 14px;
   color: #9ca3af;
   z-index: 1;
 }
@@ -916,13 +956,19 @@ setAssetTypeChoice('system')
 }
 
 .dropdown li {
-  padding: 10px 14px;
+  padding: 12px 14px;
   cursor: pointer;
   transition: all 0.15s ease;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   border-left: 3px solid transparent;
+}
+
+.asset-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
 
 .dropdown li:hover {
@@ -948,62 +994,54 @@ setAssetTypeChoice('system')
 
 .dropdown .create-new {
   color: #9ca3af;
-  padding: 12px 14px;
+  padding: 16px 14px;
   cursor: default;
   text-align: center;
   font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   flex-direction: column;
 }
 
 .empty-icon {
-  font-size: 20px;
-  opacity: 0.5;
+  color: #d1d5db;
+  opacity: 0.6;
 }
 
 .selected-asset {
-  margin-top: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
   color: #166534;
-  background: #f0fdf4;
-  border: 1px solid #86efac;
-  border-radius: 8px;
+  background: linear-gradient(to right, #f0fdf4, #ecfdf5);
+  border: 1.5px solid #86efac;
+  border-radius: 10px;
   font-weight: 500;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
 }
 
 .check-icon {
-  width: 16px;
-  height: 16px;
-  background: #10b981;
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
+  color: #10b981;
   flex-shrink: 0;
 }
 
 .asset-choice {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   background: #f9fafb;
   padding: 4px;
-  border-radius: 10px;
-  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  border: 1.5px solid #e5e7eb;
 }
 
 .asset-choice button {
   flex: 1;
-  padding: 10px 14px;
+  padding: 12px 16px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -1015,18 +1053,23 @@ setAssetTypeChoice('system')
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .choice-icon {
-  font-size: 14px;
+  color: inherit;
+  flex-shrink: 0;
 }
 
 .asset-choice button.active {
-  background: white;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
   color: #2563eb;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.08), 0 0 0 1px rgba(59,130,246,0.1);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15), 0 0 0 1.5px rgba(59, 130, 246, 0.2);
   transform: translateY(-1px);
+}
+
+.asset-choice button.active .choice-icon {
+  color: #2563eb;
 }
 
 .asset-choice button:not(.active):hover {
@@ -1036,7 +1079,7 @@ setAssetTypeChoice('system')
 
 .form-input {
   width: 100%;
-  padding: 9px 12px;
+  padding: 11px 14px;
   border: 1.5px solid #e5e7eb;
   border-radius: 10px;
   font-size: 14px;
@@ -1045,6 +1088,10 @@ setAssetTypeChoice('system')
   color: #111827;
   box-sizing: border-box;
   font-family: inherit;
+}
+
+.form-input::placeholder {
+  color: #9ca3af;
 }
 
 .form-input:hover {
@@ -1059,6 +1106,16 @@ setAssetTypeChoice('system')
   background: #fff;
 }
 
+.form-input:disabled {
+  background: #f9fafb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.date-field {
+  margin-top: 4px;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1071,9 +1128,19 @@ setAssetTypeChoice('system')
 }
 
 .custom-asset-fields {
+  gap: 10px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+}
+
+.custom-asset-fields > FormInput {
+  margin-bottom: 12px;
+  margin-top: 0;
+}
+
+.custom-asset-fields > .form-row {
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 .form-actions {
@@ -1093,10 +1160,55 @@ setAssetTypeChoice('system')
   gap: 10px;
 }
 
+.toggle-wrapper.deposit-toggle {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: linear-gradient(to right, #eff6ff, #f0f9ff);
+  border: 1.5px solid #bfdbfe;
+  border-radius: 10px;
+}
+
+.toggle-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.toggle-icon {
+  color: #3b82f6;
+  flex-shrink: 0;
+}
+
 .toggle-label-text {
   font-size: 13px;
   color: #374151;
   font-weight: 500;
+  flex: 1;
+}
+
+.toggle-amount {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2563eb;
+  background: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.2);
+}
+
+.form-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.hint-icon {
+  color: #9ca3af;
+  flex-shrink: 0;
 }
 
 .form-hint {

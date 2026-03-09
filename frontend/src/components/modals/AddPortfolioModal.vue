@@ -2,17 +2,19 @@
   <div class="modal-overlay" @click.self="$emit('close')">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>Добавить портфель</h2>
+        <div class="header-content">
+          <div class="header-icon-wrapper">
+            <FolderPlus :size="20" />
+          </div>
+          <h2>Добавить портфель</h2>
+        </div>
         <button class="close-btn" @click="$emit('close')" aria-label="Закрыть">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <X :size="16" />
         </button>
       </div>
 
       <div v-if="saving" class="modal-loading">
-        <div class="spinner"></div>
+        <Loader2 :size="32" class="spinner-icon" />
         <span>Сохраняем...</span>
       </div>
 
@@ -22,8 +24,8 @@
             v-model="form.parent_portfolio_id"
             :options="portfolios"
             label="Родительский портфель"
-            placeholder="— Нет —"
-            empty-option-text="— Нет —"
+            placeholder="Выберите портфель"
+            :show-empty-option="false"
             option-label="name"
             option-value="id"
             :min-width="'100%'"
@@ -32,21 +34,22 @@
         </div>
 
         <div class="form-section">
-          <div class="section-divider"></div>
-          <label class="form-label">
-            <span class="label-icon">📝</span>
-            Название
-          </label>
-          <input v-model="form.name" type="text" required class="form-input" />
+          <FormInput
+            v-model="form.name"
+            label="Название"
+            :icon="FileText"
+            type="text"
+            placeholder="Введите название портфеля"
+            required
+          />
         </div>
 
         <div class="form-section">
-          <div class="section-divider"></div>
           <label class="form-label">
-            <span class="label-icon">📄</span>
+            <AlignLeft :size="16" class="label-icon" />
             Описание
           </label>
-          <textarea v-model="form.description" class="form-input textarea"></textarea>
+          <textarea v-model="form.description" class="form-input textarea" placeholder="Введите описание портфеля (необязательно)"></textarea>
         </div>
 
         <div class="form-actions">
@@ -64,10 +67,11 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
-import { Check } from 'lucide-vue-next'
+import { reactive, ref, watch } from 'vue'
+import { Check, X, FolderPlus, FileText, AlignLeft, Loader2 } from 'lucide-vue-next'
 import { Button } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
+import FormInput from '../base/FormInput.vue'
 
 const props = defineProps({
   portfolios: Array, // список портфелей для выбора родителя
@@ -83,6 +87,13 @@ const form = reactive({
 })
 
 const saving = ref(false)
+
+// Устанавливаем первый портфель по умолчанию
+watch(() => props.portfolios, (newPortfolios) => {
+  if (newPortfolios && newPortfolios.length > 0 && !form.parent_portfolio_id) {
+    form.parent_portfolio_id = newPortfolios[0].id
+  }
+}, { immediate: true })
 
 const submitForm = async () => {
   if (!props.onSave) return
@@ -146,10 +157,23 @@ const submitForm = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 20px;
+  padding: 20px 24px;
   border-bottom: 1px solid #f3f4f6;
   background: #fff;
   flex-shrink: 0;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3b82f6;
 }
 
 .modal-header h2 {
@@ -185,13 +209,9 @@ const submitForm = async () => {
   transform: scale(0.95);
 }
 
-.close-btn svg {
-  width: 16px;
-  height: 16px;
-}
 
 .form-content {
-  padding: 20px;
+  padding: 24px;
   overflow-y: auto;
   flex: 1;
 }
@@ -210,24 +230,18 @@ const submitForm = async () => {
 }
 
 .form-section {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .form-section:last-of-type {
-  margin-bottom: 16px;
-}
-
-.section-divider {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
-  margin: 16px 0;
+  margin-bottom: 20px;
 }
 
 .form-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 10px;
   font-size: 13px;
   font-weight: 600;
   color: #374151;
@@ -235,13 +249,13 @@ const submitForm = async () => {
 }
 
 .label-icon {
-  font-size: 14px;
-  opacity: 0.8;
+  color: #6b7280;
+  flex-shrink: 0;
 }
 
 .form-input {
   width: 100%;
-  padding: 9px 12px;
+  padding: 11px 14px;
   border: 1.5px solid #e5e7eb;
   border-radius: 10px;
   font-size: 14px;
@@ -252,9 +266,14 @@ const submitForm = async () => {
   font-family: inherit;
 }
 
+.form-input::placeholder {
+  color: #9ca3af;
+}
+
 .form-input.textarea {
-  min-height: 90px;
+  min-height: 100px;
   resize: vertical;
+  line-height: 1.5;
 }
 
 .form-input:hover {
@@ -275,22 +294,19 @@ const submitForm = async () => {
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  gap: 12px;
+  gap: 16px;
   font-weight: 500;
   font-size: 14px;
   color: #6b7280;
 }
 
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #e5e7eb;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+.spinner-icon {
+  color: #3b82f6;
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
+  from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 

@@ -22,6 +22,7 @@ export const API_ENDPOINTS = {
     ASSETS: (id) => `/portfolios/${id}/assets`,
     HISTORY: (id) => `/portfolios/${id}/history`,
     IMPORT_BROKER: '/portfolios/import-broker',  // Исправлено: на backend это /portfolios/import-broker
+    BROKERS: '/portfolios/brokers',  // Получение списка брокеров
   },
   ASSETS: {
     BASE: '/assets/',
