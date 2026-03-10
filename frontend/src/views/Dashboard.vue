@@ -147,14 +147,12 @@ const goalData = computed(() => {
       targetAmount: desc.capital_target_value || 0,
       currentAmount: selectedPortfolio.value.total_value || 0, // total_value уже включает баланс на бэкенде
       deadline: desc.capital_target_deadline || null,
-    currency: desc.capital_target_currency || 'RUB',
-    monthlyContribution: desc.monthly_contribution || 0,
-    annualReturn: desc.annual_return || 0,
-    useInflation: desc.use_inflation || desc.useInflation || false,
-    use_inflation: desc.use_inflation || desc.useInflation || false,
-    inflationRate: desc.inflation_rate || desc.inflationRate || 7.5,
-    inflation_rate: desc.inflation_rate || desc.inflationRate || 7.5
-  }
+      currency: desc.capital_target_currency || 'RUB',
+      monthlyContribution: desc.monthly_contribution || 0,
+      annualReturn: desc.annual_return || 0,
+      useInflation: desc.use_inflation || false,
+      inflationRate: desc.inflation_rate || 7.5
+    }
   
   return result
 })

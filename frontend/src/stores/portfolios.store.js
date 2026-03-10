@@ -125,13 +125,13 @@ export const usePortfoliosStore = defineStore('portfolios', {
         
         if (!res) throw new Error('Ошибка при обновлении цели')
 
-        const updated = res[0]
+        const updated = res[0] || res
         const dashboardStore = useDashboardStore()
         
         // Оптимистичное обновление
         // Обновляем description с учетом инфляции
         const updatedDescription = {
-          ...updated.description,
+          ...(updated.description || {}),
           use_inflation: updated.use_inflation !== undefined ? updated.use_inflation : (updated.description?.use_inflation || false),
           inflation_rate: updated.inflation_rate !== undefined ? updated.inflation_rate : (updated.description?.inflation_rate || 7.5)
         }

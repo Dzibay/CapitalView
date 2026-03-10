@@ -40,9 +40,7 @@ function saveGoal(newGoal) {
       props.goalData.monthlyContribution = newGoal.monthlyContribution || 0
       props.goalData.annualReturn = annualReturnValue
       props.goalData.useInflation = newGoal.useInflation || false
-      props.goalData.use_inflation = newGoal.useInflation || false
       props.goalData.inflationRate = newGoal.inflationRate || 7.5
-      props.goalData.inflation_rate = newGoal.inflationRate || 7.5
       showModal.value = false
     })
     .catch(err => {
@@ -104,11 +102,11 @@ const annualReturn = computed(() => {
   return props.goalData?.annualReturn || props.defaultReturnPercent || 0
 })
 const useInflation = computed(() => {
-  return props.goalData?.useInflation || props.goalData?.use_inflation || false
+  return props.goalData?.useInflation || false
 })
 
 const inflationRate = computed(() => {
-  return props.goalData?.inflationRate || props.goalData?.inflation_rate || 7.5
+  return props.goalData?.inflationRate || 7.5
 })
 
 // Расчет прогноза достижения цели
@@ -126,8 +124,8 @@ const goalProjection = computed(() => {
   const annualReturnPercent = annualReturn.value || 0
   
   // Получаем значения инфляции
-  const useInflationValue = props.goalData?.useInflation || props.goalData?.use_inflation || false
-  const inflationRateValue = props.goalData?.inflationRate || props.goalData?.inflation_rate || 7.5
+  const useInflationValue = props.goalData?.useInflation || false
+  const inflationRateValue = props.goalData?.inflationRate || 7.5
   
   // Месячная доходность (приблизительно)
   const monthlyReturnRate = annualReturnPercent / 12 / 100
