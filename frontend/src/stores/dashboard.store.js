@@ -185,11 +185,13 @@ export const useDashboardStore = defineStore('dashboard', {
     },
 
     // Добавление транзакций
-    addTransactions(transactionsArray) {
+    addTransactions(transactionsArray, replace = false) {
       if (Array.isArray(transactionsArray)) {
-        // Если транзакции еще не загружены, заменяем массив
-        // Если уже загружены, добавляем к существующим, избегая дубликатов
-        if (this.transactionsLoaded && this.transactions.length > 0) {
+        // Если требуется замена или транзакции еще не загружены, заменяем массив
+        // Если уже загружены и не требуется замена, добавляем к существующим, избегая дубликатов
+        if (replace || !this.transactionsLoaded || this.transactions.length === 0) {
+          this.transactions = transactionsArray
+        } else {
           const existingIds = new Set(this.transactions.map(t => t.id || t.transaction_id))
           const newTransactions = transactionsArray.filter(t => !existingIds.has(t.id || t.transaction_id))
           if (newTransactions.length > 0) {
@@ -198,8 +200,6 @@ export const useDashboardStore = defineStore('dashboard', {
               ...newTransactions
             ]
           }
-        } else {
-          this.transactions = transactionsArray
         }
         this.transactionsLoaded = true
       }

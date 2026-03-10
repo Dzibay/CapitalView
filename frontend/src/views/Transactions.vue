@@ -23,19 +23,17 @@ const viewMode = ref('transactions') // 'transactions' или 'operations'
 const isLoadingOperations = ref(false)
 const isLoadingTransactions = ref(false)
 
+// Используем транзакции из store (аналогично операциям)
 const transactions = computed(() => dashboardStore.transactions || [])
 
-// Загрузка всех транзакций (только если нет в кэше)
-// Транзакции уже загружаются через dashboard API при старте приложения,
-// поэтому отдельная загрузка здесь не нужна, если они уже есть в store
-const loadTransactions = async () => {
-  // Используем кэш из store, если транзакции уже загружены
-  if (dashboardStore.transactionsLoaded && dashboardStore.transactions.length > 0) {
+// Загрузка всех транзакций через API (аналогично операциям)
+// НЕ используем транзакции из dashboard_data, там только последние 5 на каждый портфель
+const loadTransactions = async (force = false) => {
+  // Используем кэш из store, если транзакции уже загружены и не требуется принудительная перезагрузка
+  if (!force && dashboardStore.transactionsLoaded && dashboardStore.transactions.length > 0) {
     return
   }
   
-  // Если транзакции не загружены, загружаем их
-  // Это может произойти, если пользователь открыл страницу до загрузки dashboard
   if (isLoadingTransactions.value) return
   
   try {
@@ -49,9 +47,9 @@ const loadTransactions = async () => {
       transaction_id: tx.transaction_id || tx.id,
       transaction_type: tx.transaction_type || tx.transaction_type_name
     }))
-    // Обновляем транзакции в store
-    dashboardStore.transactions = normalizedTransactions
-    dashboardStore.transactionsLoaded = true
+    // Обновляем транзакции в store через метод addTransactions
+    // При принудительной перезагрузке заменяем транзакции полностью
+    dashboardStore.addTransactions(normalizedTransactions, force)
   } catch (err) {
     if (import.meta.env.VITE_APP_DEV) {
       console.error('Ошибка загрузки транзакций:', err)
@@ -61,14 +59,9 @@ const loadTransactions = async () => {
   }
 }
 
-// Загружаем транзакции только если они еще не загружены через dashboard
-// Dashboard загружается при старте приложения, поэтому в большинстве случаев это не нужно
+// Загружаем транзакции при монтировании компонента (аналогично операциям)
 onMounted(async () => {
-  // Проверяем, загружены ли транзакции через dashboard
-  // Если нет - загружаем их отдельно (fallback для случая, когда dashboard еще не загрузился)
-  if (!dashboardStore.transactionsLoaded) {
-    await loadTransactions()
-  }
+  await loadTransactions()
 })
 
 // Используем операции из store
@@ -102,6 +95,19 @@ const loadOperations = async () => {
 watch(viewMode, (newMode) => {
   if (newMode === 'operations') {
     loadOperations()
+  } else if (newMode === 'transactions') {
+    // При переключении на транзакции убеждаемся, что они загружены
+    loadTransactions()
+  }
+})
+
+// Слушаем изменения в dashboardStore для обновления транзакций после добавления
+// (транзакции могут быть добавлены из других компонентов через transactionsStore)
+watch(() => dashboardStore.lastFetch, () => {
+  // Если транзакции уже загружены в store, перезагружаем их после обновления dashboard
+  // Это нужно, так как добавление транзакции обновляет dashboard
+  if (dashboardStore.transactionsLoaded && dashboardStore.transactions.length > 0 && viewMode.value === 'transactions') {
+    loadTransactions(true)
   }
 })
 
@@ -112,6 +118,9 @@ const referenceAssets = computed(() => referenceData.value.assets || [])
 // Обертки для совместимости
 const deleteTransactions = async (transaction_ids) => {
   await transactionsStore.deleteTransactions(transaction_ids)
+  // Транзакции уже удалены из кэша в store через removeTransactions
+  // Перезагружаем транзакции после удаления (принудительно) для получения актуальных данных
+  await loadTransactions(true)
 }
 
 const deleteOperations = async (operation_ids) => {
@@ -122,6 +131,8 @@ const deleteOperations = async (operation_ids) => {
 
 const editTransaction = async (updated_transaction) => {
   await transactionsStore.editTransaction(updated_transaction)
+  // Перезагружаем транзакции после редактирования (принудительно) для получения актуальных данных
+  await loadTransactions(true)
 }
 
 // --- списки для фильтров ---
