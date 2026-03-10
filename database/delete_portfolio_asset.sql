@@ -65,6 +65,11 @@ BEGIN
             SELECT 1 FROM portfolio_assets 
             WHERE asset_id = v_asset_id
         ) THEN
+            -- Удаляем все cash_operations, связанные с этим активом (из всех портфелей)
+            -- Это нужно сделать перед удалением актива, чтобы избежать нарушения внешнего ключа
+            DELETE FROM cash_operations
+            WHERE asset_id = v_asset_id;
+            
             DELETE FROM asset_prices 
             WHERE asset_id = v_asset_id;
             
