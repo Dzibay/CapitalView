@@ -226,10 +226,10 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   max-width: 100%;
-  padding: 10px 36px 10px 12px;
+  padding: 9px 36px 9px 12px;
   border: 1.5px solid #e5e7eb;
-  border-radius: 8px;
-  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+  border-radius: 10px;
+  background: #fff;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
@@ -237,23 +237,19 @@ onUnmounted(() => {
   justify-content: space-between;
   min-height: 42px;
   user-select: none;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   box-sizing: border-box;
   overflow: hidden;
 }
 
 .custom-select:hover {
   border-color: #d1d5db;
-  background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-  transform: translateY(-1px);
+  background: #fafafa;
 }
 
 .custom-select.is-open {
   border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1), 0 4px 12px rgba(59,130,246,0.15);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
   background: #fff;
-  transform: translateY(0);
 }
 
 .custom-select-value {
@@ -276,9 +272,16 @@ onUnmounted(() => {
   top: 50%;
   transform: translateY(-50%);
   color: #6b7280;
-  font-size: 10px;
-  transition: transform 0.2s ease;
+  font-size: 12px;
+  transition: all 0.2s ease;
   pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.custom-select:hover .custom-select-arrow {
+  color: #374151;
 }
 
 .custom-select.is-open .custom-select-arrow {
