@@ -42,23 +42,26 @@ BEGIN
         CASE 
             WHEN ap.type = 'coupon' AND ap.record_date IS NOT NULL THEN
                 ap.value * COALESCE((
-                    SELECT quantity FROM portfolio_daily_positions
-                    WHERE portfolio_asset_id = mp.portfolio_asset_id
-                      AND report_date = ap.record_date
+                    SELECT pdp.quantity FROM portfolio_daily_positions pdp
+                    WHERE pdp.portfolio_asset_id = mp.portfolio_asset_id
+                      AND pdp.report_date <= ap.record_date
+                    ORDER BY pdp.report_date DESC
                     LIMIT 1
                 ), 0)
             WHEN ap.type = 'dividend' AND ap.last_buy_date IS NOT NULL THEN
                 ap.value * COALESCE((
-                    SELECT quantity FROM portfolio_daily_positions
-                    WHERE portfolio_asset_id = mp.portfolio_asset_id
-                      AND report_date = ap.last_buy_date
+                    SELECT pdp.quantity FROM portfolio_daily_positions pdp
+                    WHERE pdp.portfolio_asset_id = mp.portfolio_asset_id
+                      AND pdp.report_date <= ap.last_buy_date
+                    ORDER BY pdp.report_date DESC
                     LIMIT 1
                 ), 0)
             ELSE
                 ap.value * COALESCE((
-                    SELECT quantity FROM portfolio_daily_positions
-                    WHERE portfolio_asset_id = mp.portfolio_asset_id
-                      AND report_date = COALESCE(ap.record_date, ap.last_buy_date)
+                    SELECT pdp.quantity FROM portfolio_daily_positions pdp
+                    WHERE pdp.portfolio_asset_id = mp.portfolio_asset_id
+                      AND pdp.report_date <= COALESCE(ap.record_date, ap.last_buy_date)
+                    ORDER BY pdp.report_date DESC
                     LIMIT 1
                 ), 0)
         END AS expected_amount,

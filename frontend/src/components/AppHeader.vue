@@ -1,7 +1,10 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router';
+import { Bell } from 'lucide-vue-next'
 import { authService } from '../services/authService.js';
+import missedPayoutsService from '../services/missedPayoutsService'
+import MissedPayoutsModal from './MissedPayoutsModal.vue'
 
 defineProps({
   user: {
@@ -14,11 +17,60 @@ const emit = defineEmits(['toggle-sidebar'])
 const router = useRouter();
 
 const sidebar = ref(false)
+const showMissedPayoutsModal = ref(false)
+const missedPayoutsCount = ref(0)
+const loadingCount = ref(false)
 
 const handleToggle = () => {
   emit('toggle-sidebar');
   sidebar.value = !sidebar.value
 };
+
+// Загружаем количество неполученных выплат
+const loadMissedPayoutsCount = async () => {
+  loadingCount.value = true
+  try {
+    const payouts = await missedPayoutsService.getMissedPayouts()
+    missedPayoutsCount.value = payouts.length || 0
+  } catch (err) {
+    console.error('Ошибка загрузки количества неполученных выплат:', err)
+    missedPayoutsCount.value = 0
+  } finally {
+    loadingCount.value = false
+  }
+}
+
+// Открываем модалку и обновляем счетчик после закрытия
+const openMissedPayoutsModal = () => {
+  showMissedPayoutsModal.value = true
+}
+
+const closeMissedPayoutsModal = () => {
+  showMissedPayoutsModal.value = false
+  // Обновляем счетчик после закрытия модалки
+  loadMissedPayoutsCount()
+}
+
+// Обработчики событий от модалки
+const handlePayoutsAdded = () => {
+  loadMissedPayoutsCount()
+}
+
+const handlePayoutsIgnored = () => {
+  loadMissedPayoutsCount()
+}
+
+// Загружаем счетчик при монтировании и периодически обновляем
+onMounted(() => {
+  loadMissedPayoutsCount()
+  // Обновляем каждые 5 минут
+  const interval = setInterval(loadMissedPayoutsCount, 5 * 60 * 1000)
+  
+  // Очищаем интервал при размонтировании
+  return () => clearInterval(interval)
+})
+
+const hasNotifications = computed(() => missedPayoutsCount.value > 0)
 </script>
 
 <template>
@@ -29,13 +81,37 @@ const handleToggle = () => {
       </svg>
     </button>
 
-    <div v-if="user" class="user-profile">
-      <img src="https://cdn-icons-png.flaticon.com/512/6998/6998058.png " alt="User Avatar" class="avatar">
-      <div class="user-info">
-        <span class="user-name">{{ user.name }}</span>
-        <span class="user-email">{{ user.email }}</span>
+    <div v-if="user" class="header-right">
+      <!-- Иконка уведомлений -->
+      <button 
+        @click="openMissedPayoutsModal" 
+        class="notifications-button"
+        :class="{ 'has-notifications': hasNotifications }"
+        title="Неполученные выплаты"
+      >
+        <Bell :size="20" />
+        <span v-if="hasNotifications" class="notification-badge">
+          {{ missedPayoutsCount > 99 ? '99+' : missedPayoutsCount }}
+        </span>
+      </button>
+
+      <!-- Профиль пользователя -->
+      <div class="user-profile">
+        <img src="https://cdn-icons-png.flaticon.com/512/6998/6998058.png " alt="User Avatar" class="avatar">
+        <div class="user-info">
+          <span class="user-name">{{ user.name }}</span>
+          <span class="user-email">{{ user.email }}</span>
+        </div>
       </div>
     </div>
+
+    <!-- Модальное окно неполученных выплат -->
+    <MissedPayoutsModal 
+      :show="showMissedPayoutsModal" 
+      @close="closeMissedPayoutsModal"
+      @payouts-added="handlePayoutsAdded"
+      @payouts-ignored="handlePayoutsIgnored"
+    />
   </header>
 </template>
 
@@ -72,6 +148,54 @@ header.sidebarOff {
 .burger-button:hover {
   background-color: #f3f4f6;
 }
+.header-right {
+  display: flex;
+  gap: calc(var(--spacing) / 2);
+  align-items: center;
+}
+
+.notifications-button {
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  transition: all 0.2s ease;
+}
+
+.notifications-button:hover {
+  background-color: #f3f4f6;
+  color: #3b82f6;
+}
+
+.notifications-button.has-notifications {
+  color: #3b82f6;
+}
+
+.notification-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background-color: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border: 2px solid white;
+}
+
 .user-profile {
   display: flex;
   gap: calc(var(--spacing) / 2);

@@ -54,6 +54,9 @@ export const API_ENDPOINTS = {
     USER: '/tasks/user/list',  // Исправлено: на backend это GET /tasks/user/list
     CANCEL: (id) => `/tasks/${id}/cancel`,
   },
+  MISSED_PAYOUTS: {
+    BASE: '/missed-payouts',
+  },
 };
 
 

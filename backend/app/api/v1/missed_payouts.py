@@ -1,12 +1,12 @@
 """
 API endpoints для работы с неполученными выплатами.
 """
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends, Body, HTTPException
 from http import HTTPStatus
 from typing import List, Optional
 
 from app.core.dependencies import get_current_user
-from app.utils.response import success_response, error_response
+from app.utils.response import success_response
 from app.infrastructure.database.repositories.missed_payout_repository import MissedPayoutRepository
 from app.domain.services.access_control_service import check_portfolio_asset_access
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
@@ -36,9 +36,10 @@ async def get_missed_payouts_route(
         
         return success_response(data={"missed_payouts": payouts})
     except Exception as e:
-        return error_response(
-            message=f"Ошибка при получении неполученных выплат: {str(e)}",
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при получении неполученных выплат: {str(e)}"
         )
 
 
@@ -60,25 +61,29 @@ async def delete_missed_payout_route(
         payout_ids = [p["id"] for p in payouts]
         
         if missed_payout_id not in payout_ids:
-            return error_response(
-                message="Неполученная выплата не найдена или не принадлежит пользователю",
-                status_code=HTTPStatus.NOT_FOUND
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=HTTPStatus.NOT_FOUND,
+                detail="Неполученная выплата не найдена или не принадлежит пользователю"
             )
         
         deleted = await _missed_payout_repository.delete_missed_payout(missed_payout_id)
         
         if not deleted:
-            return error_response(
-                message="Не удалось удалить неполученную выплату",
-                status_code=HTTPStatus.NOT_FOUND
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=HTTPStatus.NOT_FOUND,
+                detail="Не удалось удалить неполученную выплату"
             )
         
         return success_response(message="Неполученная выплата успешно удалена")
+    except HTTPException:
+        raise
     except Exception as e:
-        from app.utils.response import error_response
-        return error_response(
-            message=f"Ошибка при удалении неполученной выплаты: {str(e)}",
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при удалении неполученной выплаты: {str(e)}"
         )
 
 
@@ -96,9 +101,9 @@ async def delete_missed_payouts_batch_route(
     """
     try:
         if not missed_payout_ids:
-            return error_response(
-                message="Список ID не может быть пустым",
-                status_code=HTTPStatus.BAD_REQUEST
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail="Список ID не может быть пустым"
             )
         
         # Проверяем, что все выплаты принадлежат пользователю
@@ -107,9 +112,9 @@ async def delete_missed_payouts_batch_route(
         
         invalid_ids = [pid for pid in missed_payout_ids if pid not in payout_ids]
         if invalid_ids:
-            return error_response(
-                message=f"Некоторые выплаты не найдены или не принадлежат пользователю: {invalid_ids}",
-                status_code=HTTPStatus.BAD_REQUEST
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"Некоторые выплаты не найдены или не принадлежат пользователю: {invalid_ids}"
             )
         
         deleted_count = await _missed_payout_repository.delete_missed_payouts_batch(missed_payout_ids)
@@ -118,11 +123,12 @@ async def delete_missed_payouts_batch_route(
             data={"deleted_count": deleted_count},
             message=f"Успешно удалено {deleted_count} неполученных выплат"
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        from app.utils.response import error_response
-        return error_response(
-            message=f"Ошибка при удалении неполученных выплат: {str(e)}",
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при удалении неполученных выплат: {str(e)}"
         )
 
 
@@ -147,9 +153,9 @@ async def check_missed_payouts_route(
         portfolio_asset = await portfolio_asset_repo.get_by_id_async(portfolio_asset_id)
         
         if not portfolio_asset:
-            return error_response(
-                message="Актив в портфеле не найден",
-                status_code=HTTPStatus.NOT_FOUND
+            raise HTTPException(
+                status_code=HTTPStatus.NOT_FOUND,
+                detail="Актив в портфеле не найден"
             )
         
         # Запускаем проверку
@@ -161,10 +167,12 @@ async def check_missed_payouts_route(
             data={"missed_count": missed_count},
             message=f"Проверка завершена. Найдено неполученных выплат: {missed_count}"
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        return error_response(
-            message=f"Ошибка при проверке неполученных выплат: {str(e)}",
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при проверке неполученных выплат: {str(e)}"
         )
 
 
@@ -196,10 +204,12 @@ async def check_missed_payouts_for_portfolio_route(
         return success_response(
             message="Проверка неполученных выплат запущена в фоне"
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        return error_response(
-            message=f"Ошибка при запуске проверки неполученных выплат: {str(e)}",
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при запуске проверки неполученных выплат: {str(e)}"
         )
 
 
@@ -225,8 +235,10 @@ async def check_missed_payouts_for_user_route(
         return success_response(
             message="Проверка неполученных выплат запущена в фоне для всех портфелей"
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        return error_response(
-            message=f"Ошибка при запуске проверки неполученных выплат: {str(e)}",
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при запуске проверки неполученных выплат: {str(e)}"
         )
