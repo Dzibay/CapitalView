@@ -3,7 +3,9 @@
 Перенесено из app/services/transactions_service.py
 """
 from typing import Optional
+from datetime import datetime
 from app.infrastructure.database.postgres_service import table_select, table_insert, rpc
+from app.utils.date import normalize_date_to_string, normalize_date_to_sql_date
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -92,13 +94,9 @@ def create_transaction(
     """
     from datetime import datetime
     
-    # Нормализуем дату
-    if isinstance(transaction_date, datetime):
-        transaction_date_str = transaction_date.isoformat()
-    elif isinstance(transaction_date, str) and 'T' not in transaction_date:
-        transaction_date_str = f"{transaction_date}T00:00:00"
-    else:
-        transaction_date_str = transaction_date
+    # Нормализуем дату используя единую функцию
+    transaction_date_str = normalize_date_to_string(transaction_date, include_time=True) or ""
+    
 
     # 1️⃣ Создаём транзакцию через batch функцию (с одним элементом)
     tx_data = [{
@@ -311,22 +309,12 @@ def update_transaction(
         new_portfolio_id = new_pa[0].get("portfolio_id")
     
     # 6️⃣ Обновляем историю портфелей с минимальной датой транзакции
-    # Преобразуем дату транзакции в формат YYYY-MM-DD
-    if isinstance(final_transaction_date, str):
-        from_date = final_transaction_date[:10] if 'T' in final_transaction_date else final_transaction_date
-    elif hasattr(final_transaction_date, 'date'):
-        from_date = final_transaction_date.date().isoformat()
-    else:
-        from_date = str(final_transaction_date)[:10]
+    # Преобразуем дату транзакции в формат YYYY-MM-DD используя единую функцию
+    from_date = normalize_date_to_sql_date(final_transaction_date) or ""
     
     # Если есть старая дата, берем минимальную
     if old_transaction_date:
-        if isinstance(old_transaction_date, str):
-            old_date = old_transaction_date[:10] if 'T' in old_transaction_date else old_transaction_date
-        elif hasattr(old_transaction_date, 'date'):
-            old_date = old_transaction_date.date().isoformat()
-        else:
-            old_date = str(old_transaction_date)[:10]
+        old_date = normalize_date_to_sql_date(old_transaction_date) or ""
         
         # Берем минимальную дату
         if old_date < from_date:

@@ -1,64 +1,16 @@
 """
 Сервис для получения цен криптовалют с CoinGecko API.
 """
-import asyncio
-import aiohttp
-from datetime import date, timedelta, datetime
+from datetime import date
 from typing import Optional, List, Tuple, Dict
+from app.infrastructure.external.common.client import fetch_json
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 COINGECKO_API_URL = "https://api.coingecko.com/api/v3"
-COINGECKO_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_read=20)
-MAX_RETRIES = 5
-
-
-async def fetch_json(session: aiohttp.ClientSession, url: str, max_attempts: int = MAX_RETRIES) -> Optional[dict]:
-    """
-    Выполняет HTTP GET запрос и возвращает JSON.
-    Добавляет небольшую задержку между запросами для соблюдения rate limit CoinGecko.
-    
-    Args:
-        session: HTTP сессия
-        url: URL для запроса
-        max_attempts: Максимальное количество попыток
-    
-    Returns:
-        JSON данные или None
-    """
-    # Небольшая задержка перед запросом для соблюдения rate limit (CoinGecko free tier: ~10-50 запросов/минуту)
-    await asyncio.sleep(0.2)  # 200ms задержка между запросами
-    
-    for attempt in range(max_attempts):
-        try:
-            async with session.get(url) as resp:
-                if resp.status == 429:  # Rate limit
-                    if attempt < max_attempts - 1:
-                        # Увеличиваем задержку для rate limit: 30, 60, 90, 120 секунд
-                        delay = 30 + (attempt * 30)
-                        logger.warning(f"Rate limit (429), ожидание {delay}с перед повтором...")
-                        await asyncio.sleep(delay)
-                        continue
-                    else:
-                        logger.error(f"Rate limit (429) после {max_attempts} попыток для {url}")
-                        return None
-                if resp.status != 200:
-                    logger.warning(f"Ошибка при запросе {url}: статус {resp.status}")
-                    return None
-                return await resp.json()
-        except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
-            if attempt < max_attempts - 1:
-                delay = min(2 ** attempt, 10)
-                logger.warning(f"Ошибка соединения (попытка {attempt + 1}/{max_attempts}), повтор через {delay}с")
-                await asyncio.sleep(delay)
-                continue
-            logger.error(f"Критическая ошибка при запросе {url}: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Неожиданная ошибка при запросе {url}: {e}")
-            return None
-    return None
+# CoinGecko free tier: ~10-50 запросов/минуту, используем задержку 0.2с между запросами
+COINGECKO_RATE_LIMIT_DELAY = 0.2
 
 
 async def get_prices_crypto_batch(
@@ -85,7 +37,7 @@ async def get_prices_crypto_batch(
     
     url = f"{COINGECKO_API_URL}/coins/markets?vs_currency=usd&ids={ids_str}&order=market_cap_desc&per_page={per_page}&page={page}&sparkline=false"
     
-    data = await fetch_json(session, url)
+    data = await fetch_json(session, url, rate_limit_delay=COINGECKO_RATE_LIMIT_DELAY)
     if not data or not isinstance(data, list):
         return {}
     
@@ -154,7 +106,7 @@ async def get_price_crypto_history(
     # Используем market_chart с daily интервалом
     url = f"{COINGECKO_API_URL}/coins/{coingecko_id}/market_chart?vs_currency=usd&days={days}&interval=daily"
     
-    data = await fetch_json(session, url)
+    data = await fetch_json(session, url, rate_limit_delay=COINGECKO_RATE_LIMIT_DELAY)
     if not data:
         return []
     

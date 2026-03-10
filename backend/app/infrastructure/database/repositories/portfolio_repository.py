@@ -3,7 +3,14 @@
 """
 from typing import List, Optional, Dict, Any
 from app.infrastructure.database.repositories.base import BaseRepository
-from app.infrastructure.database.postgres_client import PostgresClient
+from app.infrastructure.database.database_service import (
+    table_select_async,
+    table_insert_async,
+    table_update,
+    table_delete,
+    rpc,
+    rpc_async
+)
 
 
 class PortfolioRepository(BaseRepository):
@@ -12,18 +19,10 @@ class PortfolioRepository(BaseRepository):
     Инкапсулирует логику работы с таблицей portfolios.
     """
     
-    def __init__(self, client: PostgresClient = None):
-        """
-        Инициализирует репозиторий.
-        
-        Args:
-            client: Клиент PostgreSQL (по умолчанию создается новый)
-        """
-        self.client = client or PostgresClient()
     
     async def get_by_id(self, id: int) -> Optional[Dict[str, Any]]:
         """Получает портфель по ID."""
-        result = self.client.table_select(
+        result = await table_select_async(
             "portfolios",
             select="*",
             filters={"id": id},
@@ -33,17 +32,17 @@ class PortfolioRepository(BaseRepository):
     
     async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Создает новый портфель."""
-        result = self.client.table_insert("portfolios", data)
+        result = await table_insert_async("portfolios", data)
         return result[0] if result else None
     
     async def update(self, id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Обновляет портфель."""
-        self.client.table_update("portfolios", data, filters={"id": id})
+        table_update("portfolios", data, filters={"id": id})
         return await self.get_by_id(id)
     
     async def delete(self, id: int) -> bool:
         """Удаляет портфель."""
-        result = self.client.table_delete("portfolios", {"id": id})
+        result = table_delete("portfolios", {"id": id})
         return result is not None
     
     async def get_user_portfolios(self, user_id: str) -> List[Dict[str, Any]]:
@@ -56,19 +55,7 @@ class PortfolioRepository(BaseRepository):
         Returns:
             Список портфелей
         """
-        return self.client.rpc("get_user_portfolios", {"u_id": user_id}) or []
-    
-    async def get_user_portfolios_async(self, user_id: str) -> List[Dict[str, Any]]:
-        """
-        Получает все портфели пользователя (асинхронно).
-        
-        Args:
-            user_id: ID пользователя
-            
-        Returns:
-            Список портфелей
-        """
-        return await self.client.rpc_async("get_user_portfolios", {"u_id": user_id}) or []
+        return await rpc_async("get_user_portfolios", {"u_id": user_id}) or []
     
     async def get_portfolio_assets(self, portfolio_id: int) -> List[Dict[str, Any]]:
         """
@@ -80,7 +67,7 @@ class PortfolioRepository(BaseRepository):
         Returns:
             Список активов
         """
-        return self.client.rpc("get_portfolio_assets", {"p_portfolio_id": portfolio_id}) or []
+        return await rpc_async("get_portfolio_assets", {"p_portfolio_id": portfolio_id}) or []
     
     async def get_portfolio_transactions(self, portfolio_id: int) -> List[Dict[str, Any]]:
         """
@@ -92,7 +79,7 @@ class PortfolioRepository(BaseRepository):
         Returns:
             Список транзакций
         """
-        return self.client.rpc("get_portfolio_transactions", {"p_portfolio_id": portfolio_id}) or []
+        return await rpc_async("get_portfolio_transactions", {"p_portfolio_id": portfolio_id}) or []
     
     async def get_portfolio_value_history(self, portfolio_id: int) -> List[Dict[str, Any]]:
         """
@@ -104,4 +91,4 @@ class PortfolioRepository(BaseRepository):
         Returns:
             Список записей истории
         """
-        return self.client.rpc("get_portfolio_value_history", {"p_portfolio_id": portfolio_id}) or []
+        return await rpc_async("get_portfolio_value_history", {"p_portfolio_id": portfolio_id}) or []

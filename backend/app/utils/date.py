@@ -206,3 +206,23 @@ def format_date(d: Union[str, datetime, date, None]) -> Optional[str]:
         Строка формата YYYY-MM-DD или None
     """
     return normalize_date_to_string(d, include_time=False)
+
+
+def normalize_date_to_sql_date(dt: Union[str, datetime, date, None]) -> Optional[str]:
+    """
+    Нормализует дату в формат SQL (YYYY-MM-DD).
+    Используется для передачи дат в SQL функции и запросы.
+    Всегда возвращает только дату без времени.
+    
+    Args:
+        dt: Дата в виде строки, datetime, date или None
+        
+    Returns:
+        Строка формата YYYY-MM-DD или None
+        
+    Examples:
+        normalize_date_to_sql_date(datetime(2023, 1, 1, 12, 0)) -> "2023-01-01"
+        normalize_date_to_sql_date("2023-01-01T12:00:00") -> "2023-01-01"
+        normalize_date_to_sql_date(date(2023, 1, 1)) -> "2023-01-01"
+    """
+    return normalize_date_to_string(dt, include_time=False)

@@ -5,9 +5,9 @@
 """
 import asyncio
 import aiohttp
-import logging
 from datetime import date, datetime, timedelta
 from typing import Optional, List, Tuple, Dict
+from app.infrastructure.external.common.client import fetch_json
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -15,8 +15,6 @@ logger = get_logger(__name__)
 # API для курсов валют ЦБ РФ
 CBR_API_URL = "https://www.cbr.ru/scripts"
 CBR_DAILY_URL = "https://www.cbr-xml-daily.ru"  # Для текущих курсов (альтернативный)
-API_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_read=20)
-MAX_RETRIES = 5
 
 # Коды валют ЦБ РФ (VAL_NM_RQ для исторических данных)
 CURRENCY_CODES = {
@@ -40,46 +38,6 @@ CURRENCY_CHAR_CODES = {
 SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "CNY", "JPY"]
 
 
-async def fetch_json(session: aiohttp.ClientSession, url: str, max_attempts: int = MAX_RETRIES) -> Optional[dict]:
-    """
-    Выполняет HTTP GET запрос и возвращает JSON.
-    
-    Args:
-        session: HTTP сессия
-        url: URL для запроса
-        max_attempts: Максимальное количество попыток
-    
-    Returns:
-        JSON данные или None
-    """
-    for attempt in range(max_attempts):
-        try:
-            async with session.get(url, timeout=API_TIMEOUT) as resp:
-                if resp.status == 429:  # Rate limit
-                    if attempt < max_attempts - 1:
-                        delay = 5 + (attempt * 5)
-                        logger.warning(f"Rate limit (429), ожидание {delay}с...")
-                        await asyncio.sleep(delay)
-                        continue
-                    else:
-                        logger.error(f"Rate limit (429) после {max_attempts} попыток для {url}")
-                        return None
-                if resp.status != 200:
-                    logger.warning(f"Ошибка при запросе {url}: статус {resp.status}")
-                    return None
-                return await resp.json()
-        except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
-            if attempt < max_attempts - 1:
-                delay = min(2 ** attempt, 10)
-                logger.warning(f"Ошибка соединения (попытка {attempt + 1}/{max_attempts}), повтор через {delay}с")
-                await asyncio.sleep(delay)
-                continue
-            logger.error(f"Критическая ошибка при запросе {url}: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Неожиданная ошибка при запросе {url}: {e}")
-            return None
-    return None
 
 
 async def get_currency_rate(session: aiohttp.ClientSession, ticker: str, rate_date: Optional[date] = None) -> Optional[float]:
@@ -133,7 +91,7 @@ async def get_currency_rate(session: aiohttp.ClientSession, ticker: str, rate_da
         url = f"{CBR_API_URL}/XML_dynamic.asp?date_req1={date_str}&date_req2={date_str}&VAL_NM_RQ={currency_code}"
         
         try:
-            async with session.get(url, timeout=API_TIMEOUT) as resp:
+            async with session.get(url) as resp:
                 if resp.status != 200:
                     continue
                 
@@ -222,7 +180,7 @@ async def get_currency_rate_history(
     url = f"{CBR_API_URL}/XML_dynamic.asp?date_req1={date_req1}&date_req2={date_req2}&VAL_NM_RQ={currency_code}"
     
     try:
-        async with session.get(url, timeout=API_TIMEOUT) as resp:
+        async with session.get(url) as resp:
             if resp.status != 200:
                 logger.warning(f"Ошибка при запросе истории курсов: статус {resp.status}")
                 return []

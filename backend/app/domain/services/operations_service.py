@@ -85,11 +85,8 @@ def create_operation(
     Returns:
         ID созданной операции (transaction_id для Buy/Sell, cash_operation_id для остальных)
     """
-    # Нормализуем дату
-    if isinstance(operation_date, datetime):
-        operation_date = operation_date.isoformat()
-    elif isinstance(operation_date, str) and 'T' not in operation_date:
-        operation_date = f"{operation_date}T00:00:00"
+    # Нормализуем дату используя единую функцию
+    operation_date = normalize_date_to_string(operation_date, include_time=True) or ""
     
     # Если portfolio_id не передан, но есть portfolio_asset_id, получаем portfolio_id из него
     if not portfolio_id and portfolio_asset_id:
@@ -300,7 +297,7 @@ def create_operations_batch(
             "operation_type": operation_type,
             "amount": amount,
             "currency_id": currency_id,
-            "operation_date": op_date.isoformat(),
+            "operation_date": normalize_date_to_string(op_date, include_time=True) or "",
             "asset_id": asset_id,
             "dividend_yield": dividend_yield
         }

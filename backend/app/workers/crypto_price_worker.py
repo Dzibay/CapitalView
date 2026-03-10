@@ -6,15 +6,16 @@ Worker для обновления цен криптовалют.
 """
 import asyncio
 import aiohttp
-import json
-import logging
 from datetime import datetime, timedelta, date
 from typing import Optional, Dict, List, Tuple
 from tqdm.asyncio import tqdm_asyncio
 
 from app.infrastructure.database.postgres_async import db_select, db_rpc
 from app.infrastructure.external.crypto.price_service import get_price_crypto_history, get_price_crypto, get_prices_crypto_batch
-from app.utils.date import parse_date as normalize_date, normalize_date_to_string
+from app.infrastructure.external.moex.utils import parse_json_properties
+from app.infrastructure.external.common.client import create_http_session
+from app.workers.common.price_utils import get_last_prices_from_latest_prices
+from app.utils.date import parse_date as normalize_date, normalize_date_to_string, normalize_date_to_sql_date
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -26,25 +27,8 @@ MAX_DB_PARALLEL = 10  # ограничение для запросов к БД
 sem = asyncio.Semaphore(MAX_PARALLEL)  # для CoinGecko API запросов
 db_sem = asyncio.Semaphore(MAX_DB_PARALLEL)  # для запросов к БД
 
-# Интервал обновления сегодняшних цен (10 минут)
+# Интервал обновления сегодняшних цен (15 минут)
 UPDATE_INTERVAL_SECONDS = 15 * 60
-
-
-def parse_properties(props) -> dict:
-    """Парсит properties из строки или словаря."""
-    if not props:
-        return {}
-    if isinstance(props, dict):
-        return props
-    if isinstance(props, str):
-        try:
-            return json.loads(props)
-        except:
-            return {}
-    return {}
-
-
-async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, Dict]:
     """
     Получает последние цены и даты (curr_price, curr_date) для активов из таблицы asset_latest_prices.
     
@@ -86,13 +70,8 @@ async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, 
                     curr_date = row.get("curr_date")
                     if asset_id and curr_date:
                         # Преобразуем дату в строку
-                        date_str = None
-                        if isinstance(curr_date, str):
-                            date_str = curr_date[:10]
-                        elif hasattr(curr_date, 'isoformat'):
-                            date_str = curr_date.isoformat()
-                        else:
-                            date_str = str(curr_date)[:10]
+                        # Преобразуем дату в строку используя единую функцию
+                        date_str = normalize_date_to_sql_date(curr_date)
                         
                         if date_str:
                             last_prices_map[asset_id] = {
@@ -129,7 +108,7 @@ async def update_asset_history(
     asset_id = asset["id"]
     
     # Получаем coingecko_id из properties
-    props = parse_properties(asset.get("properties"))
+    props = parse_json_properties(asset.get("properties"))
     coingecko_id = props.get("coingecko_id")
     if not coingecko_id:
         logger.warning(f"Актив {asset_id} не имеет coingecko_id в properties")
@@ -231,7 +210,7 @@ async def update_asset_history(
 
     # Находим минимальную дату обновления
     min_date = min(
-        normalize_date_to_string(price["trade_date"]) or price["trade_date"][:10]
+        normalize_date_to_sql_date(price["trade_date"]) or ""
         for price in new_prices_data
     )
 
@@ -331,19 +310,7 @@ async def update_history_prices() -> int:
     all_new_prices = []
     
     # Создаем HTTP сессию для CoinGecko
-    connector = aiohttp.TCPConnector(
-        limit=10,
-        limit_per_host=5,
-        ttl_dns_cache=300,
-        force_close=False,
-        enable_cleanup_closed=True,
-    )
-    
-    async with aiohttp.ClientSession(
-        connector=connector,
-        timeout=aiohttp.ClientTimeout(total=30, connect=10, sock_read=20),
-        headers={"User-Agent": "CapitalView/1.0"}
-    ) as session:
+    async with create_http_session(limit=10, limit_per_host=5) as session:
         tasks = [update_asset_history(session, a, last_date_map) for a in assets]
         results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="История")
 
@@ -375,8 +342,8 @@ async def update_history_prices() -> int:
         for price in all_new_prices:
             asset_id = price["asset_id"]
             trade_date = price["trade_date"]
-            # Нормализуем дату для ключа
-            date_key = normalize_date_to_string(trade_date) or str(trade_date)[:10]
+            # Нормализуем дату для ключа используя единую функцию
+            date_key = normalize_date_to_sql_date(trade_date) or ""
             key = (asset_id, date_key)
             # Оставляем последнюю запись (можно заменить на первую, если нужно)
             unique_prices[key] = price
@@ -412,7 +379,7 @@ async def update_history_prices() -> int:
     if updated_assets:
         # Находим минимальную дату для всех активов
         min_date = min(updated_assets.values())
-        from_date = normalize_date_to_string(min_date) or str(min_date)[:10]
+        from_date = normalize_date_to_sql_date(min_date)
         
         # Собираем список всех активов
         asset_ids = list(updated_assets.keys())
@@ -458,7 +425,7 @@ def process_today_price(
     asset_id = asset["id"]
     
     # Получаем coingecko_id из properties
-    props = parse_properties(asset.get("properties"))
+    props = parse_json_properties(asset.get("properties"))
     coingecko_id = props.get("coingecko_id")
     if not coingecko_id:
         return None
@@ -502,7 +469,7 @@ async def update_today_prices() -> int:
         Количество обновленных активов
     """
     now = datetime.now()
-    today = now.date().isoformat()
+    today = normalize_date_to_sql_date(now.date())
 
 
     # Получаем криптовалютные активы с фильтром по asset_type_id (6)
@@ -541,23 +508,11 @@ async def update_today_prices() -> int:
         return 0
 
     
-    connector = aiohttp.TCPConnector(
-        limit=10,
-        limit_per_host=5,
-        ttl_dns_cache=300,
-        force_close=False,
-        enable_cleanup_closed=True,
-    )
-
     # Загружаем цены batch запросами (по 250 за раз)
     all_prices = {}
     batch_size = 250
     
-    async with aiohttp.ClientSession(
-        connector=connector,
-        timeout=aiohttp.ClientTimeout(total=30, connect=10, sock_read=20),
-        headers={"User-Agent": "CapitalView/1.0"}
-    ) as session:
+    async with create_http_session(limit=10, limit_per_host=5) as session:
         for i in range(0, len(coingecko_ids), batch_size):
             batch_ids = coingecko_ids[i:i + batch_size]
             async with sem:
@@ -613,7 +568,7 @@ async def update_today_prices() -> int:
         asset_id = row["asset_id"]
         trade_date = row["trade_date"]
         if trade_date:
-            date_str = normalize_date_to_string(trade_date) or str(trade_date)[:10]
+            date_str = normalize_date_to_sql_date(trade_date)
             
             if asset_id not in updated_assets_dates:
                 updated_assets_dates[asset_id] = date_str

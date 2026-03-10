@@ -2,7 +2,7 @@ import json
 from app.infrastructure.database.postgres_service import rpc, table_insert, table_select, table_update
 from app.domain.services.user_service import get_user_by_email
 from datetime import datetime
-from app.utils.date import normalize_date_to_string
+from app.utils.date import normalize_date_to_string, normalize_date_to_sql_date
 from app.domain.services.portfolio_service import update_portfolios_with_asset
 from app.core.logging import get_logger
 
@@ -36,7 +36,7 @@ def create_asset(email: str, data: dict):
     quantity = float(data.get("quantity", 0))
     currency = int(data.get("currency")) if data.get("currency") and data.get("currency") != "None" else None
     price = float(data.get("average_price", 0))
-    date = data.get("date") or datetime.utcnow().isoformat()
+    date = data.get("date") or normalize_date_to_string(datetime.utcnow(), include_time=True)
     
     # Преобразуем portfolio_id и asset_id в int, если они не None
     if portfolio_id is not None:
@@ -56,7 +56,7 @@ def create_asset(email: str, data: dict):
         from app.utils.date import normalize_date_to_string
         transaction_date = normalize_date_to_string(date)
         if not transaction_date:
-            transaction_date = datetime.utcnow().date().isoformat()
+            transaction_date = normalize_date_to_sql_date(datetime.utcnow().date())
 
         # Вызываем RPC функцию для создания актива
         rpc_params = {
@@ -196,13 +196,9 @@ def add_asset_price(data):
         logger.error(f"Ошибка при проверке актива {asset_id}: {e}")
         return {"success": False, "error": "Ошибка при проверке актива"}
 
-    # Нормализуем дату для RPC функции
-    if hasattr(date, 'isoformat'):
-        date_str = date.isoformat()
-    elif isinstance(date, str):
-        date_str = date
-    else:
-        date_str = str(date)
+    # Нормализуем дату для RPC функции используя единую функцию
+    date_str = normalize_date_to_string(date, include_time=True) or ""
+    
     
     price_data_list = [{
         "asset_id": asset_id,

@@ -15,7 +15,7 @@ from tqdm.asyncio import tqdm_asyncio
 from app.infrastructure.database.postgres_async import db_select, db_rpc
 from app.infrastructure.external.moex.client import create_moex_session
 from app.infrastructure.external.moex.price_service import get_price_moex_history, get_price_moex
-from app.utils.date import parse_date as normalize_date, normalize_date_to_string as format_date
+from app.utils.date import parse_date as normalize_date, normalize_date_to_string as format_date, normalize_date_to_sql_date
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -78,14 +78,8 @@ async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, 
                     curr_price = row.get("curr_price")
                     curr_date = row.get("curr_date")
                     if asset_id and curr_date:
-                        # Преобразуем дату в строку
-                        date_str = None
-                        if isinstance(curr_date, str):
-                            date_str = curr_date[:10]
-                        elif hasattr(curr_date, 'isoformat'):
-                            date_str = curr_date.isoformat()
-                        else:
-                            date_str = str(curr_date)[:10]
+                        # Преобразуем дату в строку используя единую функцию
+                        date_str = normalize_date_to_sql_date(curr_date)
                         
                         if date_str:
                             last_prices_map[asset_id] = {
@@ -213,7 +207,7 @@ async def update_asset_history(
             return True, None, []
 
     # Находим минимальную дату обновления
-    min_date = min(price["trade_date"][:10] for price in new_prices_data)
+    min_date = min(normalize_date_to_sql_date(price["trade_date"]) or "" for price in new_prices_data)
 
     return True, min_date, new_prices_data
 
@@ -359,11 +353,8 @@ async def update_history_prices() -> int:
         for price in all_new_prices:
             asset_id = price["asset_id"]
             trade_date = price["trade_date"]
-            # Нормализуем дату для ключа
-            if isinstance(trade_date, str):
-                date_key = trade_date[:10] if len(trade_date) >= 10 else trade_date
-            else:
-                date_key = str(trade_date)[:10]
+            # Нормализуем дату для ключа используя единую функцию
+            date_key = normalize_date_to_sql_date(trade_date) or ""
             key = (asset_id, date_key)
             # Оставляем последнюю запись
             unique_prices[key] = price
@@ -426,13 +417,8 @@ async def update_history_prices() -> int:
     # 3. Обновляем портфели с минимальной датой обновления
     update_tasks = []
     for portfolio_id, min_date in portfolio_dates.items():
-        # Преобразуем дату в строку, если нужно
-        if isinstance(min_date, str):
-            from_date = min_date[:10]
-        elif hasattr(min_date, 'isoformat'):
-            from_date = min_date.isoformat()
-        else:
-            from_date = str(min_date)[:10]
+        # Преобразуем дату в строку используя единую функцию
+        from_date = normalize_date_to_sql_date(min_date)
         
         # Вызываем update_portfolio_values_from_date с датой начала
         async def update_portfolio_with_sem(pid, fdate):
@@ -535,13 +521,13 @@ async def process_today_prices_batch(
             if not trading:
                 prev_date = None
                 if last:
-                    prev_date = last.get("date") or (last.get("trade_date")[:10] if last.get("trade_date") else None)
+                    prev_date = last.get("date") or normalize_date_to_sql_date(last.get("trade_date"))
                 
                 prev_dt = normalize_date(prev_date) if prev_date else None
                 yesterday = now_msk.date() - timedelta(days=1)
                 
                 if prev_dt and prev_dt < yesterday:
-                    insert_date = yesterday.isoformat()
+                    insert_date = normalize_date_to_sql_date(yesterday)
                 elif prev_dt == yesterday:
                     continue  # вчера уже есть
                 else:
@@ -585,13 +571,13 @@ async def process_today_prices_batch(
             if not trading:
                 prev_date = None
                 if last:
-                    prev_date = last.get("date") or (last.get("trade_date")[:10] if last.get("trade_date") else None)
+                    prev_date = last.get("date") or normalize_date_to_sql_date(last.get("trade_date"))
                 
                 prev_dt = normalize_date(prev_date) if prev_date else None
                 yesterday = now_msk.date() - timedelta(days=1)
                 
                 if prev_dt and prev_dt < yesterday:
-                    insert_date = yesterday.isoformat()
+                    insert_date = normalize_date_to_sql_date(yesterday)
                 elif prev_dt == yesterday:
                     continue  # вчера уже есть
                 else:
@@ -615,7 +601,7 @@ async def update_today_prices() -> int:
         Количество обновленных активов
     """
     now = datetime.now(MSK_TZ)
-    today = now.date().isoformat()
+    today = normalize_date_to_sql_date(now.date())
     trading = is_moex_trading_time()
 
     
@@ -666,11 +652,8 @@ async def update_today_prices() -> int:
         for row in updates_batch:
             asset_id = row["asset_id"]
             trade_date = row["trade_date"]
-            # Нормализуем дату для ключа
-            if isinstance(trade_date, str):
-                date_key = trade_date[:10] if len(trade_date) >= 10 else trade_date
-            else:
-                date_key = str(trade_date)[:10]
+            # Нормализуем дату для ключа используя единую функцию
+            date_key = normalize_date_to_sql_date(trade_date) or ""
             key = (asset_id, date_key)
             # Оставляем последнюю запись
             unique_updates[key] = row
@@ -725,13 +708,8 @@ async def update_today_prices() -> int:
         asset_id = row["asset_id"]
         trade_date = row["trade_date"]
         if trade_date:
-            # Преобразуем дату в формат YYYY-MM-DD
-            if isinstance(trade_date, str):
-                date_str = trade_date[:10]
-            elif hasattr(trade_date, 'isoformat'):
-                date_str = trade_date.isoformat()
-            else:
-                date_str = str(trade_date)[:10]
+            # Преобразуем дату в формат YYYY-MM-DD используя единую функцию
+            date_str = normalize_date_to_sql_date(trade_date)
             
             # Для каждого актива берем минимальную дату (если несколько цен за день)
             if asset_id not in updated_assets_dates:
@@ -746,15 +724,8 @@ async def update_today_prices() -> int:
         
         # Находим минимальную дату для всех активов
         min_date = min(updated_assets_dates.values())
-        # Преобразуем дату в строку
-        if isinstance(min_date, str):
-            from_date = min_date[:10]
-        elif isinstance(min_date, date):
-            from_date = min_date.isoformat()
-        elif hasattr(min_date, 'isoformat'):
-            from_date = min_date.isoformat()
-        else:
-            from_date = str(min_date)[:10]
+        # Преобразуем дату в строку используя единую функцию
+        from_date = normalize_date_to_sql_date(min_date)
         
         # Собираем список всех активов
         asset_ids = list(updated_assets_dates.keys())

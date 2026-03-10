@@ -3,7 +3,15 @@
 """
 from typing import List, Optional, Dict, Any
 from app.infrastructure.database.repositories.base import BaseRepository
-from app.infrastructure.database.postgres_client import PostgresClient
+from app.infrastructure.database.database_service import (
+    table_select,
+    table_select_async,
+    table_insert,
+    table_insert_async,
+    table_update,
+    table_delete,
+    rpc
+)
 
 
 class PortfolioAssetRepository(BaseRepository):
@@ -12,18 +20,10 @@ class PortfolioAssetRepository(BaseRepository):
     Инкапсулирует логику работы с таблицей portfolio_assets.
     """
     
-    def __init__(self, client: PostgresClient = None):
-        """
-        Инициализирует репозиторий.
-        
-        Args:
-            client: Клиент PostgreSQL (по умолчанию создается новый)
-        """
-        self.client = client or PostgresClient()
     
     async def get_by_id(self, id: int) -> Optional[Dict[str, Any]]:
         """Получает портфельный актив по ID."""
-        result = self.client.table_select(
+        result = await table_select_async(
             "portfolio_assets",
             select="*",
             filters={"id": id},
@@ -33,7 +33,7 @@ class PortfolioAssetRepository(BaseRepository):
     
     def get_by_id_sync(self, id: int) -> Optional[Dict[str, Any]]:
         """Получает портфельный актив по ID (синхронно)."""
-        result = self.client.table_select(
+        result = table_select(
             "portfolio_assets",
             select="*",
             filters={"id": id},
@@ -43,27 +43,27 @@ class PortfolioAssetRepository(BaseRepository):
     
     async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Создает новый портфельный актив."""
-        result = self.client.table_insert("portfolio_assets", data)
+        result = await table_insert_async("portfolio_assets", data)
         return result[0] if result else None
     
     def create_sync(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Создает новый портфельный актив (синхронно)."""
-        result = self.client.table_insert("portfolio_assets", data)
+        result = table_insert("portfolio_assets", data)
         return result[0] if result else None
     
     async def update(self, id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Обновляет портфельный актив."""
-        self.client.table_update("portfolio_assets", data, filters={"id": id})
+        table_update("portfolio_assets", data, filters={"id": id})
         return await self.get_by_id(id)
     
     def update_sync(self, id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Обновляет портфельный актив (синхронно)."""
-        self.client.table_update("portfolio_assets", data, filters={"id": id})
+        table_update("portfolio_assets", data, filters={"id": id})
         return self.get_by_id_sync(id)
     
     async def delete(self, id: int) -> bool:
         """Удаляет портфельный актив."""
-        result = self.client.table_delete("portfolio_assets", {"id": id})
+        result = table_delete("portfolio_assets", {"id": id})
         return result is not None
     
     def get_by_portfolio_and_asset(
@@ -81,7 +81,7 @@ class PortfolioAssetRepository(BaseRepository):
         Returns:
             Портфельный актив или None
         """
-        result = self.client.table_select(
+        result = table_select(
             "portfolio_assets",
             select="*",
             filters={"portfolio_id": portfolio_id, "asset_id": asset_id},
@@ -99,7 +99,7 @@ class PortfolioAssetRepository(BaseRepository):
         Returns:
             Список портфельных активов
         """
-        result = self.client.table_select(
+        result = table_select(
             "portfolio_assets",
             select="*",
             filters={"portfolio_id": portfolio_id}
@@ -116,7 +116,7 @@ class PortfolioAssetRepository(BaseRepository):
         Returns:
             Список портфельных активов
         """
-        result = self.client.table_select(
+        result = table_select(
             "portfolio_assets",
             select="portfolio_id",
             filters={"asset_id": asset_id}
@@ -133,7 +133,7 @@ class PortfolioAssetRepository(BaseRepository):
         Returns:
             True если успешно
         """
-        result = self.client.rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
+        result = rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
         return result is not False
     
     def get_portfolio_asset_meta(self, portfolio_asset_id: int) -> Optional[Dict[str, Any]]:
@@ -146,7 +146,7 @@ class PortfolioAssetRepository(BaseRepository):
         Returns:
             Метаданные или None
         """
-        result = self.client.rpc("get_portfolio_asset_meta", {
+        result = rpc("get_portfolio_asset_meta", {
             "p_portfolio_asset_id": portfolio_asset_id
         })
         

@@ -3,7 +3,15 @@
 """
 from typing import List, Optional, Dict, Any
 from app.infrastructure.database.repositories.base import BaseRepository
-from app.infrastructure.database.postgres_client import PostgresClient
+from app.infrastructure.database.database_service import (
+    table_select_async,
+    table_insert,
+    table_insert_async,
+    table_update,
+    table_delete,
+    rpc,
+    rpc_async
+)
 
 
 class TransactionRepository(BaseRepository):
@@ -12,18 +20,10 @@ class TransactionRepository(BaseRepository):
     Инкапсулирует логику работы с таблицей transactions.
     """
     
-    def __init__(self, client: PostgresClient = None):
-        """
-        Инициализирует репозиторий.
-        
-        Args:
-            client: Клиент PostgreSQL (по умолчанию создается новый)
-        """
-        self.client = client or PostgresClient()
     
     async def get_by_id(self, id: int) -> Optional[Dict[str, Any]]:
         """Получает транзакцию по ID."""
-        result = self.client.table_select(
+        result = await table_select_async(
             "transactions",
             select="*",
             filters={"id": id},
@@ -33,25 +33,25 @@ class TransactionRepository(BaseRepository):
     
     async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Создает новую транзакцию."""
-        result = self.client.table_insert("transactions", data)
+        result = await table_insert_async("transactions", data)
         return result[0] if result else None
     
     def create_sync(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Создает новую транзакцию (синхронно)."""
-        result = self.client.table_insert("transactions", data)
+        result = table_insert("transactions", data)
         return result[0] if result else None
     
     async def update(self, id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Обновляет транзакцию."""
-        self.client.table_update("transactions", data, filters={"id": id})
+        table_update("transactions", data, filters={"id": id})
         return await self.get_by_id(id)
     
     async def delete(self, id: int) -> bool:
         """Удаляет транзакцию."""
-        result = self.client.table_delete("transactions", {"id": id})
+        result = table_delete("transactions", {"id": id})
         return result is not None
     
-    def get_user_transactions(
+    async def get_user_transactions(
         self,
         user_id: str,
         limit: int = 1000
@@ -66,12 +66,12 @@ class TransactionRepository(BaseRepository):
         Returns:
             Список транзакций
         """
-        return self.client.rpc("get_user_transactions", {
+        return await rpc_async("get_user_transactions", {
             "p_user_id": user_id,
             "p_limit": limit
         }) or []
     
-    def get_portfolio_transactions(
+    async def get_portfolio_transactions(
         self,
         portfolio_id: int
     ) -> List[Dict[str, Any]]:
@@ -84,11 +84,11 @@ class TransactionRepository(BaseRepository):
         Returns:
             Список транзакций
         """
-        return self.client.rpc("get_portfolio_transactions", {
+        return await rpc_async("get_portfolio_transactions", {
             "p_portfolio_id": portfolio_id
         }) or []
     
-    def get_by_portfolio_asset(
+    async def get_by_portfolio_asset(
         self,
         portfolio_asset_id: int
     ) -> List[Dict[str, Any]]:
@@ -101,7 +101,7 @@ class TransactionRepository(BaseRepository):
         Returns:
             Список транзакций
         """
-        result = self.client.table_select(
+        result = await table_select_async(
             "transactions",
             select="*",
             filters={"portfolio_asset_id": portfolio_asset_id},
@@ -109,7 +109,7 @@ class TransactionRepository(BaseRepository):
         )
         return result or []
     
-    def delete_by_portfolio_asset(self, portfolio_asset_id: int) -> bool:
+    async def delete_by_portfolio_asset(self, portfolio_asset_id: int) -> bool:
         """
         Удаляет все транзакции портфельного актива.
         
@@ -119,7 +119,7 @@ class TransactionRepository(BaseRepository):
         Returns:
             True если успешно
         """
-        result = self.client.table_delete("transactions", {
+        result = table_delete("transactions", {
             "portfolio_asset_id": portfolio_asset_id
         })
         return result is not None

@@ -6,18 +6,19 @@ Worker для обновления курсов валют к рублю.
 """
 import asyncio
 import aiohttp
-import logging
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, List, Tuple
 from tqdm.asyncio import tqdm_asyncio
 
-from app.infrastructure.database.postgres_async import db_select, db_rpc, table_insert_async
+from app.infrastructure.database.postgres_async import db_select, db_rpc
 from app.infrastructure.external.currency.price_service import (
     get_currency_rate,
     get_currency_rate_history,
     get_currency_rates_batch
 )
-from app.utils.date import parse_date as normalize_date
+from app.infrastructure.external.common.client import create_http_session
+from app.workers.common.price_utils import get_last_prices_from_latest_prices
+from app.utils.date import parse_date as normalize_date, normalize_date_to_sql_date
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -30,7 +31,7 @@ sem = asyncio.Semaphore(MAX_PARALLEL)
 UPDATE_INTERVAL_SECONDS = 60 * 60
 
 # Основные валюты для обновления
-CURRENCY_TICKERS = ["USD"] # , "EUR", "GBP", "CNY", "JPY"
+CURRENCY_TICKERS = ["USD", "EUR", "GBP", "CNY", "JPY"]
 
 
 async def get_currency_assets() -> List[Dict]:
@@ -60,52 +61,6 @@ async def get_currency_assets() -> List[Dict]:
     return assets
 
 
-async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, Dict]:
-    """
-    Получает последние курсы и даты для валют из таблицы asset_latest_prices.
-    
-    Args:
-        asset_ids: Список ID валютных активов
-        
-    Returns:
-        Словарь {asset_id: {"price": float, "date": str, "trade_date": date}}
-    """
-    if not asset_ids:
-        return {}
-    
-    last_prices_map = {}
-    
-    try:
-        result = await db_select(
-            "asset_latest_prices",
-            "asset_id, curr_price, curr_date",
-            in_filters={"asset_id": asset_ids}
-        )
-        
-        if result:
-            for row in result:
-                asset_id = row.get("asset_id")
-                curr_price = row.get("curr_price")
-                curr_date = row.get("curr_date")
-                if asset_id and curr_date:
-                    date_str = None
-                    if isinstance(curr_date, str):
-                        date_str = curr_date[:10]
-                    elif hasattr(curr_date, 'isoformat'):
-                        date_str = curr_date.isoformat()
-                    else:
-                        date_str = str(curr_date)[:10]
-                    
-                    if date_str:
-                        last_prices_map[asset_id] = {
-                            "price": curr_price,
-                            "date": date_str,
-                            "trade_date": curr_date
-                        }
-    except Exception as e:
-        logger.error(f"Ошибка при получении последних курсов: {type(e).__name__}: {e}")
-    
-    return last_prices_map
 
 
 async def update_currency_history(
@@ -206,7 +161,7 @@ async def update_currency_history(
             logger.warning(f"⚠️ Получены курсы для {ticker}, но после фильтрации новых курсов нет")
             return True, None, []
     
-    min_date = min(price["trade_date"][:10] for price in new_prices_data)
+    min_date = min(normalize_date_to_sql_date(price["trade_date"]) or "" for price in new_prices_data)
     return True, min_date, new_prices_data
 
 
@@ -228,7 +183,8 @@ async def upsert_asset_prices(prices: List[Dict], batch_size: int = 1000) -> int
     seen = set()
     unique_prices = []
     for price in prices:
-        key = (price["asset_id"], price["trade_date"][:10])
+        date_key = normalize_date_to_sql_date(price["trade_date"]) or ""
+        key = (price["asset_id"], date_key)
         if key not in seen:
             seen.add(key)
             unique_prices.append(price)
@@ -241,7 +197,6 @@ async def upsert_asset_prices(prices: List[Dict], batch_size: int = 1000) -> int
         batch_num = i // batch_size + 1
         
         try:
-            # Используем RPC функцию для upsert
             await db_rpc("upsert_asset_prices", {"p_prices": batch})
             total_inserted += len(batch)
             
@@ -279,7 +234,7 @@ async def update_history_prices() -> int:
     for asset_id, data in last_date_map.items():
         last_date_str_map[asset_id] = data["date"]
     
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         tasks = []
         for asset in assets:
             task = update_currency_history(session, asset, last_date_str_map)
@@ -333,7 +288,7 @@ async def update_history_prices() -> int:
         if updated_asset_ids:
             # Находим минимальную дату для всех валют
             min_date = min(asset_date_map.values())
-            from_date = min_date[:10] if isinstance(min_date, str) else str(min_date)[:10]
+            from_date = normalize_date_to_sql_date(min_date)
             
             logger.info(f"🔄 Обновление портфелей с валютами (с даты {from_date})...")
             try:
@@ -368,7 +323,7 @@ async def update_today_prices() -> int:
         logger.warning("⚠️ Не найдено валютных активов для обновления")
         return 0
     
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         # Получаем текущие курсы батчем
         tickers = [a["ticker"] for a in assets]
         rates = await get_currency_rates_batch(session, tickers)
@@ -384,7 +339,7 @@ async def update_today_prices() -> int:
         
         if ticker in rates:
             rate = rates[ticker]
-            today = date.today().isoformat()
+            today = normalize_date_to_sql_date(date.today())
             
             updates_batch.append({
                 "asset_id": asset_id,
@@ -400,7 +355,8 @@ async def update_today_prices() -> int:
     seen = set()
     unique_updates = []
     for update in updates_batch:
-        key = (update["asset_id"], update["trade_date"][:10])
+        date_key = normalize_date_to_sql_date(update["trade_date"]) or ""
+        key = (update["asset_id"], date_key)
         if key not in seen:
             seen.add(key)
             unique_updates.append(update)
@@ -424,7 +380,7 @@ async def update_today_prices() -> int:
         # Обновляем портфели с обновленными валютами
         logger.info(f"🔄 Обновление портфелей с валютами...")
         try:
-            today = date.today().isoformat()
+            today = normalize_date_to_sql_date(date.today())
             update_results = await db_rpc('update_assets_daily_values', {
                 'p_asset_ids': updated_ids,
                 'p_from_date': today

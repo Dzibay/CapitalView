@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from time import time
 from typing import Dict
 from datetime import datetime, timezone, date
-from app.utils.date import normalize_date_to_day_string, normalize_date_to_string, parse_date
+from app.utils.date import normalize_date_to_day_string, normalize_date_to_string, parse_date, normalize_date_to_sql_date
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -643,10 +643,10 @@ async def import_broker_portfolio(
                         # Используем транзакции, которые уже есть в БД до момента погашения
                         tx_date_for_query = tx_date_normalized if tx_date_normalized else tx_date
                         if isinstance(tx_date_for_query, str):
-                            # Преобразуем дату в формат для сравнения
-                            tx_date_sql = tx_date_for_query[:10] if len(tx_date_for_query) > 10 else tx_date_for_query
+                            # Преобразуем дату в формат для сравнения используя единую функцию
+                            tx_date_sql = normalize_date_to_sql_date(tx_date_for_query) or ""
                         else:
-                            tx_date_sql = str(tx_date_for_query)[:10]
+                            tx_date_sql = normalize_date_to_sql_date(tx_date_for_query) or ""
                         
                         # Рассчитываем количество из существующих транзакций до даты погашения
                         calculated_qty = 0.0
@@ -654,8 +654,8 @@ async def import_broker_portfolio(
                         for existing_tx_key in existing_tx_keys:
                             existing_pa_id, existing_date, existing_type, existing_price, existing_qty = existing_tx_key
                             if existing_pa_id == pa_id:
-                                # Сравниваем даты (только дата, без времени для сравнения)
-                                existing_date_str = str(existing_date)[:10] if len(str(existing_date)) > 10 else str(existing_date)
+                                # Сравниваем даты (только дата, без времени для сравнения) используя единую функцию
+                                existing_date_str = normalize_date_to_sql_date(existing_date) or ""
                                 if existing_date_str <= tx_date_sql:
                                     existing_tx_count += 1
                                     if existing_type == 1:  # Buy
@@ -671,7 +671,7 @@ async def import_broker_portfolio(
                         for new_tx_item in new_tx:
                             if new_tx_item["portfolio_asset_id"] == pa_id:
                                 new_tx_date = new_tx_item.get("transaction_date", "")
-                                new_tx_date_str = str(new_tx_date)[:10] if len(str(new_tx_date)) > 10 else str(new_tx_date)
+                                new_tx_date_str = normalize_date_to_sql_date(new_tx_date) or ""
                                 # Сравниваем даты: транзакция должна быть строго ДО текущей Redemption операции
                                 # (не включая саму Redemption операцию)
                                 if new_tx_date_str < tx_date_sql:
@@ -940,14 +940,9 @@ async def import_broker_portfolio(
                 # Преобразуем данные для batch функции
                 operations_batch = []
                 for op in new_ops:
-                    # Преобразуем дату в строку ISO формата
+                    # Преобразуем дату в строку ISO формата используя единую функцию
                     op_date = op["date"]
-                    if isinstance(op_date, datetime):
-                        op_date_str = op_date.isoformat()
-                    elif isinstance(op_date, date):
-                        op_date_str = datetime.combine(op_date, datetime.min.time()).isoformat()
-                    else:
-                        op_date_str = str(op_date)
+                    op_date_str = normalize_date_to_string(op_date, include_time=True) or ""
                     
                     op_data = {
                         "user_id": str(op["user_id"]),  # UUID должен быть строкой
@@ -981,7 +976,7 @@ async def import_broker_portfolio(
             if has_connection:
                 await table_update_async(
                     "user_broker_connections",
-                    {"last_sync_at": datetime.utcnow().isoformat()},
+                    {"last_sync_at": normalize_date_to_string(datetime.utcnow(), include_time=True)},
                     filters={"id": connection["id"]}
                 )
             continue
@@ -1032,15 +1027,8 @@ async def import_broker_portfolio(
                     min_date = filter_from_date
             
             if min_date:
-                # Преобразуем дату в формат для SQL функции (YYYY-MM-DD)
-                if isinstance(min_date, str):
-                    from_date_str = min_date[:10] if len(min_date) > 10 else min_date
-                elif isinstance(min_date, datetime):
-                    from_date_str = min_date.date().isoformat() if hasattr(min_date, 'date') else min_date.isoformat()[:10]
-                elif hasattr(min_date, 'isoformat'):
-                    from_date_str = min_date.isoformat()[:10]
-                else:
-                    from_date_str = str(min_date)[:10]
+                # Преобразуем дату в формат для SQL функции (YYYY-MM-DD) используя единую функцию
+                from_date_str = normalize_date_to_sql_date(min_date)
                 
                 # Обновляем позиции активов (portfolio_daily_positions)
                 try:

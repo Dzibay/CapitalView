@@ -3,7 +3,14 @@
 """
 from typing import Optional, Dict, Any
 from app.infrastructure.database.repositories.base import BaseRepository
-from app.infrastructure.database.postgres_client import PostgresClient
+from app.infrastructure.database.database_service import (
+    table_select,
+    table_select_async,
+    table_insert,
+    table_insert_async,
+    table_update,
+    table_delete
+)
 
 
 class UserRepository(BaseRepository):
@@ -12,18 +19,10 @@ class UserRepository(BaseRepository):
     Инкапсулирует логику работы с таблицей users.
     """
     
-    def __init__(self, client: PostgresClient = None):
-        """
-        Инициализирует репозиторий.
-        
-        Args:
-            client: Клиент PostgreSQL (по умолчанию создается новый)
-        """
-        self.client = client or PostgresClient()
     
     async def get_by_id(self, id: int) -> Optional[Dict[str, Any]]:
         """Получает пользователя по ID."""
-        result = self.client.table_select(
+        result = await table_select_async(
             "users",
             select="*",
             filters={"id": str(id)},
@@ -33,7 +32,7 @@ class UserRepository(BaseRepository):
     
     def get_by_id_sync(self, id) -> Optional[Dict[str, Any]]:
         """Получает пользователя по ID (синхронно)."""
-        result = self.client.table_select(
+        result = table_select(
             "users",
             select="*",
             filters={"id": str(id)},
@@ -51,7 +50,7 @@ class UserRepository(BaseRepository):
         Returns:
             Пользователь или None
         """
-        result = self.client.table_select(
+        result = table_select(
             "users",
             select="*",
             filters={"email": email},
@@ -61,20 +60,20 @@ class UserRepository(BaseRepository):
     
     async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Создает нового пользователя."""
-        result = self.client.table_insert("users", data)
+        result = await table_insert_async("users", data)
         return result[0] if result else None
     
     def create_sync(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Создает нового пользователя (синхронно)."""
-        result = self.client.table_insert("users", data)
+        result = table_insert("users", data)
         return result[0] if result else None
     
     async def update(self, id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Обновляет пользователя."""
-        self.client.table_update("users", data, filters={"id": str(id)})
+        table_update("users", data, filters={"id": str(id)})
         return await self.get_by_id(id)
     
     async def delete(self, id: int) -> bool:
         """Удаляет пользователя."""
-        result = self.client.table_delete("users", {"id": str(id)})
+        result = table_delete("users", {"id": str(id)})
         return result is not None
