@@ -104,9 +104,14 @@ const monthDividends = computed(() => {
   )
 })
 
-// 4. Итоговая сумма за месяц (RUB)
+// 4. Итоговая сумма за выбранный период (RUB)
+// Если выбран день - сумма за день, иначе за весь месяц
 const totalMonthIncome = computed(() => {
-  return monthDividends.value
+  const dividendsToSum = selectedDay.value 
+    ? selectedDay.value.events 
+    : monthDividends.value
+  
+  return dividendsToSum
     .reduce((sum, item) => {
       // Упрощенная логика: суммируем только RUB, либо можно добавить конвертацию
       if (item.currency === 'RUB' || item.currency === 'SUR') return sum + item.totalAmount
@@ -170,8 +175,18 @@ function nextMonth() {
 
 function selectDate(dayObj) {
   if (dayObj.type === 'day') {
-    selectedDay.value = dayObj
+    // Если кликнули на уже выбранный день - снимаем выбор (показываем весь месяц)
+    if (selectedDay.value && selectedDay.value.day === dayObj.day) {
+      selectedDay.value = null
+    } else {
+      selectedDay.value = dayObj
+    }
   }
+}
+
+function selectMonth() {
+  // Клик на месяц - показываем все выплаты за месяц
+  selectedDay.value = null
 }
 
 function isToday(date) {
@@ -215,12 +230,16 @@ watch(() => uiStore.selectedPortfolioId, () => {
       <div class="calendar-controls">
         <div class="month-nav">
           <button class="btn-icon" @click="prevMonth">‹</button>
-          <h2>{{ currentMonthName }} {{ currentYear }}</h2>
+          <h2 class="month-title" @click="selectMonth" :class="{ 'has-selection': selectedDay }">
+            {{ currentMonthName }} {{ currentYear }}
+          </h2>
           <button class="btn-icon" @click="nextMonth">›</button>
         </div>
         
         <div class="month-summary">
-          <span class="label">Ожидается (RUB):</span>
+          <span class="label">
+            {{ selectedDay ? `Ожидается за ${selectedDay.day} ${currentMonthName} (RUB):` : 'Ожидается за месяц (RUB):' }}
+          </span>
           <span class="value" :class="Number(totalMonthIncome) > 0 ? 'text-green' : ''">
             + {{ formatMoney(totalMonthIncome) }} ₽
           </span>
@@ -356,6 +375,11 @@ watch(() => uiStore.selectedPortfolioId, () => {
   color: #374151;
 }
 
+.month-title {
+  cursor: pointer;
+  user-select: none;
+}
+
 .btn-icon {
   background: white;
   border: 1px solid #e5e7eb;
@@ -398,6 +422,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 24px;
+  align-items: start;
 }
 
 @media (max-width: 900px) {
@@ -413,6 +438,9 @@ watch(() => uiStore.selectedPortfolioId, () => {
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   border: 1px solid #e5e7eb;
+  height: 650px;
+  display: flex;
+  flex-direction: column;
 }
 
 .week-header {
@@ -420,6 +448,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
   grid-template-columns: repeat(7, 1fr);
   background: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
 }
 
 .week-day {
@@ -434,16 +463,23 @@ watch(() => uiStore.selectedPortfolioId, () => {
 .days-container {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: minmax(100px, 1fr);
+  flex: 1;
+  min-height: 0;
 }
 
 .calendar-cell {
-  min-height: 110px;
+  min-height: 100px;
+  height: 100%;
   border-right: 1px solid #f3f4f6;
   border-bottom: 1px solid #f3f4f6;
   padding: 10px;
   cursor: pointer;
   position: relative;
   transition: background 0.2s;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 .calendar-cell:nth-child(7n) {
   border-right: none;
@@ -528,15 +564,17 @@ watch(() => uiStore.selectedPortfolioId, () => {
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   border: 1px solid #e5e7eb;
   padding: 20px;
-  height: fit-content;
-  max-height: 800px;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  height: 650px;
+  overflow: hidden;
 }
 
 .details-header {
   border-bottom: 1px solid #e5e7eb;
   padding-bottom: 12px;
   margin-bottom: 16px;
+  flex-shrink: 0;
 }
 .details-header h3 {
   margin: 0;
@@ -552,6 +590,31 @@ watch(() => uiStore.selectedPortfolioId, () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 0;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+  margin-right: -4px;
+}
+
+.events-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.events-list::-webkit-scrollbar-track {
+  background: #f9fafb;
+  border-radius: 3px;
+}
+
+.events-list::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.events-list::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 
 .event-card {
