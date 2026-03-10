@@ -1,0 +1,232 @@
+"""
+API endpoints для работы с неполученными выплатами.
+"""
+from fastapi import APIRouter, Depends, Body
+from http import HTTPStatus
+from typing import List, Optional
+
+from app.core.dependencies import get_current_user
+from app.utils.response import success_response, error_response
+from app.infrastructure.database.repositories.missed_payout_repository import MissedPayoutRepository
+from app.domain.services.access_control_service import check_portfolio_asset_access
+from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
+
+router = APIRouter(prefix="/missed-payouts", tags=["missed-payouts"])
+
+_missed_payout_repository = MissedPayoutRepository()
+
+
+@router.get("/")
+async def get_missed_payouts_route(
+    portfolio_id: Optional[int] = None,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Получает список неполученных выплат пользователя.
+    
+    Args:
+        portfolio_id: ID портфеля (опционально, если не указан - все портфели)
+        user: Текущий пользователь из токена
+    """
+    try:
+        payouts = await _missed_payout_repository.get_user_missed_payouts_async(
+            user_id=user["id"],
+            portfolio_id=portfolio_id
+        )
+        
+        return success_response(data={"missed_payouts": payouts})
+    except Exception as e:
+        return error_response(
+            message=f"Ошибка при получении неполученных выплат: {str(e)}",
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        )
+
+
+@router.delete("/{missed_payout_id}")
+async def delete_missed_payout_route(
+    missed_payout_id: int,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Удаляет неполученную выплату (игнорирует её).
+    
+    Args:
+        missed_payout_id: ID записи в missed_payouts
+        user: Текущий пользователь из токена
+    """
+    try:
+        # Проверяем, что выплата принадлежит пользователю
+        payouts = await _missed_payout_repository.get_user_missed_payouts_async(user_id=user["id"])
+        payout_ids = [p["id"] for p in payouts]
+        
+        if missed_payout_id not in payout_ids:
+            return error_response(
+                message="Неполученная выплата не найдена или не принадлежит пользователю",
+                status_code=HTTPStatus.NOT_FOUND
+            )
+        
+        deleted = await _missed_payout_repository.delete_missed_payout(missed_payout_id)
+        
+        if not deleted:
+            return error_response(
+                message="Не удалось удалить неполученную выплату",
+                status_code=HTTPStatus.NOT_FOUND
+            )
+        
+        return success_response(message="Неполученная выплата успешно удалена")
+    except Exception as e:
+        from app.utils.response import error_response
+        return error_response(
+            message=f"Ошибка при удалении неполученной выплаты: {str(e)}",
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        )
+
+
+@router.delete("/batch")
+async def delete_missed_payouts_batch_route(
+    missed_payout_ids: List[int] = Body(...),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Удаляет несколько неполученных выплат (игнорирует их).
+    
+    Args:
+        missed_payout_ids: Список ID записей в missed_payouts
+        user: Текущий пользователь из токена
+    """
+    try:
+        if not missed_payout_ids:
+            return error_response(
+                message="Список ID не может быть пустым",
+                status_code=HTTPStatus.BAD_REQUEST
+            )
+        
+        # Проверяем, что все выплаты принадлежат пользователю
+        payouts = await _missed_payout_repository.get_user_missed_payouts_async(user_id=user["id"])
+        payout_ids = {p["id"] for p in payouts}
+        
+        invalid_ids = [pid for pid in missed_payout_ids if pid not in payout_ids]
+        if invalid_ids:
+            return error_response(
+                message=f"Некоторые выплаты не найдены или не принадлежат пользователю: {invalid_ids}",
+                status_code=HTTPStatus.BAD_REQUEST
+            )
+        
+        deleted_count = await _missed_payout_repository.delete_missed_payouts_batch(missed_payout_ids)
+        
+        return success_response(
+            data={"deleted_count": deleted_count},
+            message=f"Успешно удалено {deleted_count} неполученных выплат"
+        )
+    except Exception as e:
+        from app.utils.response import error_response
+        return error_response(
+            message=f"Ошибка при удалении неполученных выплат: {str(e)}",
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        )
+
+
+@router.post("/check/{portfolio_asset_id}")
+async def check_missed_payouts_route(
+    portfolio_asset_id: int,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Вручную запускает проверку неполученных выплат для актива в портфеле.
+    
+    Args:
+        portfolio_asset_id: ID актива в портфеле
+        user: Текущий пользователь из токена
+    """
+    try:
+        # Проверяем доступ к активу
+        check_portfolio_asset_access(portfolio_asset_id, user["id"])
+        
+        # Получаем информацию об активе
+        portfolio_asset_repo = PortfolioAssetRepository()
+        portfolio_asset = await portfolio_asset_repo.get_by_id_async(portfolio_asset_id)
+        
+        if not portfolio_asset:
+            return error_response(
+                message="Актив в портфеле не найден",
+                status_code=HTTPStatus.NOT_FOUND
+            )
+        
+        # Запускаем проверку
+        missed_count = await _missed_payout_repository.check_missed_payouts(
+            portfolio_asset_id=portfolio_asset_id
+        )
+        
+        return success_response(
+            data={"missed_count": missed_count},
+            message=f"Проверка завершена. Найдено неполученных выплат: {missed_count}"
+        )
+    except Exception as e:
+        return error_response(
+            message=f"Ошибка при проверке неполученных выплат: {str(e)}",
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        )
+
+
+@router.post("/check-portfolio/{portfolio_id}")
+async def check_missed_payouts_for_portfolio_route(
+    portfolio_id: int,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Запускает проверку неполученных выплат для всех активов портфеля.
+    Вызывается после завершения импорта от брокера или вручную.
+    Выполняется в фоне, не блокирует выполнение.
+    
+    Args:
+        portfolio_id: ID портфеля
+        user: Текущий пользователь из токена
+    """
+    try:
+        # Проверяем доступ к портфелю
+        from app.domain.services.access_control_service import check_portfolio_access
+        check_portfolio_access(portfolio_id, user["id"])
+        
+        # Запускаем проверку в фоне (не ждем завершения)
+        import asyncio
+        asyncio.create_task(
+            _missed_payout_repository.check_missed_payouts_for_portfolio(portfolio_id)
+        )
+        
+        return success_response(
+            message="Проверка неполученных выплат запущена в фоне"
+        )
+    except Exception as e:
+        return error_response(
+            message=f"Ошибка при запуске проверки неполученных выплат: {str(e)}",
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        )
+
+
+@router.post("/check-user")
+async def check_missed_payouts_for_user_route(
+    user: dict = Depends(get_current_user)
+):
+    """
+    Запускает проверку неполученных выплат для всех активов пользователя.
+    Вызывается после завершения импорта от брокера или вручную.
+    Выполняется в фоне, не блокирует выполнение.
+    
+    Args:
+        user: Текущий пользователь из токена
+    """
+    try:
+        # Запускаем проверку в фоне (не ждем завершения)
+        import asyncio
+        asyncio.create_task(
+            _missed_payout_repository.check_missed_payouts_for_user(user["id"])
+        )
+        
+        return success_response(
+            message="Проверка неполученных выплат запущена в фоне для всех портфелей"
+        )
+    except Exception as e:
+        return error_response(
+            message=f"Ошибка при запуске проверки неполученных выплат: {str(e)}",
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        )

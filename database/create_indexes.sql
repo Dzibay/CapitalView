@@ -303,50 +303,12 @@ ON user_broker_connections(user_id, broker_id, api_key)
 WHERE api_key IS NOT NULL;
 
 -- ============================================================================
--- ТАБЛИЦА: users
+-- ТАБЛИЦА: missed_payouts
 -- ============================================================================
 
--- UNIQUE индекс уже создан на email
--- Дополнительных индексов не требуется
-
--- ============================================================================
--- СПРАВОЧНЫЕ ТАБЛИЦЫ
--- ============================================================================
-
--- Индексы для справочных таблиц обычно не требуются, так как они маленькие
--- Но можно добавить для консистентности:
-
--- asset_types - маленькая таблица, индексы не требуются
--- brokers - маленькая таблица, индексы не требуются
--- operations_type - маленькая таблица, индексы не требуются
--- transactions_type - маленькая таблица, индексы не требуются
-
--- ============================================================================
--- КОММЕНТАРИИ И РЕКОМЕНДАЦИИ
--- ============================================================================
-
--- 1. Индексы создаются с IF NOT EXISTS для безопасного повторного выполнения
--- 2. Частичные индексы (WHERE) используются для оптимизации запросов с условиями
--- 3. Составные индексы создаются в порядке использования в запросах
--- 4. Индексы для сортировки создаются с DESC для оптимизации ORDER BY DESC
--- 5. После создания индексов рекомендуется выполнить ANALYZE для обновления статистики:
---    ANALYZE portfolios;
---    ANALYZE portfolio_assets;
---    ANALYZE transactions;
---    ANALYZE cash_operations;
---    ANALYZE assets;
---    ANALYZE asset_prices;
---    ANALYZE portfolio_daily_positions;
---    ANALYZE portfolio_daily_values;
---    ANALYZE import_tasks;
---    ANALYZE user_broker_connections;
-
--- ============================================================================
--- ПРОВЕРКА СОЗДАННЫХ ИНДЕКСОВ
--- ============================================================================
-
--- Для проверки созданных индексов можно использовать:
--- SELECT schemaname, tablename, indexname, indexdef 
--- FROM pg_indexes 
--- WHERE schemaname = 'public' 
--- ORDER BY tablename, indexname;
+CREATE INDEX IF NOT EXISTS idx_missed_payouts_user_id ON missed_payouts(user_id);
+CREATE INDEX IF NOT EXISTS idx_missed_payouts_portfolio_id ON missed_payouts(portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_missed_payouts_portfolio_asset_id ON missed_payouts(portfolio_asset_id);
+CREATE INDEX IF NOT EXISTS idx_missed_payouts_asset_id ON missed_payouts(asset_id);
+CREATE INDEX IF NOT EXISTS idx_missed_payouts_payout_id ON missed_payouts(payout_id);
+CREATE INDEX IF NOT EXISTS idx_missed_payouts_created_at ON missed_payouts(created_at DESC);

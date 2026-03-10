@@ -197,6 +197,15 @@ BEGIN
         v_last_price := p_price;
     END IF;
     
+    -- Проверяем неполученные выплаты для созданного актива
+    BEGIN
+        PERFORM check_missed_payouts(v_portfolio_asset_id);
+    EXCEPTION
+        WHEN OTHERS THEN
+            -- Игнорируем ошибки проверки выплат, чтобы не прерывать создание актива
+            NULL;
+    END;
+    
     v_result := json_build_object(
         'success', true,
         'message', 'Актив успешно добавлен в портфель',

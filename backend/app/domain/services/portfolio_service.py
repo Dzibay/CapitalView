@@ -374,6 +374,8 @@ async def import_broker_portfolio(
         if a["properties"] and a["properties"].get("isin")
     }
 
+    imported_portfolio_ids = []  # Список ID импортированных портфелей
+    
     for portfolio_name, pdata in broker_data.items():
 
         logger.info(f"Синхронизируем портфель '{portfolio_name}'")
@@ -1050,8 +1052,34 @@ async def import_broker_portfolio(
             portfolio_id,
             pdata.get("api_key", "")  # Если есть api_key в данных
         )
+        
+        # Сохраняем ID импортированного портфеля для последующей проверки missed_payouts
+        imported_portfolio_ids.append(portfolio_id)
 
-    return {"success": True}
+    # --- 12. Проверяем неполученные выплаты для всех импортированных портфелей (в фоне) ---
+    # Это делается после завершения всех батч-операций, чтобы избежать ложных срабатываний
+    if imported_portfolio_ids:
+        try:
+            from app.infrastructure.database.repositories.missed_payout_repository import MissedPayoutRepository
+            missed_payout_repo = MissedPayoutRepository()
+            
+            # Запускаем проверку в фоне для каждого портфеля
+            async def check_portfolio_missed_payouts(port_id):
+                try:
+                    await missed_payout_repo.check_missed_payouts_for_portfolio(port_id)
+                    logger.info(f"Проверка неполученных выплат для портфеля {port_id} завершена")
+                except Exception as e:
+                    logger.warning(f"Ошибка при проверке неполученных выплат для портфеля {port_id}: {e}")
+            
+            # Запускаем все проверки параллельно в фоне (не ждем завершения)
+            for port_id in imported_portfolio_ids:
+                asyncio.create_task(check_portfolio_missed_payouts(port_id))
+            
+            logger.info(f"Запущена проверка неполученных выплат для {len(imported_portfolio_ids)} портфелей в фоне")
+        except Exception as e:
+            logger.warning(f"Ошибка при запуске проверки неполученных выплат: {e}")
+
+    return {"success": True, "imported_portfolio_ids": imported_portfolio_ids}
 
 
 

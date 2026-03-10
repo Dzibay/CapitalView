@@ -10,6 +10,7 @@ from app.core.logging import get_logger
 from app.infrastructure.database.repositories.transaction_repository import TransactionRepository
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
 from app.infrastructure.database.repositories.asset_repository import AssetRepository
+from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
 
 logger = get_logger(__name__)
 
@@ -17,6 +18,7 @@ logger = get_logger(__name__)
 _transaction_repository = TransactionRepository()
 _portfolio_asset_repository = PortfolioAssetRepository()
 _asset_repository = AssetRepository()
+_portfolio_repository = PortfolioRepository()
 
 
 def get_transactions(user_id, portfolio_id=None, asset_name=None, start_date=None, end_date=None, limit=1000):
@@ -152,6 +154,14 @@ def create_transaction(
     # Примечание: apply_transactions_batch уже обновляет историю, но update_portfolio_asset
     # обновляет агрегированные данные актива (quantity, average_price и т.д.)
     rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
+    
+    # 4️⃣ Проверяем неполученные выплаты для созданного актива
+    try:
+        rpc("check_missed_payouts", {
+            "p_portfolio_asset_id": portfolio_asset_id
+        })
+    except Exception as e:
+        logger.warning(f"Ошибка при проверке неполученных выплат для актива {portfolio_asset_id}: {e}", exc_info=True)
 
     # 4️⃣ Создаем операцию пополнения, если запрошено (только для покупки)
     if create_deposit_operation and transaction_type == 1:
@@ -321,6 +331,24 @@ def update_transaction(
             })
         except Exception as e:
             logger.warning(f"Ошибка при обновлении истории портфеля {new_portfolio_id}: {e}", exc_info=True)
+    
+    # 7️⃣ Проверяем неполученные выплаты для обоих активов (если актив изменился)
+    # Проверяем новый актив (create_transaction уже проверит его, но на всякий случай проверяем здесь тоже)
+    try:
+        rpc("check_missed_payouts", {
+            "p_portfolio_asset_id": final_portfolio_asset_id
+        })
+    except Exception as e:
+        logger.warning(f"Ошибка при проверке неполученных выплат для нового актива {final_portfolio_asset_id}: {e}", exc_info=True)
+    
+    # Проверяем старый актив, если он изменился
+    if old_portfolio_asset_id != final_portfolio_asset_id and old_portfolio_asset_id:
+        try:
+            rpc("check_missed_payouts", {
+                "p_portfolio_asset_id": old_portfolio_asset_id
+            })
+        except Exception as e:
+            logger.warning(f"Ошибка при проверке неполученных выплат для старого актива {old_portfolio_asset_id}: {e}", exc_info=True)
     
     return new_tx_id
 

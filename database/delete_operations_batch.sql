@@ -232,6 +232,63 @@ BEGIN
         END LOOP;
     END IF;
     
+    -- Проверяем неполученные выплаты для всех затронутых активов
+    -- Делаем это после обновления позиций, чтобы portfolio_daily_positions был актуален
+    
+    -- 1. Проверяем активы, связанные с транзакциями (уже есть в v_portfolio_asset_ids)
+    IF array_length(v_portfolio_asset_ids, 1) > 0 THEN
+        BEGIN
+            FOR v_portfolio_asset_id IN 
+                SELECT DISTINCT unnest(v_portfolio_asset_ids)
+            LOOP
+                BEGIN
+                    PERFORM check_missed_payouts(v_portfolio_asset_id);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        -- Игнорируем ошибки проверки выплат, чтобы не прерывать удаление операций
+                        RAISE WARNING 'Ошибка при проверке неполученных выплат для актива %: %', v_portfolio_asset_id, SQLERRM;
+                END;
+            END LOOP;
+        EXCEPTION
+            WHEN OTHERS THEN
+                -- Игнорируем ошибки проверки выплат, чтобы не прерывать удаление операций
+                RAISE WARNING 'Ошибка при проверке неполученных выплат: %', SQLERRM;
+        END;
+    END IF;
+    
+    -- 2. Проверяем активы для операций дивидендов/купонов, не связанных с транзакциями
+    -- Эти операции могут быть удалены отдельно, и нужно обновить missed_payouts для соответствующих активов
+    FOR v_portfolio_id, v_asset_id IN 
+        SELECT DISTINCT tdoi.portfolio_id, tdoi.asset_id
+        FROM temp_deleted_ops_info tdoi
+        WHERE tdoi.portfolio_id IS NOT NULL
+          AND tdoi.asset_id IS NOT NULL
+          AND tdoi.operation_type IN (3, 4)  -- Dividend, Coupon
+          AND tdoi.transaction_id IS NULL    -- Только операции без транзакций
+    LOOP
+        BEGIN
+            -- Проверяем все активы в портфеле с этим asset_id
+            FOR v_portfolio_asset_id IN 
+                SELECT pa.id
+                FROM portfolio_assets pa
+                WHERE pa.portfolio_id = v_portfolio_id
+                  AND pa.asset_id = v_asset_id
+            LOOP
+                BEGIN
+                    PERFORM check_missed_payouts(v_portfolio_asset_id);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        -- Игнорируем ошибки проверки выплат, чтобы не прерывать удаление операций
+                        RAISE WARNING 'Ошибка при проверке неполученных выплат для актива % (операции): %', v_portfolio_asset_id, SQLERRM;
+                END;
+            END LOOP;
+        EXCEPTION
+            WHEN OTHERS THEN
+                -- Игнорируем ошибки проверки выплат, чтобы не прерывать удаление операций
+                RAISE WARNING 'Ошибка при проверке неполученных выплат для портфеля % и актива % (операции): %', v_portfolio_id, v_asset_id, SQLERRM;
+        END;
+    END LOOP;
+    
     -- Удаляем временную таблицу
     DROP TABLE IF EXISTS temp_deleted_ops_info;
     
@@ -252,5 +309,3 @@ EXCEPTION
         );
 END;
 $$;
-
-COMMENT ON FUNCTION delete_operations_batch(bigint[]) IS 'Удаляет операции с пересчетом истории портфелей';

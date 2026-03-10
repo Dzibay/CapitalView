@@ -22,6 +22,7 @@ DECLARE
     v_sell_op_type_id bigint;
     v_redemption_op_type_id bigint;
     v_tx_record RECORD;
+    v_portfolio_asset_id bigint;
 BEGIN
     IF p_transactions IS NULL OR jsonb_array_length(p_transactions) = 0 THEN
         RETURN jsonb_build_object(
@@ -451,6 +452,11 @@ BEGIN
             END IF;
         END;
     END IF;
+
+    -- Примечание: проверка неполученных выплат НЕ выполняется здесь автоматически
+    -- Это сделано для предотвращения ложных срабатываний при батч-импорте от брокера,
+    -- когда операции могут быть еще не вставлены на момент проверки.
+    -- Проверку следует вызывать отдельно после завершения всех батч-операций.
 
     DROP TABLE IF EXISTS temp_sorted_tx;
     DROP TABLE IF EXISTS temp_tx_payment_map;
