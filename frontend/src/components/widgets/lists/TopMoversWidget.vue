@@ -14,14 +14,28 @@ const props = defineProps({
 
 const displayMode = ref('percent')
 
-// 🔹 Считаем изменение в % и в валюте, сортируем и берём топ-4
+// 🔹 Считаем изменение в % и в валюте, фильтруем по направлению, сортируем и берём топ-4
 // Сортировка зависит от выбранного режима (проценты или валюта)
 const topAssets = computed(() => {
   if (!props.assets?.length) return []
 
-  // Обрабатываем все активы - вычисляем проценты и валюту для каждого
+  // Обрабатываем активы - вычисляем проценты и валюту для каждого
   const processed = props.assets
-    .filter(a => a.last_price && a.daily_change !== undefined && a.quantity > 0)
+    .filter(a => {
+      // Базовые проверки
+      if (!a.last_price || a.daily_change === undefined || a.quantity <= 0) {
+        return false
+      }
+      
+      // Фильтруем по направлению изменения
+      // Для 'up' - только активы с ростом (daily_change > 0)
+      // Для 'down' - только активы с падением (daily_change < 0)
+      if (props.direction === 'up') {
+        return a.daily_change > 0
+      } else {
+        return a.daily_change < 0
+      }
+    })
     .map(a => {
       const total_value = a.last_price * a.quantity
       const change_percent = (a.daily_change / a.last_price) * 100
@@ -29,8 +43,14 @@ const topAssets = computed(() => {
       return { ...a, total_value, change_percent, change_value }
     })
 
+  // Если после фильтрации нет активов нужного направления, возвращаем пустой массив
+  if (processed.length === 0) {
+    return []
+  }
+
   // Сортируем в зависимости от выбранного режима отображения
-  // Важно: сортируем ВСЕ активы по выбранному критерию, а не только по процентам
+  // Для 'up' - сортируем по убыванию (самые большие изменения сверху)
+  // Для 'down' - сортируем по возрастанию (самые большие падения сверху, т.е. самые отрицательные)
   const sorted = props.direction === 'up'
     ? processed.sort((a, b) => {
         // Если режим процентов - сортируем по процентам
@@ -42,6 +62,7 @@ const topAssets = computed(() => {
         }
       })
     : processed.sort((a, b) => {
+        // Для падений сортируем по возрастанию (самые отрицательные сверху)
         // Если режим процентов - сортируем по процентам
         if (displayMode.value === 'percent') {
           return a.change_percent - b.change_percent
@@ -62,7 +83,15 @@ const topAssets = computed(() => {
       <DisplayModeToggle v-model="displayMode" />
     </template>
     
-    <ul class="assets-list">
+    <!-- Показываем пустое состояние, если нет активов нужного направления -->
+    <div v-if="topAssets.length === 0" class="empty-state">
+      <p class="empty-message">
+        {{ direction === 'up' ? 'Нет активов с ростом за день' : 'Нет активов с падением за день' }}
+      </p>
+    </div>
+    
+    <!-- Показываем список активов, если они есть -->
+    <ul v-else class="assets-list">
       <li v-for="asset in topAssets" :key="asset.asset_id" class="asset-item">
         <div class="asset-info">
           <span class="asset-name">{{ asset.name }}</span>
@@ -130,6 +159,21 @@ const topAssets = computed(() => {
 .value-change-currency {
   font-size: 0.875rem;
   color: #6b7280;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  min-height: 150px;
+}
+
+.empty-message {
+  color: #6b7280;
+  font-size: 0.875rem;
+  text-align: center;
+  margin: 0;
 }
 
 </style>
