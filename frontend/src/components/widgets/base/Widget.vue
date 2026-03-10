@@ -2,7 +2,7 @@
 const props = defineProps({
   title: { type: String, required: true },
   compact: { type: Boolean, default: false },
-  icon: { type: Object, default: null } // Компонент иконки из lucide-vue-next
+  icon: { type: [Object, Function], default: null } // Компонент иконки из lucide-vue-next (может быть функцией или объектом)
 })
 </script>
 
