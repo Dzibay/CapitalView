@@ -2,15 +2,21 @@
 Доменный сервис для работы с денежными операциями.
 Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Other.
 """
-from app.infrastructure.database.postgres_service import rpc, table_insert
+from app.infrastructure.database.postgres_service import rpc
 from app.domain.services.transactions_service import create_transaction
 from app.utils.date import normalize_date_to_string, normalize_date
 from typing import Optional, Union
 from datetime import datetime, timedelta, date
 from calendar import monthrange
 import logging
+from app.infrastructure.database.repositories.operation_repository import OperationRepository
+from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
 
 logger = logging.getLogger(__name__)
+
+# Создаем экземпляры репозиториев для использования во всех функциях
+_operation_repository = OperationRepository()
+_portfolio_asset_repository = PortfolioAssetRepository()
 
 
 def get_operations(user_id, portfolio_id=None, start_date=None, end_date=None, limit=1000):
@@ -90,15 +96,9 @@ def create_operation(
     
     # Если portfolio_id не передан, но есть portfolio_asset_id, получаем portfolio_id из него
     if not portfolio_id and portfolio_asset_id:
-        from app.infrastructure.database.postgres_service import table_select
-        pa_data = table_select(
-            "portfolio_assets",
-            select="portfolio_id",
-            filters={"id": portfolio_asset_id},
-            limit=1
-        )
-        if pa_data and len(pa_data) > 0:
-            portfolio_id = pa_data[0].get("portfolio_id")
+        pa_data = _portfolio_asset_repository.get_by_id_sync(portfolio_asset_id)
+        if pa_data:
+            portfolio_id = pa_data.get("portfolio_id")
         if not portfolio_id:
             raise ValueError(f"Не удалось найти portfolio_id для portfolio_asset_id={portfolio_asset_id}")
     

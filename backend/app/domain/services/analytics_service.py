@@ -1,10 +1,14 @@
 import asyncio
 from collections import defaultdict
 from copy import deepcopy
-from app.infrastructure.database.postgres_async import rpc_async, table_select_async
+from app.infrastructure.database.postgres_async import rpc_async
 from app.core.logging import get_logger
+from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
 
 logger = get_logger(__name__)
+
+# Создаем экземпляр репозитория для использования во всех функциях
+_portfolio_repository = PortfolioRepository()
 
 async def get_user_portfolios_analytics(user_id: str):
     """
@@ -26,11 +30,20 @@ async def get_user_portfolios_analytics(user_id: str):
             portfolios_analytics = []
 
         # === 2️⃣ Получаем структуру портфелей (id, parent_id, name) ===
-        portfolios = await table_select_async(
-            "portfolios",
-            select="id, parent_portfolio_id, name",
-            filters={"user_id": user_id}
+        # Используем синхронный метод через asyncio.to_thread для совместимости
+        portfolios = await asyncio.to_thread(
+            _portfolio_repository.get_user_portfolios_sync, user_id
         ) or []
+        
+        # Фильтруем только нужные поля
+        portfolios = [
+            {
+                "id": p.get("id"),
+                "parent_portfolio_id": p.get("parent_portfolio_id"),
+                "name": p.get("name")
+            }
+            for p in portfolios
+        ]
 
         id_to_parent = {p["id"]: p.get("parent_portfolio_id") for p in portfolios}
         parent_to_children = defaultdict(list)

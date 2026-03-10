@@ -4,11 +4,19 @@
 """
 from typing import Optional
 from datetime import datetime
-from app.infrastructure.database.postgres_service import table_select, table_insert, rpc
+from app.infrastructure.database.postgres_service import rpc
 from app.utils.date import normalize_date_to_string, normalize_date_to_sql_date
 from app.core.logging import get_logger
+from app.infrastructure.database.repositories.transaction_repository import TransactionRepository
+from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
+from app.infrastructure.database.repositories.asset_repository import AssetRepository
 
 logger = get_logger(__name__)
+
+# Создаем экземпляры репозиториев для использования во всех функциях
+_transaction_repository = TransactionRepository()
+_portfolio_asset_repository = PortfolioAssetRepository()
+_asset_repository = AssetRepository()
 
 
 def get_transactions(user_id, portfolio_id=None, asset_name=None, start_date=None, end_date=None, limit=1000):
@@ -128,22 +136,15 @@ def create_transaction(
 
     # 2️⃣ Цена актива (idempotent)
     # Таблица asset_prices не имеет столбца id, первичный ключ составной (asset_id, trade_date)
-    existing_price = table_select(
-        "asset_prices",
-        "asset_id",
-        filters={"asset_id": asset_id, "trade_date": transaction_date_str.split('T')[0]}
-    )
+    trade_date_only = transaction_date_str.split('T')[0]
+    existing_price = _asset_repository.get_price_history(asset_id, start_date=trade_date_only, end_date=trade_date_only, limit=1)
 
     if not existing_price:
-        table_insert("asset_prices", {
-            "asset_id": asset_id,
-            "price": price,
-            "trade_date": transaction_date_str.split('T')[0]
-        })
+        _asset_repository.add_price(asset_id, price, trade_date_only)
         
         # Обновляем последнюю цену актива в asset_latest_prices
         try:
-            rpc("update_asset_latest_prices_batch", {"p_asset_ids": [asset_id]})
+            _asset_repository.update_latest_price(asset_id)
         except Exception as e:
             logger.warning(f"Ошибка при обновлении последней цены актива {asset_id}: {e}", exc_info=True)
 
@@ -157,15 +158,10 @@ def create_transaction(
         from app.domain.services.operations_service import create_operation
         
         # Получаем portfolio_id из portfolio_asset_id
-        pa_data = table_select(
-            "portfolio_assets",
-            select="portfolio_id",
-            filters={"id": portfolio_asset_id},
-            limit=1
-        )
+        pa_data = _portfolio_asset_repository.get_by_id_sync(portfolio_asset_id)
         
         if pa_data:
-            portfolio_id = pa_data[0].get("portfolio_id")
+            portfolio_id = pa_data.get("portfolio_id")
             deposit_amount = float(quantity * price)
             
             try:
@@ -205,17 +201,10 @@ def update_transaction(
     from datetime import datetime
     
     # 1️⃣ Получаем информацию о транзакции
-    existing_tx = table_select(
-        "transactions",
-        select="*",
-        filters={"id": transaction_id},
-        limit=1
-    )
+    old_tx = _transaction_repository.get_by_id_sync(transaction_id)
     
-    if not existing_tx:
+    if not old_tx:
         raise Exception(f"Транзакция {transaction_id} не найдена")
-    
-    old_tx = existing_tx[0]
     old_portfolio_asset_id = old_tx.get("portfolio_asset_id")
     old_transaction_date = old_tx.get("transaction_date")
     
@@ -229,14 +218,9 @@ def update_transaction(
     # Получаем asset_id из portfolio_asset_id, если не передан
     if asset_id is None:
         if final_portfolio_asset_id:
-            pa_data = table_select(
-                "portfolio_assets",
-                select="asset_id",
-                filters={"id": final_portfolio_asset_id},
-                limit=1
-            )
+            pa_data = _portfolio_asset_repository.get_by_id_sync(final_portfolio_asset_id)
             if pa_data:
-                final_asset_id = pa_data[0].get("asset_id")
+                final_asset_id = pa_data.get("asset_id")
             else:
                 raise Exception(f"Портфельный актив {final_portfolio_asset_id} не найден")
         else:
@@ -261,14 +245,9 @@ def update_transaction(
     # Получаем portfolio_id для старого portfolio_asset_id
     old_portfolio_id = None
     if old_portfolio_asset_id:
-        old_pa = table_select(
-            "portfolio_assets",
-            select="portfolio_id",
-            filters={"id": old_portfolio_asset_id},
-            limit=1
-        )
+        old_pa = _portfolio_asset_repository.get_by_id_sync(old_portfolio_asset_id)
         if old_pa:
-            old_portfolio_id = old_pa[0].get("portfolio_id")
+            old_portfolio_id = old_pa.get("portfolio_id")
     
     # 2️⃣ Удаляем старую транзакцию через batch функцию (пересчитывает FIFO)
     delete_result = delete_transactions_batch([transaction_id])
@@ -299,14 +278,9 @@ def update_transaction(
     
     # 5️⃣ Получаем portfolio_id для нового portfolio_asset_id
     new_portfolio_id = None
-    new_pa = table_select(
-        "portfolio_assets",
-        select="portfolio_id",
-        filters={"id": final_portfolio_asset_id},
-        limit=1
-    )
+    new_pa = _portfolio_asset_repository.get_by_id_sync(final_portfolio_asset_id)
     if new_pa:
-        new_portfolio_id = new_pa[0].get("portfolio_id")
+        new_portfolio_id = new_pa.get("portfolio_id")
     
     # 6️⃣ Обновляем историю портфелей с минимальной датой транзакции
     # Преобразуем дату транзакции в формат YYYY-MM-DD используя единую функцию

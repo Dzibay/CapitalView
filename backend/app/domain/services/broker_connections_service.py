@@ -1,9 +1,16 @@
 """
 Доменный сервис для работы с соединениями пользователей с брокерами.
 Перенесено из app/services/broker_connections_service.py
+
+Примечание: Использует прямые вызовы к БД для работы с таблицами user_broker_connections и import_tasks,
+так как это служебные таблицы, не являющиеся основными доменными сущностями.
 """
 from app.infrastructure.database.postgres_service import table_select, table_insert, table_update, table_delete
 from datetime import datetime
+from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
+
+# Создаем экземпляр репозитория для использования
+_portfolio_repository = PortfolioRepository()
 
 
 def get_user_portfolio_connections(user_id: str):
@@ -59,12 +66,7 @@ def check_broker_token_exists(user_id: str, broker_id: int, broker_token: str) -
     if existing_connection:
         portfolio_id = existing_connection[0].get("portfolio_id")
         # Получаем название портфеля и проверяем, существует ли портфель
-        portfolio = table_select(
-            "portfolios",
-            select="id, name",
-            filters={"id": portfolio_id},
-            limit=1
-        )
+        portfolio = _portfolio_repository.get_by_id_sync(portfolio_id)
         
         # Если портфель не существует, удаляем запись из user_broker_connections
         # (это может произойти, если портфель был удален, но запись осталась)
@@ -80,7 +82,7 @@ def check_broker_token_exists(user_id: str, broker_id: int, broker_token: str) -
                 "portfolio_name": None
             }
         
-        portfolio_name = portfolio[0].get("name")
+        portfolio_name = portfolio.get("name")
         
         return {
             "exists": True,

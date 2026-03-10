@@ -4,6 +4,7 @@
 from typing import List, Optional, Dict, Any
 from app.infrastructure.database.repositories.base import BaseRepository
 from app.infrastructure.database.database_service import (
+    table_select,
     table_select_async,
     table_insert,
     table_insert_async,
@@ -149,6 +150,92 @@ class OperationRepository(BaseRepository):
             select="*",
             filters=filters,
             in_filters=in_filters,
+            order={"column": "date", "desc": True}
+        )
+        return result or []
+    
+    def get_by_id_sync(self, id: int) -> Optional[Dict[str, Any]]:
+        """Получает операцию по ID (синхронно)."""
+        result = table_select(
+            "cash_operations",
+            select="*",
+            filters={"id": id},
+            limit=1
+        )
+        return result[0] if result else None
+    
+    def get_portfolio_operations_sync(
+        self,
+        portfolio_id: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Получает операции портфеля (синхронно).
+        
+        Args:
+            portfolio_id: ID портфеля
+            
+        Returns:
+            Список операций
+        """
+        result = table_select(
+            "cash_operations",
+            select="*",
+            filters={"portfolio_id": portfolio_id},
+            order={"column": "date", "desc": True}
+        )
+        return result or []
+    
+    def get_by_portfolio_and_asset_sync(
+        self,
+        portfolio_id: int,
+        asset_id: int,
+        operation_types: Optional[List[int]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Получает операции портфеля по активу (синхронно).
+        
+        Args:
+            portfolio_id: ID портфеля
+            asset_id: ID актива
+            operation_types: Типы операций (опционально, например [3, 4] для дивидендов и купонов)
+            
+        Returns:
+            Список операций
+        """
+        filters = {"portfolio_id": portfolio_id, "asset_id": asset_id}
+        in_filters = None
+        
+        if operation_types:
+            in_filters = {"type": operation_types}
+        
+        result = table_select(
+            "cash_operations",
+            select="*",
+            filters=filters,
+            in_filters=in_filters,
+            order={"column": "date", "desc": True}
+        )
+        return result or []
+    
+    async def get_by_portfolio_async(
+        self,
+        portfolio_id: int,
+        select_fields: str = "*"
+    ) -> List[Dict[str, Any]]:
+        """
+        Получает операции портфеля с указанными полями (асинхронно).
+        
+        Args:
+            portfolio_id: ID портфеля
+            select_fields: Поля для выборки (по умолчанию "*")
+            
+        Returns:
+            Список операций
+        """
+        result = await table_select_async(
+            "cash_operations",
+            select=select_fields,
+            filters={"portfolio_id": portfolio_id},
             order={"column": "date", "desc": True}
         )
         return result or []

@@ -73,6 +73,11 @@ class UserRepository(BaseRepository):
         table_update("users", data, filters={"id": str(id)})
         return await self.get_by_id(id)
     
+    def update_sync(self, id, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Обновляет пользователя (синхронно)."""
+        table_update("users", data, filters={"id": str(id)})
+        return self.get_by_id_sync(id)
+    
     async def delete(self, id: int) -> bool:
         """Удаляет пользователя."""
         result = table_delete("users", {"id": str(id)})

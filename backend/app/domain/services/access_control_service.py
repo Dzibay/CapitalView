@@ -2,13 +2,25 @@
 Сервис для проверки доступа пользователей к ресурсам.
 Обеспечивает защиту от доступа к чужим портфелям, активам, транзакциям и операциям.
 """
-from app.infrastructure.database.postgres_service import table_select, rpc
+from app.infrastructure.database.postgres_service import rpc
 from fastapi import HTTPException
 from app.constants import HTTPStatus
 from typing import Optional
 import logging
+from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
+from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
+from app.infrastructure.database.repositories.asset_repository import AssetRepository
+from app.infrastructure.database.repositories.transaction_repository import TransactionRepository
+from app.infrastructure.database.repositories.operation_repository import OperationRepository
 
 logger = logging.getLogger(__name__)
+
+# Создаем экземпляры репозиториев для использования во всех функциях
+_portfolio_repository = PortfolioRepository()
+_portfolio_asset_repository = PortfolioAssetRepository()
+_asset_repository = AssetRepository()
+_transaction_repository = TransactionRepository()
+_operation_repository = OperationRepository()
 
 
 def check_portfolio_access(portfolio_id: int, user_id: str) -> bool:
@@ -27,12 +39,7 @@ def check_portfolio_access(portfolio_id: int, user_id: str) -> bool:
     """
     user_id_str = str(user_id) if user_id else None
     
-    portfolio = table_select(
-        "portfolios",
-        select="id, user_id",
-        filters={"id": portfolio_id},
-        limit=1
-    )
+    portfolio = _portfolio_repository.get_by_id_sync(portfolio_id)
     
     if not portfolio:
         raise HTTPException(
@@ -40,7 +47,7 @@ def check_portfolio_access(portfolio_id: int, user_id: str) -> bool:
             detail="Портфель не найден"
         )
     
-    portfolio_user_id = str(portfolio[0].get("user_id")) if portfolio[0].get("user_id") else None
+    portfolio_user_id = str(portfolio.get("user_id")) if portfolio.get("user_id") else None
     
     if portfolio_user_id != user_id_str:
         logger.warning(f"Попытка доступа к чужому портфелю: portfolio_id={portfolio_id}, user_id={user_id_str}, owner_id={portfolio_user_id}")
@@ -69,12 +76,7 @@ def check_portfolio_asset_access(portfolio_asset_id: int, user_id: str) -> bool:
     user_id_str = str(user_id) if user_id else None
     
     # Получаем portfolio_id через portfolio_asset_id
-    portfolio_asset = table_select(
-        "portfolio_assets",
-        select="id, portfolio_id",
-        filters={"id": portfolio_asset_id},
-        limit=1
-    )
+    portfolio_asset = _portfolio_asset_repository.get_by_id_sync(portfolio_asset_id)
     
     if not portfolio_asset:
         raise HTTPException(
@@ -82,7 +84,7 @@ def check_portfolio_asset_access(portfolio_asset_id: int, user_id: str) -> bool:
             detail="Портфельный актив не найден"
         )
     
-    portfolio_id = portfolio_asset[0].get("portfolio_id")
+    portfolio_id = portfolio_asset.get("portfolio_id")
     
     # Проверяем доступ к портфелю
     return check_portfolio_access(portfolio_id, user_id_str)
@@ -105,12 +107,7 @@ def check_asset_access(asset_id: int, user_id: str) -> bool:
     """
     user_id_str = str(user_id) if user_id else None
     
-    asset = table_select(
-        "assets",
-        select="id, user_id",
-        filters={"id": asset_id},
-        limit=1
-    )
+    asset = _asset_repository.get_by_id_sync(asset_id)
     
     if not asset:
         raise HTTPException(
@@ -118,7 +115,7 @@ def check_asset_access(asset_id: int, user_id: str) -> bool:
             detail="Актив не найден"
         )
     
-    asset_user_id = asset[0].get("user_id")
+    asset_user_id = asset.get("user_id")
     
     # Системные активы доступны всем
     if asset_user_id is None:
@@ -154,12 +151,7 @@ def check_transaction_access(transaction_id: int, user_id: str) -> bool:
     user_id_str = str(user_id) if user_id else None
     
     # Получаем portfolio_asset_id через transaction
-    transaction = table_select(
-        "transactions",
-        select="id, portfolio_asset_id",
-        filters={"id": transaction_id},
-        limit=1
-    )
+    transaction = _transaction_repository.get_by_id_sync(transaction_id)
     
     if not transaction:
         raise HTTPException(
@@ -167,7 +159,7 @@ def check_transaction_access(transaction_id: int, user_id: str) -> bool:
             detail="Транзакция не найдена"
         )
     
-    portfolio_asset_id = transaction[0].get("portfolio_asset_id")
+    portfolio_asset_id = transaction.get("portfolio_asset_id")
     
     if not portfolio_asset_id:
         raise HTTPException(
@@ -196,12 +188,7 @@ def check_operation_access(operation_id: int, user_id: str) -> bool:
     user_id_str = str(user_id) if user_id else None
     
     # Получаем portfolio_id или asset_id через операцию
-    operation = table_select(
-        "cash_operations",
-        select="id, portfolio_id, asset_id",
-        filters={"id": operation_id},
-        limit=1
-    )
+    operation = _operation_repository.get_by_id_sync(operation_id)
     
     if not operation:
         raise HTTPException(
@@ -209,9 +196,8 @@ def check_operation_access(operation_id: int, user_id: str) -> bool:
             detail="Операция не найдена"
         )
     
-    op = operation[0]
-    portfolio_id = op.get("portfolio_id")
-    asset_id = op.get("asset_id")
+    portfolio_id = operation.get("portfolio_id")
+    asset_id = operation.get("asset_id")
     
     # Если операция привязана к портфелю
     if portfolio_id:
@@ -220,19 +206,18 @@ def check_operation_access(operation_id: int, user_id: str) -> bool:
     # Если операция привязана к активу
     if asset_id:
         # Получаем portfolio_id через portfolio_assets
-        portfolio_asset = table_select(
-            "portfolio_assets",
-            select="id, portfolio_id",
-            filters={"asset_id": asset_id},
-            limit=1
-        )
+        portfolio_assets = _portfolio_asset_repository.get_by_asset(asset_id)
         
-        if portfolio_asset:
-            portfolio_id = portfolio_asset[0].get("portfolio_id")
-            return check_portfolio_access(portfolio_id, user_id_str)
-        else:
-            # Если актив не в портфеле, проверяем доступ к активу напрямую
-            return check_asset_access(asset_id, user_id_str)
+        if portfolio_assets:
+            # Берем первый портфель (в большинстве случаев актив в одном портфеле)
+            # get_by_asset возвращает список словарей с полем portfolio_id
+            first_pa = portfolio_assets[0] if portfolio_assets else None
+            if first_pa and isinstance(first_pa, dict):
+                portfolio_id = first_pa.get("portfolio_id")
+                if portfolio_id:
+                    return check_portfolio_access(portfolio_id, user_id_str)
+        # Если актив не в портфеле, проверяем доступ к активу напрямую
+        return check_asset_access(asset_id, user_id_str)
     
     # Если операция не привязана ни к портфелю, ни к активу - это ошибка
     raise HTTPException(
@@ -261,14 +246,9 @@ def check_multiple_transactions_access(transaction_ids: list[int], user_id: str)
     # Используем rpc для проверки доступа к нескольким транзакциям
     transactions = []
     for tx_id in transaction_ids:
-        tx = table_select(
-            "transactions",
-            select="id, portfolio_asset_id",
-            filters={"id": tx_id},
-            limit=1
-        )
+        tx = _transaction_repository.get_by_id_sync(tx_id)
         if tx:
-            transactions.append(tx[0])
+            transactions.append(tx)
     
     if len(transactions) != len(transaction_ids):
         raise HTTPException(
@@ -305,14 +285,9 @@ def check_multiple_operations_access(operation_ids: list[int], user_id: str) -> 
     # Получаем все операции
     operations = []
     for op_id in operation_ids:
-        op = table_select(
-            "cash_operations",
-            select="id, portfolio_id, asset_id",
-            filters={"id": op_id},
-            limit=1
-        )
+        op = _operation_repository.get_by_id_sync(op_id)
         if op:
-            operations.append(op[0])
+            operations.append(op)
     
     if len(operations) != len(operation_ids):
         raise HTTPException(
@@ -328,14 +303,17 @@ def check_multiple_operations_access(operation_ids: list[int], user_id: str) -> 
         if portfolio_id:
             check_portfolio_access(portfolio_id, user_id_str)
         elif asset_id:
-            portfolio_asset = table_select(
-                "portfolio_assets",
-                select="id, portfolio_id",
-                filters={"asset_id": asset_id},
-                limit=1
-            )
-            if portfolio_asset:
-                check_portfolio_access(portfolio_asset[0].get("portfolio_id"), user_id_str)
+            portfolio_assets = _portfolio_asset_repository.get_by_asset(asset_id)
+            if portfolio_assets:
+                first_pa = portfolio_assets[0] if portfolio_assets else None
+                if first_pa and isinstance(first_pa, dict):
+                    portfolio_id_from_asset = first_pa.get("portfolio_id")
+                    if portfolio_id_from_asset:
+                        check_portfolio_access(portfolio_id_from_asset, user_id_str)
+                    else:
+                        check_asset_access(asset_id, user_id_str)
+                else:
+                    check_asset_access(asset_id, user_id_str)
             else:
                 check_asset_access(asset_id, user_id_str)
         else:

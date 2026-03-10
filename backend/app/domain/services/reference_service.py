@@ -62,7 +62,12 @@ def init_reference_data():
 
 
 def get_brokers():
-    """Получает список брокеров."""
+    """
+    Получает список брокеров.
+    
+    Примечание: Использует прямой вызов к БД, так как brokers - это справочная таблица,
+    не являющаяся основной доменной сущностью.
+    """
     from app.infrastructure.database.postgres_service import table_select
     return table_select("brokers", select="id, name", order={"column": "id"})
 

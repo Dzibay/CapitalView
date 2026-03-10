@@ -155,3 +155,25 @@ class PortfolioAssetRepository(BaseRepository):
         elif isinstance(result, list) and result:
             return result[0]
         return None
+    
+    async def get_by_portfolio_async(
+        self,
+        portfolio_id: int,
+        select_fields: str = "*"
+    ) -> List[Dict[str, Any]]:
+        """
+        Получает активы портфеля с указанными полями (асинхронно).
+        
+        Args:
+            portfolio_id: ID портфеля
+            select_fields: Поля для выборки (по умолчанию "*")
+            
+        Returns:
+            Список портфельных активов
+        """
+        result = await table_select_async(
+            "portfolio_assets",
+            select=select_fields,
+            filters={"portfolio_id": portfolio_id}
+        )
+        return result or []

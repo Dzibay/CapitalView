@@ -1,12 +1,23 @@
 import json
-from app.infrastructure.database.postgres_service import rpc, table_insert, table_select, table_update
+from app.infrastructure.database.postgres_service import rpc, table_update
 from app.domain.services.user_service import get_user_by_email
 from datetime import datetime
 from app.utils.date import normalize_date_to_string, normalize_date_to_sql_date
 from app.domain.services.portfolio_service import update_portfolios_with_asset
 from app.core.logging import get_logger
+from app.infrastructure.database.repositories.asset_repository import AssetRepository
+from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
+from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
 
 logger = get_logger(__name__)
+
+# Создаем экземпляры репозиториев для использования во всех функциях
+_asset_repository = AssetRepository()
+_portfolio_repository = PortfolioRepository()
+_portfolio_asset_repository = PortfolioAssetRepository()
+
+# Создаем экземпляр репозитория для использования во всех функциях
+_asset_repository = AssetRepository()
 
 
 
@@ -185,12 +196,11 @@ def add_asset_price(data):
     
     # Проверяем, что актив не является системным (user_id IS NULL)
     try:
-        asset = table_select("assets", "id, user_id", filters={"id": asset_id})
-        if not asset or len(asset) == 0:
+        asset = _asset_repository.get_by_id_sync(asset_id)
+        if not asset:
             return {"success": False, "error": "Актив не найден"}
         
-        asset_data = asset[0]
-        if asset_data.get("user_id") is None:
+        if asset.get("user_id") is None:
             return {"success": False, "error": "Невозможно изменить цену системного актива"}
     except Exception as e:
         logger.error(f"Ошибка при проверке актива {asset_id}: {e}")
@@ -253,12 +263,11 @@ def add_asset_prices_batch(asset_id: int, prices: list):
     
     # Проверяем, что актив не является системным (user_id IS NULL)
     try:
-        asset = table_select("assets", "id, user_id", filters={"id": asset_id})
-        if not asset or len(asset) == 0:
+        asset = _asset_repository.get_by_id_sync(asset_id)
+        if not asset:
             return {"success": False, "error": "Актив не найден"}
         
-        asset_data = asset[0]
-        if asset_data.get("user_id") is None:
+        if asset.get("user_id") is None:
             return {"success": False, "error": "Невозможно изменить цену системного актива"}
     except Exception as e:
         logger.error(f"Ошибка при проверке актива {asset_id}: {e}")
@@ -331,28 +340,16 @@ def get_asset_info(asset_id: int):
     """
     try:
         # Получаем основную информацию об активе
-        asset = table_select(
-            "assets",
-            select="*",
-            filters={"id": asset_id},
-            limit=1
-        )
+        asset_info = _asset_repository.get_by_id_sync(asset_id)
         
-        if not asset:
+        if not asset_info:
             return {"success": False, "error": "Актив не найден"}
         
-        asset_info = asset[0]
-        
         # Получаем последнюю цену
-        latest_price = table_select(
-            "asset_latest_prices",
-            select="*",
-            filters={"asset_id": asset_id},
-            limit=1
-        )
+        latest_price = _asset_repository.get_latest_price(asset_id)
         
         if latest_price:
-            asset_info["latest_price"] = latest_price[0]
+            asset_info["latest_price"] = latest_price
         else:
             asset_info["latest_price"] = None
         
@@ -375,13 +372,7 @@ def get_asset_price_history(asset_id: int, start_date: str = None, end_date: str
         filters = {"asset_id": asset_id}
         
         # Применяем фильтры по датам если указаны
-        query = table_select(
-            "asset_prices",
-            select="*",
-            filters=filters,
-            order={"column": "trade_date", "desc": True},
-            limit=limit
-        )
+        query = _asset_repository.get_price_history(asset_id, start_date=start_date, end_date=end_date, limit=limit)
         
         # Фильтруем по датам в Python, если нужно
         if start_date or end_date:
@@ -649,41 +640,27 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
             return {"success": False, "error": "Актив уже находится в указанном портфеле"}
         
         # Проверяем существование целевого портфеля
-        target_portfolio = table_select(
-            "portfolios",
-            select="id, user_id",
-            filters={"id": target_portfolio_id},
-            limit=1
-        )
+        target_portfolio = _portfolio_repository.get_by_id_sync(target_portfolio_id)
         
         if not target_portfolio:
             return {"success": False, "error": "Целевой портфель не найден"}
         
         # Проверяем права доступа (если передан user_id)
-        if user_id and target_portfolio[0]["user_id"] != user_id:
+        if user_id and target_portfolio["user_id"] != user_id:
             return {"success": False, "error": "Нет доступа к целевому портфелю"}
         
         # 2️⃣ Проверяем, нет ли уже такого актива в целевом портфеле
-        existing_asset = table_select(
-            "portfolio_assets",
-            select="id",
-            filters={"portfolio_id": target_portfolio_id, "asset_id": asset_id},
-            limit=1
-        )
+        existing_asset = _portfolio_asset_repository.get_by_portfolio_and_asset(target_portfolio_id, asset_id)
         
         if existing_asset:
             return {
                 "success": False,
                 "error": "Актив уже существует в целевом портфеле",
-                "existing_portfolio_asset_id": existing_asset[0]["id"]
+                "existing_portfolio_asset_id": existing_asset["id"]
             }
         
         # 3️⃣ Обновляем portfolio_id в portfolio_assets
-        table_update(
-            "portfolio_assets",
-            {"portfolio_id": target_portfolio_id},
-            {"id": portfolio_asset_id}
-        )
+        _portfolio_asset_repository.update_sync(portfolio_asset_id, {"portfolio_id": target_portfolio_id})
         
         # 6️⃣ Обновляем portfolio_id в portfolio_daily_positions
         table_update(
@@ -737,16 +714,11 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
             current_id = portfolio_id
             
             while current_id:
-                portfolio = table_select(
-                    "portfolios",
-                    select="id, parent_portfolio_id",
-                    filters={"id": current_id},
-                    limit=1
-                )
+                portfolio = _portfolio_repository.get_by_id_sync(current_id)
                 if not portfolio:
                     break
                 
-                parent_id = portfolio[0].get("parent_portfolio_id")
+                parent_id = portfolio.get("parent_portfolio_id")
                 if parent_id:
                     parents.append(parent_id)
                     current_id = parent_id

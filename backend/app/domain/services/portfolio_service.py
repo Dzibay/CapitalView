@@ -1,12 +1,22 @@
 import asyncio
-from app.infrastructure.database.postgres_service import rpc, table_select, table_update
+from app.infrastructure.database.postgres_service import rpc
 from app.infrastructure.database.postgres_async import (
     rpc_async, 
-    table_select_async, 
     table_insert_async,
-    table_update_async
+    table_update_async,
+    table_select_async
 )
 from app.domain.services.user_service import get_user_by_email
+from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
+from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
+from app.infrastructure.database.repositories.transaction_repository import TransactionRepository
+from app.infrastructure.database.repositories.operation_repository import OperationRepository
+
+# Создаем экземпляры репозиториев для использования во всех функциях
+_portfolio_repository = PortfolioRepository()
+_portfolio_asset_repository = PortfolioAssetRepository()
+_transaction_repository = TransactionRepository()
+_operation_repository = OperationRepository()
 from concurrent.futures import ThreadPoolExecutor
 from time import time
 from typing import Dict
@@ -37,16 +47,16 @@ async def get_portfolio_value_history(portfolio_id: int):
 
 def get_user_portfolios_sync(user_email: str):
     user = get_user_by_email(user_email)
-    return rpc("get_user_portfolios", {"u_id": user["id"]})
+    return _portfolio_repository.get_user_portfolios_sync(user["id"])
 
 def get_portfolio_assets_sync(portfolio_id: int):
-    return rpc("get_portfolio_assets", {"p_portfolio_id": portfolio_id})
+    return _portfolio_repository.get_portfolio_assets_sync(portfolio_id)
 
 def get_portfolio_transactions_sync(portfolio_id: int):
-    return rpc("get_portfolio_transactions", {"p_portfolio_id": portfolio_id})
+    return _portfolio_repository.get_portfolio_transactions_sync(portfolio_id)
 
 def get_portfolio_value_history_sync(portfolio_id: int):
-    return  rpc("get_portfolio_value_history", {"p_portfolio_id": portfolio_id})
+    return _portfolio_repository.get_portfolio_value_history_sync(portfolio_id)
 
 
 def get_user_portfolios_with_assets_and_history(user_id: str):
@@ -62,8 +72,11 @@ def update_portfolio_description(portfolio_id: int, text: str = None, capital_ta
                                  annual_return: float = None, use_inflation: bool = None,
                                  inflation_rate: float = None):
     # Получаем текущее описание
-    portfolio = table_select("portfolios", select="description", filters={"id": portfolio_id})
-    desc = portfolio[0].get("description") or {}
+    portfolio = _portfolio_repository.get_by_id_sync(portfolio_id)
+    if not portfolio:
+        return None
+    
+    desc = portfolio.get("description") or {}
 
     if text is not None:
         desc["text"] = text
@@ -85,7 +98,7 @@ def update_portfolio_description(portfolio_id: int, text: str = None, capital_ta
         desc["inflation_rate"] = inflation_rate
 
     # Обновляем запись
-    return table_update("portfolios", {"description": desc}, filters={"id": portfolio_id})
+    return _portfolio_repository.update_sync(portfolio_id, {"description": desc})
 
 async def get_user_portfolio_parent(user_email: str):
     portfolios = await get_user_portfolios(user_email)
@@ -101,17 +114,10 @@ def get_portfolio_info(portfolio_id: int):
     """
     try:
         # Получаем основную информацию о портфеле
-        portfolio = table_select(
-            "portfolios",
-            select="*",
-            filters={"id": portfolio_id},
-            limit=1
-        )
+        portfolio_info = _portfolio_repository.get_by_id_sync(portfolio_id)
         
-        if not portfolio:
+        if not portfolio_info:
             return {"success": False, "error": "Портфель не найден"}
-        
-        portfolio_info = portfolio[0]
         
         # Получаем активы портфеля
         assets = get_portfolio_assets_sync(portfolio_id)
@@ -137,12 +143,7 @@ def get_portfolio_summary(portfolio_id: int):
     Получает краткую сводку по портфелю (без детальной истории).
     """
     try:
-        portfolio = table_select(
-            "portfolios",
-            select="*",
-            filters={"id": portfolio_id},
-            limit=1
-        )
+        portfolio = _portfolio_repository.get_by_id_sync(portfolio_id)
         
         if not portfolio:
             return {"success": False, "error": "Портфель не найден"}
@@ -179,11 +180,7 @@ def get_portfolios_with_asset(asset_id: int) -> Dict[int, str]:
         (значение совпадает с ключом для удобства использования)
     """
     try:
-        portfolio_assets = table_select(
-            "portfolio_assets",
-            select="portfolio_id",
-            filters={"asset_id": asset_id}
-        )
+        portfolio_assets = _portfolio_asset_repository.get_by_asset(asset_id)
         
         if not portfolio_assets:
             return {}
@@ -191,7 +188,7 @@ def get_portfolios_with_asset(asset_id: int) -> Dict[int, str]:
         # Получаем уникальные portfolio_id
         unique_portfolio_ids = {}
         for pa in portfolio_assets:
-            portfolio_id = pa.get("portfolio_id")
+            portfolio_id = pa.get("portfolio_id") if isinstance(pa, dict) else pa
             if portfolio_id:
                 unique_portfolio_ids[portfolio_id] = portfolio_id
         
@@ -382,15 +379,13 @@ async def import_broker_portfolio(
         logger.info(f"Синхронизируем портфель '{portfolio_name}'")
 
         # --- 1. ищем или создаём дочерний портфель ---
-        existing = await table_select_async(
-            "portfolios", select="id",
-            filters={"parent_portfolio_id": parent_portfolio_id, "name": portfolio_name}
-        )
+        existing_portfolio = await _portfolio_repository.find_by_parent_and_name(parent_portfolio_id, portfolio_name)
+        existing = [existing_portfolio] if existing_portfolio else []
         
         # Если портфель существует, блокируем его для импорта
         # Это предотвращает параллельный импорт одного портфеля
         if existing:
-            portfolio_id = existing[0]["id"]
+            portfolio_id = existing_portfolio["id"]
             try:
                 locked = await rpc_async("lock_portfolio_for_import", {"p_portfolio_id": portfolio_id})
                 if not locked:
@@ -414,25 +409,22 @@ async def import_broker_portfolio(
         
         if not existing:
             logger.debug(f"Создаём дочерний портфель '{portfolio_name}'...")
-            inserted = await table_insert_async("portfolios", {
+            inserted_portfolio = await _portfolio_repository.create({
                 "user_id": user_id,
                 "parent_portfolio_id": parent_portfolio_id,
                 "name": portfolio_name,
                 "description": {"source": "tinkoff"}
             })
 
-            if inserted:
-                portfolio_id = inserted[0]["id"]
+            if inserted_portfolio:
+                portfolio_id = inserted_portfolio["id"]
                 portfolio_just_created = True
             else:
                 # ищем повторно
-                pf = await table_select_async(
-                    "portfolios", select="id",
-                    filters={"parent_portfolio_id": parent_portfolio_id, "name": portfolio_name}
-                )
+                pf = await _portfolio_repository.find_by_parent_and_name(parent_portfolio_id, portfolio_name)
                 if not pf:
                     raise Exception(f"Не удалось создать портфель '{portfolio_name}'!")
-                portfolio_id = pf[0]["id"]
+                portfolio_id = pf["id"]
                 # Если портфель был найден после попытки создания, возможно он был создан в параллельном процессе
                 portfolio_just_created = False
         
@@ -483,10 +475,9 @@ async def import_broker_portfolio(
                 logger.debug(f"Проверяем существующие транзакции портфеля '{portfolio_name}' (id={portfolio_id})")
 
                 # Получаем все portfolio_asset_id этого портфеля
-                pa_rows = await table_select_async(
-                    "portfolio_assets",
-                    select="id, asset_id",
-                    filters={"portfolio_id": portfolio_id}
+                pa_rows = await _portfolio_asset_repository.get_by_portfolio_async(
+                    portfolio_id,
+                    select_fields="id, asset_id"
                 )
                 pa_map = {row["asset_id"]: row["id"] for row in pa_rows}
                 pa_ids = [row["id"] for row in pa_rows]
@@ -494,10 +485,9 @@ async def import_broker_portfolio(
                 # Загружаем существующие транзакции
                 existing_tx_keys = set()
                 if pa_ids:
-                    existing_transactions = await table_select_async(
-                        "transactions",
-                        select="portfolio_asset_id,transaction_date,transaction_type,price,quantity",
-                        in_filters={"portfolio_asset_id": pa_ids}
+                    existing_transactions = await _transaction_repository.get_by_portfolio_assets_async(
+                        pa_ids,
+                        select_fields="portfolio_asset_id,transaction_date,transaction_type,price,quantity"
                     )
                     
                     for tx in existing_transactions:
@@ -518,10 +508,9 @@ async def import_broker_portfolio(
                         existing_tx_keys.add(tx_key)
 
                 # Загружаем существующие денежные операции
-                existing_ops = await table_select_async(
-                    "cash_operations",
-                    select="portfolio_id,type,date,amount,asset_id",
-                    filters={"portfolio_id": portfolio_id}
+                existing_ops = await _operation_repository.get_by_portfolio_async(
+                    portfolio_id,
+                    select_fields="portfolio_id,type,date,amount,asset_id"
                 )
                 
                 for op in existing_ops:
@@ -613,13 +602,13 @@ async def import_broker_portfolio(
                 # portfolio_asset_id, если нет — создаём
                 pa_id = pa_map.get(asset_id)
                 if not pa_id:
-                    pa_inserted = await table_insert_async("portfolio_assets", {
+                    pa_inserted = await _portfolio_asset_repository.create({
                         "portfolio_id": portfolio_id,
                         "asset_id": asset_id,
                         "quantity": 0,
                         "average_price": 0
                     })
-                    pa_id = pa_inserted[0]["id"]
+                    pa_id = pa_inserted["id"]
                     pa_map[asset_id] = pa_id
 
                 # Нормализуем дату с временем для точной проверки дубликатов
