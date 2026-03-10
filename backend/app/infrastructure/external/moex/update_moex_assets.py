@@ -10,6 +10,12 @@ from app.infrastructure.database.postgres_async import (
     table_delete_async
 )
 from app.infrastructure.external.moex.client import create_moex_session, fetch_json
+from app.infrastructure.external.moex.constants import FUND_BOARDIDS, PRIORITY_BOARDIDS
+from app.infrastructure.external.moex.utils import (
+    get_column_index,
+    parse_json_properties,
+    get_asset_type_name
+)
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -24,13 +30,6 @@ MOEX_ENDPOINTS = {
         "bonds",
     )
 }
-
-
-# BOARDID для фондов
-FUND_BOARDIDS = {"TQTF", "TQIF", "TQIR", "TQIA", "TQIM", "TQIN", "TQIP", "TQIU", "TQIV", "TQIW", "TQIX", "TQIY", "TQIZ"}
-
-# Приоритетные BOARDID для выбора основной записи (в порядке приоритета)
-PRIORITY_BOARDIDS = ["TQBR", "TQTF", "TQTD", "TQTY", "SMAL", "SPEQ", "TQCB"]
 
 def determine_asset_type(board_id: str, market: str) -> str:
     """
@@ -128,15 +127,6 @@ def compare_assets(existing_asset, new_asset):
     existing_asset_type_id = existing_asset.get("asset_type_id")
     new_asset_type_id = new_asset.get("asset_type_id")
     
-    def get_asset_type_name(asset_type_id):
-        if asset_type_id == 1:
-            return "Акция"
-        elif asset_type_id == 2:
-            return "Облигация"
-        elif asset_type_id == 10:
-            return "Фонд"
-        return "Акция"  # По умолчанию
-    
     existing_type_name = get_asset_type_name(existing_asset_type_id)
     new_type_name = get_asset_type_name(new_asset_type_id)
     
@@ -155,21 +145,8 @@ def compare_assets(existing_asset, new_asset):
         differences.append(f"name: '{existing_name}' -> '{new_name}'")
     
     # Сравниваем properties (JSONB) - нормализуем перед сравнением
-    existing_props = existing_asset.get("properties") or {}
-    if isinstance(existing_props, str):
-        try:
-            import json
-            existing_props = json.loads(existing_props)
-        except:
-            existing_props = {}
-    
-    new_props = new_asset["properties"] or {}
-    if isinstance(new_props, str):
-        try:
-            import json
-            new_props = json.loads(new_props)
-        except:
-            new_props = {}
+    existing_props = parse_json_properties(existing_asset.get("properties"))
+    new_props = parse_json_properties(new_asset.get("properties"))
     
     # Нормализуем properties для сравнения
     # Используем новый тип для нормализации, так как если тип изменился, properties должны соответствовать новому типу
@@ -219,8 +196,6 @@ async def upsert_asset(asset, existing_assets, debug=False):
     else:
         # Перед вставкой проверяем, нет ли уже актива с таким тикером в БД
         # (на случай, если он не попал в existing_assets из-за дубликатов)
-        from app.infrastructure.database.postgres_async import table_select_async
-        
         duplicate_check = await table_select_async(
             "assets",
             "id",
@@ -231,7 +206,6 @@ async def upsert_asset(asset, existing_assets, debug=False):
         if duplicate_check:
             # Найден дубликат - загружаем его данные и сравниваем
             duplicate_id = duplicate_check[0].get("id")
-            from app.infrastructure.database.postgres_async import table_select_async
             
             duplicate_asset_data = await table_select_async(
                 "assets",
@@ -243,13 +217,7 @@ async def upsert_asset(asset, existing_assets, debug=False):
             if duplicate_asset_data:
                 dup_asset = duplicate_asset_data[0]
                 # Парсим properties если это строка
-                dup_props = dup_asset.get("properties") or {}
-                if isinstance(dup_props, str):
-                    try:
-                        import json
-                        dup_props = json.loads(dup_props)
-                    except:
-                        dup_props = {}
+                dup_props = parse_json_properties(dup_asset.get("properties"))
                 
                 # Создаем структуру для сравнения
                 existing_dup = {
@@ -284,20 +252,6 @@ async def upsert_asset(asset, existing_assets, debug=False):
         return "inserted"
 
 
-def get_column_index(cols, *possible_names):
-    """Получает индекс колонки, пробуя разные варианты названий (верхний/нижний регистр)."""
-    for name in possible_names:
-        try:
-            return cols.index(name)
-        except ValueError:
-            try:
-                return cols.index(name.upper())
-            except ValueError:
-                try:
-                    return cols.index(name.lower())
-                except ValueError:
-                    continue
-    return None
 
 
 async def fetch_active_bonds_data(session):
@@ -325,11 +279,11 @@ async def fetch_active_bonds_data(session):
             i_MATDATE = get_column_index(cols, "MATDATE", "matdate")
             i_ISSUESIZE = get_column_index(cols, "ISSUESIZE", "issuesize")
             
+            if i_SECID is None:
+                return active_bonds
+            
             for row in rows:
-                if i_SECID is None:
-                    continue
-                
-                ticker = row[i_SECID] if i_SECID is not None else None
+                ticker = row[i_SECID]
                 if not ticker:
                     continue
                 
@@ -369,13 +323,12 @@ async def fetch_active_bonds_data(session):
     return active_bonds
 
 
-async def process_group(session, base_url, type_name, market, existing_assets, type_map, active_bonds_data=None):
+async def process_group(session, base_url, market, existing_assets, type_map, active_bonds_data=None):
     """Обрабатывает группу активов с учетом пагинации.
     
     Args:
         session: HTTP сессия для запросов
         base_url: Базовый URL эндпоинта
-        type_name: Название типа группы
         market: Рынок ("shares" или "bonds")
         existing_assets: Словарь существующих активов {ticker: asset_data}
         type_map: Словарь соответствия типов активов {type_name: asset_type_id}
@@ -444,17 +397,19 @@ async def process_group(session, base_url, type_name, market, existing_assets, t
             await asyncio.sleep(0.1)  # Небольшая задержка между запросами
     
     if not all_rows:
-        print(f"   ⚠️ Нет данных для группы {type_name}")
+        print(f"   ⚠️ Нет данных для группы {market}")
         return 0, 0
     
     # Находим индексы колонок (пробуем разные варианты регистра)
     i_SECID = get_column_index(all_cols, "secid", "SECID")
     i_SHORTNAME = get_column_index(all_cols, "shortname", "SHORTNAME", "name")
+    i_NAME = get_column_index(all_cols, "name", "NAME")
     i_ISIN = get_column_index(all_cols, "isin", "ISIN")
+    # Для эндпоинта shares/securities.json используется BOARDID напрямую
+    # Для эндпоинта bonds/securities.json используется primary_boardid
+    i_BOARDID = get_column_index(all_cols, "boardid", "BOARDID")
     i_PRIMARY_BOARDID = get_column_index(all_cols, "primary_boardid", "PRIMARY_BOARDID")
     i_MARKETPRICE_BOARDID = get_column_index(all_cols, "marketprice_boardid", "MARKETPRICE_BOARDID")
-    i_GROUP = get_column_index(all_cols, "group", "GROUP")
-    i_TYPE = get_column_index(all_cols, "type", "TYPE")
     
     # Для облигаций могут быть дополнительные поля
     i_FACEVALUE = get_column_index(all_cols, "facevalue", "FACEVALUE")
@@ -465,7 +420,7 @@ async def process_group(session, base_url, type_name, market, existing_assets, t
     i_ISSUESIZE = get_column_index(all_cols, "issuesize", "ISSUESIZE")
     
     if i_SECID is None:
-        print(f"   ⚠️ Колонка secid не найдена для группы {type_name}")
+        print(f"   ⚠️ Колонка secid не найдена для группы {market}")
         return 0, 0
 
     # Группируем записи по тикеру для обработки дубликатов
@@ -479,23 +434,44 @@ async def process_group(session, base_url, type_name, market, existing_assets, t
         
         ticker = ticker.upper().strip()
         
-        # Получаем BOARDID (приоритет: primary_boardid > marketprice_boardid)
+        # Получаем BOARDID в зависимости от эндпоинта:
+        # - Для shares/securities.json используется BOARDID напрямую
+        # - Для bonds/securities.json используется primary_boardid
         board_id = None
-        if i_PRIMARY_BOARDID is not None and r[i_PRIMARY_BOARDID]:
-            board_id = r[i_PRIMARY_BOARDID]
-        elif i_MARKETPRICE_BOARDID is not None and r[i_MARKETPRICE_BOARDID]:
-            board_id = r[i_MARKETPRICE_BOARDID]
+        if market == "shares":
+            # Для акций и фондов используем BOARDID напрямую
+            if i_BOARDID is not None and r[i_BOARDID]:
+                board_id = r[i_BOARDID]
+        else:
+            # Для облигаций используем primary_boardid
+            if i_PRIMARY_BOARDID is not None and r[i_PRIMARY_BOARDID]:
+                board_id = r[i_PRIMARY_BOARDID]
+            elif i_MARKETPRICE_BOARDID is not None and r[i_MARKETPRICE_BOARDID]:
+                board_id = r[i_MARKETPRICE_BOARDID]
         
         # Если тикер уже встречался, выбираем запись с более приоритетным BOARDID
         if ticker in ticker_records:
             skipped_duplicates += 1
             existing_board_id = ticker_records[ticker]["board_id"]
-            existing_priority = PRIORITY_BOARDIDS.index(existing_board_id) if existing_board_id in PRIORITY_BOARDIDS else 999
-            current_priority = PRIORITY_BOARDIDS.index(board_id) if board_id in PRIORITY_BOARDIDS else 999
             
-            # Оставляем запись с более высоким приоритетом (меньший индекс)
-            if current_priority < existing_priority:
+            # Проверяем, является ли один из BOARDID фондом
+            existing_is_fund = existing_board_id and existing_board_id.upper() in FUND_BOARDIDS
+            current_is_fund = board_id and board_id.upper() in FUND_BOARDIDS
+            
+            # Если один из них фонд, а другой нет - выбираем фонд
+            if current_is_fund and not existing_is_fund:
                 ticker_records[ticker] = {"row": r, "board_id": board_id}
+            elif existing_is_fund and not current_is_fund:
+                # Оставляем существующий (фонд)
+                pass
+            else:
+                # Оба одинакового типа (оба фонды или оба акции) - используем приоритет
+                existing_priority = PRIORITY_BOARDIDS.index(existing_board_id) if existing_board_id in PRIORITY_BOARDIDS else 999
+                current_priority = PRIORITY_BOARDIDS.index(board_id) if board_id in PRIORITY_BOARDIDS else 999
+                
+                # Оставляем запись с более высоким приоритетом (меньший индекс)
+                if current_priority < existing_priority:
+                    ticker_records[ticker] = {"row": r, "board_id": board_id}
         else:
             ticker_records[ticker] = {"row": r, "board_id": board_id}
     
@@ -518,10 +494,8 @@ async def process_group(session, base_url, type_name, market, existing_assets, t
         name = None
         if i_SHORTNAME is not None and r[i_SHORTNAME]:
             name = r[i_SHORTNAME]
-        else:
-            i_name = get_column_index(all_cols, "name", "NAME")
-            if i_name is not None and r[i_name]:
-                name = r[i_name]
+        elif i_NAME is not None and r[i_NAME]:
+            name = r[i_NAME]
         
         if not name:
             name = ticker
@@ -611,13 +585,7 @@ async def process_group(session, base_url, type_name, market, existing_assets, t
             print(f"      id: {existing.get('id')}")
             print(f"      name: {existing.get('name', 'N/A')}")
             print(f"      asset_type_id: {existing.get('asset_type_id')}")
-            existing_props = existing.get("properties") or {}
-            if isinstance(existing_props, str):
-                try:
-                    import json
-                    existing_props = json.loads(existing_props)
-                except:
-                    existing_props = {}
+            existing_props = parse_json_properties(existing.get("properties"))
             print(f"      properties: {existing_props}")
 
         result = await upsert_asset(asset, existing_assets, debug=(inserted + updated + no_change < 5))
@@ -813,13 +781,7 @@ async def import_moex_assets_async():
         ticker = a["ticker"].upper()
         
         # Проверяем properties на source="moex"
-        props = a.get("properties") or {}
-        if isinstance(props, str):
-            try:
-                import json
-                props = json.loads(props)
-            except:
-                props = {}
+        props = parse_json_properties(a.get("properties"))
         
         # Пропускаем активы без source="moex"
         if props.get("source") != "moex":
@@ -858,8 +820,8 @@ async def import_moex_assets_async():
         print(f"   ✅ Загружено данных об {len(active_bonds_data)} активных облигациях")
         
         tasks = []
-        for market, (url, _) in MOEX_ENDPOINTS.items():
-            tasks.append(process_group(session, url, market, market, existing_assets, type_map, active_bonds_data))
+        for market_key, (url, _) in MOEX_ENDPOINTS.items():
+            tasks.append(process_group(session, url, market_key, existing_assets, type_map, active_bonds_data))
         
         results = await asyncio.gather(*tasks)
 

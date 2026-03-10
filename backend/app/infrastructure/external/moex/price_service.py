@@ -6,6 +6,7 @@ import aiohttp
 from datetime import date, timedelta, datetime
 from typing import Optional, List, Tuple, Dict
 from app.infrastructure.external.moex.client import create_moex_session, fetch_json, MAX_RETRIES
+from app.infrastructure.external.moex.constants import PRIORITY_BOARDIDS
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -53,9 +54,6 @@ async def get_prices_moex_batch(session: aiohttp.ClientSession, market: str) -> 
         
         if i_LAST is None:
             return {}
-        
-        # Приоритетные BOARDID для выбора основной записи (в порядке приоритета)
-        PRIORITY_BOARDIDS = ["TQBR", "TQTF", "TQTD", "TQTY", "SMAL", "SPEQ"]
         
         # Создаем словарь для сопоставления (SECID, BOARDID) -> marketdata индекс
         md_index_map = {}
