@@ -521,9 +521,13 @@ async def process_today_prices_batch(
             # Анти-скачок
             last = last_map.get(asset_id)
             prev_price = last.get("price") if last else None
-            if prev_price and abs(price - prev_price) / prev_price > 0.1:
-                logger.warning(f"⚠️ Скачок цены для {ticker}: {prev_price} -> {price}")
-                continue
+            if prev_price:
+                # Приводим к float для корректного сравнения (prev_price может быть Decimal из БД)
+                prev_price_float = float(prev_price)
+                price_float = float(price)
+                if abs(price_float - prev_price_float) / prev_price_float > 0.1:
+                    logger.warning(f"⚠️ Скачок цены для {ticker}: {prev_price} -> {price}")
+                    continue
             
             # Выбираем дату для вставки
             insert_date = today if trading else None
@@ -567,9 +571,13 @@ async def process_today_prices_batch(
             # Анти-скачок
             last = last_map.get(asset_id)
             prev_price = last.get("price") if last else None
-            if prev_price and abs(price - prev_price) / prev_price > 0.1:
-                logger.warning(f"⚠️ Скачок цены для {ticker}: {prev_price} -> {price}")
-                continue
+            if prev_price:
+                # Приводим к float для корректного сравнения (prev_price может быть Decimal из БД)
+                prev_price_float = float(prev_price)
+                price_float = float(price)
+                if abs(price_float - prev_price_float) / prev_price_float > 0.1:
+                    logger.warning(f"⚠️ Скачок цены для {ticker}: {prev_price} -> {price}")
+                    continue
             
             # Выбираем дату для вставки
             insert_date = today if trading else None

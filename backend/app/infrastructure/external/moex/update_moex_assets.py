@@ -54,6 +54,65 @@ def determine_asset_type(board_id: str, market: str) -> str:
     return "Акция"  # По умолчанию
 
 
+def normalize_properties(props, asset_type_name):
+    """
+    Нормализует properties, оставляя только нужные поля.
+    Удаляет все лишние поля, включая поля с null значениями.
+    
+    Args:
+        props: Словарь properties
+        asset_type_name: Тип актива ("Акция", "Облигация", "Фонд")
+    
+    Returns:
+        Нормализованный словарь properties
+    """
+    normalized = {"source": "moex"}
+    
+    # Для всех типов активов добавляем isin, если есть и не пустой
+    isin = props.get("isin")
+    if isin and isin.strip() if isinstance(isin, str) else isin:
+        normalized["isin"] = isin
+    
+    # Для облигаций добавляем дополнительные поля
+    if asset_type_name == "Облигация":
+        board_id = props.get("board_id")
+        if board_id and board_id.strip() if isinstance(board_id, str) else board_id:
+            normalized["board_id"] = board_id
+        
+        # Купонные данные (если есть и не null)
+        face_value = props.get("face_value")
+        if face_value is not None:
+            normalized["face_value"] = face_value
+        
+        mat_date = props.get("mat_date")
+        if mat_date and (mat_date.strip() if isinstance(mat_date, str) else mat_date):
+            normalized["mat_date"] = mat_date
+        
+        coupon_value = props.get("coupon_value")
+        if coupon_value is not None:
+            normalized["coupon_value"] = coupon_value
+        
+        coupon_percent = props.get("coupon_percent")
+        if coupon_percent is not None:
+            normalized["coupon_percent"] = coupon_percent
+        
+        coupon_period = props.get("coupon_period")
+        if coupon_period is not None:
+            normalized["coupon_period"] = coupon_period
+        
+        coupon_frequency = props.get("coupon_frequency")
+        if coupon_frequency is not None:
+            normalized["coupon_frequency"] = coupon_frequency
+        
+        issue_size = props.get("issue_size")
+        if issue_size is not None:
+            normalized["issue_size"] = issue_size
+    
+    # Для акций и фондов больше ничего не добавляем - только source и isin
+    
+    return normalized
+
+
 def compare_assets(existing_asset, new_asset):
     """
     Сравнивает существующий актив с новым и определяет, нужно ли обновление.
@@ -65,11 +124,27 @@ def compare_assets(existing_asset, new_asset):
     update_data = {}
     differences = []
     
+    # Определяем тип актива для нормализации properties
+    existing_asset_type_id = existing_asset.get("asset_type_id")
+    new_asset_type_id = new_asset.get("asset_type_id")
+    
+    def get_asset_type_name(asset_type_id):
+        if asset_type_id == 1:
+            return "Акция"
+        elif asset_type_id == 2:
+            return "Облигация"
+        elif asset_type_id == 10:
+            return "Фонд"
+        return "Акция"  # По умолчанию
+    
+    existing_type_name = get_asset_type_name(existing_asset_type_id)
+    new_type_name = get_asset_type_name(new_asset_type_id)
+    
     # Сравниваем asset_type_id
-    if existing_asset.get("asset_type_id") != new_asset["asset_type_id"]:
+    if existing_asset_type_id != new_asset_type_id:
         needs_update = True
         update_data["asset_type_id"] = new_asset["asset_type_id"]
-        differences.append(f"asset_type_id: {existing_asset.get('asset_type_id')} -> {new_asset['asset_type_id']}")
+        differences.append(f"asset_type_id: {existing_asset_type_id} -> {new_asset_type_id}")
     
     # Сравниваем name
     existing_name = existing_asset.get("name", "").strip()
@@ -79,7 +154,7 @@ def compare_assets(existing_asset, new_asset):
         update_data["name"] = new_asset["name"]
         differences.append(f"name: '{existing_name}' -> '{new_name}'")
     
-    # Сравниваем properties (JSONB)
+    # Сравниваем properties (JSONB) - нормализуем перед сравнением
     existing_props = existing_asset.get("properties") or {}
     if isinstance(existing_props, str):
         try:
@@ -96,19 +171,24 @@ def compare_assets(existing_asset, new_asset):
         except:
             new_props = {}
     
-    # Сравниваем ключевые поля в properties
-    props_changed = False
-    for key in ["source", "isin", "board_id", "group", "type"]:
-        existing_val = existing_props.get(key)
-        new_val = new_props.get(key)
-        if existing_val != new_val:
-            props_changed = True
-            break
+    # Нормализуем properties для сравнения
+    # Используем новый тип для нормализации, так как если тип изменился, properties должны соответствовать новому типу
+    existing_normalized = normalize_properties(existing_props, new_type_name)
+    new_normalized = normalize_properties(new_props, new_type_name)
     
-    if props_changed or existing_props != new_props:
+    # Сравниваем нормализованные properties
+    # Также проверяем, есть ли в существующих properties лишние поля (не входящие в нормализованную версию)
+    # Это нужно для очистки старых данных с лишними полями (например, type: null, group: null, board_id: null)
+    existing_has_extra_fields = len(existing_props) > len(existing_normalized)
+    
+    if existing_normalized != new_normalized or existing_has_extra_fields:
         needs_update = True
-        update_data["properties"] = new_asset["properties"]
-        differences.append(f"properties: изменены")
+        # Используем нормализованные properties для обновления (это удалит лишние поля)
+        update_data["properties"] = new_normalized
+        if existing_has_extra_fields:
+            differences.append(f"properties: удаление лишних полей")
+        else:
+            differences.append(f"properties: изменены")
     
     # Сравниваем quote_asset_id
     existing_quote = existing_asset.get("quote_asset_id")
@@ -220,17 +300,94 @@ def get_column_index(cols, *possible_names):
     return None
 
 
-async def process_group(session, base_url, type_name, market, existing_assets, type_map):
-    """Обрабатывает группу активов с учетом пагинации.
+async def fetch_active_bonds_data(session):
+    """
+    Получает данные об активных облигациях из эндпоинта активных инструментов.
     
     Returns:
-        tuple: (inserted, updated, moex_tickers_set) - количество добавленных, обновленных и множество тикеров из MOEX
+        dict: Словарь {ticker: {coupon_value, coupon_percent, coupon_period, face_value, mat_date, issue_size}}
+    """
+    url = "https://iss.moex.com/iss/engines/stock/markets/bonds/securities.json"
+    js = await fetch_json(session, url)
+    
+    active_bonds = {}
+    
+    if js and "securities" in js:
+        cols = js["securities"].get("columns", [])
+        rows = js["securities"].get("data", [])
+        
+        if cols and rows:
+            i_SECID = get_column_index(cols, "SECID", "secid")
+            i_COUPONVALUE = get_column_index(cols, "COUPONVALUE", "couponvalue")
+            i_COUPONPERCENT = get_column_index(cols, "COUPONPERCENT", "couponpercent")
+            i_COUPONPERIOD = get_column_index(cols, "COUPONPERIOD", "couponperiod")
+            i_FACEVALUE = get_column_index(cols, "FACEVALUE", "facevalue")
+            i_MATDATE = get_column_index(cols, "MATDATE", "matdate")
+            i_ISSUESIZE = get_column_index(cols, "ISSUESIZE", "issuesize")
+            
+            for row in rows:
+                if i_SECID is None:
+                    continue
+                
+                ticker = row[i_SECID] if i_SECID is not None else None
+                if not ticker:
+                    continue
+                
+                ticker = ticker.upper().strip()
+                
+                bond_data = {}
+                
+                if i_COUPONVALUE is not None and row[i_COUPONVALUE] is not None:
+                    bond_data["coupon_value"] = row[i_COUPONVALUE]
+                
+                if i_COUPONPERCENT is not None and row[i_COUPONPERCENT] is not None:
+                    bond_data["coupon_percent"] = row[i_COUPONPERCENT]
+                
+                if i_COUPONPERIOD is not None and row[i_COUPONPERIOD] is not None:
+                    coupon_period = row[i_COUPONPERIOD]
+                    bond_data["coupon_period"] = coupon_period
+                    # Вычисляем частоту купонов
+                    try:
+                        period_days = float(coupon_period)
+                        if period_days > 0:
+                            bond_data["coupon_frequency"] = round(365 / period_days, 1)
+                    except (ValueError, TypeError):
+                        pass
+                
+                if i_FACEVALUE is not None and row[i_FACEVALUE] is not None:
+                    bond_data["face_value"] = row[i_FACEVALUE]
+                
+                if i_MATDATE is not None and row[i_MATDATE]:
+                    bond_data["mat_date"] = row[i_MATDATE]
+                
+                if i_ISSUESIZE is not None and row[i_ISSUESIZE] is not None:
+                    bond_data["issue_size"] = row[i_ISSUESIZE]
+                
+                if bond_data:
+                    active_bonds[ticker] = bond_data
+    
+    return active_bonds
+
+
+async def process_group(session, base_url, type_name, market, existing_assets, type_map, active_bonds_data=None):
+    """Обрабатывает группу активов с учетом пагинации.
+    
+    Args:
+        session: HTTP сессия для запросов
+        base_url: Базовый URL эндпоинта
+        type_name: Название типа группы
+        market: Рынок ("shares" или "bonds")
+        existing_assets: Словарь существующих активов {ticker: asset_data}
+        type_map: Словарь соответствия типов активов {type_name: asset_type_id}
+        active_bonds_data: Словарь данных об активных облигациях {ticker: bond_data} (опционально)
+    
+    Returns:
+        tuple: (inserted, updated) - количество добавленных и обновленных активов
     """
     print(f"\n🔹 Группа: {market}")
 
     all_rows = []
     all_cols = None
-    moex_tickers_set = set()  # Множество тикеров из MOEX для этой группы
     
     # Для shares используем актуальный список без пагинации
     # Для bonds используем пагинированный эндпоинт для получения всех облигаций (включая устаревшие)
@@ -372,13 +529,58 @@ async def process_group(session, base_url, type_name, market, existing_assets, t
         # Для валюты используем RUB по умолчанию (новый эндпойнт может не иметь FACEUNIT)
         currency = "RUB"
         
+        # Базовые properties (будут нормализованы позже)
         props = {
             "source": "moex",
-            "isin": r[i_ISIN] if i_ISIN is not None and r[i_ISIN] else None,
-            "board_id": board_id,
-            "group": r[i_GROUP] if i_GROUP is not None and r[i_GROUP] else None,
-            "type": r[i_TYPE] if i_TYPE is not None and r[i_TYPE] else None,
         }
+        
+        # Добавляем isin, если есть
+        isin = r[i_ISIN] if i_ISIN is not None and r[i_ISIN] else None
+        if isin:
+            props["isin"] = isin
+        
+        # Для облигаций добавляем board_id и купонные данные
+        if actual_type_name == "Облигация":
+            if board_id:
+                props["board_id"] = board_id
+            
+            # Пробуем получить данные из активного эндпоинта
+            if active_bonds_data and ticker in active_bonds_data:
+                bond_data = active_bonds_data[ticker]
+                props.update(bond_data)
+            else:
+                # Если данных нет в активном эндпоинте, пробуем получить из текущего эндпоинта
+                # (но только если они есть - для устаревших облигаций их может не быть)
+                if i_MATDATE is not None and r[i_MATDATE]:
+                    props["mat_date"] = r[i_MATDATE]
+                
+                if i_FACEVALUE is not None and r[i_FACEVALUE] is not None:
+                    props["face_value"] = r[i_FACEVALUE]
+                
+                coupon_value = r[i_COUPONVALUE] if i_COUPONVALUE is not None and r[i_COUPONVALUE] is not None else None
+                coupon_percent = r[i_COUPONPERCENT] if i_COUPONPERCENT is not None and r[i_COUPONPERCENT] is not None else None
+                coupon_period = r[i_COUPONPERIOD] if i_COUPONPERIOD is not None and r[i_COUPONPERIOD] is not None else None
+                
+                if coupon_value is not None:
+                    props["coupon_value"] = coupon_value
+                if coupon_percent is not None:
+                    props["coupon_percent"] = coupon_percent
+                if coupon_period is not None:
+                    props["coupon_period"] = coupon_period
+                    # Вычисляем частоту купонов
+                    try:
+                        period_days = float(coupon_period)
+                        if period_days > 0:
+                            props["coupon_frequency"] = round(365 / period_days, 1)
+                    except (ValueError, TypeError):
+                        pass
+                
+                issue_size = r[i_ISSUESIZE] if i_ISSUESIZE is not None and r[i_ISSUESIZE] is not None else None
+                if issue_size is not None:
+                    props["issue_size"] = issue_size
+        
+        # Нормализуем properties (удаляем лишние поля)
+        props = normalize_properties(props, actual_type_name)
         
         # Для отладки: выводим пример данных из MOEX (первые 3)
         if inserted + updated + no_change < 3:
@@ -387,33 +589,6 @@ async def process_group(session, base_url, type_name, market, existing_assets, t
             print(f"      board_id: {board_id}")
             print(f"      type: {actual_type_name}")
             print(f"      properties: {props}")
-
-        if actual_type_name == "Облигация":
-            # Извлекаем значения купона и размера выпуска
-            coupon_value = r[i_COUPONVALUE] if i_COUPONVALUE is not None and r[i_COUPONVALUE] is not None else None
-            coupon_percent = r[i_COUPONPERCENT] if i_COUPONPERCENT is not None and r[i_COUPONPERCENT] is not None else None
-            coupon_period = r[i_COUPONPERIOD] if i_COUPONPERIOD is not None and r[i_COUPONPERIOD] is not None else None
-            issue_size = r[i_ISSUESIZE] if i_ISSUESIZE is not None and r[i_ISSUESIZE] is not None else None
-            
-            # Вычисляем частоту купонов на основе периода (в днях)
-            coupon_frequency = None
-            if coupon_period is not None:
-                try:
-                    period_days = float(coupon_period)
-                    if period_days > 0:
-                        coupon_frequency = round(365 / period_days, 1)
-                except (ValueError, TypeError):
-                    pass
-            
-            props.update({
-                "mat_date": r[i_MATDATE] if i_MATDATE is not None and r[i_MATDATE] else None,
-                "face_value": r[i_FACEVALUE] if i_FACEVALUE is not None and r[i_FACEVALUE] else None,
-                "coupon_value": coupon_value,
-                "coupon_percent": coupon_percent,
-                "coupon_frequency": coupon_frequency,
-                "coupon_period": coupon_period,
-                "issue_size": issue_size,
-            })
 
         asset_type_id = type_map.get(actual_type_name)
         if not asset_type_id:
@@ -677,9 +852,14 @@ async def import_moex_assets_async():
             }
 
     async with create_moex_session() as session:
+        # Получаем данные об активных облигациях для дополнения информации
+        print("   📥 Загрузка данных об активных облигациях...")
+        active_bonds_data = await fetch_active_bonds_data(session)
+        print(f"   ✅ Загружено данных об {len(active_bonds_data)} активных облигациях")
+        
         tasks = []
         for market, (url, _) in MOEX_ENDPOINTS.items():
-            tasks.append(process_group(session, url, market, market, existing_assets, type_map))
+            tasks.append(process_group(session, url, market, market, existing_assets, type_map, active_bonds_data))
         
         results = await asyncio.gather(*tasks)
 
