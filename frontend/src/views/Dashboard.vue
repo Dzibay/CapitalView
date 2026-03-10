@@ -1,10 +1,10 @@
 <script setup>
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed } from 'vue'
 import { useAuthStore } from '../stores/auth.store'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import { usePortfoliosStore } from '../stores/portfolios.store'
-import { useTransactionsStore } from '../stores/transactions.store'
+import { usePortfolioAnalytics } from '../composables/usePortfolioAnalytics'
 
 // Компоненты
 import LoadingState from '../components/base/LoadingState.vue'
@@ -35,80 +35,31 @@ const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 const portfoliosStore = usePortfoliosStore()
-const transactionsStore = useTransactionsStore()
 
-const portfolios = computed(() => dashboardStore.portfolios)
-
-// Локальное состояние для аналитики
-const selectedPortfolioAnalytics = ref(null)
-const isLoadingAnalytics = ref(false)
-
-// Автозагрузка аналитики
-watch(
-  () => dashboardStore.portfolios,
-  async (portfolios) => {
-    if (portfolios?.length) {
-      await safeLoadAnalytics()
-    }
-  },
-  { immediate: true }
-)
-
-// Безопасная загрузка аналитики (теперь аналитика приходит вместе с dashboard)
-async function safeLoadAnalytics() {
-  if (isLoadingAnalytics.value) return
-  try {
-    isLoadingAnalytics.value = true
-    // Аналитика уже загружена вместе с dashboard, просто обновляем выбранную
-    await updateSelectedAnalytics()
-  } catch (err) {
-    console.error('❌ Ошибка при обработке аналитики:', err)
-  } finally {
-    isLoadingAnalytics.value = false
-  }
-}
-
-// Перерисовка при смене портфеля
-watch(
-  () => uiStore.selectedPortfolioId,
-  async () => {
-    await updateSelectedAnalytics()
-  }
-)
-
-// Обновление выбранной аналитики
-async function updateSelectedAnalytics() {
-  const allAnalytics = dashboardStore.analytics ?? []
-  selectedPortfolioAnalytics.value =
-    allAnalytics.find(a => a.portfolio_id === uiStore.selectedPortfolioId) || null
-}
-
-const selectedPortfolio = computed(() => {
-  return portfolios.value.find(p => p.id === uiStore.selectedPortfolioId) || null
-})
-
-// Функция для сбора всех id выбранного портфеля и его дочерних
-function collectPortfolioIds(portfolio, allPortfolios) {
-  let ids = [portfolio.id];
-  const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id);
-
-  for (const child of children) {
-    ids = ids.concat(collectPortfolioIds(child, allPortfolios));
-  }
-
-  return ids;
-}
+// Используем composable для аналитики портфеля
+const {
+  portfolios,
+  selectedPortfolio,
+  selectedPortfolioAnalytics,
+  isLoadingAnalytics,
+  totalCapitalWidgetData,
+  profitWidgetData,
+  calculatedAnnualDividends,
+  returnData,
+  portfolioChartData,
+  collectPortfolioIds
+} = usePortfolioAnalytics()
 
 // Функция для сбора всех активов выбранного портфеля и его дочерних
 function collectAssets(portfolio, allPortfolios) {
-  let assets = [...(portfolio.assets || [])];
-  const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id);
+  let assets = [...(portfolio.assets || [])]
+  const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id)
 
   for (const child of children) {
-    assets = assets.concat(collectAssets(child, allPortfolios));
+    assets = assets.concat(collectAssets(child, allPortfolios))
   }
 
-  return assets;
+  return assets
 }
 
 const parsedDashboard = computed(() => {
@@ -122,15 +73,13 @@ const parsedDashboard = computed(() => {
 
   // Фильтруем транзакции по всем id портфелей
   const transactions = (dashboardStore.transactions ?? []).filter(t => portfolioIds.includes(t.portfolio_id))
-
-  const balance = Number(selectedPortfolio.value.balance || selectedPortfolio.value.analytics?.totals?.balance || 0)
   
   return {
-    totalAmount: Number(selectedPortfolio.value.total_value || 0), // total_value уже включает баланс на бэкенде
-    investedAmount: Number(selectedPortfolio.value.total_invested || 0) + balance, // investedAmount + баланс
+    totalAmount: totalCapitalWidgetData.value.totalAmount,
+    investedAmount: totalCapitalWidgetData.value.investedAmount,
     monthlyChange: selectedPortfolio.value.monthly_change || 0,
     assetAllocation: selectedPortfolio.value.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] },
-    portfolioChart: selectedPortfolio.value.history ?? { labels: [], data: [] },
+    portfolioChart: portfolioChartData.value,
     assets,
     transactions
   }
@@ -157,57 +106,12 @@ const goalData = computed(() => {
   return result
 })
 
-// Расчет годовых дивидендов: процент доходности * сумма портфеля
-const calculatedAnnualDividends = computed(() => {
-  // Используем данные из аналитики, если доступны
-  if (selectedPortfolioAnalytics.value?.totals) {
-    const returnPercent = selectedPortfolioAnalytics.value.totals.return_percent || 0
-    const totalValue = selectedPortfolioAnalytics.value.totals.total_value || 0
-    return (returnPercent / 100) * totalValue
-  }
-  // Иначе используем данные из selectedPortfolio.analytics
-  if (selectedPortfolio.value?.analytics) {
-    const returnPercent = selectedPortfolio.value.analytics.return_percent || 0
-    const totalValue = selectedPortfolio.value.analytics.total_value || selectedPortfolio.value.total_value || 0
-    return (returnPercent / 100) * totalValue
-  }
-  return 0
-})
-
 // Данные для AssetAllocationWidget
 const assetAllocationData = computed(() => {
   if (!selectedPortfolio.value) {
     return { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
   }
   return selectedPortfolio.value.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
-})
-
-// Данные для ReturnWidget
-const returnData = computed(() => {
-  // Используем данные из аналитики, если доступны
-  if (selectedPortfolioAnalytics.value?.totals) {
-    return {
-      returnPercent: selectedPortfolioAnalytics.value.totals.return_percent || 0,
-      returnPercentOnInvested: selectedPortfolioAnalytics.value.totals.return_percent_on_invested || 0,
-      totalValue: selectedPortfolioAnalytics.value.totals.total_value || 0,
-      totalInvested: selectedPortfolioAnalytics.value.totals.total_invested || 0
-    }
-  }
-  // Иначе используем данные из selectedPortfolio.analytics
-  if (selectedPortfolio.value?.analytics) {
-    return {
-      returnPercent: selectedPortfolio.value.analytics.return_percent || 0,
-      returnPercentOnInvested: selectedPortfolio.value.analytics.return_percent_on_invested || 0,
-      totalValue: selectedPortfolio.value.analytics.total_value || selectedPortfolio.value.total_value || 0,
-      totalInvested: selectedPortfolio.value.analytics.total_invested || selectedPortfolio.value.total_invested || 0
-    }
-  }
-  return {
-    returnPercent: 0,
-    returnPercentOnInvested: 0,
-    totalValue: parsedDashboard.value?.totalAmount || 0,
-    totalInvested: parsedDashboard.value?.investedAmount || 0
-  }
 })
 
 // Данные для MonthlyPayoutsChartWidget
@@ -249,17 +153,17 @@ const recentTransactions = computed(() => {
       <!-- 4 маленьких виджета вверху -->
       <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
         <TotalCapitalWidget 
-          :total-amount="parsedDashboard.totalAmount"
-          :invested-amount="parsedDashboard.investedAmount"
+          :total-amount="totalCapitalWidgetData.totalAmount"
+          :invested-amount="totalCapitalWidgetData.investedAmount"
         />
       </WidgetContainer>
       <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
         <PortfolioProfitWidget 
-          :total-amount="parsedDashboard.totalAmount" 
-          :total-profit="selectedPortfolioAnalytics?.totals?.total_profit || selectedPortfolio.analytics?.totals?.total_profit || selectedPortfolio.analytics?.total_profit || 0" 
-          :monthly-change="parsedDashboard.monthlyChange"
-          :invested-amount="parsedDashboard.investedAmount"
-          :analytics="selectedPortfolioAnalytics || selectedPortfolio.analytics || {}"
+          :total-amount="profitWidgetData.totalAmount"
+          :total-profit="profitWidgetData.totalProfit"
+          :monthly-change="profitWidgetData.monthlyChange"
+          :invested-amount="profitWidgetData.investedAmount"
+          :analytics="profitWidgetData.analytics"
         />
       </WidgetContainer>
       <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
@@ -279,7 +183,7 @@ const recentTransactions = computed(() => {
       <!-- Большой виджет PortfolioChartWidget -->
       <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-xlarge)">
         <PortfolioChartWidget 
-          :chartData="parsedDashboard.portfolioChart"
+          :chartData="portfolioChartData"
         />
       </WidgetContainer>
       <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
