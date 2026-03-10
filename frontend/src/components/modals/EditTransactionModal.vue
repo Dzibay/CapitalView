@@ -1,11 +1,12 @@
 <script setup>
 import { ref, watch, computed, onMounted } from 'vue'
-import { Check } from 'lucide-vue-next'
+import { Check, Edit, TrendingUp, RefreshCw, Hash, DollarSign, Calendar, Loader2 } from 'lucide-vue-next'
 import { Button, DateInput, ToggleSwitch } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
 import assetsService from '../../services/assetsService'
 import { useDashboardStore } from '../../stores/dashboard.store'
 import { normalizeDateToString } from '../../utils/date'
+import ModalBase from './ModalBase.vue'
 
 const props = defineProps({
   transaction: Object,
@@ -295,11 +296,31 @@ watch(() => props.visible, async (isVisible) => {
   }
 }, { immediate: true })
 
+const error = ref('')
+
 const handleSave = () => {
+  error.value = ''
+  
   // Проверка для системных активов: дата не должна быть раньше первой цены
   if (isSystemAsset.value && minDate.value && editedTx.value.transaction_date && 
       new Date(editedTx.value.transaction_date) < new Date(minDate.value)) {
-    alert(`Дата транзакции не может быть раньше первой доступной даты: ${minDate.value}`)
+    error.value = `Дата транзакции не может быть раньше первой доступной даты: ${minDate.value}`
+    return
+  }
+  
+  // Валидация полей
+  if (!editedTx.value.quantity || editedTx.value.quantity <= 0) {
+    error.value = 'Введите количество'
+    return
+  }
+  
+  if (!editedTx.value.price || editedTx.value.price <= 0) {
+    error.value = 'Введите цену'
+    return
+  }
+  
+  if (!editedTx.value.transaction_date) {
+    error.value = 'Выберите дату транзакции'
     return
   }
   
@@ -309,24 +330,14 @@ const handleSave = () => {
 </script>
 
 <template>
-  <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Редактировать транзакцию</h2>
-        <button class="close-btn" @click="$emit('close')" aria-label="Закрыть">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-      
-      <form @submit.prevent="handleSave" class="form-content">
+  <ModalBase :show="visible" title="Редактировать транзакцию" :icon="Edit" :wide="true" @close="$emit('close')">
+    <form @submit.prevent="handleSave">
         <div class="form-section">
           <div class="asset-info">
-            <span class="asset-icon">📈</span>
+            <TrendingUp :size="18" class="asset-icon" />
             <div>
               <strong>{{ editedTx.asset_name }}</strong>
+              <span class="ticker" v-if="editedTx.asset_ticker">({{ editedTx.asset_ticker }})</span>
             </div>
           </div>
         </div>
@@ -334,8 +345,8 @@ const handleSave = () => {
         <div class="form-section">
           <div class="section-divider"></div>
           <label class="form-label">
-            <span class="label-icon">🔄</span>
-            Тип
+            <RefreshCw :size="16" class="label-icon" />
+            Тип транзакции
           </label>
           <CustomSelect
             v-model="editedTx.transaction_type"
@@ -367,26 +378,38 @@ const handleSave = () => {
           <div class="form-row">
             <div class="form-field">
               <label class="form-label">
-                <span class="label-icon">🔢</span>
+                <Hash :size="16" class="label-icon" />
                 Количество
               </label>
-              <input type="number" v-model.number="editedTx.quantity" step="0.000001" class="form-input" />
+              <input 
+                type="number" 
+                v-model.number="editedTx.quantity" 
+                min="0"
+                step="0.000001" 
+                class="form-input" 
+                required
+              />
               <small class="form-hint" style="margin-top: 4px;">
                 Можно вводить до 6 знаков после запятой
               </small>
             </div>
             <div class="form-field">
               <label class="form-label">
-                <span class="label-icon">💰</span>
+                <DollarSign :size="16" class="label-icon" />
                 Цена (₽)
-                <span v-if="loadingPrice" style="margin-left: 8px; color: #3b82f6;">⏳ Загрузка...</span>
+                <span v-if="loadingPrice" style="margin-left: 8px; color: #3b82f6; display: inline-flex; align-items: center; gap: 4px;">
+                  <Loader2 :size="14" class="spinner-icon" />
+                  Загрузка...
+                </span>
               </label>
               <input 
                 type="number" 
                 v-model.number="editedTx.price" 
+                min="0"
                 step="0.000001" 
                 class="form-input"
                 :disabled="useMarketPrice && loadingPrice"
+                required
               />
               <small class="form-hint" style="margin-top: 4px;" v-if="useMarketPrice && isSystemAsset">
                 Цена автоматически обновляется при изменении даты
@@ -396,9 +419,9 @@ const handleSave = () => {
               </small>
             </div>
           </div>
-          <div class="form-field">
+          <div class="form-field" style="margin-top: 12px;">
             <label class="form-label">
-              <span class="label-icon">📅</span>
+              <Calendar :size="16" class="label-icon" />
               Дата транзакции
             </label>
             <!-- Используем key для пересоздания компонента после установки minDate, чтобы даты стали тусклыми -->
@@ -406,6 +429,7 @@ const handleSave = () => {
               v-model="editedTx.transaction_date" 
               :min="minDate" 
               :key="`date-input-${minDate || 'no-min'}-${isLoadingHistory}`"
+              required
             />
             <small v-if="minDate" class="form-hint" style="margin-top: 4px;">
               Первая доступная дата: {{ minDate }}
@@ -413,8 +437,10 @@ const handleSave = () => {
           </div>
         </div>
 
+        <div v-if="error" class="error">{{ error }}</div>
+
         <div class="form-actions">
-          <Button variant="secondary" type="button" @click="$emit('close')">Отмена</Button>
+          <Button variant="secondary" type="button" @click="$emit('close')" :disabled="saving">Отмена</Button>
           <Button variant="primary" type="submit" :loading="saving">
             <template #icon>
               <Check :size="16" />
@@ -423,119 +449,10 @@ const handleSave = () => {
           </Button>
         </div>
       </form>
-    </div>
-  </div>
+  </ModalBase>
 </template>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(8px);
-  padding: 16px;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.modal {
-  background: white;
-  border-radius: 20px;
-  width: 100%;
-  max-width: 480px;
-  max-height: 90vh;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes slideUp {
-  from {
-    transform: scale(0.95) translateY(10px);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1) translateY(0);
-    opacity: 1;
-  }
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
-  border-bottom: 1px solid #f3f4f6;
-  background: #fff;
-  flex-shrink: 0;
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #111827;
-  letter-spacing: -0.01em;
-}
-
-.close-btn {
-  background: #f3f4f6;
-  border: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #6b7280;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.close-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
-  transform: scale(1.05);
-}
-
-.close-btn:active {
-  transform: scale(0.95);
-}
-
-.close-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.form-content {
-  padding: 20px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.form-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.form-content::-webkit-scrollbar-track {
-  background: #f9fafb;
-}
-
-.form-content::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
-}
 
 .form-section {
   margin-bottom: 20px;
@@ -563,13 +480,20 @@ const handleSave = () => {
 }
 
 .asset-icon {
-  font-size: 18px;
+  color: #6b7280;
+  flex-shrink: 0;
   opacity: 0.8;
 }
 
 .asset-info strong {
   color: #111827;
   font-weight: 600;
+}
+
+.ticker {
+  color: #6b7280;
+  margin-left: 6px;
+  font-size: 13px;
 }
 
 .form-label {
@@ -584,8 +508,8 @@ const handleSave = () => {
 }
 
 .label-icon {
-  font-size: 14px;
-  opacity: 0.8;
+  color: #6b7280;
+  flex-shrink: 0;
 }
 
 .form-input {
@@ -611,6 +535,12 @@ const handleSave = () => {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
   background: #fff;
+}
+
+.form-input:disabled {
+  background: #f9fafb;
+  color: #9ca3af;
+  cursor: not-allowed;
 }
 
 .form-row {
@@ -652,6 +582,25 @@ const handleSave = () => {
   margin-top: 4px;
   font-size: 12px;
   color: #6b7280;
+}
+
+.error {
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #dc2626;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.spinner-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 </style>

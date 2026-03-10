@@ -16,10 +16,6 @@ _asset_repository = AssetRepository()
 _portfolio_repository = PortfolioRepository()
 _portfolio_asset_repository = PortfolioAssetRepository()
 
-# Создаем экземпляр репозитория для использования во всех функциях
-_asset_repository = AssetRepository()
-
-
 
 def create_asset(email: str, data: dict):
     """

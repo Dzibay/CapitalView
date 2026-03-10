@@ -1,24 +1,11 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal-content">
-      <div class="modal-header">
-        <div class="header-content">
-          <div class="header-icon-wrapper">
-            <Upload :size="20" />
-          </div>
-          <h2>Импорт портфеля</h2>
-        </div>
-        <button class="close-btn" @click="$emit('close')" aria-label="Закрыть">
-          <X :size="16" />
-        </button>
-      </div>
+  <ModalBase title="Импорт портфеля" :icon="Upload" @close="$emit('close')">
+    <div v-if="loading" class="modal-loading">
+      <Loader2 :size="32" class="spinner-icon" />
+      <span>Импортируем...</span>
+    </div>
 
-      <div v-if="loading" class="modal-loading">
-        <Loader2 :size="32" class="spinner-icon" />
-        <span>Импортируем...</span>
-      </div>
-
-      <form v-else @submit.prevent="handleImport" class="form-content">
+    <form v-else @submit.prevent="handleImport">
         <div class="form-section">
           <CustomSelect
             v-model="brokerId"
@@ -84,17 +71,17 @@
           </Button>
         </div>
       </form>
-    </div>
-  </div>
+  </ModalBase>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Upload, X, Key, FileText, Loader2 } from 'lucide-vue-next'
+import { Upload, Key, FileText, Loader2 } from 'lucide-vue-next'
 import { Button } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
 import FormInput from '../base/FormInput.vue'
 import portfolioService from '../../services/portfolioService'
+import ModalBase from './ModalBase.vue'
 
 const props = defineProps({
   onImport: Function,
@@ -201,129 +188,12 @@ const handleImport = async () => {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  backdrop-filter: blur(8px);
-  padding: 16px;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.modal-content {
-  background: white;
-  width: 100%;
-  max-width: 480px;
-  max-height: 90vh;
-  border-radius: 20px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes slideUp {
-  from {
-    transform: scale(0.95) translateY(10px);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1) translateY(0);
-    opacity: 1;
-  }
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid #f3f4f6;
-  background: #fff;
-  flex-shrink: 0;
-}
-
-.header-content {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.header-icon-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #3b82f6;
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #111827;
-  letter-spacing: -0.01em;
-}
-
-.close-btn {
-  background: #f3f4f6;
-  border: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #6b7280;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.close-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
-  transform: scale(1.05);
-}
-
-.close-btn:active {
-  transform: scale(0.95);
-}
-
-.form-content {
-  padding: 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.form-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.form-content::-webkit-scrollbar-track {
-  background: #f9fafb;
-}
-
-.form-content::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
-}
-
 .form-section {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .form-section:last-of-type {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .error {

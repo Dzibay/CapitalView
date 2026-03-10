@@ -40,7 +40,7 @@ const props = defineProps({
     default: ''
   },
   icon: {
-    type: Object,
+    type: [Object, Function],
     default: null
   },
   hint: {

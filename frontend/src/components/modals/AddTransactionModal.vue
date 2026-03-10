@@ -1,7 +1,8 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { Check } from 'lucide-vue-next'
+import { Check, PlusCircle, TrendingUp, RefreshCw, Hash, DollarSign, Calendar } from 'lucide-vue-next'
 import { Button, ToggleSwitch, DateInput, CustomSelect } from '../base'
+import ModalBase from './ModalBase.vue'
 import { useTransactionsStore } from '../../stores/transactions.store'
 import { useDashboardStore } from '../../stores/dashboard.store'
 import { useUIStore } from '../../stores/ui.store'
@@ -1179,22 +1180,11 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Добавление операции</h2>
-        <button class="close-btn" @click="emit('close')" aria-label="Закрыть">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-      
-      <form @submit.prevent="handleSubmit" class="form-content">
+  <ModalBase title="Добавление операции" :icon="PlusCircle" :wide="true" @close="emit('close')">
+    <form @submit.prevent="handleSubmit">
         <div class="form-section">
           <div class="asset-info" v-if="asset">
-            <span class="asset-icon">📈</span>
+            <TrendingUp :size="18" class="asset-icon" />
             <div>
               <strong>{{ asset.name }}</strong>
               <span class="ticker">({{ asset.ticker }})</span>
@@ -1205,7 +1195,7 @@ const handleSubmit = async () => {
         <div class="form-section">
           <div class="section-divider"></div>
           <label class="form-label">
-            <span class="label-icon">🔄</span>
+            <RefreshCw :size="16" class="label-icon" />
             Тип операции
           </label>
           <CustomSelect
@@ -1270,7 +1260,7 @@ const handleSubmit = async () => {
             </div>
             <div class="form-field">
               <label class="form-label">
-                <span class="label-icon">💰</span>
+                <DollarSign :size="16" class="label-icon" />
                 Цена (₽)
                 <span v-if="loadingPrice" style="margin-left: 8px; color: #3b82f6;">⏳ Загрузка...</span>
               </label>
@@ -1293,7 +1283,7 @@ const handleSubmit = async () => {
           </div>
           <div class="form-field" style="margin-top: 12px;">
             <label class="form-label">
-              <span class="label-icon">📅</span>
+              <Calendar :size="16" class="label-icon" />
               Дата транзакции
             </label>
             <DateInput v-model="date" :min="minDateForTransactions" required />
@@ -1318,7 +1308,7 @@ const handleSubmit = async () => {
           <div class="section-divider"></div>
           <div class="form-field">
             <label class="form-label">
-              <span class="label-icon">💰</span>
+              <DollarSign :size="16" class="label-icon" />
               {{ amountLabel }}
             </label>
             <input 
@@ -1416,7 +1406,7 @@ const handleSubmit = async () => {
           <div class="section-divider"></div>
           <div class="form-field">
             <label class="form-label">
-              <span class="label-icon">📅</span>
+              <Calendar :size="16" class="label-icon" />
               Дата операции
             </label>
             <!-- Используем key для пересоздания компонента после установки minDateForOperations, чтобы даты стали тусклыми -->
@@ -1439,7 +1429,7 @@ const handleSubmit = async () => {
             <div class="form-row">
               <div class="form-field">
                 <label class="form-label">
-                  <span class="label-icon">📅</span>
+                  <Calendar :size="16" class="label-icon" />
                   Начальная дата
                 </label>
                 <!-- Используем key для пересоздания компонента после установки minDateForOperations -->
@@ -1452,7 +1442,7 @@ const handleSubmit = async () => {
               </div>
               <div class="form-field">
                 <label class="form-label">
-                  <span class="label-icon">📅</span>
+                  <Calendar :size="16" class="label-icon" />
                   Конечная дата
                 </label>
                 <!-- Используем key для пересоздания компонента после установки minDateForOperations -->
@@ -1513,119 +1503,10 @@ const handleSubmit = async () => {
           </Button>
         </div>
       </form>
-    </div>
-  </div>
+  </ModalBase>
 </template>
 
 <style scoped>
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(8px);
-  padding: 16px;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.modal {
-  background: white;
-  border-radius: 20px;
-  width: 100%;
-  max-width: 480px;
-  max-height: 90vh;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes slideUp {
-  from {
-    transform: scale(0.95) translateY(10px);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1) translateY(0);
-    opacity: 1;
-  }
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
-  border-bottom: 1px solid #f3f4f6;
-  background: #fff;
-  flex-shrink: 0;
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #111827;
-  letter-spacing: -0.01em;
-}
-
-.close-btn {
-  background: #f3f4f6;
-  border: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #6b7280;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.close-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
-  transform: scale(1.05);
-}
-
-.close-btn:active {
-  transform: scale(0.95);
-}
-
-.close-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.form-content {
-  padding: 20px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.form-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.form-content::-webkit-scrollbar-track {
-  background: #f9fafb;
-}
-
-.form-content::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
-}
 
 .form-section {
   margin-bottom: 20px;
@@ -1653,7 +1534,8 @@ const handleSubmit = async () => {
 }
 
 .asset-icon {
-  font-size: 18px;
+  color: #6b7280;
+  flex-shrink: 0;
   opacity: 0.8;
 }
 
