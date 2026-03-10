@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { Briefcase, TrendingUp, Receipt, DollarSign, PlusCircle, BarChart3, MoveRight, Trash2, Edit, RotateCcw } from 'lucide-vue-next'
 import { useContextMenu } from '../composables/useContextMenu'
 
 const emit = defineEmits([
@@ -17,7 +18,17 @@ const emit = defineEmits([
 const { menu, closeMenu } = useContextMenu()
 const menuRef = ref(null)
 
-const onClickOutside = () => closeMenu()
+const onClickOutside = (event) => {
+  // Не закрываем меню, если клик был на элементе, который открывает меню
+  if (menu.value.triggerElement && menu.value.triggerElement.contains(event.target)) {
+    return
+  }
+  // Не закрываем меню, если клик был внутри самого меню
+  if (menuRef.value && menuRef.value.contains(event.target)) {
+    return
+  }
+  closeMenu()
+}
 
 // Корректируем позицию после рендера, когда известны реальные размеры
 const adjustPosition = async () => {
@@ -87,12 +98,12 @@ onBeforeUnmount(() => {
       <!-- Портфель -->
       <template v-if="menu.type === 'portfolio'">
         <div class="menu-header">
-          <span class="menu-icon">💼</span>
+          <Briefcase :size="18" class="menu-icon" />
           <span class="menu-title">Портфель</span>
         </div>
         <div class="divider"></div>
         <button class="item" @click="closeMenu(); $emit('clearPortfolio', menu.payload.id)">
-          <span class="item-icon">🧹</span>
+          <RotateCcw :size="16" class="item-icon" />
           <span class="item-text">Очистить</span>
         </button>
         <button 
@@ -100,7 +111,7 @@ onBeforeUnmount(() => {
           class="item danger" 
           @click="closeMenu(); $emit('deletePortfolio', menu.payload.id)"
         >
-          <span class="item-icon">🗑️</span>
+          <Trash2 :size="16" class="item-icon" />
           <span class="item-text">Удалить</span>
         </button>
       </template>
@@ -108,12 +119,12 @@ onBeforeUnmount(() => {
       <!-- Актив -->
       <template v-if="menu.type === 'asset'">
         <div class="menu-header">
-          <span class="menu-icon">📈</span>
+          <TrendingUp :size="18" class="menu-icon" />
           <span class="menu-title">Актив</span>
         </div>
         <div class="divider"></div>
         <button class="item" @click="closeMenu(); $emit('addTransaction', menu.payload)">
-          <span class="item-icon">💰</span>
+          <PlusCircle :size="16" class="item-icon" />
           <span class="item-text">Добавить транзакцию</span>
         </button>
         <!-- Скрываем кнопку "Изменить цену" для системных активов (is_custom === false) -->
@@ -122,16 +133,16 @@ onBeforeUnmount(() => {
           class="item" 
           @click="closeMenu(); $emit('addPrice', menu.payload)"
         >
-          <span class="item-icon">📈</span>
+          <BarChart3 :size="16" class="item-icon" />
           <span class="item-text">Изменить цену</span>
         </button>
         <button class="item" @click="closeMenu(); $emit('moveAsset', menu.payload)">
-          <span class="item-icon">📦</span>
+          <MoveRight :size="16" class="item-icon" />
           <span class="item-text">Переместить</span>
         </button>
         <div class="divider"></div>
         <button class="item danger" @click="closeMenu(); $emit('removeAsset', menu.payload.portfolio_asset_id)">
-          <span class="item-icon">🗑️</span>
+          <Trash2 :size="16" class="item-icon" />
           <span class="item-text">Удалить</span>
         </button>
       </template>
@@ -139,16 +150,16 @@ onBeforeUnmount(() => {
       <!-- Транзакция -->
       <template v-if="menu.type === 'transaction'">
         <div class="menu-header">
-          <span class="menu-icon">💸</span>
+          <Receipt :size="18" class="menu-icon" />
           <span class="menu-title">Транзакция</span>
         </div>
         <div class="divider"></div>
         <button class="item" @click="closeMenu(); $emit('editTransaction', menu.payload)">
-          <span class="item-icon">✏️</span>
+          <Edit :size="16" class="item-icon" />
           <span class="item-text">Редактировать</span>
         </button>
         <button class="item danger" @click="closeMenu(); $emit('deleteTransaction', menu.payload)">
-          <span class="item-icon">🗑️</span>
+          <Trash2 :size="16" class="item-icon" />
           <span class="item-text">Удалить</span>
         </button>
       </template>
@@ -156,12 +167,12 @@ onBeforeUnmount(() => {
       <!-- Операция -->
       <template v-if="menu.type === 'operation'">
         <div class="menu-header">
-          <span class="menu-icon">💰</span>
+          <DollarSign :size="18" class="menu-icon" />
           <span class="menu-title">Операция</span>
         </div>
         <div class="divider"></div>
         <button class="item danger" @click="closeMenu(); $emit('deleteOperation', menu.payload)">
-          <span class="item-icon">🗑️</span>
+          <Trash2 :size="16" class="item-icon" />
           <span class="item-text">Удалить</span>
         </button>
       </template>
@@ -169,36 +180,25 @@ onBeforeUnmount(() => {
   </Teleport>
 </template>
 
-<style>
+<style scoped>
 .context-menu {
   position: fixed;
-  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
-  border-radius: 14px;
-  min-width: 220px;
-  border: 1px solid rgba(229,231,235,0.8);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05);
+  background: white;
+  border-radius: 12px;
+  min-width: 200px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05);
   z-index: 9999;
-  padding: 8px;
+  padding: 6px;
   animation: contextMenuFadeIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   max-width: calc(100vw - 16px);
-  backdrop-filter: blur(10px);
   overflow: hidden;
-}
-
-.context-menu::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(59,130,246,0.3), transparent);
 }
 
 @keyframes contextMenuFadeIn {
   from {
     opacity: 0;
-    transform: scale(0.92) translateY(-4px);
+    transform: scale(0.95) translateY(-4px);
   }
   to {
     opacity: 1;
@@ -209,21 +209,21 @@ onBeforeUnmount(() => {
 .menu-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px 8px;
-  margin: -4px -4px 4px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border-bottom: 1px solid rgba(226,232,240,0.6);
+  gap: 8px;
+  padding: 10px 12px;
+  margin: -2px -2px 4px;
+  background: #f9fafb;
+  border-bottom: 1px solid #f3f4f6;
 }
 
 .menu-icon {
-  font-size: 18px;
-  line-height: 1;
+  color: #3b82f6;
+  flex-shrink: 0;
 }
 
 .menu-title {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   color: #374151;
   letter-spacing: -0.01em;
   text-transform: uppercase;
@@ -232,59 +232,39 @@ onBeforeUnmount(() => {
 
 .context-menu .item {
   width: 100%;
-  padding: 10px 14px;
+  padding: 9px 12px;
   background: none;
   border: none;
   text-align: left;
   font-size: 13px;
   cursor: pointer;
-  border-radius: 10px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   gap: 10px;
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.15s ease;
   color: #374151;
   font-weight: 500;
-  position: relative;
-  margin: 2px 0;
-}
-
-.context-menu .item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 0;
-  background: linear-gradient(180deg, #3b82f6, #2563eb);
-  border-radius: 0 2px 2px 0;
-  transition: height 0.2s ease;
+  margin: 1px 0;
 }
 
 .context-menu .item:hover {
-  background: linear-gradient(90deg, #f0f9ff 0%, #e0f2fe 100%);
-  color: #2563eb;
-  transform: translateX(2px);
-  padding-left: 16px;
-}
-
-.context-menu .item:hover::before {
-  height: 60%;
+  background: #f3f4f6;
+  color: #111827;
 }
 
 .context-menu .item:active {
-  transform: translateX(1px);
+  background: #e5e7eb;
+  transform: scale(0.98);
 }
 
 .item-icon {
-  font-size: 16px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
+  color: #6b7280;
   flex-shrink: 0;
+}
+
+.context-menu .item:hover .item-icon {
+  color: #374151;
 }
 
 .item-text {
@@ -296,19 +276,23 @@ onBeforeUnmount(() => {
   color: #dc2626;
 }
 
-.context-menu .item.danger:hover {
-  background: linear-gradient(90deg, #fef2f2 0%, #fee2e2 100%);
+.context-menu .item.danger .item-icon {
   color: #dc2626;
 }
 
-.context-menu .item.danger::before {
-  background: linear-gradient(180deg, #ef4444, #dc2626);
+.context-menu .item.danger:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.context-menu .item.danger:hover .item-icon {
+  color: #dc2626;
 }
 
 .divider {
   height: 1px;
   background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
-  margin: 6px 4px;
+  margin: 4px 0;
   border: none;
 }
 </style>

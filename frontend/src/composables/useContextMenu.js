@@ -7,7 +7,8 @@ const menu = ref({
   x: 0,
   y: 0,
   payload: null,
-  position: 'bottom-right' // bottom-right, bottom-left, top-right, top-left
+  position: 'bottom-right', // bottom-right, bottom-left, top-right, top-left
+  triggerElement: null // Элемент, который открыл меню
 })
 
 // Примерные размеры меню (будут обновлены после рендера)
@@ -19,6 +20,19 @@ const MENU_OFFSET = 4
 export function useContextMenu() {
   const openMenu = (event, type, payload = null) => {
     event.stopPropagation()
+    
+    // Если меню уже открыто с тем же типом и payload, закрываем его
+    if (menu.value.open && menu.value.type === type) {
+      // Сравниваем payload по ID для проверки, что это тот же элемент
+      const currentId = menu.value.payload?.id || menu.value.payload?.portfolio_asset_id || menu.value.payload?.transaction_id || menu.value.payload?.operation_id
+      const newId = payload?.id || payload?.portfolio_asset_id || payload?.transaction_id || payload?.operation_id
+      
+      if (currentId === newId || (!currentId && !newId)) {
+        menu.value.open = false
+        return
+      }
+    }
+    
     const rect = event.currentTarget.getBoundingClientRect()
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
@@ -68,12 +82,14 @@ export function useContextMenu() {
       x,
       y,
       payload,
-      position
+      position,
+      triggerElement: event.currentTarget
     }
   }
 
   const closeMenu = () => {
     menu.value.open = false
+    menu.value.triggerElement = null
   }
 
   return {
