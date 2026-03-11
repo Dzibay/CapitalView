@@ -153,6 +153,27 @@ async def update_asset_history(
             logger.warning(f"⚠️ Не удалось получить цены для {ticker} (asset_id: {asset_id})")
             return False, None, []
 
+    # Для облигаций конвертируем цены из процентов в абсолютные значения
+    # Получаем face_value из properties актива
+    face_value = None
+    asset_type_id = asset.get("asset_type_id")
+    if asset_type_id == 2:  # Облигация
+        props = asset.get("properties") or {}
+        if isinstance(props, str):
+            try:
+                import json
+                props = json.loads(props)
+            except:
+                props = {}
+        face_value = props.get("face_value")
+        
+        # Конвертируем цены из процентов в абсолютные значения
+        if face_value and face_value > 0:
+            prices = [
+                (trade_date, (close_price / 100) * float(face_value))
+                for trade_date, close_price in prices
+            ]
+
     # Фильтруем цены: берем те, что >= последней даты (чтобы заменить последнюю цену и вставить новые)
     new_prices_data = []
     if last_date:

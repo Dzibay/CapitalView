@@ -330,15 +330,15 @@ async def fetch_all_bonds(session):
 
 async def fetch_active_bonds_currency(session):
     """
-    Получает валюту всех активных облигаций из эндпоинта активных инструментов.
+    Получает валюту и номинал всех активных облигаций из эндпоинта активных инструментов.
     
     Returns:
-        dict: {ticker: currency} для активных облигаций
+        dict: {ticker: {"currency": ..., "face_value": ...}} для активных облигаций
     """
-    print("   📥 Загрузка валют активных облигаций...")
+    print("   📥 Загрузка валют и номиналов активных облигаций...")
     
     js = await fetch_json(session, BONDS_ACTIVE_ENDPOINT)
-    active_currency = {}
+    active_data = {}
     
     if js and "securities" in js:
         cols = js["securities"].get("columns", [])
@@ -348,6 +348,7 @@ async def fetch_active_bonds_currency(session):
             i_SECID = get_column_index(cols, "SECID", "secid")
             i_CURRENCYID = get_column_index(cols, "CURRENCYID", "currencyid")
             i_FACEUNIT = get_column_index(cols, "FACEUNIT", "faceunit")
+            i_FACEVALUE = get_column_index(cols, "FACEVALUE", "facevalue")
             
             if i_SECID is not None:
                 for row in rows:
@@ -370,10 +371,23 @@ async def fetch_active_bonds_currency(session):
                             currency = "RUB"
                         elif len(currency) > 3:
                             currency = currency[:3]
-                        active_currency[ticker] = currency
+                    
+                    # Получаем номинал облигации
+                    face_value = None
+                    if i_FACEVALUE is not None and row[i_FACEVALUE] is not None:
+                        try:
+                            face_value = float(row[i_FACEVALUE])
+                        except (ValueError, TypeError):
+                            face_value = None
+                    
+                    if currency or face_value:
+                        active_data[ticker] = {
+                            "currency": currency,
+                            "face_value": face_value
+                        }
     
-    print(f"   ✅ Загружено валют для {len(active_currency)} активных облигаций")
-    return active_currency
+    print(f"   ✅ Загружено данных для {len(active_data)} активных облигаций")
+    return active_data
 
 
 async def fetch_bond_currency_single(session, ticker: str) -> Optional[str]:
@@ -505,7 +519,7 @@ async def process_shares(session, existing_assets, type_map, currency_map):
                                  "shares", existing_assets, type_map, currency_map, None, None)
 
 
-async def process_bonds(all_rows, all_cols, existing_assets, type_map, currency_map, bonds_currency):
+async def process_bonds(all_rows, all_cols, existing_assets, type_map, currency_map, bonds_currency, active_bonds_data=None):
     """Обрабатывает облигации.
     
     Args:
@@ -515,6 +529,7 @@ async def process_bonds(all_rows, all_cols, existing_assets, type_map, currency_
         type_map: Словарь соответствия типов активов
         currency_map: Словарь валют {ticker: asset_id}
         bonds_currency: Словарь валют облигаций {ticker: currency}
+        active_bonds_data: Словарь данных активных облигаций {ticker: {"currency": ..., "face_value": ...}}
     
     Returns:
         tuple: (inserted, updated) - количество добавленных и обновленных активов
@@ -544,12 +559,12 @@ async def process_bonds(all_rows, all_cols, existing_assets, type_map, currency_
     return await _process_assets(all_rows, all_cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, 
                                  i_BOARDID,
                                  "bonds", existing_assets, type_map, currency_map, 
-                                 None, bonds_currency)
+                                 None, bonds_currency, active_bonds_data)
 
 
 async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BOARDID,
                           market, existing_assets, type_map, currency_map, 
-                          historical_bonds_data=None, historical_bonds_currency=None):
+                          historical_bonds_data=None, historical_bonds_currency=None, active_bonds_data=None):
     """Общая функция обработки активов."""
     
     if i_SECID is None:
@@ -645,7 +660,7 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
         if isin:
             props["isin"] = isin
         
-        # Для облигаций добавляем board_id и получаем валюту
+        # Для облигаций добавляем board_id, получаем валюту и номинал
         if actual_type_name == "Облигация":
             if board_id:
                 props["board_id"] = board_id
@@ -656,6 +671,20 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
             if bond_currency:
                 currency = bond_currency
                 props["currency"] = currency
+            
+            # Получаем номинал облигации из активных данных или существующего актива
+            face_value = None
+            if active_bonds_data and ticker in active_bonds_data:
+                face_value = active_bonds_data[ticker].get("face_value")
+            
+            # Если не нашли в активных данных, проверяем существующий актив
+            if face_value is None and existing_bond:
+                existing_props = parse_json_properties(existing_bond.get("properties"))
+                face_value = existing_props.get("face_value")
+            
+            # Сохраняем номинал в properties, если он найден
+            if face_value is not None:
+                props["face_value"] = face_value
         
         # Нормализуем properties (удаляем лишние поля)
         props = normalize_properties(props, actual_type_name)
@@ -946,8 +975,11 @@ async def import_moex_assets_async():
         # Получаем все облигации через пагинированный эндпоинт
         bonds_rows, bonds_cols = await fetch_all_bonds(session)
         
-        # Получаем валюту активных облигаций (разом все)
-        active_bonds_currency = await fetch_active_bonds_currency(session)
+        # Получаем валюту и номинал активных облигаций (разом все)
+        active_bonds_data = await fetch_active_bonds_currency(session)
+        
+        # Извлекаем только валюты для совместимости с существующим кодом
+        active_bonds_currency = {ticker: data.get("currency") for ticker, data in active_bonds_data.items() if data.get("currency")}
         
         # Определяем завершенные облигации (те, которых нет в активных)
         if bonds_rows and bonds_cols:
@@ -959,7 +991,7 @@ async def import_moex_assets_async():
                     if ticker:
                         all_tickers.add(ticker.upper().strip())
                 
-                inactive_tickers = list(all_tickers - set(active_bonds_currency.keys()))
+                inactive_tickers = list(all_tickers - set(active_bonds_data.keys()))
                 
                 # Получаем валюту завершенных облигаций батчами
                 inactive_bonds_currency = await fetch_inactive_bonds_currency_batch(session, inactive_tickers)
@@ -998,7 +1030,7 @@ async def import_moex_assets_async():
         # Обрабатываем акции и облигации параллельно
         results = await asyncio.gather(
             process_shares(session, existing_assets, type_map, currency_map),
-            process_bonds(bonds_rows, bonds_cols, existing_assets, type_map, currency_map, bonds_currency)
+            process_bonds(bonds_rows, bonds_cols, existing_assets, type_map, currency_map, bonds_currency, active_bonds_data)
         )
 
     # Этап 5: Итоги
