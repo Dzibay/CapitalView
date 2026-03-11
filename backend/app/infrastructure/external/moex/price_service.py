@@ -124,7 +124,7 @@ async def get_prices_moex_batch(session: aiohttp.ClientSession, market: str) -> 
                     "group": sec_row[i_GROUP] if i_GROUP is not None else None,
                 }
         
-        # Обрабатываем облигации: конвертируем цену в абсолютное значение
+        # Обрабатываем облигации: конвертируем цену из процентов в абсолютное значение в валюте облигации
         result = {}
         for ticker, price_data in ticker_prices.items():
             price = price_data["price"]
@@ -132,8 +132,11 @@ async def get_prices_moex_batch(session: aiohttp.ClientSession, market: str) -> 
             group = price_data.get("group", "").lower() if price_data.get("group") else ""
             
             # Для облигаций конвертируем цену из процентов в абсолютное значение
+            # Цена уже в валюте облигации (не в рублях), поэтому просто конвертируем проценты в абсолютное значение
             if market == "bonds" or "bond" in group:
                 if face_value and face_value > 0:
+                    # price - это процент от номинала (например, 95.5 означает 95.5% от номинала)
+                    # Конвертируем в абсолютное значение: (price / 100) * face_value
                     price = (price / 100) * float(face_value)
             
             result[ticker] = price
@@ -258,10 +261,12 @@ async def get_price_moex_history(
                     if market == "shares":
                         return [(row[6], row[1]) for row in candles if row[1] is not None]
                     elif market == "bonds":
+                        # Для облигаций используем close цену (row[1]) - это цена в процентах от номинала в валюте облигации
+                        # Структура candles: [open, close, high, low, value, volume, begin, end]
                         return [
-                            (row[6], row[4] / row[5])
+                            (row[6], row[1])  # (date, close_price в процентах)
                             for row in candles
-                            if row[4] and row[5] and row[5] != 0
+                            if row[1] is not None and row[1] > 0
                         ]
             except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
                 if attempt < MAX_RETRIES - 1:
