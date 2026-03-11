@@ -1,11 +1,11 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { Bell, X, CheckCircle2, XCircle, Calendar, Coins, Building2 } from 'lucide-vue-next'
-import ModalBase from './modals/ModalBase.vue'
-import { Button } from './base'
-import missedPayoutsService from '../services/missedPayoutsService'
-import { normalizeDateToString } from '../utils/date'
-import { useDashboardStore } from '../stores/dashboard.store'
+import ModalBase from './ModalBase.vue'
+import { Button } from '../base'
+import missedPayoutsService from '../../services/missedPayoutsService'
+import { normalizeDateToString } from '../../utils/date'
+import { useDashboardStore } from '../../stores/dashboard.store'
 
 const props = defineProps({
   show: {
@@ -204,10 +204,11 @@ watch(() => props.show, (newVal) => {
               :checked="allSelected"
               @change="allSelected ? deselectAll() : selectAll()"
               class="checkbox"
+              id="select-all-checkbox"
             />
-            <span class="select-all-text">
+            <label for="select-all-checkbox" class="select-all-text">
               {{ allSelected ? 'Снять выбор' : 'Выбрать все' }}
-            </span>
+            </label>
             <span class="selected-count" v-if="hasSelected">
               (Выбрано: {{ selectedPayouts.length }})
             </span>
@@ -266,18 +267,25 @@ watch(() => props.show, (newVal) => {
           <Button 
             @click="addSelectedPayouts" 
             :disabled="processing"
-            class="action-btn add-btn"
+            :loading="processing"
+            variant="primary"
+            class="action-btn"
           >
-            <CheckCircle2 :size="16" />
+            <template #icon>
+              <CheckCircle2 :size="16" />
+            </template>
             Добавить выбранные ({{ selectedPayouts.length }})
           </Button>
           <Button 
             @click="ignoreSelectedPayouts" 
             :disabled="processing"
+            :loading="processing"
             variant="secondary"
-            class="action-btn ignore-btn"
+            class="action-btn"
           >
-            <XCircle :size="16" />
+            <template #icon>
+              <XCircle :size="16" />
+            </template>
             Игнорировать ({{ selectedPayouts.length }})
           </Button>
         </div>
@@ -306,13 +314,34 @@ watch(() => props.show, (newVal) => {
   color: #6b7280;
 }
 
+.empty-state {
+  padding: 80px 20px;
+}
+
 .empty-icon {
   color: #10b981;
   margin-bottom: 16px;
+  opacity: 0.8;
+}
+
+.empty-state p {
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.error-state {
+  padding: 20px;
 }
 
 .error-text {
-  color: #ef4444;
+  padding: 12px 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .list-header {
@@ -324,98 +353,155 @@ watch(() => props.show, (newVal) => {
 .select-all-section {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .checkbox {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #3b82f6;
+  accent-color: #527de5;
+  flex-shrink: 0;
 }
 
 .select-all-text {
   font-weight: 600;
-  color: #1f2937;
+  font-size: 13px;
+  color: #374151;
   cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.select-all-text:hover {
+  color: #527de5;
 }
 
 .selected-count {
   color: #6b7280;
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .payouts-items {
   flex: 1;
   overflow-y: auto;
   max-height: 400px;
+  padding-right: 4px;
+}
+
+.payouts-items::-webkit-scrollbar {
+  width: 6px;
+}
+
+.payouts-items::-webkit-scrollbar-track {
+  background: #f9fafb;
+  border-radius: 3px;
+}
+
+.payouts-items::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.payouts-items::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 
 .payout-item {
   display: flex;
   gap: 12px;
-  padding: 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  margin-bottom: 12px;
-  transition: all 0.2s ease;
+  padding: 14px 16px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
+  background: #fff;
 }
 
 .payout-item:hover {
-  border-color: #3b82f6;
+  border-color: #527de5;
   background-color: #f9fafb;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .payout-item.selected {
-  border-color: #3b82f6;
+  border-color: #527de5;
   background-color: #eff6ff;
+  box-shadow: 0 2px 8px rgba(82, 125, 229, 0.15);
 }
 
 .payout-checkbox {
   display: flex;
   align-items: flex-start;
   padding-top: 2px;
+  flex-shrink: 0;
 }
 
 .payout-info {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
 }
 
 .payout-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .asset-info {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #1f2937;
+  color: #111827;
   font-weight: 600;
+  font-size: 14px;
+  flex: 1;
+  min-width: 0;
+}
+
+.asset-info svg {
+  flex-shrink: 0;
+  color: #6b7280;
+  opacity: 0.8;
 }
 
 .asset-name {
-  color: #1f2937;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .asset-ticker {
   color: #6b7280;
   font-weight: 400;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .payout-type {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px;
+  padding: 5px 12px;
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.payout-type svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 .payout-type.coupon {
@@ -439,25 +525,35 @@ watch(() => props.show, (newVal) => {
   align-items: center;
   gap: 8px;
   color: #6b7280;
-  font-size: 14px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.detail-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: #9ca3af;
 }
 
 .amount-label {
-  font-weight: 600;
+  font-weight: 500;
+  color: #6b7280;
 }
 
 .amount-value {
   font-weight: 700;
   color: #10b981;
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .actions-section {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   padding-top: 16px;
   border-top: 1px solid #f3f4f6;
   margin-top: 16px;
+  flex-shrink: 0;
 }
 
 .action-btn {
@@ -468,19 +564,7 @@ watch(() => props.show, (newVal) => {
   gap: 8px;
 }
 
-.add-btn {
-  background-color: #10b981;
-}
-
-.add-btn:hover {
-  background-color: #059669;
-}
-
-.ignore-btn {
-  background-color: #6b7280;
-}
-
-.ignore-btn:hover {
-  background-color: #4b5563;
+.action-btn :deep(.btn-icon) {
+  flex-shrink: 0;
 }
 </style>
