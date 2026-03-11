@@ -90,6 +90,8 @@ begin
       );
 
     if v_custom_asset_ids is not null then
+        -- Удаляем записи из asset_latest_prices перед удалением активов
+        delete from asset_latest_prices where asset_id = any(v_custom_asset_ids);
         delete from asset_prices where asset_id = any(v_custom_asset_ids);
         delete from assets where id = any(v_custom_asset_ids);
     end if;
