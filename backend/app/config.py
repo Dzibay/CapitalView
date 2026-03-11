@@ -25,6 +25,9 @@ class Config:
     DB_USER = os.getenv("DB_USER", "postgres")
     DB_PASSWORD = os.getenv("DB_PASSWORD", "")
     
+    # Тестовая база данных (для pytest)
+    TEST_DB_NAME = os.getenv("TEST_DB_NAME", f"{DB_NAME}_test")
+    
     # CORS
     CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
     CORS_SUPPORTS_CREDENTIALS = True

@@ -43,6 +43,51 @@ async def get_missed_payouts_route(
         )
 
 
+@router.delete("/batch")
+async def delete_missed_payouts_batch_route(
+    missed_payout_ids: List[int] = Body(...),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Удаляет несколько неполученных выплат (игнорирует их).
+    
+    Args:
+        missed_payout_ids: Список ID записей в missed_payouts
+        user: Текущий пользователь из токена
+    """
+    try:
+        if not missed_payout_ids:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail="Список ID не может быть пустым"
+            )
+        
+        # Проверяем, что все выплаты принадлежат пользователю
+        payouts = await _missed_payout_repository.get_user_missed_payouts_async(user_id=user["id"])
+        payout_ids = {p["id"] for p in payouts}
+        
+        invalid_ids = [pid for pid in missed_payout_ids if pid not in payout_ids]
+        if invalid_ids:
+            raise HTTPException(
+                status_code=HTTPStatus.FORBIDDEN,
+                detail=f"Некоторые выплаты не найдены или не принадлежат пользователю: {invalid_ids}"
+            )
+        
+        deleted_count = await _missed_payout_repository.delete_missed_payouts_batch(missed_payout_ids)
+        
+        return success_response(
+            data={"deleted_count": deleted_count},
+            message=f"Успешно удалено {deleted_count} неполученных выплат"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при удалении неполученных выплат: {str(e)}"
+        )
+
+
 @router.delete("/{missed_payout_id}")
 async def delete_missed_payout_route(
     missed_payout_id: int,
@@ -84,51 +129,6 @@ async def delete_missed_payout_route(
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при удалении неполученной выплаты: {str(e)}"
-        )
-
-
-@router.delete("/batch")
-async def delete_missed_payouts_batch_route(
-    missed_payout_ids: List[int] = Body(...),
-    user: dict = Depends(get_current_user)
-):
-    """
-    Удаляет несколько неполученных выплат (игнорирует их).
-    
-    Args:
-        missed_payout_ids: Список ID записей в missed_payouts
-        user: Текущий пользователь из токена
-    """
-    try:
-        if not missed_payout_ids:
-            raise HTTPException(
-                status_code=HTTPStatus.BAD_REQUEST,
-                detail="Список ID не может быть пустым"
-            )
-        
-        # Проверяем, что все выплаты принадлежат пользователю
-        payouts = await _missed_payout_repository.get_user_missed_payouts_async(user_id=user["id"])
-        payout_ids = {p["id"] for p in payouts}
-        
-        invalid_ids = [pid for pid in missed_payout_ids if pid not in payout_ids]
-        if invalid_ids:
-            raise HTTPException(
-                status_code=HTTPStatus.BAD_REQUEST,
-                detail=f"Некоторые выплаты не найдены или не принадлежат пользователю: {invalid_ids}"
-            )
-        
-        deleted_count = await _missed_payout_repository.delete_missed_payouts_batch(missed_payout_ids)
-        
-        return success_response(
-            data={"deleted_count": deleted_count},
-            message=f"Успешно удалено {deleted_count} неполученных выплат"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка при удалении неполученных выплат: {str(e)}"
         )
 
 

@@ -31,6 +31,11 @@ def get_reference_data_cached():
 
 async def init_reference_data_async():
     """Асинхронная инициализация справочных данных при старте сервера."""
+    # Проверяем, не инициализированы ли уже справочные данные
+    if "reference" in _cache and _cache["reference"]:
+        logger.debug("Reference data already initialized, skipping...")
+        return
+    
     try:
         logger.info("Loading reference data on server startup...")
         # Запускаем синхронный RPC в отдельном потоке с таймаутом
@@ -86,6 +91,11 @@ def get_brokers_cached():
 
 async def init_brokers_async():
     """Асинхронная инициализация списка брокеров при старте сервера."""
+    # Проверяем, не инициализированы ли уже брокеры
+    if "brokers" in _cache and _cache["brokers"]:
+        logger.debug("Brokers already initialized, skipping...")
+        return
+    
     try:
         logger.info("Loading brokers on server startup...")
         loop = asyncio.get_running_loop()

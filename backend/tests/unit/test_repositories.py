@@ -5,8 +5,12 @@ Unit тесты для репозиториев.
 - CRUD операции
 - Синхронные и асинхронные методы
 - Обработка ошибок
+
+Примечание: Эти тесты требуют подключения к БД или моков.
+Для тестов без реальной БД используйте моки database_service функций.
 """
 import pytest
+from unittest.mock import patch, MagicMock
 from app.infrastructure.database.repositories.user_repository import UserRepository
 from app.infrastructure.database.repositories.asset_repository import AssetRepository
 from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
@@ -25,14 +29,20 @@ class TestUserRepository:
     
     def test_get_by_id_sync_not_found(self, user_repository):
         """Тест получения пользователя по ID, когда пользователь не найден."""
-        result = user_repository.get_by_id_sync(999999)
-        assert result is None
+        # Мокируем table_select, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.user_repository.table_select', return_value=[]):
+            # Используем валидный UUID формат для теста
+            result = user_repository.get_by_id_sync("00000000-0000-0000-0000-000000000000")
+            assert result is None
     
     @pytest.mark.asyncio
     async def test_get_by_id_not_found(self, user_repository):
         """Тест асинхронного получения пользователя по ID, когда пользователь не найден."""
-        result = await user_repository.get_by_id(999999)
-        assert result is None
+        # Мокируем table_select_async, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.user_repository.table_select_async', return_value=[]):
+            # Используем валидный UUID формат для теста
+            result = await user_repository.get_by_id("00000000-0000-0000-0000-000000000000")
+            assert result is None
     
     def test_create_sync(self, user_repository):
         """Тест синхронного создания пользователя."""
@@ -47,14 +57,18 @@ class TestAssetRepository:
     
     def test_get_by_id_sync_not_found(self, asset_repository):
         """Тест получения актива по ID, когда актив не найден."""
-        result = asset_repository.get_by_id_sync(999999)
-        assert result is None
+        # Мокируем table_select, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.asset_repository.table_select', return_value=[]):
+            result = asset_repository.get_by_id_sync(999999)
+            assert result is None
     
     @pytest.mark.asyncio
     async def test_get_by_id_not_found(self, asset_repository):
         """Тест асинхронного получения актива по ID, когда актив не найден."""
-        result = await asset_repository.get_by_id(999999)
-        assert result is None
+        # Мокируем table_select_async, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.asset_repository.table_select_async', return_value=[]):
+            result = await asset_repository.get_by_id(999999)
+            assert result is None
     
     def test_find_by_ticker_and_user_not_found(self, asset_repository):
         """Тест поиска актива по тикеру и пользователю, когда актив не найден."""
@@ -78,28 +92,36 @@ class TestPortfolioRepository:
     
     def test_get_by_id_sync_not_found(self, portfolio_repository):
         """Тест получения портфеля по ID, когда портфель не найден."""
-        result = portfolio_repository.get_by_id_sync(999999)
-        assert result is None
+        # Мокируем table_select, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.portfolio_repository.table_select', return_value=[]):
+            result = portfolio_repository.get_by_id_sync(999999)
+            assert result is None
     
     @pytest.mark.asyncio
     async def test_get_by_id_not_found(self, portfolio_repository):
         """Тест асинхронного получения портфеля по ID, когда портфель не найден."""
-        result = await portfolio_repository.get_by_id(999999)
-        assert result is None
+        # Мокируем table_select_async, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.portfolio_repository.table_select_async', return_value=[]):
+            result = await portfolio_repository.get_by_id(999999)
+            assert result is None
     
     def test_get_user_portfolios_sync_empty(self, portfolio_repository):
         """Тест получения портфелей пользователя, когда портфелей нет."""
-        result = portfolio_repository.get_user_portfolios_sync("00000000-0000-0000-0000-000000000000")
-        assert isinstance(result, list)
-        # Может быть пустым списком или None, оба варианта валидны
-        assert result is None or len(result) == 0
+        # Мокируем table_select, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.portfolio_repository.table_select', return_value=[]):
+            result = portfolio_repository.get_user_portfolios_sync("00000000-0000-0000-0000-000000000000")
+            assert isinstance(result, list)
+            # Может быть пустым списком или None, оба варианта валидны
+            assert result is None or len(result) == 0
     
     @pytest.mark.asyncio
     async def test_get_user_portfolios_empty(self, portfolio_repository):
         """Тест асинхронного получения портфелей пользователя, когда портфелей нет."""
-        result = await portfolio_repository.get_user_portfolios("00000000-0000-0000-0000-000000000000")
-        assert isinstance(result, list)
-        assert len(result) == 0
+        # Мокируем table_select_async, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.portfolio_repository.table_select_async', return_value=[]):
+            result = await portfolio_repository.get_user_portfolios("00000000-0000-0000-0000-000000000000")
+            assert isinstance(result, list)
+            assert len(result) == 0
 
 
 class TestTransactionRepository:
@@ -108,15 +130,19 @@ class TestTransactionRepository:
     def test_get_by_id_sync_not_found(self):
         """Тест получения транзакции по ID, когда транзакция не найдена."""
         repo = TransactionRepository()
-        result = repo.get_by_id_sync(999999)
-        assert result is None
+        # Мокируем table_select, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.transaction_repository.table_select', return_value=[]):
+            result = repo.get_by_id_sync(999999)
+            assert result is None
     
     @pytest.mark.asyncio
     async def test_get_by_id_not_found(self):
         """Тест асинхронного получения транзакции по ID, когда транзакция не найдена."""
         repo = TransactionRepository()
-        result = await repo.get_by_id(999999)
-        assert result is None
+        # Мокируем table_select_async, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.transaction_repository.table_select_async', return_value=[]):
+            result = await repo.get_by_id(999999)
+            assert result is None
     
     def test_get_user_transactions_sync_empty(self):
         """Тест получения транзакций пользователя, когда транзакций нет."""
@@ -139,15 +165,19 @@ class TestOperationRepository:
     def test_get_by_id_sync_not_found(self):
         """Тест получения операции по ID, когда операция не найдена."""
         repo = OperationRepository()
-        result = repo.get_by_id_sync(999999)
-        assert result is None
+        # Мокируем table_select, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.operation_repository.table_select', return_value=[]):
+            result = repo.get_by_id_sync(999999)
+            assert result is None
     
     @pytest.mark.asyncio
     async def test_get_by_id_not_found(self):
         """Тест асинхронного получения операции по ID, когда операция не найдена."""
         repo = OperationRepository()
-        result = await repo.get_by_id(999999)
-        assert result is None
+        # Мокируем table_select_async, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.operation_repository.table_select_async', return_value=[]):
+            result = await repo.get_by_id(999999)
+            assert result is None
     
     def test_get_user_operations_empty(self):
         """Тест получения операций пользователя, когда операций нет."""
@@ -177,15 +207,19 @@ class TestPortfolioAssetRepository:
     def test_get_by_id_sync_not_found(self):
         """Тест получения портфельного актива по ID, когда актив не найден."""
         repo = PortfolioAssetRepository()
-        result = repo.get_by_id_sync(999999)
-        assert result is None
+        # Мокируем table_select, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.portfolio_asset_repository.table_select', return_value=[]):
+            result = repo.get_by_id_sync(999999)
+            assert result is None
     
     @pytest.mark.asyncio
     async def test_get_by_id_not_found(self):
         """Тест асинхронного получения портфельного актива по ID, когда актив не найден."""
         repo = PortfolioAssetRepository()
-        result = await repo.get_by_id(999999)
-        assert result is None
+        # Мокируем table_select_async, чтобы не требовать реального подключения к БД
+        with patch('app.infrastructure.database.repositories.portfolio_asset_repository.table_select_async', return_value=[]):
+            result = await repo.get_by_id(999999)
+            assert result is None
     
     def test_get_by_portfolio_and_asset_not_found(self):
         """Тест поиска портфельного актива по портфелю и активу, когда актив не найден."""

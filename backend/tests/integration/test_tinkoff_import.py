@@ -18,6 +18,21 @@ from app.infrastructure.external.brokers.tinkoff.import_service import OPERATION
 TINKOFF_TOKEN = os.getenv("TINKOFF_TOKEN")
 
 
+# Фикстура для кеширования данных портфеля между тестами
+@pytest.fixture(scope="class")
+def tinkoff_portfolio_data():
+    """
+    Загружает данные портфеля Tinkoff один раз для всех тестов в классе.
+    Используется только если TINKOFF_TOKEN установлен.
+    """
+    if not TINKOFF_TOKEN:
+        pytest.skip("TINKOFF_TOKEN не установлен")
+    
+    # Загружаем данные один раз
+    portfolio_data = get_tinkoff_portfolio(TINKOFF_TOKEN)
+    yield portfolio_data
+
+
 @pytest.mark.skipif(
     not TINKOFF_TOKEN,
     reason="TINKOFF_TOKEN не установлен. Установите переменную окружения TINKOFF_TOKEN для запуска тестов."
@@ -25,9 +40,9 @@ TINKOFF_TOKEN = os.getenv("TINKOFF_TOKEN")
 class TestTinkoffImport:
     """Тесты для импорта портфелей от Tinkoff."""
     
-    def test_get_portfolio_data(self):
+    def test_get_portfolio_data(self, tinkoff_portfolio_data):
         """Тест получения данных портфеля от Tinkoff API."""
-        result = get_tinkoff_portfolio(TINKOFF_TOKEN)
+        result = tinkoff_portfolio_data
         
         # Проверяем, что результат - словарь
         assert isinstance(result, dict), "Результат должен быть словарем"
@@ -55,9 +70,9 @@ class TestTinkoffImport:
                     assert "type" in transaction, "В транзакции должен быть type"
                     assert "date" in transaction, "В транзакции должна быть date"
     
-    def test_unknown_operation_types(self):
+    def test_unknown_operation_types(self, tinkoff_portfolio_data):
         """Тест выявления неизвестных типов операций."""
-        result = get_tinkoff_portfolio(TINKOFF_TOKEN)
+        result = tinkoff_portfolio_data
         
         # Собираем все типы операций из транзакций
         operation_types = []
@@ -98,9 +113,9 @@ class TestTinkoffImport:
         if result and any(account_data.get("transactions") for account_data in result.values()):
             assert len(operation_types) > 0, "Должны быть найдены операции"
     
-    def test_payment_for_transactions(self):
+    def test_payment_for_transactions(self, tinkoff_portfolio_data):
         """Тест проверки payment для транзакций Buy/Sell/Redemption."""
-        result = get_tinkoff_portfolio(TINKOFF_TOKEN)
+        result = tinkoff_portfolio_data
         
         transactions_without_payment = []
         transactions_with_zero_payment = []
@@ -175,9 +190,9 @@ class TestTinkoffImport:
             "Для облигаций с НКД payment может отличаться от price * quantity, " \
             "но payment не должен быть равен 0, если price и quantity не равны 0."
     
-    def test_portfolio_structure(self):
+    def test_portfolio_structure(self, tinkoff_portfolio_data):
         """Тест структуры данных портфеля."""
-        result = get_tinkoff_portfolio(TINKOFF_TOKEN)
+        result = tinkoff_portfolio_data
         
         print("\n" + "="*80)
         print("СТРУКТУРА ПОРТФЕЛЯ")
@@ -219,11 +234,11 @@ class TestTinkoffImport:
         
         print("="*80 + "\n")
     
-    def test_error_handling(self):
+    def test_error_handling(self, tinkoff_portfolio_data):
         """Тест обработки ошибок при недоступных счетах."""
         # Этот тест проверяет, что функция корректно обрабатывает ошибки
         # и не падает при недоступных счетах
-        result = get_tinkoff_portfolio(TINKOFF_TOKEN)
+        result = tinkoff_portfolio_data
         
         # Функция должна вернуть словарь (может быть пустым)
         assert isinstance(result, dict), "Результат должен быть словарем даже при ошибках"

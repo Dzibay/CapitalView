@@ -59,8 +59,7 @@ def create_asset(email: str, data: dict):
             return {"success": False, "error": "Некорректный asset_id"}
 
     try:
-        # Преобразуем дату в формат date для PostgreSQL
-        from app.utils.date import normalize_date_to_string
+        # Преобразуем дату в формат date для PostgreSQL (импорт уже есть в начале файла)
         transaction_date = normalize_date_to_string(date)
         if not transaction_date:
             transaction_date = normalize_date_to_sql_date(datetime.utcnow().date())
