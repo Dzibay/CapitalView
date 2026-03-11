@@ -28,6 +28,7 @@ DECLARE
     v_portfolio_exists boolean;
     v_op_record RECORD;
     v_first_buy_date timestamp without time zone;
+    v_min_date date;
 BEGIN
     IF p_operations IS NULL OR jsonb_array_length(p_operations) = 0 THEN
         RETURN jsonb_build_object(
@@ -249,47 +250,45 @@ BEGIN
     END LOOP;
 
     -- ШАГ 1: Обновляем позиции активов для операций с asset_id (Commission/Tax/Dividend/Coupon)
+    -- ОПТИМИЗАЦИЯ: Вызываем один раз для каждого уникального portfolio_asset_id с минимальной датой операции
     -- Это нужно сделать ПЕРВЫМ, так как portfolio_daily_values агрегирует данные из portfolio_daily_positions
-    FOR v_portfolio_id, v_asset_id, v_operation_date, v_operation_type IN 
-        SELECT DISTINCT portfolio_id, asset_id, operation_date::date, operation_type
-        FROM temp_sorted_ops
-        WHERE portfolio_id IS NOT NULL
-          AND asset_id IS NOT NULL
-          AND operation_type IN (3, 4, 7, 8)  -- Dividend, Coupon, Commission, Tax
+    FOR v_portfolio_asset_id, v_min_date IN 
+        SELECT 
+            pa.id,
+            MIN(tso.operation_date::date) - INTERVAL '1 day' AS min_date
+        FROM temp_sorted_ops tso
+        JOIN portfolio_assets pa ON pa.portfolio_id = tso.portfolio_id 
+                                 AND pa.asset_id = tso.asset_id
+        WHERE tso.portfolio_id IS NOT NULL
+          AND tso.asset_id IS NOT NULL
+          AND tso.operation_type IN (3, 4, 7, 8)  -- Dividend, Coupon, Commission, Tax
+        GROUP BY pa.id
     LOOP
         BEGIN
-            -- Обновляем позиции для всех portfolio_asset_id с этим asset_id в портфеле
-            FOR v_portfolio_asset_id IN 
-                SELECT pa.id
-                FROM portfolio_assets pa
-                WHERE pa.portfolio_id = v_portfolio_id
-                  AND pa.asset_id = v_asset_id
-            LOOP
-                BEGIN
-                    PERFORM update_portfolio_asset_positions_from_date(
-                        v_portfolio_asset_id,
-                        (v_operation_date - INTERVAL '1 day')::date
-                    );
-                EXCEPTION WHEN OTHERS THEN
-                    RAISE WARNING 'Ошибка при обновлении позиций актива %: %', v_portfolio_asset_id, SQLERRM;
-                END;
-            END LOOP;
+            PERFORM update_portfolio_asset_positions_from_date(
+                v_portfolio_asset_id,
+                v_min_date::date
+            );
         EXCEPTION WHEN OTHERS THEN
-            RAISE WARNING 'Ошибка при обновлении позиций для портфеля % и актива %: %', v_portfolio_id, v_asset_id, SQLERRM;
+            RAISE WARNING 'Ошибка при обновлении позиций актива %: %', v_portfolio_asset_id, SQLERRM;
         END;
     END LOOP;
 
-    -- ШАГ 2: Обновляем историю портфелей один раз для всех портфелей
+    -- ШАГ 2: Обновляем историю портфелей один раз для каждого портфеля с минимальной датой операции
+    -- ОПТИМИЗАЦИЯ: Вызываем один раз для каждого портфеля с минимальной датой вместо вызова для каждой даты
     -- Это агрегирует данные из portfolio_daily_positions в portfolio_daily_values
-    FOR v_portfolio_id, v_operation_date IN 
-        SELECT DISTINCT portfolio_id, operation_date::date
+    FOR v_portfolio_id, v_min_date IN 
+        SELECT 
+            portfolio_id,
+            MIN(operation_date::date) - INTERVAL '1 day' AS min_date
         FROM temp_sorted_ops
         WHERE portfolio_id IS NOT NULL
+        GROUP BY portfolio_id
     LOOP
         BEGIN
             PERFORM update_portfolio_values_from_date(
                 v_portfolio_id,
-                (v_operation_date - INTERVAL '1 day')::date
+                v_min_date::date
             );
         EXCEPTION WHEN OTHERS THEN
             RAISE WARNING 'Ошибка при обновлении истории портфеля %: %', v_portfolio_id, SQLERRM;

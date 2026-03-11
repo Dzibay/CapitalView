@@ -1020,5 +1020,6 @@ async def get_dashboard_data(user_email: str):
     return {
         "portfolios": portfolios,
         "transactions": transactions,
-        "referenceData": get_reference_data_cached()  # Из кеша (загружено при старте)
+        "referenceData": get_reference_data_cached(),  # Из кеша (загружено при старте)
+        "missed_payouts_count": data.get("missed_payouts_count", 0) if data else 0
     }

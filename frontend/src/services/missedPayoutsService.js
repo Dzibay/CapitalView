@@ -36,5 +36,12 @@ export default {
   async checkMissedPayoutsForUser() {
     const res = await apiClient.post(`${API_ENDPOINTS.MISSED_PAYOUTS.BASE}/check-user`);
     return res.data;
+  },
+
+  async addOperationsFromMissedPayoutsBatch(missed_payout_ids) {
+    // Создает операции выплат из списка неполученных выплат батчем
+    // FastAPI Body(...) без embed=True ожидает массив напрямую
+    const res = await apiClient.post(`${API_ENDPOINTS.MISSED_PAYOUTS.BASE}/add-operations-batch`, missed_payout_ids);
+    return res.data;
   }
 };

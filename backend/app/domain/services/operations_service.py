@@ -5,7 +5,7 @@
 from app.infrastructure.database.postgres_service import rpc
 from app.domain.services.transactions_service import create_transaction
 from app.utils.date import normalize_date_to_string, normalize_date
-from typing import Optional, Union
+from typing import Optional, Union, List
 from datetime import datetime, timedelta, date
 from calendar import monthrange
 import logging
@@ -352,3 +352,165 @@ def delete_operations_batch(operation_ids: list[int]):
         raise Exception(f"Ошибка при batch удалении операций: {error_msg}")
     
     return delete_result
+
+
+def create_operations_from_missed_payouts(
+    *,
+    user_id: str,
+    missed_payouts: List[dict]
+):
+    """
+    Создает операции выплат (дивиденды/купоны) из списка неполученных выплат батчем.
+    Использует apply_operations_batch для эффективной обработки всех операций за один раз.
+    
+    Args:
+        user_id: ID пользователя
+        missed_payouts: Список словарей с данными неполученных выплат. Каждый словарь должен содержать:
+            - id: ID записи в missed_payouts (для сопоставления с результатами)
+            - portfolio_id: ID портфеля
+            - portfolio_asset_id: ID актива в портфеле
+            - asset_id: ID актива
+            - payout_type: Тип выплаты ('dividend' или 'coupon')
+            - payment_date: Дата выплаты (date или str)
+            - expected_amount: Ожидаемая сумма выплаты (уже рассчитана с учетом количества акций)
+            - currency_id: (опционально) ID валюты, по умолчанию 1 (RUB)
+    
+    Returns:
+        dict с результатами создания операций:
+            - inserted_count: Количество успешно созданных операций
+            - failed_count: Количество неудачных операций
+            - operation_ids: Список ID созданных операций
+            - failed_operations: Список неудачных операций с ошибками (содержит индекс исходной выплаты)
+            - created: Список созданных операций для совместимости
+            - payout_indices_map: Словарь {индекс_операции: индекс_выплаты} для сопоставления
+    """
+    if not missed_payouts:
+        return {
+            "inserted_count": 0,
+            "failed_count": 0,
+            "operation_ids": [],
+            "failed_operations": [],
+            "created": [],
+            "payout_indices_map": {}
+        }
+    
+    # Подготавливаем операции для batch вставки
+    operations_list = []
+    payout_indices_map = {}  # {индекс_операции: индекс_выплаты}
+    operation_index = 0
+    
+    for payout_index, payout in enumerate(missed_payouts):
+        # Определяем тип операции: 3 = Dividend, 4 = Coupon
+        payout_type = payout.get("payout_type", "").lower()
+        operation_type = 4 if payout_type == "coupon" else 3
+        
+        # Получаем дату выплаты
+        payment_date = payout.get("payment_date") or payout.get("payout_payment_date")
+        if not payment_date:
+            logger.warning(f"Пропущена выплата без даты: {payout}")
+            continue
+        
+        # Нормализуем дату
+        operation_date = normalize_date_to_string(payment_date, include_time=True)
+        if not operation_date:
+            logger.warning(f"Не удалось нормализовать дату выплаты: {payment_date}")
+            continue
+        
+        # Получаем сумму выплаты
+        expected_amount = payout.get("expected_amount") or payout.get("payout_value") or 0
+        if expected_amount <= 0:
+            logger.warning(f"Пропущена выплата с нулевой суммой: {payout}")
+            continue
+        
+        # Получаем валюту (по умолчанию RUB)
+        currency_id = payout.get("currency_id", 1)
+        
+        # Формируем данные операции
+        op_data = {
+            "user_id": str(user_id),
+            "portfolio_id": payout.get("portfolio_id"),
+            "operation_type": operation_type,
+            "amount": float(expected_amount),
+            "currency_id": currency_id,
+            "operation_date": operation_date,
+            "asset_id": payout.get("asset_id"),
+            "portfolio_asset_id": payout.get("portfolio_asset_id")
+        }
+        
+        operations_list.append(op_data)
+        payout_indices_map[operation_index] = payout_index
+        operation_index += 1
+    
+    if not operations_list:
+        return {
+            "inserted_count": 0,
+            "failed_count": 0,
+            "operation_ids": [],
+            "failed_operations": [],
+            "created": [],
+            "failed_payout_indices": []
+        }
+    
+    # Используем batch функцию для создания всех операций за один раз
+    result = rpc("apply_operations_batch", {
+        "p_operations": operations_list
+    })
+    
+    if not result:
+        raise Exception("apply_operations_batch failed")
+    
+    # Обогащаем failed_operations индексами исходных выплат для удобного сопоставления
+    # Оптимизация: создаем словарь для быстрого поиска операций по ключу
+    enriched_failed_operations = []
+    failed_indices = set()
+    
+    # Создаем словарь для быстрого поиска операций: ключ = (portfolio_id, asset_id, portfolio_asset_id, operation_date, amount)
+    operations_dict = {}
+    for op_idx, op_data in enumerate(operations_list):
+        key = (
+            op_data.get("portfolio_id"),
+            op_data.get("asset_id"),
+            op_data.get("portfolio_asset_id"),
+            op_data.get("operation_date"),
+            round(float(op_data.get("amount", 0)), 2)  # Округляем для сравнения
+        )
+        operations_dict[key] = op_idx
+    
+    # Быстро находим соответствующие операции для неудачных
+    for failed_op in result.get("failed_operations", []):
+        failed_op_data = failed_op.get("operation", {})
+        if not failed_op_data:
+            continue
+        
+        # Формируем ключ для поиска
+        key = (
+            failed_op_data.get("portfolio_id"),
+            failed_op_data.get("asset_id"),
+            failed_op_data.get("portfolio_asset_id"),
+            failed_op_data.get("operation_date"),
+            round(float(failed_op_data.get("amount", 0)), 2)
+        )
+        
+        op_idx = operations_dict.get(key)
+        if op_idx is not None:
+            payout_idx = payout_indices_map.get(op_idx)
+            if payout_idx is not None:
+                failed_indices.add(payout_idx)
+                enriched_failed_operations.append({
+                    **failed_op,
+                    "payout_index": payout_idx,
+                    "payout_id": missed_payouts[payout_idx].get("id")
+                })
+    
+    # Примечание: проверка неполученных выплат НЕ выполняется здесь автоматически
+    # Выплаты удаляются вручную в endpoint после успешного создания операций
+    # Это ускоряет процесс создания операций и предотвращает избыточные проверки
+    
+    return {
+        "inserted_count": result.get("inserted_count", 0),
+        "failed_count": result.get("failed_count", 0),
+        "operation_ids": result.get("operation_ids", []),
+        "failed_operations": enriched_failed_operations,
+        "created": result.get("created", []),
+        "failed_payout_indices": list(failed_indices)
+    }

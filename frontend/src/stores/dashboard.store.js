@@ -9,6 +9,7 @@ export const useDashboardStore = defineStore('dashboard', {
     operations: [], // Кэш операций
     referenceData: {},
     analytics: [],
+    missedPayoutsCount: 0, // Количество неполученных выплат
     lastFetch: null,
     cacheTimeout: parseInt(import.meta.env.VITE_DASHBOARD_CACHE_TIMEOUT || '60000', 10), // Время кеширования из env или 1 минута по умолчанию
     transactionsLoaded: false,
@@ -62,6 +63,8 @@ export const useDashboardStore = defineStore('dashboard', {
           this.transactions = data.data.transactions || []
           this.transactionsLoaded = true
           this.referenceData = data.data.referenceData || {}
+          // Количество неполученных выплат теперь приходит вместе с dashboard
+          this.missedPayoutsCount = data.data.missed_payouts_count || 0
           
           // Аналитика теперь приходит в полном формате из get_user_portfolios_analytics
           // Она уже в правильном формате с totals, monthly_flow, monthly_payouts, asset_distribution, etc.

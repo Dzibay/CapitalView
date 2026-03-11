@@ -4,7 +4,6 @@ import { Bell, X, CheckCircle2, XCircle, Calendar, Coins, Building2 } from 'luci
 import ModalBase from './modals/ModalBase.vue'
 import { Button } from './base'
 import missedPayoutsService from '../services/missedPayoutsService'
-import operationsService from '../services/operationsService'
 import { normalizeDateToString } from '../utils/date'
 import { useDashboardStore } from '../stores/dashboard.store'
 
@@ -70,48 +69,26 @@ const addSelectedPayouts = async () => {
   error.value = ''
 
   try {
-    const selectedPayoutsData = missedPayouts.value.filter(p => 
-      selectedPayouts.value.includes(p.id || p.missed_payout_id)
-    )
-
-    // Создаем операции для каждой выбранной выплаты
-    // Используем Promise.all для параллельного создания операций
-    await Promise.all(
-      selectedPayoutsData.map(async (payout) => {
-        const operationType = payout.payout_type?.toLowerCase() === 'coupon' ? 4 : 3 // 4 = Coupon, 3 = Dividend
-        // Используем expected_amount из API (уже рассчитано с учетом количества акций)
-        const expectedAmount = payout.expected_amount || payout.payout_value || 0
-        
-        const operationData = {
-          portfolio_id: payout.portfolio_id,
-          operation_type: operationType,
-          amount: expectedAmount,
-          currency_id: 1, // RUB
-          operation_date: normalizeDateToString(new Date(payout.payment_date || payout.payout_payment_date)) || '',
-          asset_id: payout.asset_id,
-          portfolio_asset_id: payout.portfolio_asset_id
-        }
-        
-        return operationsService.addOperation(operationData)
-      })
-    )
-
-    // Удаляем добавленные выплаты из списка неполученных
-    await missedPayoutsService.deleteMissedPayoutsBatch(selectedPayouts.value)
+    // Используем новый батч-эндпоинт для создания всех операций за один раз
+    const result = await missedPayoutsService.addOperationsFromMissedPayoutsBatch(selectedPayouts.value)
+    
+    const insertedCount = result?.data?.inserted_count || 0
+    const failedCount = result?.data?.failed_count || 0
+    
+    if (failedCount > 0) {
+      const failedOps = result?.data?.failed_operations || []
+      const errorMessages = failedOps.map(op => op.error || 'Неизвестная ошибка').join('; ')
+      error.value = `Создано ${insertedCount} операций, ошибок: ${failedCount}. Ошибки: ${errorMessages}`
+    }
 
     // Обновляем список и счетчик
-    const addedCount = selectedPayouts.value.length
-    await loadMissedPayouts()
+    const addedCount = insertedCount
     selectedPayouts.value = []
     
-    // Обновляем dashboard store для отображения новых операций
-    try {
-      await dashboardStore.reloadDashboard(false)
-    } catch (err) {
-      console.error('Ошибка обновления dashboard после добавления выплат:', err)
-    }
+    // Перезагружаем список выплат для обновления модалки
+    await loadMissedPayouts()
     
-    // Уведомляем родительский компонент
+    // Уведомляем родительский компонент (он обновит dashboard)
     emit('payouts-added', addedCount)
   } catch (err) {
     error.value = err.response?.data?.message || 'Ошибка при добавлении выплат'

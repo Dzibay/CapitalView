@@ -59,7 +59,7 @@ class MissedPayoutRepository:
         missed_payout_ids: List[int]
     ) -> int:
         """
-        Удаляет несколько неполученных выплат (игнорирует их).
+        Удаляет несколько неполученных выплат (игнорирует их) одним запросом.
         
         Args:
             missed_payout_ids: Список ID записей в missed_payouts
@@ -70,12 +70,20 @@ class MissedPayoutRepository:
         if not missed_payout_ids:
             return 0
         
-        deleted_count = 0
-        for payout_id in missed_payout_ids:
-            if await self.delete_missed_payout(payout_id):
-                deleted_count += 1
+        # Оптимизация: удаляем все записи одним запросом вместо цикла
+        result = await table_delete_async(
+            "missed_payouts",
+            in_filters={"id": missed_payout_ids}
+        )
         
-        return deleted_count
+        # Возвращаем количество удаленных записей
+        # Если result - это количество, возвращаем его, иначе возвращаем длину списка ID
+        if isinstance(result, int):
+            return result
+        elif result is not None:
+            return len(missed_payout_ids)
+        else:
+            return 0
     
     async def check_missed_payouts(
         self,

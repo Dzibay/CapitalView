@@ -10,6 +10,7 @@ from app.utils.response import success_response
 from app.infrastructure.database.repositories.missed_payout_repository import MissedPayoutRepository
 from app.domain.services.access_control_service import check_portfolio_asset_access
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
+from app.domain.services.operations_service import create_operations_from_missed_payouts
 
 router = APIRouter(prefix="/missed-payouts", tags=["missed-payouts"])
 
@@ -241,4 +242,80 @@ async def check_missed_payouts_for_user_route(
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при запуске проверки неполученных выплат: {str(e)}"
+        )
+
+
+@router.post("/add-operations-batch")
+async def add_operations_from_missed_payouts_batch_route(
+    missed_payout_ids: List[int] = Body(...),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Создает операции выплат (дивиденды/купоны) из списка неполученных выплат батчем.
+    Использует apply_operations_batch для эффективной обработки всех операций за один раз.
+    После успешного создания операций удаляет соответствующие записи из missed_payouts.
+    
+    Args:
+        missed_payout_ids: Список ID записей в missed_payouts для создания операций
+        user: Текущий пользователь из токена
+    """
+    try:
+        if not missed_payout_ids:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail="Список ID не может быть пустым"
+            )
+        
+        # Получаем данные неполученных выплат пользователя
+        payouts = await _missed_payout_repository.get_user_missed_payouts_async(user_id=user["id"])
+        payout_dict = {p["id"]: p for p in payouts}
+        payout_ids = set(payout_dict.keys())
+        
+        # Проверяем, что все выплаты принадлежат пользователю
+        invalid_ids = [pid for pid in missed_payout_ids if pid not in payout_ids]
+        if invalid_ids:
+            raise HTTPException(
+                status_code=HTTPStatus.FORBIDDEN,
+                detail=f"Некоторые выплаты не найдены или не принадлежат пользователю: {invalid_ids}"
+            )
+        
+        # Формируем список выплат для создания операций
+        selected_payouts = [payout_dict[pid] for pid in missed_payout_ids]
+        
+        # Создаем операции батчем через apply_operations_batch
+        result = create_operations_from_missed_payouts(
+            user_id=user["id"],
+            missed_payouts=selected_payouts
+        )
+        
+        # Получаем уникальные portfolio_asset_id для проверки неполученных выплат
+        # check_missed_payouts автоматически обновит таблицу missed_payouts
+        portfolio_asset_ids = set(p.get("portfolio_asset_id") for p in selected_payouts if p.get("portfolio_asset_id"))
+        
+        # Проверяем неполученные выплаты для всех затронутых активов
+        # Это автоматически обновит таблицу missed_payouts (удалит выплаты, для которых созданы операции)
+        for portfolio_asset_id in portfolio_asset_ids:
+            try:
+                await _missed_payout_repository.check_missed_payouts(portfolio_asset_id)
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Ошибка при проверке неполученных выплат для актива {portfolio_asset_id}: {e}", exc_info=True)
+        
+        return success_response(
+            data={
+                "inserted_count": result.get("inserted_count", 0),
+                "failed_count": result.get("failed_count", 0),
+                "operation_ids": result.get("operation_ids", []),
+                "failed_operations": result.get("failed_operations", []),
+                "checked_assets_count": len(portfolio_asset_ids)
+            },
+            message=f"Успешно создано {result.get('inserted_count', 0)} операций из {len(missed_payout_ids)} неполученных выплат"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при создании операций из неполученных выплат: {str(e)}"
         )

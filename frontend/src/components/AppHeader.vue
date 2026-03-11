@@ -3,7 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router';
 import { Bell } from 'lucide-vue-next'
 import { authService } from '../services/authService.js';
-import missedPayoutsService from '../services/missedPayoutsService'
+import { useDashboardStore } from '../stores/dashboard.store'
 import MissedPayoutsModal from './MissedPayoutsModal.vue'
 
 defineProps({
@@ -18,57 +18,35 @@ const router = useRouter();
 
 const sidebar = ref(false)
 const showMissedPayoutsModal = ref(false)
-const missedPayoutsCount = ref(0)
-const loadingCount = ref(false)
+const dashboardStore = useDashboardStore()
+const missedPayoutsCount = computed(() => dashboardStore.missedPayoutsCount || 0)
 
 const handleToggle = () => {
   emit('toggle-sidebar');
   sidebar.value = !sidebar.value
 };
 
-// Загружаем количество неполученных выплат
-const loadMissedPayoutsCount = async () => {
-  loadingCount.value = true
-  try {
-    const payouts = await missedPayoutsService.getMissedPayouts()
-    missedPayoutsCount.value = payouts.length || 0
-  } catch (err) {
-    console.error('Ошибка загрузки количества неполученных выплат:', err)
-    missedPayoutsCount.value = 0
-  } finally {
-    loadingCount.value = false
-  }
-}
-
-// Открываем модалку и обновляем счетчик после закрытия
+// Открываем модалку
 const openMissedPayoutsModal = () => {
   showMissedPayoutsModal.value = true
 }
 
 const closeMissedPayoutsModal = () => {
   showMissedPayoutsModal.value = false
-  // Обновляем счетчик после закрытия модалки
-  loadMissedPayoutsCount()
+  // Обновляем dashboard для обновления счетчика неполученных выплат
+  dashboardStore.fetchDashboard(true, false)
 }
 
 // Обработчики событий от модалки
 const handlePayoutsAdded = () => {
-  loadMissedPayoutsCount()
+  // Обновляем dashboard для обновления счетчика неполученных выплат
+  dashboardStore.fetchDashboard(true, false)
 }
 
 const handlePayoutsIgnored = () => {
-  loadMissedPayoutsCount()
+  // Обновляем dashboard для обновления счетчика неполученных выплат
+  dashboardStore.fetchDashboard(true, false)
 }
-
-// Загружаем счетчик при монтировании и периодически обновляем
-onMounted(() => {
-  loadMissedPayoutsCount()
-  // Обновляем каждые 5 минут
-  const interval = setInterval(loadMissedPayoutsCount, 5 * 60 * 1000)
-  
-  // Очищаем интервал при размонтировании
-  return () => clearInterval(interval)
-})
 
 const hasNotifications = computed(() => missedPayoutsCount.value > 0)
 </script>

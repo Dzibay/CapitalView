@@ -222,6 +222,12 @@ recent_transactions AS (
     WHERE tx.rn <= 5
 )
 
+missed_payouts_count AS (
+    SELECT COUNT(*)::int AS count
+    FROM missed_payouts mp
+    WHERE mp.user_id = p_user_id
+)
+
 SELECT jsonb_build_object(
     'portfolios', COALESCE(
         jsonb_agg(
@@ -240,7 +246,8 @@ SELECT jsonb_build_object(
         ),
         '[]'::jsonb
     ),
-    'transactions', COALESCE((SELECT transactions FROM recent_transactions), '[]'::jsonb)
+    'transactions', COALESCE((SELECT transactions FROM recent_transactions), '[]'::jsonb),
+    'missed_payouts_count', COALESCE((SELECT count FROM missed_payouts_count), 0)
 )::json
 FROM portfolios_base p
 LEFT JOIN portfolio_assets_data pad ON pad.portfolio_id = p.id
@@ -248,5 +255,3 @@ LEFT JOIN portfolio_history_data phd ON phd.portfolio_id = p.id
 LEFT JOIN portfolio_analytics_final paf ON paf.portfolio_id = p.id
 LEFT JOIN connections_data cd ON cd.portfolio_id = p.id;
 $$ LANGUAGE sql;
-
-COMMENT ON FUNCTION get_dashboard_data_complete(uuid) IS 'Возвращает все данные дашборда одним запросом';
