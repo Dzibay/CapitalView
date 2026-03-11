@@ -11,7 +11,18 @@
       </span>
       <span class="custom-select-arrow">▼</span>
     </div>
-    <div v-if="isOpen" class="custom-select-dropdown" @click.stop>
+    <Teleport to="body">
+      <div 
+        v-if="isOpen" 
+        ref="dropdownRef"
+        class="custom-select-dropdown" 
+        :class="{ 
+          'dropdown-top': dropdownPosition === 'top',
+          'dropdown-positioned': isDropdownPositioned
+        }"
+        :style="dropdownStyle"
+        @click.stop
+      >
       <div 
         v-if="showEmptyOption"
         class="custom-select-option" 
@@ -31,12 +42,14 @@
         <span>{{ getOptionLabel(option) }}</span>
         <span v-if="isSelected(option)" class="check-icon">✓</span>
       </div>
-    </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { Teleport } from 'vue'
 
 const props = defineProps({
   modelValue: {
@@ -85,6 +98,10 @@ const emit = defineEmits(['update:modelValue', 'change'])
 
 const isOpen = ref(false)
 const wrapperRef = ref(null)
+const dropdownRef = ref(null)
+const dropdownPosition = ref('bottom') // 'bottom' или 'top'
+const dropdownStyle = ref({})
+const isDropdownPositioned = ref(false) // Флаг для отслеживания готовности позиции
 
 const getOptionLabel = (option) => {
   if (typeof props.optionLabel === 'function') {
@@ -148,6 +165,7 @@ const handleClickOutside = (event) => {
   const target = event.target
   if (wrapperRef.value && !wrapperRef.value.contains(target)) {
     isOpen.value = false
+    dropdownPosition.value = 'bottom'
   }
 }
 
@@ -176,25 +194,127 @@ const handleCloseAllSelects = () => {
   }
 }
 
+// Функция для определения позиции выпадающего списка
+const calculateDropdownPosition = (isInitial = false) => {
+  if (!wrapperRef.value || !isOpen.value) return
+  
+  // Сбрасываем флаг позиционирования только при первом открытии
+  if (isInitial) {
+    isDropdownPositioned.value = false
+  }
+  
+  // Небольшая задержка для того, чтобы DOM обновился (Teleport требует времени)
+  setTimeout(() => {
+    if (!wrapperRef.value) return
+    
+    if (!dropdownRef.value) {
+      // Повторяем попытку через небольшой интервал
+      setTimeout(() => calculateDropdownPosition(isInitial), 50)
+      return
+    }
+    
+    const wrapperRect = wrapperRef.value.getBoundingClientRect()
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+    
+    // Предполагаемая высота выпадающего списка (максимум 300px или меньше)
+    const optionCount = props.showEmptyOption ? props.options.length + 1 : props.options.length
+    const estimatedDropdownHeight = Math.min(300, optionCount * 48 + 20)
+    
+    // Вычисляем доступное пространство снизу и сверху
+    const spaceBelow = viewportHeight - wrapperRect.bottom - 20 // 20px отступ от края
+    const spaceAbove = wrapperRect.top - 20 // 20px отступ от края
+    
+    // Определяем позицию (сверху или снизу)
+    let position = 'bottom'
+    if (spaceBelow < estimatedDropdownHeight && spaceAbove > spaceBelow && spaceAbove > 100) {
+      position = 'top'
+    }
+    dropdownPosition.value = position
+    
+    // Вычисляем абсолютные координаты для позиционирования
+    const top = position === 'bottom' 
+      ? wrapperRect.bottom + 4 
+      : wrapperRect.top - estimatedDropdownHeight - 4
+    
+    // Ограничиваем позицию, чтобы не выходить за границы экрана
+    const maxTop = Math.max(20, viewportHeight - estimatedDropdownHeight - 20)
+    const finalTop = Math.min(Math.max(20, top), maxTop)
+    
+    // Вычисляем left и width
+    const left = wrapperRect.left
+    const width = wrapperRect.width
+    
+    // Проверяем, не выходит ли за правый край
+    const maxLeft = viewportWidth - width - 20
+    const finalLeft = Math.min(Math.max(20, left), maxLeft)
+    
+    // Вычисляем максимальную высоту с учетом доступного пространства
+    const availableSpace = position === 'bottom' ? spaceBelow : spaceAbove
+    const maxHeight = Math.min(estimatedDropdownHeight, availableSpace)
+    
+    // Устанавливаем стили для позиционирования
+    dropdownStyle.value = {
+      position: 'fixed',
+      top: `${finalTop}px`,
+      left: `${finalLeft}px`,
+      width: `${width}px`,
+      maxHeight: `${maxHeight}px`
+    }
+    
+    // Помечаем, что позиция вычислена и элемент можно показывать
+    isDropdownPositioned.value = true
+  }, isInitial ? 50 : 0) // Задержка только при первом открытии
+}
+
 const toggleDropdown = () => {
   if (!isOpen.value) {
     // Перед открытием закрываем все другие селекты
     handleSelectOpen()
+    // Сбрасываем флаг позиционирования
+    isDropdownPositioned.value = false
     // Открываем этот селект
     isOpen.value = true
+    // Вычисляем позицию после открытия с небольшой задержкой для Teleport (первое открытие)
+    nextTick(() => {
+      calculateDropdownPosition(true)
+    })
   } else {
     isOpen.value = false
+    dropdownPosition.value = 'bottom' // Сбрасываем позицию
+    isDropdownPositioned.value = false
   }
 }
+
+// Отслеживаем изменения открытия для пересчета позиции
+watch(isOpen, (newVal) => {
+  if (newVal) {
+    // Сбрасываем флаг позиционирования
+    isDropdownPositioned.value = false
+    // Вычисляем позицию после открытия с задержкой для Teleport (первое открытие)
+    nextTick(() => {
+      calculateDropdownPosition(true)
+    })
+  } else {
+    dropdownPosition.value = 'bottom'
+    isDropdownPositioned.value = false
+  }
+})
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   window.addEventListener('closeAllSelects', handleCloseAllSelects)
+  // Пересчитываем позицию при изменении размера окна (без скрытия)
+  window.addEventListener('resize', () => calculateDropdownPosition(false))
+  // Пересчитываем при скролле (без скрытия)
+  window.addEventListener('scroll', () => calculateDropdownPosition(false), true)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('closeAllSelects', handleCloseAllSelects)
+  window.removeEventListener('resize', calculateDropdownPosition)
+  window.removeEventListener('scroll', calculateDropdownPosition, true)
 })
 </script>
 
@@ -290,27 +410,49 @@ onUnmounted(() => {
 }
 
 .custom-select-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  background: #fff;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05);
-  z-index: 100;
-  max-height: 300px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  animation: slideDown 0.2s ease;
-  box-sizing: border-box;
-  min-width: 0;
+  position: fixed !important;
+  background: #fff !important;
+  border: 1.5px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05) !important;
+  z-index: 10000 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  /* Скрываем до вычисления позиции */
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: opacity 0.1s ease, visibility 0.1s ease !important;
+}
+
+.custom-select-dropdown.dropdown-positioned {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  animation: slideDown 0.2s ease !important;
+}
+
+.custom-select-dropdown.dropdown-top.dropdown-positioned {
+  animation: slideUp 0.2s ease !important;
 }
 
 @keyframes slideDown {
   from {
     opacity: 0;
     transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
   to {
     opacity: 1;

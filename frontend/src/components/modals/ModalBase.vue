@@ -65,6 +65,7 @@ const emit = defineEmits(['close'])
   flex-direction: column;
   overflow: hidden;
   animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
 }
 
 /* Переопределение max-width для модалок, которым нужна большая ширина */
@@ -142,7 +143,9 @@ const emit = defineEmits(['close'])
 .form-content {
   padding: 20px;
   overflow-y: auto;
+  overflow-x: visible;
   flex: 1;
+  position: relative;
 }
 
 .form-content::-webkit-scrollbar {
