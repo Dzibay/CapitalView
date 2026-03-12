@@ -29,6 +29,7 @@ DECLARE
     v_result text;
     v_tx_result jsonb;
     v_tx_ids bigint[];
+    v_buy_op_type_id bigint;
 BEGIN
     IF p_portfolio_id IS NULL THEN
         RETURN json_build_object(
@@ -166,16 +167,19 @@ BEGIN
     END IF;
     
     IF p_quantity > 0 THEN
-        v_tx_result := apply_transactions_batch(
+        SELECT id INTO v_buy_op_type_id FROM operations_type WHERE name = 'Buy' LIMIT 1;
+        v_tx_result := apply_operations_batch(
             jsonb_build_array(
                 jsonb_build_object(
                     'user_id', p_user_id::text,
+                    'portfolio_id', p_portfolio_id,
+                    'operation_type', v_buy_op_type_id,
+                    'operation_date', p_transaction_date::text,
                     'portfolio_asset_id', v_portfolio_asset_id,
-                    'transaction_type', 1,
                     'quantity', p_quantity,
                     'price', p_price,
-                    'transaction_date', p_transaction_date::text,
-                    'payment', p_quantity * p_price
+                    'payment', p_quantity * p_price,
+                    'amount', p_quantity * p_price
                 )
             )
         );

@@ -12,6 +12,7 @@ import asyncio
 from pathlib import Path
 from collections import Counter
 from datetime import datetime
+from typing import Optional, Dict, List
 
 # Добавляем корневую директорию проекта в путь
 project_root = Path(__file__).parent.parent
@@ -19,8 +20,308 @@ sys.path.insert(0, str(project_root))
 
 from app.infrastructure.external.brokers.tinkoff import get_tinkoff_portfolio
 from app.infrastructure.external.brokers.tinkoff.import_service import OPERATION_CLASSIFICATION
-from app.infrastructure.database.postgres_async import table_select_async, rpc_async, close_connection_pool
+from app.infrastructure.database.postgres_async import table_select_async, rpc_async, close_connection_pool, get_connection_pool
 from app.utils.async_runner import run_async
+
+
+async def get_portfolio_info(broker_token: str):
+    """Получает информацию о портфелях из БД по токену брокера."""
+    connections = await table_select_async(
+        "user_broker_connections",
+        select="portfolio_id, user_id, broker_id",
+        filters={"api_key": broker_token},
+        limit=1
+    )
+    
+    if not connections:
+        return None
+    
+    connection = connections[0]
+    parent_portfolio_id = connection["portfolio_id"]
+    user_id = connection["user_id"]
+    
+    # Получаем название родительского портфеля
+    parent_portfolios = await table_select_async(
+        "portfolios",
+        select="id, name",
+        filters={"id": parent_portfolio_id},
+        limit=1
+    )
+    parent_portfolio_name = parent_portfolios[0]["name"] if parent_portfolios else f"Портфель {parent_portfolio_id}"
+    
+    # Получаем все дочерние портфели
+    child_portfolios = await table_select_async(
+        "portfolios",
+        select="id, name, parent_portfolio_id",
+        filters={"parent_portfolio_id": parent_portfolio_id, "user_id": user_id}
+    )
+    
+    if not child_portfolios:
+        child_portfolios = [{"id": parent_portfolio_id, "name": parent_portfolio_name, "parent_portfolio_id": None}]
+    
+    return {
+        "user_id": user_id,
+        "parent_portfolio_id": parent_portfolio_id,
+        "parent_portfolio_name": parent_portfolio_name,
+        "child_portfolios": child_portfolios
+    }
+
+
+async def show_balance_analysis(broker_data: dict, portfolio_info: Optional[dict] = None, selected_portfolio_id: Optional[int] = None, selected_portfolio_name: Optional[str] = None):
+    """Показывает анализ балансов."""
+    print("\n" + "="*80)
+    print("АНАЛИЗ БАЛАНСОВ")
+    print("="*80)
+    
+    # Фильтруем данные по выбранному портфелю
+    filtered_broker_data = broker_data
+    if selected_portfolio_id and selected_portfolio_name:
+        # Ищем счет брокера с таким же названием
+        filtered_broker_data = {}
+        for account_name, account_data in broker_data.items():
+            # Сравниваем названия (без учета регистра и пробелов)
+            account_normalized = account_name.lower().strip()
+            portfolio_normalized = selected_portfolio_name.lower().strip()
+            if account_normalized == portfolio_normalized or account_normalized in portfolio_normalized or portfolio_normalized in account_normalized:
+                filtered_broker_data[account_name] = account_data
+                break
+        if not filtered_broker_data:
+            print(f"\n⚠️  Не найден счет брокера для портфеля '{selected_portfolio_name}'")
+            print("   Показываем все счета")
+            filtered_broker_data = broker_data
+    
+    for account_name, account_data in filtered_broker_data.items():
+        positions = account_data.get("positions", [])
+        transactions = account_data.get("transactions", [])
+        
+        print(f"\n📁 Счёт: {account_name}")
+        
+        # Баланс из операций
+        balance_from_operations = 0.0
+        for tx in transactions:
+            payment = tx.get("payment", 0)
+            currency = tx.get("currency", "rub")
+            if currency and currency.lower() not in ("rub", "rur", "руб"):
+                continue
+            balance_from_operations += float(payment)
+        
+        print(f"💰 Баланс из операций: {balance_from_operations:,.2f} RUB")
+        
+        # Баланс из позиций
+        balance_from_positions = 0.0
+        for pos in positions:
+            ticker = (pos.get("ticker") or "").upper()
+            name = (pos.get("name") or "").lower()
+            if (ticker.startswith("RUB") or ticker.startswith("RUR")) or "рубль" in name:
+                balance_from_positions = float(pos.get("quantity", 0))
+                break
+        
+        if balance_from_positions > 0:
+            print(f"💰 Баланс из позиций: {balance_from_positions:,.2f} RUB")
+            diff = abs(balance_from_operations - balance_from_positions)
+            if diff < 0.01:
+                print("   ✅ Балансы совпадают")
+            else:
+                print(f"   ❌ Расхождение: {diff:,.2f} RUB")
+        else:
+            print("   ⚠️  Позиция RUB не найдена")
+        
+        # Сравнение с БД
+        if portfolio_info:
+            portfolio_ids = [selected_portfolio_id] if selected_portfolio_id else [p["id"] for p in portfolio_info["child_portfolios"]]
+            total_balance_db = 0.0
+            
+            for portfolio_id in portfolio_ids:
+                portfolio_values = await table_select_async(
+                    "portfolio_daily_values",
+                    select="balance",
+                    filters={"portfolio_id": portfolio_id},
+                    order={"column": "report_date", "desc": True},
+                    limit=1
+                )
+                if portfolio_values:
+                    total_balance_db += float(portfolio_values[0].get("balance") or 0)
+            
+            if total_balance_db > 0:
+                print(f"\n💰 Баланс из БД: {total_balance_db:,.2f} RUB")
+                diff = abs(balance_from_operations - total_balance_db)
+                if diff < 0.01:
+                    print("   ✅ Балансы совпадают с БД")
+                else:
+                    print(f"   ❌ Расхождение с БД: {diff:,.2f} RUB")
+
+
+async def show_positions_comparison(broker_data: dict, portfolio_info: Optional[dict] = None, portfolio_id: Optional[int] = None, portfolio_name: Optional[str] = None):
+    """Показывает сравнение позиций от брокера и из БД."""
+    print("\n" + "="*80)
+    print("СРАВНЕНИЕ ПОЗИЦИЙ")
+    if portfolio_name:
+        print(f"Портфель: {portfolio_name}")
+    print("="*80)
+    
+    # Фильтруем данные по выбранному портфелю
+    filtered_broker_data = broker_data
+    if portfolio_id and portfolio_name:
+        # Ищем счет брокера с таким же названием
+        filtered_broker_data = {}
+        for account_name, account_data in broker_data.items():
+            # Сравниваем названия (без учета регистра и пробелов)
+            account_normalized = account_name.lower().strip()
+            portfolio_normalized = portfolio_name.lower().strip()
+            if account_normalized == portfolio_normalized or account_normalized in portfolio_normalized or portfolio_normalized in account_normalized:
+                filtered_broker_data[account_name] = account_data
+                break
+        if not filtered_broker_data:
+            print(f"\n⚠️  Не найден счет брокера для портфеля '{portfolio_name}'")
+            print("   Показываем все счета")
+            filtered_broker_data = broker_data
+    
+    # Собираем позиции от брокера (исключаем валюты)
+    broker_positions = {}
+    for account_name, account_data in filtered_broker_data.items():
+        for pos in account_data.get("positions", []):
+            ticker = (pos.get("ticker") or "").upper()
+            name = (pos.get("name") or "").lower()
+            # Пропускаем валюты
+            if (ticker.startswith("RUB") or ticker.startswith("RUR")) or "рубль" in name:
+                continue
+            
+            if ticker not in broker_positions:
+                broker_positions[ticker] = {
+                    "name": pos.get("name", "N/A"),
+                    "quantity": float(pos.get("quantity", 0)),
+                    "current_price": float(pos.get("current_price", 0)),
+                    "value": float(pos.get("quantity", 0)) * float(pos.get("current_price", 0))
+                }
+            else:
+                broker_positions[ticker]["quantity"] += float(pos.get("quantity", 0))
+                broker_positions[ticker]["value"] += float(pos.get("quantity", 0)) * float(pos.get("current_price", 0))
+    
+    print(f"\n📊 Позиций от брокера: {len(broker_positions)}")
+    
+    # Получаем позиции из БД
+    db_positions = {}
+    if portfolio_info:
+        portfolio_ids = [portfolio_id] if portfolio_id else [p["id"] for p in portfolio_info["child_portfolios"]]
+        
+        pool = await get_connection_pool()
+        async with pool.acquire() as conn:
+            for pid in portfolio_ids:
+                query = """
+                    SELECT pa.quantity, pa.average_price, a.ticker, a.name
+                    FROM portfolio_assets pa
+                    JOIN assets a ON pa.asset_id = a.id
+                    WHERE pa.portfolio_id = $1
+                """
+                rows = await conn.fetch(query, pid)
+                
+                for row in rows:
+                    pos = dict(row)
+                    ticker = (pos.get("ticker") or "").upper()
+                    if not ticker:
+                        continue
+                    
+                    if ticker not in db_positions:
+                        db_positions[ticker] = {
+                            "name": pos.get("name", "N/A"),
+                            "quantity": float(pos.get("quantity", 0)),
+                            "average_price": float(pos.get("average_price", 0) or 0)
+                        }
+                    else:
+                        db_positions[ticker]["quantity"] += float(pos.get("quantity", 0))
+    
+    if db_positions:
+        print(f"📊 Позиций в БД: {len(db_positions)}")
+        
+        # Сравнение
+        print(f"\n{'Тикер':<15} | {'Название':<35} | {'Брокер':>12} | {'БД':>12} | {'Разница':>12}")
+        print("-" * 95)
+        
+        all_tickers = set(broker_positions.keys()) | set(db_positions.keys())
+        differences = []
+        
+        for ticker in sorted(all_tickers):
+            broker_qty = broker_positions.get(ticker, {}).get("quantity", 0)
+            db_qty = db_positions.get(ticker, {}).get("quantity", 0)
+            diff = broker_qty - db_qty
+            
+            if abs(diff) > 0.01:
+                differences.append(ticker)
+            
+            name = (broker_positions.get(ticker, {}).get("name") or db_positions.get(ticker, {}).get("name") or "N/A")[:35]
+            status = "✅" if abs(diff) < 0.01 else "❌"
+            print(f"{ticker:<15} | {name:<35} | {broker_qty:>12.2f} | {db_qty:>12.2f} | {diff:>+12.2f} {status}")
+        
+        if not differences:
+            print("\n✅ Все позиции совпадают!")
+        else:
+            print(f"\n❌ Найдено расхождений: {len(differences)}")
+    else:
+        print("\n⚠️  Портфель не найден в БД для сравнения")
+        print("\nПозиции от брокера:")
+        print(f"{'Тикер':<15} | {'Название':<35} | {'Количество':>12} | {'Цена':>12} | {'Стоимость':>15}")
+        print("-" * 95)
+        for ticker, pos in sorted(broker_positions.items()):
+            print(f"{ticker:<15} | {pos['name'][:35]:<35} | {pos['quantity']:>12.2f} | {pos['current_price']:>12.2f} | {pos['value']:>15,.2f}")
+
+
+async def show_operations(broker_data: dict, portfolio_info: Optional[dict] = None, portfolio_id: Optional[int] = None, portfolio_name: Optional[str] = None, limit: int = 10):
+    """Показывает операции от брокера в исходном виде."""
+    print("\n" + "="*80)
+    print("ОПЕРАЦИИ ОТ БРОКЕРА")
+    if portfolio_name:
+        print(f"Портфель: {portfolio_name}")
+    print("="*80)
+    
+    # Фильтруем данные по выбранному портфелю
+    filtered_broker_data = broker_data
+    if portfolio_id and portfolio_name:
+        # Ищем счет брокера с таким же названием
+        filtered_broker_data = {}
+        for account_name, account_data in broker_data.items():
+            # Сравниваем названия (без учета регистра и пробелов)
+            account_normalized = account_name.lower().strip()
+            portfolio_normalized = portfolio_name.lower().strip()
+            if account_normalized == portfolio_normalized or account_normalized in portfolio_normalized or portfolio_normalized in account_normalized:
+                filtered_broker_data[account_name] = account_data
+                break
+        if not filtered_broker_data:
+            print(f"\n⚠️  Не найден счет брокера для портфеля '{portfolio_name}'")
+            print("   Показываем все операции")
+            filtered_broker_data = broker_data
+    
+    # Собираем операции от брокера только из отфильтрованных счетов
+    all_transactions = []
+    for account_name, account_data in filtered_broker_data.items():
+        for tx in account_data.get("transactions", []):
+            tx_with_account = tx.copy()
+            tx_with_account["account_name"] = account_name
+            all_transactions.append(tx_with_account)
+    
+    # Сортируем по дате (от новых к старым)
+    all_transactions.sort(key=lambda x: x.get("date", ""), reverse=True)
+    
+    # Ограничиваем количество только если не выбран конкретный портфель
+    transactions_to_show = all_transactions if (portfolio_id and limit is None) else (all_transactions[:limit] if limit else all_transactions)
+    
+    print(f"\n📋 Показано операций: {len(transactions_to_show)} из {len(all_transactions)}")
+    print(f"\n{'Дата':<20} | {'Счёт':<20} | {'Тип':<15} | {'Тикер':<15} | {'Цена':>12} | {'Количество':>12} | {'Сумма':>15}")
+    print("-" * 125)
+    
+    for tx in transactions_to_show:
+        date_str = tx.get("date", "N/A")[:19] if tx.get("date") else "N/A"
+        account = (tx.get("account_name", "N/A") or "N/A")[:20]
+        tx_type = tx.get("type", "N/A")[:15]
+        ticker = (tx.get("ticker") or "—")[:15]
+        price = tx.get("price")
+        price_str = f"{price:>12,.2f}" if price is not None else f"{'—':>12}"
+        quantity = tx.get("quantity")
+        qty_str = f"{quantity:>10.2f} шт." if quantity is not None else f"{'':>12}"
+        payment = tx.get("payment", 0)
+        payment_str = f"{payment:>15,.2f}"
+        
+        print(f"{date_str:<20} | {account:<20} | {tx_type:<15} | {ticker:<15} | {price_str:>12} | {qty_str:>12} | {payment_str:>15}")
+        
 
 
 async def main():
@@ -38,680 +339,94 @@ async def main():
     print("\n" + "="*80)
     print("ТЕСТИРОВАНИЕ ИМПОРТА ПОРТФЕЛЯ TINKOFF")
     print("="*80)
-    print()
     
     try:
         # Получаем данные портфеля
-        print("📥 Получаем данные от брокера Tinkoff...")
-        result = get_tinkoff_portfolio(token)
+        print("\n📥 Получаем данные от брокера Tinkoff...")
+        broker_data = get_tinkoff_portfolio(token)
         
-        if not result:
+        if not broker_data:
             print("⚠️  Портфель пуст (нет доступных счетов)")
             return
         
-        print(f"\n✅ Получено данных для {len(result)} счетов\n")
+        print(f"✅ Получено данных для {len(broker_data)} счетов")
         
-        # Анализ структуры портфеля
-        print("="*80)
-        print("СТРУКТУРА ПОРТФЕЛЯ")
-        print("="*80)
+        # Получаем информацию о портфелях из БД
+        portfolio_info = await get_portfolio_info(token)
         
-        total_positions = 0
-        total_transactions = 0
-        all_operation_types = []
-        
-        for account_name, account_data in result.items():
-            positions = account_data.get("positions", [])
-            transactions = account_data.get("transactions", [])
-            
-            total_positions += len(positions)
-            total_transactions += len(transactions)
-            
-            # Собираем типы операций
-            for transaction in transactions:
-                op_type = transaction.get("type")
-                if op_type:
-                    all_operation_types.append(op_type)
-            
-            print(f"\n📁 Счёт: {account_name}")
-            print(f"   ID: {account_data.get('account_id')}")
-            print(f"   Позиций: {len(positions)}")
-            print(f"   Транзакций: {len(transactions)}")
-            
-            if positions:
-                print("\n   Все позиции:")
-                for pos in positions:
-                    ticker = pos.get("ticker") or "N/A"
-                    name = pos.get("name") or "N/A"
-                    quantity = pos.get("quantity", 0)
-                    current_price = pos.get("current_price", 0)
-                    value = quantity * current_price
-                    print(f"     - {ticker:15} | {name[:35]:35} | {quantity:>10.2f} шт. × {current_price:>10.2f} = {value:>12.2f}")
-            
-            if transactions:
-                # Сортируем транзакции по дате (от новых к старым)
-                sorted_transactions = sorted(
-                    transactions,
-                    key=lambda tx: tx.get("date", ""),
-                    reverse=True
-                )
-                
-                print("\n   5 последних операций:")
-                print(f"     {'Дата':<20} | {'Тип':<15} | {'Тикер':<15} | {'Количество':>12} | {'Сумма':>15}")
-                print(f"     {'-'*20} | {'-'*15} | {'-'*15} | {'-'*12} | {'-'*15}")
-                for tx in sorted_transactions[:5]:
-                    tx_type = tx.get("type", "N/A")
-                    date = tx.get("date", "N/A")[:19] if tx.get("date") else "N/A"  # Обрезаем до секунд
-                    ticker = (tx.get("ticker") or "—")[:15]
-                    payment = tx.get("payment", 0)
-                    quantity = tx.get("quantity")
-                    if quantity is not None:
-                        qty_str = f"{quantity:>10.2f} шт."
-                    else:
-                        qty_str = f"{'':>12}"
-                    payment_str = f"{payment:>15,.2f}"
-                    print(f"     {date:<20} | {tx_type:<15} | {ticker:<15} | {qty_str:>12} | {payment_str:>15}")
-                
-                # Группируем операции по типам и показываем по одной каждого типа
-                operations_by_type = {}
-                for tx in transactions:
-                    tx_type = tx.get("type", "N/A")
-                    if tx_type not in operations_by_type:
-                        operations_by_type[tx_type] = tx
-                
-                if operations_by_type:
-                    print("\n   По одной операции каждого типа:")
-                    print(f"     {'Дата':<20} | {'Тип':<15} | {'Тикер':<15} | {'Количество':>12} | {'Сумма':>15}")
-                    print(f"     {'-'*20} | {'-'*15} | {'-'*15} | {'-'*12} | {'-'*15}")
-                    for tx_type in sorted(operations_by_type.keys()):
-                        tx = operations_by_type[tx_type]
-                        date = tx.get("date", "N/A")[:19] if tx.get("date") else "N/A"  # Обрезаем до секунд
-                        ticker = (tx.get("ticker") or "—")[:15]
-                        payment = tx.get("payment", 0)
-                        quantity = tx.get("quantity")
-                        if quantity is not None:
-                            qty_str = f"{quantity:>10.2f} шт."
-                        else:
-                            qty_str = f"{'':>12}"
-                        payment_str = f"{payment:>15,.2f}"
-                        print(f"     {date:<20} | {tx_type:<15} | {ticker:<15} | {qty_str:>12} | {payment_str:>15}")
-        
+        # Интерактивное меню
         print("\n" + "="*80)
-        print(f"ИТОГО: {total_positions} позиций, {total_transactions} транзакций")
+        print("ВЫБОР ТИПА АНАЛИЗА")
         print("="*80)
+        print("1. Баланс")
+        print("2. Позиции")
+        print("3. Операции")
+        print("4. Всё (краткая статистика)")
+        print("0. Выход")
         
-        # Анализ типов операций
-        print("\n" + "="*80)
-        print("АНАЛИЗ ТИПОВ ОПЕРАЦИЙ")
-        print("="*80)
+        choice = input("\nВыберите тип анализа (Enter для всего): ").strip()
         
-        if not all_operation_types:
-            print("\n⚠️  Операции не найдены")
-        else:
-            known_types = set(OPERATION_CLASSIFICATION.values())
-            type_counter = Counter(all_operation_types)
-            
-            print("\n📊 Все типы операций (с частотой):")
-            for op_type, count in type_counter.most_common():
-                status = "✅" if op_type in known_types else "❌ НЕИЗВЕСТНЫЙ"
-                print(f"  {status} {op_type:20} : {count:>5} операций")
-            
-            unknown_types = set(all_operation_types) - known_types
-            
-            if unknown_types:
-                print(f"\n⚠️  НАЙДЕНО {len(unknown_types)} НЕИЗВЕСТНЫХ ТИПОВ ОПЕРАЦИЙ:")
-                print("\n   Неизвестные типы:")
-                for unknown_type in sorted(unknown_types):
-                    count = type_counter[unknown_type]
-                    print(f"     - {unknown_type:20} : {count:>5} операций")
-                
-                print("\n💡 Добавьте эти типы в OPERATION_CLASSIFICATION в:")
-                print("   app/infrastructure/external/brokers/tinkoff/import_service.py")
-                print("\n   Пример:")
-                for unknown_type in sorted(unknown_types):
-                    print(f'     "{unknown_type}": "Unknown",')
-            else:
-                print("\n✅ Все типы операций известны и обработаны")
+        if choice == "0":
+            return
         
-        # Проверка payment для транзакций Buy/Sell/Redemption
-        print("\n" + "="*80)
-        print("ПРОВЕРКА PAYMENT ДЛЯ ТРАНЗАКЦИЙ")
-        print("="*80)
-        
-        transactions_with_zero_payment = []
-        transactions_without_payment = []
-        
-        for account_name, account_data in result.items():
-            for tx in account_data.get("transactions", []):
-                tx_type = tx.get("type")
-                if tx_type in ("Buy", "Sell", "Redemption"):
-                    payment = tx.get("payment")
-                    price = tx.get("price")
-                    quantity = tx.get("quantity")
-                    
-                    if payment is None:
-                        transactions_without_payment.append({
-                            "account": account_name,
-                            "type": tx_type,
-                            "date": tx.get("date"),
-                            "ticker": tx.get("ticker"),
-                            "price": price,
-                            "quantity": quantity
-                        })
-                    elif payment == 0 and price is not None and quantity is not None and price != 0 and quantity != 0:
-                        expected_payment = price * quantity
-                        transactions_with_zero_payment.append({
-                            "account": account_name,
-                            "type": tx_type,
-                            "date": tx.get("date"),
-                            "ticker": tx.get("ticker"),
-                            "price": price,
-                            "quantity": quantity,
-                            "payment": payment,
-                            "expected_payment": expected_payment
-                        })
-        
-        if transactions_without_payment:
-            print(f"\n❌ НАЙДЕНО {len(transactions_without_payment)} ТРАНЗАКЦИЙ БЕЗ PAYMENT:")
-            for tx in transactions_without_payment[:10]:  # Показываем первые 10
-                print(f"   - {tx['date']} | {tx['type']:10} | {tx['ticker']:10} | "
-                      f"price: {tx['price']}, quantity: {tx['quantity']}")
-            if len(transactions_without_payment) > 10:
-                print(f"   ... и ещё {len(transactions_without_payment) - 10} транзакций")
-            print("\n💡 Для импорта от брокера payment должен быть передан для всех транзакций")
-        
-        if transactions_with_zero_payment:
-            print(f"\n❌ НАЙДЕНО {len(transactions_with_zero_payment)} ТРАНЗАКЦИЙ С PAYMENT = 0:")
-            for tx in transactions_with_zero_payment[:10]:  # Показываем первые 10
-                print(f"   - {tx['date']} | {tx['type']:10} | {tx['ticker']:10} | "
-                      f"price: {tx['price']}, quantity: {tx['quantity']}, "
-                      f"payment: {tx['payment']}, ожидалось: {tx['expected_payment']:.2f}")
-            if len(transactions_with_zero_payment) > 10:
-                print(f"   ... и ещё {len(transactions_with_zero_payment) - 10} транзакций")
-            print("\n💡 Для облигаций с НКД payment может отличаться от price * quantity,")
-            print("   но payment не должен быть равен 0, если price и quantity не равны 0")
-        
-        if not transactions_without_payment and not transactions_with_zero_payment:
-            print("\n✅ Все транзакции Buy/Sell/Redemption имеют корректный payment")
-        
-        print("="*80 + "\n")
-        
-        # Проверка баланса портфеля из данных брокера
-        print("\n" + "="*80)
-        print("ПРОВЕРКА БАЛАНСА ПОРТФЕЛЯ (РОССИЙСКИЙ РУБЛЬ)")
-        print("="*80)
-        
-        for account_name, account_data in result.items():
-            positions = account_data.get("positions", [])
-            transactions = account_data.get("transactions", [])
-            
-            print(f"\n📁 Счёт: {account_name}")
-            
-            # Рассчитываем баланс из операций (сумма всех операций в рублях)
-            # Используем точное значение payment от брокера без изменения знаков
-            balance_from_operations = 0.0
-            
-            for tx in transactions:
-                payment = tx.get("payment", 0)
-                currency = tx.get("currency", "rub")
-                
-                # Учитываем только операции в рублях
-                if currency and currency.lower() not in ("rub", "rur", "руб"):
-                    continue
-                
-                # Используем точное значение payment от брокера (со знаком)
-                balance_from_operations += float(payment)
-            
-            print(f"💰 Баланс из операций (сумма всех операций в RUB): {balance_from_operations:,.2f} RUB")
-            
-            # Получаем баланс из позиций (ищем позицию с валютой RUB)
-            balance_from_positions = 0.0
-            rub_position = None
-            
-            for pos in positions:
-                # Ищем позицию с тикером валюты RUB (может быть "RUB000UTSTOM" или содержать "RUB")
-                ticker = (pos.get("ticker") or "").upper()
-                name = (pos.get("name") or "").lower()
-                # Проверяем по тикеру (начинается с RUB) или по названию (содержит "рубль")
-                if (ticker.startswith("RUB") or ticker.startswith("RUR")) or "рубль" in name:
-                    rub_position = pos
-                    balance_from_positions = float(pos.get("quantity", 0))
-                    break
-            
-            if rub_position:
-                print(f"💰 Баланс из позиций (количество RUB в портфеле): {balance_from_positions:,.2f} RUB")
-            else:
-                print("⚠️  Позиция RUB не найдена в портфеле")
-            
-            # Сравниваем балансы
+        # Выбор портфеля (если есть)
+        selected_portfolio_id = None
+        selected_portfolio_name = None
+        if portfolio_info and choice in ("1", "2", "3", ""):
             print("\n" + "-"*80)
-            if rub_position:
-                difference = abs(balance_from_operations - balance_from_positions)
-                if difference < 0.01:  # Допускаем погрешность в 1 копейку
-                    print(f"✅ Балансы совпадают!")
-                else:
-                    print(f"❌ РАСХОЖДЕНИЕ БАЛАНСОВ!")
-                    print(f"   Разница: {difference:,.2f} RUB")
-                    print(f"   Баланс из операций: {balance_from_operations:,.2f} RUB")
-                    print(f"   Баланс из позиций: {balance_from_positions:,.2f} RUB")
-            else:
-                print(f"⚠️  Не удалось сравнить балансы: позиция RUB не найдена")
-                print(f"   Баланс из операций: {balance_from_operations:,.2f} RUB")
+            print("ВЫБОР ПОРТФЕЛЯ")
             print("-"*80)
+            print("0. Все портфели")
+            for i, p in enumerate(portfolio_info["child_portfolios"], 1):
+                print(f"{i}. {p['name']} (ID: {p['id']})")
+            
+            portfolio_choice = input("\nВыберите портфель (Enter для всех): ").strip()
+            if portfolio_choice and portfolio_choice != "0":
+                try:
+                    idx = int(portfolio_choice) - 1
+                    if 0 <= idx < len(portfolio_info["child_portfolios"]):
+                        selected_portfolio_id = portfolio_info["child_portfolios"][idx]["id"]
+                        selected_portfolio_name = portfolio_info["child_portfolios"][idx]["name"]
+                        print(f"✅ Выбран портфель: {selected_portfolio_name}")
+                except ValueError:
+                    pass
         
-        # Сравнение с данными из базы данных
+        # Выполняем анализ
+        if choice == "1" or choice == "":
+            await show_balance_analysis(broker_data, portfolio_info, selected_portfolio_id, selected_portfolio_name)
+        
+        if choice == "2" or choice == "":
+            await show_positions_comparison(broker_data, portfolio_info, selected_portfolio_id, selected_portfolio_name)
+        
+        if choice == "3" or choice == "":
+            limit = None if selected_portfolio_id else 10
+            await show_operations(broker_data, portfolio_info, selected_portfolio_id, selected_portfolio_name, limit)
+        
+        if choice == "4" or choice == "":
+            # Краткая статистика
+            print("\n" + "="*80)
+            print("КРАТКАЯ СТАТИСТИКА")
+            print("="*80)
+            
+            total_positions = sum(len(acc.get("positions", [])) for acc in broker_data.values())
+            total_transactions = sum(len(acc.get("transactions", [])) for acc in broker_data.values())
+            
+            print(f"\n📊 Всего счетов: {len(broker_data)}")
+            print(f"📊 Всего позиций: {total_positions}")
+            print(f"📊 Всего операций: {total_transactions}")
+            
+            if portfolio_info:
+                print(f"\n📁 Портфелей в БД: {len(portfolio_info['child_portfolios'])}")
+        
         print("\n" + "="*80)
-        print("СРАВНЕНИЕ С ДАННЫМИ ИЗ БАЗЫ ДАННЫХ")
-        print("="*80)
-        
-        try:
-            await compare_with_database(token, result)
-        except Exception as e:
-            print(f"\n⚠️  ОШИБКА при сравнении с БД: {e}")
-            import traceback
-            traceback.print_exc()
         
     except Exception as e:
-        print(f"\n❌ ОШИБКА при получении данных: {e}")
+        print(f"\n❌ ОШИБКА: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
-
-
-async def compare_with_database(broker_token: str, broker_data: dict):
-    """Сравнивает данные от брокера с данными из базы данных."""
-    # Маппинг типов операций: английские названия от брокера -> русские названия в БД
-    operation_type_mapping = {
-        "Deposit": "Депозит",
-        "Withdraw": "Вывод",
-        "Dividend": "Дивиденды",
-        "Coupon": "Купоны",
-        "Commission": "Комиссия",
-        "Commision": "Комиссия",  # опечатка в некоторых данных
-        "Tax": "Налог",
-        "Buy": "Покупка",
-        "Sell": "Продажа",
-        "Redemption": "Погашение",
-        "ammortization": "Погашение",
-        "Ammortization": "Погашение",
-    }
-    
-    # Находим портфель по токену брокера
-    connections = await table_select_async(
-        "user_broker_connections",
-        select="portfolio_id, user_id, broker_id",
-        filters={"api_key": broker_token},
-        limit=1
-    )
-    
-    if not connections:
-        print("\n⚠️  Портфель с таким токеном не найден в базе данных")
-        print("   Импортируйте портфель через веб-интерфейс для сравнения")
-        return
-    
-    connection = connections[0]
-    parent_portfolio_id = connection["portfolio_id"]
-    user_id = connection["user_id"]
-    broker_id = connection["broker_id"]
-    
-    print(f"\n📊 Найден родительский портфель в БД: ID={parent_portfolio_id}, user_id={user_id}, broker_id={broker_id}")
-    
-    # Получаем название родительского портфеля
-    parent_portfolios = await table_select_async(
-        "portfolios",
-        select="name",
-        filters={"id": parent_portfolio_id},
-        limit=1
-    )
-    parent_portfolio_name = parent_portfolios[0]["name"] if parent_portfolios else f"Портфель {parent_portfolio_id}"
-    
-    print(f"   Название: {parent_portfolio_name}")
-    
-    # Получаем все дочерние портфели
-    child_portfolios = await table_select_async(
-        "portfolios",
-        select="id, name, parent_portfolio_id",
-        filters={"parent_portfolio_id": parent_portfolio_id, "user_id": user_id}
-    )
-    
-    if not child_portfolios:
-        print("\n⚠️  Дочерние портфели не найдены")
-        print("   Сравнение будет выполнено только для родительского портфеля")
-        child_portfolios = [{"id": parent_portfolio_id, "name": parent_portfolio_name, "parent_portfolio_id": None}]
-    else:
-        print(f"\n📁 Найдено дочерних портфелей: {len(child_portfolios)}")
-        for child in child_portfolios:
-            print(f"   - ID={child['id']}, Название: {child['name']}")
-    
-    # Собираем все ID портфелей для получения операций и балансов
-    all_portfolio_ids = [p["id"] for p in child_portfolios]
-    
-    # Получаем операции из БД для всех дочерних портфелей
-    all_operations_db = []
-    for portfolio_id in all_portfolio_ids:
-        operations_db = await rpc_async("get_cash_operations", {
-            "p_user_id": user_id,
-            "p_portfolio_id": portfolio_id,
-            "p_start_date": None,
-            "p_end_date": None,
-            "p_limit": 10000
-        })
-        
-        # Обрабатываем случай, когда результат может быть None или пустым
-        if operations_db is None:
-            operations_db = []
-        elif not isinstance(operations_db, list):
-            operations_db = []
-        
-        all_operations_db.extend(operations_db)
-    
-    print(f"\n📋 Операции из БД (все дочерние портфели): {len(all_operations_db)} операций")
-    
-    # Получаем балансы из БД для всех дочерних портфелей
-    all_balances_db = {}
-    total_balance_from_db = 0.0
-    
-    for portfolio_id in all_portfolio_ids:
-        portfolio_values = await table_select_async(
-            "portfolio_daily_values",
-            select="balance",
-            filters={"portfolio_id": portfolio_id},
-            order={"column": "report_date", "desc": True},
-            limit=1
-        )
-        
-        balance = 0.0
-        if portfolio_values:
-            balance = float(portfolio_values[0].get("balance") or 0)
-        
-        all_balances_db[portfolio_id] = balance
-        total_balance_from_db += balance
-    
-    print(f"💰 Общий баланс из БД (все дочерние портфели): {total_balance_from_db:,.2f} RUB")
-    for portfolio_id, balance in all_balances_db.items():
-        portfolio_name = next((p["name"] for p in child_portfolios if p["id"] == portfolio_id), f"Портфель {portfolio_id}")
-        print(f"   - {portfolio_name}: {balance:,.2f} RUB")
-    
-    # Сравниваем операции для каждого счета от брокера
-    # Если у брокера несколько счетов, они могут соответствовать разным дочерним портфелям
-    # Пока сравниваем все операции от брокера со всеми операциями из БД
-    total_broker_transactions = []
-    for account_name, account_data in broker_data.items():
-        broker_transactions = account_data.get("transactions", [])
-        total_broker_transactions.extend(broker_transactions)
-    
-    print(f"\n📁 Сравнение операций")
-    print(f"   Операций от брокера (все счета): {len(total_broker_transactions)}")
-    print(f"   Операций в БД (все дочерние портфели): {len(all_operations_db)}")
-    
-    # Группируем операции от брокера по ключу (дата, тип, сумма)
-    broker_ops_map = {}
-    for tx in total_broker_transactions:
-        payment = tx.get("payment", 0)
-        currency = tx.get("currency", "rub")
-        
-        # Учитываем только операции в рублях
-        if currency and currency.lower() not in ("rub", "rur", "руб"):
-            continue
-        
-        tx_type = tx.get("type", "N/A")
-        # Преобразуем тип операции от брокера в формат БД
-        tx_type_db = operation_type_mapping.get(tx_type, tx_type)
-        tx_date = tx.get("date", "")
-        
-        # Нормализуем дату (убираем микросекунды и timezone для сравнения)
-        if tx_date:
-            try:
-                dt = datetime.fromisoformat(tx_date.replace('Z', '+00:00'))
-                # Убираем микросекунды и timezone, оставляем только дату и время
-                dt_normalized = dt.replace(microsecond=0)
-                # Форматируем как YYYY-MM-DD HH:MM:SS для единообразия
-                tx_date_normalized = dt_normalized.strftime("%Y-%m-%d %H:%M:%S")
-            except:
-                # Если не удалось распарсить, обрезаем до секунд
-                tx_date_normalized = tx_date[:19] if len(tx_date) > 19 else tx_date
-        else:
-            tx_date_normalized = ""
-        
-        # Нормализуем сумму: округляем до 2 знаков после запятой
-        # Используем abs() для сравнения, так как знак может отличаться
-        payment_normalized = round(abs(float(payment)), 2)
-            
-        # Ключ для сравнения: (дата, тип, абсолютная сумма)
-        key = (tx_date_normalized, tx_type_db, payment_normalized)
-        broker_ops_map[key] = broker_ops_map.get(key, 0) + 1
-    
-    # Группируем операции из БД по ключу (дата, тип, сумма)
-    db_ops_map = {}
-    for op in all_operations_db:
-        op_type = op.get("operation_type", "N/A")
-        op_date = op.get("operation_date")
-        # Используем amount_rub, если есть, иначе amount
-        amount_rub = float(op.get("amount_rub") or op.get("amount") or 0)
-        
-        # Нормализуем дату
-        if op_date:
-            if isinstance(op_date, str):
-                try:
-                    dt = datetime.fromisoformat(op_date.replace('Z', '+00:00'))
-                    dt_normalized = dt.replace(microsecond=0)
-                    op_date_normalized = dt_normalized.strftime("%Y-%m-%d %H:%M:%S")
-                except:
-                    op_date_normalized = op_date[:19] if len(op_date) > 19 else op_date
-            elif isinstance(op_date, datetime):
-                dt_normalized = op_date.replace(microsecond=0)
-                op_date_normalized = dt_normalized.strftime("%Y-%m-%d %H:%M:%S")
-            else:
-                op_date_normalized = str(op_date)
-        else:
-            op_date_normalized = ""
-        
-        # Нормализуем сумму: округляем до 2 знаков после запятой
-        # Используем abs() для сравнения, так как знак может отличаться
-        amount_normalized = round(abs(amount_rub), 2)
-        
-        # Ключ для сравнения: (дата, тип, абсолютная сумма)
-        key = (op_date_normalized, op_type, amount_normalized)
-        db_ops_map[key] = db_ops_map.get(key, 0) + 1
-    
-    # Находим различия
-    only_in_broker = set(broker_ops_map.keys()) - set(db_ops_map.keys())
-    only_in_db = set(db_ops_map.keys()) - set(broker_ops_map.keys())
-    in_both = set(broker_ops_map.keys()) & set(db_ops_map.keys())
-    
-    # Проверяем количество операций (могут быть дубликаты)
-    differences = []
-    for key in in_both:
-        broker_count = broker_ops_map[key]
-        db_count = db_ops_map[key]
-        if broker_count != db_count:
-            differences.append((key, broker_count, db_count))
-    
-    # Подсчитываем операции по типам для анализа
-    broker_by_type = {}
-    db_by_type = {}
-    
-    for key, count in broker_ops_map.items():
-        _, op_type, _ = key
-        broker_by_type[op_type] = broker_by_type.get(op_type, 0) + count
-    
-    for key, count in db_ops_map.items():
-        _, op_type, _ = key
-        db_by_type[op_type] = db_by_type.get(op_type, 0) + count
-    
-    # Выводим операции, которых не хватает в БД
-    print(f"\n{'='*80}")
-    print(f"ОПЕРАЦИИ, КОТОРЫХ НЕ ХВАТАЕТ В БД")
-    print(f"{'='*80}")
-    
-    if only_in_broker or differences:
-        # Собираем все операции, которых не хватает в БД
-        missing_operations = []
-        
-        # Операции, которых вообще нет в БД
-        for key in only_in_broker:
-            date, op_type, amount = key
-            count = broker_ops_map[key]
-            # Находим исходные транзакции от брокера для деталей
-            for tx in total_broker_transactions:
-                tx_payment = tx.get("payment", 0)
-                tx_currency = tx.get("currency", "rub")
-                if tx_currency and tx_currency.lower() not in ("rub", "rur", "руб"):
-                    continue
-                tx_type = tx.get("type", "N/A")
-                tx_type_db = operation_type_mapping.get(tx_type, tx_type)
-                tx_date = tx.get("date", "")
-                
-                # Нормализуем для сравнения
-                if tx_date:
-                    try:
-                        dt = datetime.fromisoformat(tx_date.replace('Z', '+00:00'))
-                        dt_normalized = dt.replace(microsecond=0)
-                        tx_date_normalized = dt_normalized.strftime("%Y-%m-%d %H:%M:%S")
-                    except:
-                        tx_date_normalized = tx_date[:19] if len(tx_date) > 19 else tx_date
-                else:
-                    tx_date_normalized = ""
-                
-                payment_normalized = round(abs(float(tx_payment)), 2)
-                tx_key = (tx_date_normalized, tx_type_db, payment_normalized)
-                
-                if tx_key == key:
-                    missing_operations.append({
-                        'date': tx_date,
-                        'type': tx_type_db,
-                        'amount': tx_payment,
-                        'ticker': tx.get("ticker", ""),
-                        'quantity': tx.get("quantity"),
-                        'count': count
-                    })
-                    break
-        
-        # Операции с разным количеством (не хватает в БД)
-        for key, broker_count, db_count in differences:
-            if broker_count > db_count:
-                date, op_type, amount = key
-                missing_count = broker_count - db_count
-                # Находим исходные транзакции от брокера
-                for tx in total_broker_transactions:
-                    tx_payment = tx.get("payment", 0)
-                    tx_currency = tx.get("currency", "rub")
-                    if tx_currency and tx_currency.lower() not in ("rub", "rur", "руб"):
-                        continue
-                    tx_type = tx.get("type", "N/A")
-                    tx_type_db = operation_type_mapping.get(tx_type, tx_type)
-                    tx_date = tx.get("date", "")
-                    
-                    if tx_date:
-                        try:
-                            dt = datetime.fromisoformat(tx_date.replace('Z', '+00:00'))
-                            dt_normalized = dt.replace(microsecond=0)
-                            tx_date_normalized = dt_normalized.strftime("%Y-%m-%d %H:%M:%S")
-                        except:
-                            tx_date_normalized = tx_date[:19] if len(tx_date) > 19 else tx_date
-                    else:
-                        tx_date_normalized = ""
-                    
-                    payment_normalized = round(abs(float(tx_payment)), 2)
-                    tx_key = (tx_date_normalized, tx_type_db, payment_normalized)
-                    
-                    if tx_key == key:
-                        missing_operations.append({
-                            'date': tx_date,
-                            'type': tx_type_db,
-                            'amount': tx_payment,
-                            'ticker': tx.get("ticker", ""),
-                            'quantity': tx.get("quantity"),
-                            'count': missing_count
-                        })
-                        break
-        
-        if missing_operations:
-            print(f"\n   ❌ Найдено {len(missing_operations)} операций, которых не хватает в БД:")
-            print(f"     {'Дата':<20} | {'Тип':<15} | {'Тикер':<15} | {'Количество':>12} | {'Сумма':>15}")
-            print(f"     {'-'*20} | {'-'*15} | {'-'*15} | {'-'*12} | {'-'*15}")
-            # Сортируем по дате
-            missing_operations.sort(key=lambda x: x['date'])
-            for op in missing_operations:
-                date_str = op['date'][:19] if op['date'] else "N/A"
-                ticker = (op['ticker'] or "")[:15]
-                quantity = op['quantity']
-                qty_str = f"{quantity:>10.2f} шт." if quantity is not None else f"{'':>12}"
-                amount_str = f"{op['amount']:>15,.2f}"
-                print(f"     {date_str:<20} | {op['type']:<15} | {ticker:<15} | {qty_str:>12} | {amount_str:>15}")
-        else:
-            print("\n   ✅ Все операции от брокера присутствуют в БД")
-    else:
-        print("\n   ✅ Все операции учтены корректно!")
-    
-    # Общая статистика
-    total_broker_ops = sum(broker_ops_map.values())
-    total_db_ops = sum(db_ops_map.values())
-    print(f"\n   📊 Общая статистика:")
-    print(f"     Всего операций от брокера: {total_broker_ops}")
-    print(f"     Всего операций в БД: {total_db_ops}")
-    print(f"     Разница: {total_broker_ops - total_db_ops:+d}")
-    
-    if not only_in_broker and not only_in_db and not differences:
-        print("\n   ✅ Все операции совпадают!")
-    else:
-        print(f"\n   ❌ Найдены неодинаковые операции:")
-        print(f"     - Операции только от брокера: {len(only_in_broker)}")
-        print(f"     - Операции только в БД: {len(only_in_db)}")
-        print(f"     - Операции с разным количеством: {len(differences)}")
-    
-    # Сравниваем балансы (суммируем по всем счетам от брокера и всем дочерним портфелям)
-    if broker_data:
-        # Рассчитываем баланс от брокера (суммируем по всем счетам)
-        balance_from_broker_ops = 0.0
-        balance_from_broker_positions = 0.0
-        
-        for account_name, account_data in broker_data.items():
-            positions = account_data.get("positions", [])
-            transactions = account_data.get("transactions", [])
-            
-            # Рассчитываем баланс из операций для этого счёта
-            for tx in transactions:
-                payment = tx.get("payment", 0)
-                currency = tx.get("currency", "rub")
-                if currency and currency.lower() not in ("rub", "rur", "руб"):
-                    continue
-                balance_from_broker_ops += float(payment)
-            
-            # Получаем баланс из позиций для этого счёта
-            for pos in positions:
-                ticker = (pos.get("ticker") or "").upper()
-                name = (pos.get("name") or "").lower()
-                if (ticker.startswith("RUB") or ticker.startswith("RUR")) or "рубль" in name:
-                    balance_from_broker_positions += float(pos.get("quantity", 0))
-                    break
-        
-        print("\n" + "-"*80)
-        print("СРАВНЕНИЕ БАЛАНСОВ")
-        print("-"*80)
-        print(f"💰 Баланс от брокера (из операций, все счета): {balance_from_broker_ops:,.2f} RUB")
-        if balance_from_broker_positions > 0:
-            print(f"💰 Баланс от брокера (из позиций, все счета): {balance_from_broker_positions:,.2f} RUB")
-        print(f"💰 Баланс из БД (portfolio_daily_values, все дочерние портфели): {total_balance_from_db:,.2f} RUB")
-        
-        if total_balance_from_db > 0 or balance_from_broker_ops != 0 or balance_from_broker_positions != 0:
-            diff_ops = abs(balance_from_broker_ops - total_balance_from_db)
-            diff_pos = abs(balance_from_broker_positions - total_balance_from_db) if balance_from_broker_positions > 0 else None
-            
-            print("\n   Разница балансов:")
-            print(f"   Брокер (операции) vs БД: {diff_ops:,.2f} RUB")
-            if diff_ops < 0.01:
-                print("   ✅ Балансы совпадают!")
-            else:
-                print("   ❌ РАСХОЖДЕНИЕ БАЛАНСОВ!")
-            
-            if diff_pos is not None:
-                print(f"   Брокер (позиции) vs БД: {diff_pos:,.2f} RUB")
-                if diff_pos < 0.01:
-                    print("   ✅ Балансы совпадают!")
-                else:
-                    print("   ❌ РАСХОЖДЕНИЕ БАЛАНСОВ!")
-        print("-"*80)
+    finally:
+        await close_connection_pool()
 
 
 if __name__ == "__main__":

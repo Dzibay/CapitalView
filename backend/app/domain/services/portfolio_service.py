@@ -4,7 +4,8 @@ from app.infrastructure.database.postgres_async import (
     rpc_async, 
     table_insert_async,
     table_update_async,
-    table_select_async
+    table_select_async,
+    get_connection_pool
 )
 from app.domain.services.user_service import get_user_by_email
 from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
@@ -373,6 +374,59 @@ async def import_broker_portfolio(
         for a in all_assets
         if a["properties"] and a["properties"].get("isin")
     }
+    
+    # Загружаем валютные активы (облигации с quote_asset_id != 1)
+    # Создаем словарь {asset_id: quote_asset_id} для быстрого поиска
+    currency_assets_map = {}  # {asset_id: quote_asset_id}
+    for asset in all_assets:
+        asset_id = asset.get("id")
+        quote_asset_id = asset.get("quote_asset_id")
+        if quote_asset_id and quote_asset_id != 1:  # Не рубли
+            currency_assets_map[asset_id] = quote_asset_id
+    
+    logger.info(f"Загружено {len(currency_assets_map)} валютных активов (quote_asset_id != 1)")
+    
+    # Загружаем курсы валют из asset_prices
+    # Создаем словарь {currency_asset_id: {date: rate}} для быстрого поиска курса на дату
+    currency_rates = {}  # {currency_asset_id: {date_str: rate}}
+    currency_asset_ids = set(currency_assets_map.values())
+    
+    if currency_asset_ids:
+        logger.info(f"Загрузка курсов валют для {len(currency_asset_ids)} валют...")
+        pool = await get_connection_pool()
+        async with pool.acquire() as conn:
+            for currency_id in currency_asset_ids:
+                query = """
+                    SELECT trade_date, price
+                    FROM asset_prices
+                    WHERE asset_id = $1
+                    ORDER BY trade_date DESC
+                """
+                rows = await conn.fetch(query, currency_id)
+                if rows:
+                    currency_rates[currency_id] = {}
+                    for row in rows:
+                        date_str = str(row["trade_date"])
+                        currency_rates[currency_id][date_str] = float(row["price"])
+                    logger.debug(f"Загружено {len(currency_rates[currency_id])} курсов для валюты {currency_id}")
+        
+        # Также загружаем последние цены из asset_latest_prices для валют без истории
+        latest_prices = await table_select_async(
+            "asset_latest_prices",
+            select="asset_id, curr_price",
+            in_filters={"asset_id": list(currency_asset_ids)},
+            limit=None
+        )
+        for lp in latest_prices:
+            currency_id = lp.get("asset_id")
+            if currency_id not in currency_rates:
+                currency_rates[currency_id] = {}
+            # Используем сегодняшнюю дату как ключ для последней цены
+            today_str = datetime.utcnow().date().isoformat()
+            if today_str not in currency_rates[currency_id]:
+                currency_rates[currency_id][today_str] = float(lp.get("curr_price") or 1)
+        
+        logger.info(f"Загружено курсов для {len(currency_rates)} валют")
 
     imported_portfolio_ids = []  # Список ID импортированных портфелей
     
@@ -553,9 +607,6 @@ async def import_broker_portfolio(
         new_tx = []
         new_ops = []
         affected_pa = set()
-        min_tx_date = None  # Самая старая дата новой транзакции
-        min_op_date = None  # Самая старая дата новой денежной операции
-        failed_count = 0  # Счетчик ошибок при вставке транзакций (для проверки перед rebuild_fifo)
 
         # Создаем карту позиций брокера для использования при расчете количества для Redemption операций
         broker_positions_map = {}
@@ -623,6 +674,7 @@ async def import_broker_portfolio(
                         logger.debug(f"Пропущена транзакция из-за невалидной даты: type={tx_type}, date={tx_date}, isin={isin}")
                         continue
                 
+                # Инициализируем price и qty для всех типов транзакций
                 # Для Redemption операций рассчитываем quantity из позиций портфеля на момент погашения
                 if tx_type == "Redemption":
                     payment = float(tx.get("payment") or 0)
@@ -641,24 +693,16 @@ async def import_broker_portfolio(
                         
                         # Рассчитываем количество из существующих транзакций до даты погашения
                         calculated_qty = 0.0
-                        existing_tx_count = 0
                         for existing_tx_key in existing_tx_keys:
                             existing_pa_id, existing_date, existing_type, existing_price, existing_qty = existing_tx_key
                             if existing_pa_id == pa_id:
-                                # Сравниваем даты (только дата, без времени для сравнения) используя единую функцию
                                 existing_date_str = normalize_date_to_sql_date(existing_date) or ""
                                 if existing_date_str <= tx_date_sql:
-                                    existing_tx_count += 1
                                     if existing_type == 1:  # Buy
                                         calculated_qty += existing_qty
                                     elif existing_type in (2, 3):  # Sell или Redemption
                                         calculated_qty -= existing_qty
-                        
-                        # Также учитываем транзакции, которые уже добавлены в new_tx в этом же импорте
-                        # Но только те, которые идут ДО текущей Redemption операции (по дате)
-                        # ВАЖНО: Транзакции из existing_tx_keys уже учтены в БД, поэтому не учитываем их повторно
-                        # из new_tx, если они уже есть в existing_tx_keys
-                        new_tx_count = 0
+
                         for new_tx_item in new_tx:
                             if new_tx_item["portfolio_asset_id"] == pa_id:
                                 new_tx_date = new_tx_item.get("transaction_date", "")
@@ -675,7 +719,6 @@ async def import_broker_portfolio(
                                     # Учитываем только если транзакция еще не была обработана (не в existing_tx_keys)
                                     # или если это новая транзакция из этого импорта
                                     if new_tx_key not in existing_tx_keys:
-                                        new_tx_count += 1
                                         if new_tx_type == 1:  # Buy
                                             calculated_qty += new_tx_qty
                                         elif new_tx_type in (2, 3):  # Sell или Redemption
@@ -705,9 +748,44 @@ async def import_broker_portfolio(
                         price = round(calculated_price, 6)
                         qty = round(op_quantity, 6)
                 else:
-                    # Для Buy и Sell используем стандартную логику
+                    # Для Buy и Sell используем стандартную логику - устанавливаем price и qty из данных брокера
                     price = round(float(tx.get("price") or 0), 6)
                     qty = round(float(tx.get("quantity") or 0), 6)
+                
+                # Обработка валютных активов: конвертируем price и payment
+                # Если актив валютный (quote_asset_id != 1), нужно конвертировать
+                currency_id_for_tx = 1  # По умолчанию рубли
+                if asset_id in currency_assets_map:
+                    quote_asset_id = currency_assets_map[asset_id]
+                    currency_id_for_tx = quote_asset_id
+                    
+                    # Получаем курс валюты на дату операции
+                    tx_date_obj = parse_date(tx_date)
+                    if tx_date_obj:
+                        if isinstance(tx_date_obj, datetime):
+                            tx_date_obj = tx_date_obj.date()
+                        tx_date_str = tx_date_obj.isoformat()
+                        
+                        # Ищем курс на дату операции или ближайшую предыдущую
+                        currency_rate = None
+                        if quote_asset_id in currency_rates:
+                            rates_for_currency = currency_rates[quote_asset_id]
+                            # Ищем курс на дату операции или ближайшую предыдущую
+                            for date_key in sorted(rates_for_currency.keys(), reverse=True):
+                                if date_key <= tx_date_str:
+                                    currency_rate = rates_for_currency[date_key]
+                                    break
+                        
+                        if currency_rate and currency_rate > 0:
+                            price = round(price / currency_rate, 6)
+                            payment = round(payment / currency_rate, 2)
+                        else:
+                            logger.warning(
+                                f"Не найден курс валюты {quote_asset_id} на дату {tx_date_str} "
+                                f"для транзакции {tx_type}, asset_id={asset_id}. "
+                                f"Используется курс 1.0"
+                            )
+                
                 # Маппинг типов транзакций: Buy=1, Sell=2, Redemption=3
                 if tx_type == "Buy":
                     tx_type_id = 1
@@ -729,37 +807,28 @@ async def import_broker_portfolio(
                     )
                     continue
                 
-                # Добавляем в множество существующих для отслеживания в рамках текущего импорта
-                # ВАЖНО: Добавляем ДО добавления в new_tx, чтобы предотвратить дубликаты в рамках одного импорта
                 existing_tx_keys.add(tx_key)
                 affected_pa.add(pa_id)
 
-                # Обновляем минимальную дату
-                if min_tx_date is None or tx_date_normalized < min_tx_date:
-                    min_tx_date = tx_date_normalized
-
                 # Для Redemption операций используем рассчитанные price и qty, а не значения из tx
-                tx_price = price if tx_type == "Redemption" else float(tx["price"])
+                # Для Buy/Sell используем уже конвертированные price и payment (если актив валютный)
+                tx_price = price  # Используем уже конвертированный price
                 tx_quantity = qty if tx_type == "Redemption" else float(tx["quantity"])
                 
                 # Для Buy/Sell операций сохраняем payment (общая сумма операции) для использования в cash_operations
                 # payment может отличаться от price * quantity из-за накопленного купонного дохода (НКД) у облигаций
                 # КРИТИЧНО: При импорте от брокера payment ВСЕГДА должен быть передан из import_service
-                tx_payment = tx.get("payment")
-                if tx_payment is None:
-                    logger.error(
-                        f"payment не найден для транзакции {tx_type} "
-                        f"(portfolio_asset_id: {pa_id}, date: {tx_date_normalized}). "
-                        f"Используется значение 0 для cash_operation."
-                    )
-                    tx_payment = 0
+                # payment уже конвертирован в валюту актива выше (если актив валютный)
+                tx_payment = payment  # Используем уже конвертированный payment
                 
                 tx_data = {
+                    "portfolio_id": portfolio_id,
                     "portfolio_asset_id": pa_id,
                     "transaction_type": tx_type_id,
                     "price": tx_price,
                     "quantity": tx_quantity,
                     "payment": tx_payment,  # Общая сумма операции (для cash_operation, учитывает НКД)
+                    "currency_id": currency_id_for_tx,  # валюта актива (1=RUB или quote_asset_id) для amount_rub
                     # КРИТИЧНО: Используем нормализованную дату с временем для сохранения полного timestamp
                     # Это позволяет различать транзакции с разницей во времени (например, 1 минута)
                     "transaction_date": tx_date_normalized if tx_date_normalized else tx_date,
@@ -819,148 +888,150 @@ async def import_broker_portfolio(
                         f"date={op_date_normalized}, amount={amount}, asset_id={asset_id_normalized}"
                     )
                     continue
+
+                # Определяем currency_id для денежных операций
+                # Комиссии (7) и налоги (8) всегда в рублях, независимо от валюты актива
+                # Дивиденды (3) и купоны (4) конвертируются в валюту актива
+                currency_id_for_op = 1  # По умолчанию рубли
                 
-                # Обновляем минимальную дату для денежных операций
-                if min_op_date is None or op_date_normalized < min_op_date:
-                    min_op_date = op_date_normalized
+                # Комиссии и налоги всегда остаются в рублях
+                if op_type_id in (7, 8):  # Commission, Tax
+                    currency_id_for_op = 1
+                    # Не конвертируем payment для комиссий и налогов
+                elif asset_id and asset_id in currency_assets_map:
+                    # Для Dividend и Coupon конвертируем в валюту актива
+                    quote_asset_id = currency_assets_map[asset_id]
+                    currency_id_for_op = quote_asset_id
+                    
+                    # Конвертируем payment в валюту актива
+                    tx_date_obj = parse_date(tx_date)
+                    if tx_date_obj:
+                        if isinstance(tx_date_obj, datetime):
+                            tx_date_obj = tx_date_obj.date()
+                        tx_date_str = tx_date_obj.isoformat()
+                        
+                        # Получаем курс валюты на дату операции
+                        currency_rate = None
+                        if quote_asset_id in currency_rates:
+                            rates_for_currency = currency_rates[quote_asset_id]
+                            for date_key in sorted(rates_for_currency.keys(), reverse=True):
+                                if date_key <= tx_date_str:
+                                    currency_rate = rates_for_currency[date_key]
+                                    break
+                        
+                        if currency_rate and currency_rate > 0:
+                            payment = round(payment / currency_rate, 2)
+                        else:
+                            logger.warning(
+                                f"Не найден курс валюты {quote_asset_id} на дату {tx_date_str} "
+                                f"для операции {tx_type}, asset_id={asset_id}. "
+                                f"Используется курс 1.0"
+                            )
 
                 new_ops.append({
                     "user_id": user_id,
                     "portfolio_id": portfolio_id,
                     "type": op_type_id,
                     "amount": payment,
-                    "currency": 1,   # рубли
+                    "currency": currency_id_for_op,  # Используем валюту актива, если операция связана с активом
                     "date": tx_date,
                     "asset_id": asset_id,
+                    "portfolio_asset_id": pa_id if asset_id else None,  # для Dividend/Coupon — нужен в apply_operations_batch
                     "transaction_id": None
                 })
 
-        # Вставляем только новые записи
-        if new_tx:
-            # Сортируем транзакции по дате перед вставкой, чтобы FIFO работал корректно
-            # Это важно для правильного расчета FIFO - транзакции должны обрабатываться в хронологическом порядке
-            # Используем глобальную функцию parse_date, которая уже импортирована
-            def get_tx_date(tx_item):
-                """Вспомогательная функция для получения даты транзакции для сортировки"""
-                tx_date = tx_item.get("transaction_date")
-                if isinstance(tx_date, str):
-                    return parse_date(tx_date) or datetime.min
-                elif isinstance(tx_date, datetime):
-                    return tx_date
-                else:
-                    return datetime.min
-            
-            new_tx_sorted = sorted(new_tx, key=get_tx_date)
-            
+        # Вставляем только новые записи: один вызов apply_operations_batch для всех операций
+        # (денежные операции + покупки/продажи/погашения как транзакции с созданием cash_operations)
+        if new_tx or new_ops:
+            def get_op_date(item):
+                """Дата операции/транзакции для сортировки."""
+                d = item.get("operation_date") or item.get("transaction_date") or item.get("date")
+                if isinstance(d, str):
+                    return parse_date(d) or datetime.min
+                if isinstance(d, datetime):
+                    return d
+                return datetime.min
+
+            operations_batch = []
+
+            # Транзакции Buy/Sell/Redemption как операции (apply_operations_batch создаст transactions и cash_operations)
+            for tx in new_tx:
+                tx_type_id = tx.get("transaction_type")
+                op_type_id = op_type_map.get("buy" if tx_type_id == 1 else ("sell" if tx_type_id == 2 else "redemption"))
+                if not op_type_id:
+                    continue
+                op_date_str = normalize_date_to_string(
+                    tx.get("transaction_date"), include_time=True
+                ) or ""
+                operations_batch.append({
+                    "user_id": str(tx["user_id"]),
+                    "portfolio_id": tx["portfolio_id"],
+                    "operation_type": op_type_id,
+                    "operation_date": op_date_str,
+                    "portfolio_asset_id": tx["portfolio_asset_id"],
+                    "quantity": float(tx["quantity"]),
+                    "price": float(tx["price"]),
+                    "payment": float(tx.get("payment") or 0),
+                    "amount": float(tx.get("payment") or 0),
+                    "currency_id": tx.get("currency_id"),  # валюта операции; если не указана, в SQL берётся из актива
+                })
+
+            # Денежные операции (Deposit, Withdraw, Dividend, Coupon, Commission, Tax)
+            for op in new_ops:
+                op_date_str = normalize_date_to_string(op["date"], include_time=True) or ""
+                operations_batch.append({
+                    "user_id": str(op["user_id"]),
+                    "portfolio_id": op["portfolio_id"],
+                    "operation_type": op["type"],
+                    "amount": float(op["amount"]),
+                    "currency_id": op.get("currency", 1),
+                    "operation_date": op_date_str,
+                    "asset_id": op.get("asset_id"),
+                    "portfolio_asset_id": op.get("portfolio_asset_id"),
+                })
+
+            operations_batch.sort(key=get_op_date)
+
             inserted_count = 0
             failed_count = 0
-            
-            # Используем батч-вставку через SQL функцию для ACID-совместимости
-            # Функция автоматически создает FIFO-лоты и обрабатывает продажи
-            if new_tx_sorted:
-                # Проверяем, что payment присутствует во всех транзакциях Buy/Sell/Redemption
-                tx_without_payment = [tx for tx in new_tx_sorted 
-                                     if tx.get('transaction_type') in (1, 2, 3) 
-                                     and tx.get('payment') is None]
-                
-                if tx_without_payment:
-                    logger.error(
-                        f"Найдено {len(tx_without_payment)} транзакций без payment из {len(new_tx_sorted)}. "
-                        f"Это приведет к использованию payment=0 в cash_operations."
-                    )
-            
             try:
-                # PostgreSQL автоматически преобразует Python dict/list в jsonb
-                # Передаем список транзакций напрямую
-                result = await rpc_async("apply_transactions_batch", {
-                    "p_transactions": new_tx_sorted
-                })
-                
-                if result:
-                    inserted_count = result.get("inserted_count", 0)
-                    failed_count = result.get("failed_count", 0)
-                    failed_tx = result.get("failed_transactions", [])
-                    tx_ids = result.get("transaction_ids", [])
-                    
-                    logger.debug(f"Результат apply_transactions_batch: inserted_count={inserted_count}, "
-                               f"failed_count={failed_count}, transaction_ids count={len(tx_ids) if tx_ids else 0}, "
-                               f"failed_transactions count={len(failed_tx)}")
-                    
-                    if failed_count > 0:
-                        logger.warning(f"Пропущено {failed_count} транзакций из {len(new_tx_sorted)} из-за ошибок")
-                        for failed in failed_tx:
-                            error_msg = failed.get("error", "Unknown error")
-                            tx_data = failed.get("transaction", {})
-                            tx_type = tx_data.get("transaction_type")
-                            tx_type_name = "Buy" if tx_type == 1 else ("Sell" if tx_type == 2 else "Redemption")
-                            
-                            if "Not enough quantity" in error_msg or "P0001" in error_msg:
-                                logger.warning(
-                                    f"Пропущена {tx_type_name} транзакция из-за недостаточного количества: "
-                                    f"portfolio_asset_id={tx_data.get('portfolio_asset_id')}, "
-                                    f"quantity={tx_data.get('quantity')}, "
-                                    f"price={tx_data.get('price')}, "
-                                    f"date={tx_data.get('transaction_date')}. Ошибка: {error_msg}"
-                                )
-                            elif "duplicate" in error_msg.lower() or "already exists" in error_msg.lower():
-                                logger.debug(
-                                    f"Пропущена {tx_type_name} транзакция как дубликат: "
-                                    f"portfolio_asset_id={tx_data.get('portfolio_asset_id')}, "
-                                    f"quantity={tx_data.get('quantity')}, "
-                                    f"price={tx_data.get('price')}, "
-                                    f"date={tx_data.get('transaction_date')}"
-                                )
-                            else:
-                                logger.error(
-                                    f"Ошибка при добавлении {tx_type_name} транзакции: {error_msg}, "
-                                    f"transaction: {tx_data}"
-                                )
-                else:
-                    logger.error("batch_insert_transactions_with_fifo вернула пустой результат")
-                    failed_count = len(new_tx_sorted)
-                    
-            except Exception as e:
-                logger.error(f"Ошибка при батч-вставке транзакций: {e}", exc_info=True)
-                failed_count = len(new_tx_sorted)
-            
-            if failed_count > 0:
-                logger.warning(f"Всего пропущено транзакций из-за ошибок: {failed_count} из {len(new_tx_sorted)}")
-
-        if new_ops:
-            try:
-                # Преобразуем данные для batch функции
-                operations_batch = []
-                for op in new_ops:
-                    # Преобразуем дату в строку ISO формата используя единую функцию
-                    op_date = op["date"]
-                    op_date_str = normalize_date_to_string(op_date, include_time=True) or ""
-                    
-                    op_data = {
-                        "user_id": str(op["user_id"]),  # UUID должен быть строкой
-                        "portfolio_id": op["portfolio_id"],
-                        "operation_type": op["type"],
-                        "amount": float(op["amount"]),
-                        "currency_id": op.get("currency", 1),
-                        "operation_date": op_date_str,
-                        "asset_id": op.get("asset_id")
-                    }
-                    operations_batch.append(op_data)
-                
-                # Используем batch функцию для создания всех операций за один раз
                 result = await rpc_async("apply_operations_batch", {
                     "p_operations": operations_batch
                 })
-                
                 if result:
                     inserted_count = result.get("inserted_count", 0)
                     failed_count = result.get("failed_count", 0)
-                    logger.debug(f"Денежные операции успешно добавлены: {inserted_count} из {len(new_ops)}, ошибок: {failed_count}")
+                    tx_ids = result.get("transaction_ids", []) or []
+                    failed_ops = result.get("failed_operations", []) or []
+                    logger.debug(
+                        f"apply_operations_batch: inserted={inserted_count}, failed={failed_count}, "
+                        f"transaction_ids={len(tx_ids)}"
+                    )
                     if failed_count > 0:
-                        logger.warning(f"Не удалось создать {failed_count} операций из {len(new_ops)}")
+                        logger.warning(
+                            f"Не удалось создать {failed_count} операций из {len(operations_batch)}"
+                        )
+                        for failed in failed_ops:
+                            err = failed.get("error", "Unknown error")
+                            op_data = failed.get("operation", {})
+                            if "portfolio_asset_id" in op_data and "quantity" in op_data:
+                                tx_type = op_data.get("operation_type")
+                                type_name = "Buy/Sell/Redemption" if tx_type else "операция"
+                                logger.warning(
+                                    f"Пропущена {type_name}: pa_id={op_data.get('portfolio_asset_id')}, "
+                                    f"date={op_data.get('operation_date')}, error={err}"
+                                )
+                            else:
+                                logger.warning(
+                                    f"Пропущена операция: type={op_data.get('operation_type')}, "
+                                    f"date={op_data.get('operation_date')}, error={err}"
+                                )
                 else:
                     logger.error("apply_operations_batch вернула пустой результат")
+                    failed_count = len(operations_batch)
             except Exception as e:
-                logger.error(f"Ошибка при добавлении денежных операций: {e}", exc_info=True)
+                logger.error(f"Ошибка при батч-вставке операций: {e}", exc_info=True)
+                failed_count = len(operations_batch)
 
         # --- 7. Проверяем, есть ли данные для вставки ---
         if not new_tx and not new_ops:
@@ -991,55 +1062,7 @@ async def import_broker_portfolio(
             await asyncio.gather(*[update_asset_with_semaphore(pa_id) for pa_id in affected_pa], return_exceptions=True)
 
         
-        # ==========================
-        # 5. Обновление истории портфеля с даты самой старой новой транзакции или операции
-        # ==========================
-        
-        # Определяем минимальную дату для обновления (из транзакций или операций)
-        min_date = None
-        if min_tx_date and min_op_date:
-            # Если есть и транзакции, и операции, берем самую раннюю дату
-            min_date = min_tx_date if min_tx_date < min_op_date else min_op_date
-        elif min_tx_date:
-            min_date = min_tx_date
-        elif min_op_date:
-            min_date = min_op_date
-        
-        # Если были добавлены транзакции или операции, обновляем историю портфеля
-        # Также обновляем, если был инкрементальный импорт (filter_from_date установлен)
-        if min_date or (filter_from_date and (len(new_tx) > 0 or len(new_ops) > 0)):
-            # Если min_date не установлена, но был инкрементальный импорт, используем filter_from_date
-            if not min_date and filter_from_date:
-                if isinstance(filter_from_date, datetime):
-                    min_date = filter_from_date
-                elif isinstance(filter_from_date, str):
-                    min_date = parse_date(filter_from_date) or filter_from_date
-                else:
-                    min_date = filter_from_date
-            
-            if min_date:
-                # Преобразуем дату в формат для SQL функции (YYYY-MM-DD) используя единую функцию
-                from_date_str = normalize_date_to_sql_date(min_date)
-                
-                # Обновляем позиции активов (portfolio_daily_positions)
-                try:
-                    await rpc_async("update_portfolio_positions_from_date", {
-                        "p_portfolio_id": portfolio_id,
-                        "p_from_date": from_date_str
-                    })
-                except Exception as e:
-                    logger.error(f'Ошибка обновления позиций активов: {e}', exc_info=True)
-                
-                # Обновляем значения портфеля (portfolio_daily_values)
-                try:
-                    await rpc_async("update_portfolio_values_from_date", {
-                        "p_portfolio_id": portfolio_id, 
-                        "p_from_date": from_date_str
-                    })
-                except Exception as e:
-                    logger.error(f'Ошибка обновления значений портфеля: {e}', exc_info=True)
-            else:
-                logger.warning(f"Не удалось определить дату для обновления портфеля {portfolio_id}")
+        # История портфеля (позиции и значения) уже обновлена внутри apply_operations_batch
 
         logger.info(f"Портфель '{portfolio_name}': добавлено {len(new_tx)} транзакций, {len(new_ops)} операций")
         

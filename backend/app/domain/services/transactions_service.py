@@ -4,7 +4,7 @@
 """
 from typing import Optional
 from datetime import datetime
-from app.infrastructure.database.postgres_service import rpc
+from app.infrastructure.database.postgres_service import rpc, table_select
 from app.utils.date import normalize_date_to_string, normalize_date_to_sql_date
 from app.core.logging import get_logger
 from app.infrastructure.database.repositories.transaction_repository import TransactionRepository
@@ -96,44 +96,53 @@ def create_transaction(
 ):
     """
     Единственный разрешённый способ создания транзакций.
-    Использует apply_transactions_batch для единообразия.
+    Использует apply_operations_batch (создаёт транзакции и cash_operations для Buy/Sell/Redemption).
     FIFO + realized_pnl считаются в БД.
     
     Args:
         create_deposit_operation: Если True и transaction_type=1 (Buy), создает операцию пополнения
     """
     from datetime import datetime
-    
-    # Нормализуем дату используя единую функцию
-    transaction_date_str = normalize_date_to_string(transaction_date, include_time=True) or ""
-    
 
-    # 1️⃣ Создаём транзакцию через batch функцию (с одним элементом)
-    tx_data = [{
+    transaction_date_str = normalize_date_to_string(transaction_date, include_time=True) or ""
+    payment = float(price * quantity)
+
+    # Тип операции по типу транзакции: Buy=1, Sell=2, Redemption=3
+    op_type_names = {1: "Buy", 2: "Sell", 3: "Redemption"}
+    op_name = op_type_names.get(transaction_type, "Buy")
+    op_types = table_select("operations_type", select="id, name") or []
+    op_type_map = {o["name"].lower(): o["id"] for o in op_types if o.get("name")}
+    operation_type_id = op_type_map.get(op_name.lower())
+    if not operation_type_id:
+        raise Exception(f"Тип операции '{op_name}' не найден в operations_type")
+
+    pa_data = _portfolio_asset_repository.get_by_id_sync(portfolio_asset_id)
+    if not pa_data:
+        raise Exception(f"Портфельный актив {portfolio_asset_id} не найден")
+    portfolio_id = pa_data.get("portfolio_id")
+
+    # 1️⃣ Создаём транзакцию через apply_operations_batch (одна операция Buy/Sell/Redemption)
+    op_payload = [{
         "user_id": str(user_id),
+        "portfolio_id": portfolio_id,
+        "operation_type": operation_type_id,
+        "operation_date": transaction_date_str,
         "portfolio_asset_id": portfolio_asset_id,
-        "transaction_type": transaction_type,
         "quantity": float(quantity),
         "price": float(price),
-        "transaction_date": transaction_date_str,
-        "payment": float(price * quantity)  # Добавляем payment для корректной обработки
+        "payment": payment,
+        "amount": payment,
     }]
-    
-    result = rpc("apply_transactions_batch", {"p_transactions": tx_data})
-    
+    result = rpc("apply_operations_batch", {"p_operations": op_payload})
+
     if not result or result.get("inserted_count", 0) == 0:
-        error_msg = result.get("failed_transactions", [])
-        if error_msg:
-            error_msg = error_msg[0].get("error", "Unknown error") if isinstance(error_msg, list) and len(error_msg) > 0 else str(error_msg)
-        else:
-            error_msg = "apply_transactions_batch failed"
+        failed = result.get("failed_operations", [])
+        error_msg = failed[0].get("error", "Unknown error") if failed else "apply_operations_batch failed"
         raise Exception(f"Ошибка создания транзакции: {error_msg}")
-    
-    # Получаем ID созданной транзакции
+
     tx_ids = result.get("transaction_ids", [])
     if not tx_ids or len(tx_ids) == 0:
         raise Exception("Транзакция не была создана")
-    
     tx_id = tx_ids[0]
 
     # 2️⃣ Цена актива (idempotent)
@@ -151,7 +160,7 @@ def create_transaction(
             logger.warning(f"Ошибка при обновлении последней цены актива {asset_id}: {e}", exc_info=True)
 
     # 3️⃣ Инкрементальные апдейты (БЕЗ глобальных refresh)
-    # Примечание: apply_transactions_batch уже обновляет историю, но update_portfolio_asset
+    # Примечание: apply_operations_batch уже обновляет историю, но update_portfolio_asset
     # обновляет агрегированные данные актива (quantity, average_price и т.д.)
     rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
     
@@ -166,12 +175,8 @@ def create_transaction(
     # 4️⃣ Создаем операцию пополнения, если запрошено (только для покупки)
     if create_deposit_operation and transaction_type == 1:
         from app.domain.services.operations_service import create_operation
-        
-        # Получаем portfolio_id из portfolio_asset_id
-        pa_data = _portfolio_asset_repository.get_by_id_sync(portfolio_asset_id)
-        
-        if pa_data:
-            portfolio_id = pa_data.get("portfolio_id")
+
+        if portfolio_id is not None:
             deposit_amount = float(quantity * price)
             
             try:

@@ -663,7 +663,15 @@ def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, u
             {"portfolio_id": target_portfolio_id},
             {"portfolio_asset_id": portfolio_asset_id}
         )
-        
+
+        # 6.1 Переносим cash_operations в целевой портфель:
+        # — по (portfolio_id, asset_id) — Dividend, Coupon и др.; по transaction_id — Buy/Sell/Redemption
+        table_update(
+            "cash_operations",
+            {"portfolio_id": target_portfolio_id},
+            {"portfolio_id": source_portfolio_id, "asset_id": asset_id}
+        )
+
         # 7️⃣ Пересчитываем позиции перемещенного актива с даты первой транзакции
         update_asset_pos_result = rpc("update_portfolio_asset_positions_from_date", {
             "p_portfolio_asset_id": portfolio_asset_id,
