@@ -275,8 +275,13 @@ def get_bond_currency(ticker: str, existing_asset=None, historical_bonds_currenc
             return currency
     
     # Проверяем исторические данные облигаций
+    # historical_bonds_currency может быть как словарем {ticker: "RUB"},
+    # так и {ticker: {"currency": "RUB", "coupon_percent": ..., "coupon_value": ...}}
     if historical_bonds_currency and ticker in historical_bonds_currency:
-        return historical_bonds_currency[ticker]
+        hist_val = historical_bonds_currency[ticker]
+        if isinstance(hist_val, dict):
+            return hist_val.get("currency")
+        return hist_val
     
     return None
 
@@ -330,10 +335,18 @@ async def fetch_all_bonds(session):
 
 async def fetch_active_bonds_currency(session):
     """
-    Получает валюту и номинал всех активных облигаций из эндпоинта активных инструментов.
+    Получает валюту, номинал и купонные параметры всех активных облигаций
+    из эндпоинта активных инструментов.
     
     Returns:
-        dict: {ticker: {"currency": ..., "face_value": ...}} для активных облигаций
+        dict: {
+            ticker: {
+                "currency": ...,
+                "face_value": ...,
+                "coupon_percent": ...,
+                "coupon_value": ...,
+            }
+        } для активных облигаций
     """
     print("   📥 Загрузка валют и номиналов активных облигаций...")
     
@@ -349,6 +362,8 @@ async def fetch_active_bonds_currency(session):
             i_CURRENCYID = get_column_index(cols, "CURRENCYID", "currencyid")
             i_FACEUNIT = get_column_index(cols, "FACEUNIT", "faceunit")
             i_FACEVALUE = get_column_index(cols, "FACEVALUE", "facevalue")
+            i_COUPONPERCENT = get_column_index(cols, "COUPONPERCENT", "couponpercent")
+            i_COUPONVALUE = get_column_index(cols, "COUPONVALUE", "couponvalue")
             
             if i_SECID is not None:
                 for row in rows:
@@ -380,26 +395,47 @@ async def fetch_active_bonds_currency(session):
                         except (ValueError, TypeError):
                             face_value = None
                     
-                    if currency or face_value:
+                    # Купонные параметры
+                    coupon_percent = None
+                    if i_COUPONPERCENT is not None and row[i_COUPONPERCENT] is not None:
+                        try:
+                            coupon_percent = float(row[i_COUPONPERCENT])
+                        except (ValueError, TypeError):
+                            coupon_percent = None
+                    
+                    coupon_value = None
+                    if i_COUPONVALUE is not None and row[i_COUPONVALUE] is not None:
+                        try:
+                            coupon_value = float(row[i_COUPONVALUE])
+                        except (ValueError, TypeError):
+                            coupon_value = None
+                    
+                    if currency or face_value is not None or coupon_percent is not None or coupon_value is not None:
                         active_data[ticker] = {
                             "currency": currency,
-                            "face_value": face_value
+                            "face_value": face_value,
+                            "coupon_percent": coupon_percent,
+                            "coupon_value": coupon_value,
                         }
     
     print(f"   ✅ Загружено данных для {len(active_data)} активных облигаций")
     return active_data
 
 
-async def fetch_bond_currency_single(session, ticker: str) -> Optional[str]:
+async def fetch_bond_currency_single(session, ticker: str) -> Optional[dict]:
     """
-    Получает валюту одной облигации из исторического эндпоинта.
+    Получает валюту и купонные параметры одной облигации из исторического эндпоинта.
     
     Args:
         session: HTTP сессия
         ticker: Тикер облигации
         
     Returns:
-        Код валюты (RUB, USD, EUR и т.д.) или None
+        dict c полями:
+            - currency: Код валюты (RUB, USD, EUR и т.д.)
+            - coupon_percent: Ставка купона (float) или None
+            - coupon_value: Размер купона (float) или None
+        или None, если данные не найдены
     """
     url = f"{BONDS_HISTORY_TICKER_ENDPOINT}/{ticker}.json"
     js = await fetch_json(session, url, max_attempts=2)
@@ -415,6 +451,8 @@ async def fetch_bond_currency_single(session, ticker: str) -> Optional[str]:
     
     i_CURRENCYID = get_column_index(cols, "CURRENCYID", "currencyid")
     i_FACEUNIT = get_column_index(cols, "FACEUNIT", "faceunit")
+    i_COUPONPERCENT = get_column_index(cols, "COUPONPERCENT", "couponpercent")
+    i_COUPONVALUE = get_column_index(cols, "COUPONVALUE", "couponvalue")
     
     # Берем последнюю запись (самую свежую)
     row = rows[-1]
@@ -432,14 +470,35 @@ async def fetch_bond_currency_single(session, ticker: str) -> Optional[str]:
             currency = "RUB"
         elif len(currency) > 3:
             currency = currency[:3]
-        return currency
     
-    return None
+    # Купонные параметры
+    coupon_percent = None
+    if i_COUPONPERCENT is not None and row[i_COUPONPERCENT] is not None:
+        try:
+            coupon_percent = float(row[i_COUPONPERCENT])
+        except (ValueError, TypeError):
+            coupon_percent = None
+    
+    coupon_value = None
+    if i_COUPONVALUE is not None and row[i_COUPONVALUE] is not None:
+        try:
+            coupon_value = float(row[i_COUPONVALUE])
+        except (ValueError, TypeError):
+            coupon_value = None
+    
+    if not currency and coupon_percent is None and coupon_value is None:
+        return None
+    
+    return {
+        "currency": currency,
+        "coupon_percent": coupon_percent,
+        "coupon_value": coupon_value,
+    }
 
 
 async def fetch_inactive_bonds_currency_batch(session, tickers: list, batch_size: int = 20) -> dict:
     """
-    Получает валюту завершенных облигаций батчами для оптимизации.
+    Получает валюту и купонные параметры завершенных облигаций батчами для оптимизации.
     
     Args:
         session: HTTP сессия
@@ -447,14 +506,20 @@ async def fetch_inactive_bonds_currency_batch(session, tickers: list, batch_size
         batch_size: Размер батча для параллельных запросов
         
     Returns:
-        dict: {ticker: currency} для завершенных облигаций
+        dict: {
+            ticker: {
+                "currency": ...,
+                "coupon_percent": ...,
+                "coupon_value": ...,
+            }
+        } для завершенных облигаций
     """
     if not tickers:
         return {}
     
     print(f"   📥 Загрузка валют для {len(tickers)} завершенных облигаций (батчами по {batch_size})...")
     
-    inactive_currency = {}
+    inactive_data = {}
     
     # Обрабатываем батчами
     for i in range(0, len(tickers), batch_size):
@@ -465,20 +530,20 @@ async def fetch_inactive_bonds_currency_batch(session, tickers: list, batch_size
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Обрабатываем результаты
-        for ticker, currency in zip(batch, results):
-            if isinstance(currency, Exception):
-                logger.debug(f"Ошибка при получении валюты для {ticker}: {currency}")
+        for ticker, data in zip(batch, results):
+            if isinstance(data, Exception):
+                logger.debug(f"Ошибка при получении данных для {ticker}: {data}")
                 continue
             
-            if currency:
-                inactive_currency[ticker] = currency
+            if data:
+                inactive_data[ticker] = data
         
         # Небольшая задержка между батчами
         if i + batch_size < len(tickers):
             await asyncio.sleep(0.2)
     
-    print(f"   ✅ Загружено валют для {len(inactive_currency)} завершенных облигаций")
-    return inactive_currency
+    print(f"   ✅ Загружено данных для {len(inactive_data)} завершенных облигаций")
+    return inactive_data
 
 
 
@@ -519,7 +584,7 @@ async def process_shares(session, existing_assets, type_map, currency_map):
                                  "shares", existing_assets, type_map, currency_map, None, None)
 
 
-async def process_bonds(all_rows, all_cols, existing_assets, type_map, currency_map, bonds_currency, active_bonds_data=None):
+async def process_bonds(all_rows, all_cols, existing_assets, type_map, currency_map, bonds_currency, active_bonds_data=None, historical_bonds_data=None):
     """Обрабатывает облигации.
     
     Args:
@@ -529,7 +594,8 @@ async def process_bonds(all_rows, all_cols, existing_assets, type_map, currency_
         type_map: Словарь соответствия типов активов
         currency_map: Словарь валют {ticker: asset_id}
         bonds_currency: Словарь валют облигаций {ticker: currency}
-        active_bonds_data: Словарь данных активных облигаций {ticker: {"currency": ..., "face_value": ...}}
+        active_bonds_data: Словарь данных активных облигаций {ticker: {"currency": ..., "face_value": ..., "coupon_percent": ..., "coupon_value": ...}}
+        historical_bonds_data: Словарь данных завершенных облигаций {ticker: {"currency": ..., "coupon_percent": ..., "coupon_value": ...}}
     
     Returns:
         tuple: (inserted, updated) - количество добавленных и обновленных активов
@@ -556,10 +622,22 @@ async def process_bonds(all_rows, all_cols, existing_assets, type_map, currency_
     # Для облигаций используем primary_boardid или marketprice_boardid
     i_BOARDID = i_PRIMARY_BOARDID if i_PRIMARY_BOARDID is not None else i_MARKETPRICE_BOARDID
     
-    return await _process_assets(all_rows, all_cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, 
-                                 i_BOARDID,
-                                 "bonds", existing_assets, type_map, currency_map, 
-                                 None, bonds_currency, active_bonds_data)
+    return await _process_assets(
+        all_rows,
+        all_cols,
+        i_SECID,
+        i_SHORTNAME,
+        i_NAME,
+        i_ISIN,
+        i_BOARDID,
+        "bonds",
+        existing_assets,
+        type_map,
+        currency_map,
+        historical_bonds_data,
+        bonds_currency,
+        active_bonds_data,
+    )
 
 
 async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BOARDID,
@@ -660,7 +738,7 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
         if isin:
             props["isin"] = isin
         
-        # Для облигаций добавляем board_id, получаем валюту и номинал
+        # Для облигаций добавляем board_id, получаем валюту, номинал и купонные параметры
         if actual_type_name == "Облигация":
             if board_id:
                 props["board_id"] = board_id
@@ -685,6 +763,32 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
             # Сохраняем номинал в properties, если он найден
             if face_value is not None:
                 props["face_value"] = face_value
+            
+            # Купонные параметры: сначала берем из активных/исторических данных, затем из существующих props
+            coupon_percent = None
+            coupon_value = None
+            
+            if active_bonds_data and ticker in active_bonds_data:
+                bond_data = active_bonds_data[ticker]
+                coupon_percent = bond_data.get("coupon_percent", None)
+                coupon_value = bond_data.get("coupon_value", None)
+            elif historical_bonds_data and ticker in historical_bonds_data:
+                bond_data = historical_bonds_data[ticker]
+                coupon_percent = bond_data.get("coupon_percent", None)
+                coupon_value = bond_data.get("coupon_value", None)
+            
+            # Если в предзагруженных данных купон не найден, пробуем взять из существующих properties
+            if existing_bond and (coupon_percent is None or coupon_value is None):
+                existing_props = parse_json_properties(existing_bond.get("properties"))
+                if coupon_percent is None:
+                    coupon_percent = existing_props.get("coupon_percent")
+                if coupon_value is None:
+                    coupon_value = existing_props.get("coupon_value")
+            
+            if coupon_percent is not None:
+                props["coupon_percent"] = coupon_percent
+            if coupon_value is not None:
+                props["coupon_value"] = coupon_value
         
         # Нормализуем properties (удаляем лишние поля)
         props = normalize_properties(props, actual_type_name)
@@ -975,11 +1079,15 @@ async def import_moex_assets_async():
         # Получаем все облигации через пагинированный эндпоинт
         bonds_rows, bonds_cols = await fetch_all_bonds(session)
         
-        # Получаем валюту и номинал активных облигаций (разом все)
+        # Получаем валюту, номинал и купонные параметры активных облигаций (разом все)
         active_bonds_data = await fetch_active_bonds_currency(session)
         
         # Извлекаем только валюты для совместимости с существующим кодом
-        active_bonds_currency = {ticker: data.get("currency") for ticker, data in active_bonds_data.items() if data.get("currency")}
+        active_bonds_currency = {
+            ticker: data.get("currency")
+            for ticker, data in active_bonds_data.items()
+            if data.get("currency")
+        }
         
         # Определяем завершенные облигации (те, которых нет в активных)
         if bonds_rows and bonds_cols:
@@ -993,14 +1101,23 @@ async def import_moex_assets_async():
                 
                 inactive_tickers = list(all_tickers - set(active_bonds_data.keys()))
                 
-                # Получаем валюту завершенных облигаций батчами
-                inactive_bonds_currency = await fetch_inactive_bonds_currency_batch(session, inactive_tickers)
+                # Получаем данные по завершенным облигациям (валюта + купонные параметры) батчами
+                inactive_bonds_data = await fetch_inactive_bonds_currency_batch(session, inactive_tickers)
+                
+                # Получаем словарь валют завершенных облигаций для совместимости с существующим кодом
+                inactive_bonds_currency = {
+                    ticker: data.get("currency")
+                    for ticker, data in inactive_bonds_data.items()
+                    if data.get("currency")
+                }
                 
                 # Объединяем валюты активных и завершенных облигаций
                 bonds_currency = {**active_bonds_currency, **inactive_bonds_currency}
             else:
+                inactive_bonds_data = {}
                 bonds_currency = active_bonds_currency
         else:
+            inactive_bonds_data = {}
             bonds_currency = active_bonds_currency
         
         print(f"   ✅ Всего загружено валют для {len(bonds_currency)} облигаций")
@@ -1030,7 +1147,16 @@ async def import_moex_assets_async():
         # Обрабатываем акции и облигации параллельно
         results = await asyncio.gather(
             process_shares(session, existing_assets, type_map, currency_map),
-            process_bonds(bonds_rows, bonds_cols, existing_assets, type_map, currency_map, bonds_currency, active_bonds_data)
+            process_bonds(
+                bonds_rows,
+                bonds_cols,
+                existing_assets,
+                type_map,
+                currency_map,
+                bonds_currency,
+                active_bonds_data,
+                inactive_bonds_data,
+            ),
         )
 
     # Этап 5: Итоги
