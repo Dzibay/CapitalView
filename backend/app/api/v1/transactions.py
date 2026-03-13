@@ -100,19 +100,21 @@ async def update_transaction_route(
     quantity: Optional[float] = Body(None),
     price: Optional[float] = Body(None),
     transaction_date: Optional[str] = Body(None),
+    update_related_deposit: bool = Body(False),
+    related_deposit_operation_id: Optional[int] = Body(None),
+    related_deposit_amount: Optional[float] = Body(None),
+    related_deposit_date: Optional[str] = Body(None),
     user: dict = Depends(get_current_user)
 ):
-    """Обновление транзакции."""
+    """Обновление транзакции (и опционально связанной операции пополнения) через update_operations_batch."""
     if not transaction_id:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="transaction_id is required"
         )
     
-    # Проверяем доступ к транзакции
     check_transaction_access(transaction_id, user["id"])
     
-    # Если меняется portfolio_asset_id, проверяем доступ к новому активу
     if portfolio_asset_id:
         check_portfolio_asset_access(portfolio_asset_id, user["id"])
 
@@ -125,6 +127,10 @@ async def update_transaction_route(
         quantity=quantity,
         price=price,
         transaction_date=transaction_date,
+        update_related_deposit=update_related_deposit,
+        related_deposit_operation_id=related_deposit_operation_id,
+        related_deposit_amount=related_deposit_amount,
+        related_deposit_date=related_deposit_date,
     )
 
     return success_response(

@@ -30,5 +30,13 @@ export default {
       data: { ids: operation_ids }
     });
     return res.data;
+  },
+
+  async updateOperation(operation_id, { operation_date, amount }) {
+    const payload = {};
+    if (operation_date != null) payload.operation_date = operation_date;
+    if (amount != null) payload.amount = amount;
+    const res = await apiClient.patch(API_ENDPOINTS.OPERATIONS.UPDATE(operation_id), payload);
+    return res.data;
   }
 };

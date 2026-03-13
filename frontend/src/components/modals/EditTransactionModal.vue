@@ -56,6 +56,84 @@ const assetCurrencyTicker = computed(() => {
 })
 const assetCurrencySymbol = computed(() => getCurrencySymbol(assetCurrencyTicker.value))
 
+// Только для покупки: ищем связанную операцию пополнения и предлагаем её обновить
+const isBuy = computed(() => {
+  const t = props.transaction?.transaction_type ?? editedTx.value?.transaction_type
+  return t === 1 || t === '1' || (typeof t === 'string' && (t === 'Покупка' || t.toLowerCase().includes('buy')))
+})
+const originalAmount = computed(() => {
+  const q = props.transaction?.quantity ?? 0
+  const p = props.transaction?.price ?? 0
+  return Number(q) * Number(p)
+})
+const originalDateDay = computed(() => {
+  const d = props.transaction?.transaction_date
+  if (!d) return ''
+  const s = normalizeDateToString(d)
+  return s ? s.slice(0, 10) : ''
+})
+const newAmount = computed(() => {
+  const q = editedTx.value?.quantity ?? 0
+  const p = editedTx.value?.price ?? 0
+  return Number(q) * Number(p)
+})
+const newDateDay = computed(() => {
+  const d = editedTx.value?.transaction_date
+  if (!d) return ''
+  const s = normalizeDateToString(d)
+  return s ? s.slice(0, 10) : ''
+})
+const hasRelevantChanges = computed(() => {
+  return Math.abs(originalAmount.value - newAmount.value) > 1e-6 || originalDateDay.value !== newDateDay.value
+})
+// Тип операции пополнения: в API может быть type (число) или operation_type (число/строка)
+const isDepositOperation = (op) => {
+  const t = op.type ?? op.operation_type
+  if (t === 5 || t === '5') return true
+  if (typeof t === 'string' && (t.toLowerCase().includes('пополнение') || t.toLowerCase().includes('deposit') || t.toLowerCase().includes('депозит'))) return true
+  return false
+}
+// Нормализация даты операции к YYYY-MM-DD для сравнения
+const opDateDay = (op) => {
+  const d = op.operation_date ?? op.date
+  if (!d) return ''
+  const s = normalizeDateToString(d)
+  return s ? s.slice(0, 10) : ''
+}
+const relatedDeposit = computed(() => {
+  if (!isBuy.value) return null
+  const tx = props.transaction
+  const paId = tx?.portfolio_asset_id
+  const assetId = tx?.asset_id
+  const portfolioId = tx?.portfolio_id
+  if (!paId && !assetId) return null
+  const ops = dashboardStore.operations || []
+  const origAmt = originalAmount.value
+  const origDay = originalDateDay.value
+  for (const op of ops) {
+    if (!isDepositOperation(op)) continue
+    if (paId != null) {
+      const opPaId = op.portfolio_asset_id
+      if (opPaId != null && opPaId !== paId) continue
+    }
+    if (assetId != null) {
+      const opAssetId = op.asset_id
+      if (opAssetId != null && opAssetId !== assetId) continue
+    }
+    if (portfolioId != null && op.portfolio_id != null && op.portfolio_id !== portfolioId) continue
+    const opDay = opDateDay(op)
+    if (opDay !== origDay) continue
+    const opAmt = Number(op.amount ?? op.amount_rub ?? 0)
+    if (Math.abs(opAmt - origAmt) > 0.01) continue
+    const opId = op.id ?? op.cash_operation_id ?? op.operation_id
+    if (!opId) continue
+    return { id: opId, operation_date: editedTx.value?.transaction_date || op.operation_date || op.date, amount: newAmount.value }
+  }
+  return null
+})
+const showUpdateDepositOption = computed(() => isBuy.value && hasRelevantChanges.value && relatedDeposit.value != null)
+const updateRelatedDeposit = ref(true)
+
 watch(
   () => props.transaction,
   async (newTx) => {
@@ -106,17 +184,25 @@ async function loadPriceHistoryForDateRestriction(originalDate = null) {
   try {
     isLoadingHistory.value = true
     
-    const priceHistoryResponse = await assetsService.getAssetPriceHistory(
-      assetId,
-      null,
-      null,
-      10000
-    )
+    // Используем кеш, если история уже загружена, чтобы не делать повторный запрос
+    let prices = priceHistoryCache.value
+    if (!prices || prices.length === 0) {
+      const priceHistoryResponse = await assetsService.getAssetPriceHistory(
+        assetId,
+        null,
+        null,
+        10000
+      )
+      if (priceHistoryResponse.success && priceHistoryResponse.prices && priceHistoryResponse.prices.length > 0) {
+        prices = priceHistoryResponse.prices
+        priceHistoryCache.value = prices
+      } else {
+        prices = []
+      }
+    }
     
-    if (priceHistoryResponse.success && priceHistoryResponse.prices && priceHistoryResponse.prices.length > 0) {
-      priceHistoryCache.value = priceHistoryResponse.prices
-      
-      const sortedPrices = [...priceHistoryResponse.prices].sort((a, b) => {
+    if (prices && prices.length > 0) {
+      const sortedPrices = [...prices].sort((a, b) => {
         const dateA = new Date(a.trade_date)
         const dateB = new Date(b.trade_date)
         return dateA - dateB
@@ -292,27 +378,8 @@ watch(() => editedTx.value.price, (newPrice, oldPrice) => {
   }
 })
 
-// Загрузка при монтировании и при открытии модалки
-onMounted(async () => {
-  if (isSystemAsset.value && props.transaction?.asset_id) {
-    const originalDate = props.transaction?.transaction_date
-    await loadPriceHistoryForDateRestriction(originalDate)
-    if (useMarketPrice.value && editedTx.value.transaction_date) {
-      await loadMarketPrice(true)
-    }
-  }
-})
-
-// Загрузка истории цен при открытии модалки
-watch(() => props.visible, async (isVisible) => {
-  if (isVisible && isSystemAsset.value && props.transaction?.asset_id) {
-    const originalDate = props.transaction?.transaction_date
-    await loadPriceHistoryForDateRestriction(originalDate)
-    if (useMarketPrice.value && editedTx.value.transaction_date) {
-      await loadMarketPrice(true)
-    }
-  }
-}, { immediate: true })
+// История цен и рыночная цена загружаются через watch(props.transaction, { immediate: true })
+// Дополнительные вызовы при монтировании и открытии модалки не нужны и приводят к дублированию запросов
 
 const error = ref('')
 
@@ -341,8 +408,17 @@ const handleSave = () => {
     error.value = 'Выберите дату транзакции'
     return
   }
-  
-  emit('save', editedTx.value)
+
+  const payload = { ...editedTx.value }
+  if (showUpdateDepositOption.value && relatedDeposit.value) {
+    payload.updateRelatedDeposit = updateRelatedDeposit.value
+    payload.relatedDepositOperation = updateRelatedDeposit.value ? {
+      id: relatedDeposit.value.id,
+      operation_date: relatedDeposit.value.operation_date,
+      amount: relatedDeposit.value.amount
+    } : null
+  }
+  emit('save', payload)
   emit('close')
 }
 </script>
@@ -366,20 +442,7 @@ const handleSave = () => {
             <RefreshCw :size="16" class="label-icon" />
             Тип транзакции
           </label>
-          <CustomSelect
-            v-model="editedTx.transaction_type"
-            :options="[
-              { value: 'Покупка', label: 'Покупка' },
-              { value: 'Продажа', label: 'Продажа' },
-              { value: 'Погашение', label: 'Погашение' }
-            ]"
-            placeholder="Выберите тип"
-            :show-empty-option="false"
-            option-label="label"
-            option-value="value"
-            :min-width="'100%'"
-            :flex="'none'"
-          />
+          <div class="readonly-value">{{ editedTx.transaction_type }}</div>
         </div>
 
         <div class="form-section">
@@ -451,6 +514,19 @@ const handleSave = () => {
             />
             <small v-if="minDate" class="form-hint" style="margin-top: 4px;">
               Первая доступная дата: {{ minDate }}
+            </small>
+          </div>
+          <!-- Предложение обновить связанную операцию пополнения при изменении даты или суммы -->
+          <div v-if="showUpdateDepositOption" class="toggle-wrapper" style="margin-top: 16px;">
+            <ToggleSwitch v-model="updateRelatedDeposit" />
+            <span class="toggle-label-text">
+              Обновить связанную операцию пополнения
+              <template v-if="relatedDeposit">
+                (дата: {{ newDateDay }}, сумма: {{ newAmount.toFixed(2) }} {{ assetCurrencySymbol }})
+              </template>
+            </span>
+            <small class="form-hint block" style="margin-top: 6px;">
+              Найдена операция пополнения с той же суммой и датой; при сохранении у неё обновятся дата и сумма в соответствии с транзакцией.
             </small>
           </div>
         </div>
@@ -528,6 +604,15 @@ const handleSave = () => {
 .label-icon {
   color: #6b7280;
   flex-shrink: 0;
+}
+
+.readonly-value {
+  padding: 9px 12px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 14px;
+  background: #f9fafb;
+  color: #6b7280;
 }
 
 .form-input {

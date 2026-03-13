@@ -333,6 +333,63 @@ def create_operations_batch(
     }
 
 
+def update_operations_batch(updates: List[dict]) -> dict:
+    """
+    Батчевое обновление операций (дата/сумма/quantity/price). В SQL пересчитываются
+    fifo_lots, portfolio_assets, portfolio_daily_positions, portfolio_daily_values
+    и синхронизируются связанные транзакции.
+    updates: список dict с ключами operation_id (обязательно),
+             date, amount, quantity, price (опционально).
+    """
+    if not updates:
+        return {"success": True, "updated_count": 0}
+    payload = []
+    for u in updates:
+        op_id = u.get("operation_id")
+        if op_id is None:
+            continue
+        item = {"operation_id": int(op_id)}
+        if u.get("date") is not None:
+            item["date"] = normalize_date_to_string(u["date"], include_time=True) or u.get("date")
+        if u.get("amount") is not None:
+            item["amount"] = float(u["amount"])
+        if u.get("quantity") is not None:
+            item["quantity"] = float(u["quantity"])
+        if u.get("price") is not None:
+            item["price"] = float(u["price"])
+        if len(item) > 1:
+            payload.append(item)
+    if not payload:
+        return {"success": True, "updated_count": 0}
+    result = rpc("update_operations_batch", {"p_updates": payload})
+    if not result or result.get("success") is False:
+        error_msg = result.get("error", "Неизвестная ошибка") if result else "Ошибка при обновлении операций"
+        raise Exception(f"Ошибка при batch обновлении операций: {error_msg}")
+    return result
+
+
+def update_operation(
+    operation_id: int,
+    *,
+    operation_date: Optional[str] = None,
+    amount: Optional[float] = None,
+) -> dict:
+    """
+    Обновляет одну операцию (дату и/или сумму). Вызывает update_operations_batch
+    с пересчётом fifo_lots, portfolio_assets, portfolio_daily_positions, portfolio_daily_values.
+    """
+    if operation_date is None and amount is None:
+        return {"success": True, "updated": False}
+    payload = {"operation_id": operation_id}
+    if operation_date is not None:
+        payload["date"] = normalize_date_to_string(operation_date, include_time=True) or operation_date
+    if amount is not None:
+        payload["amount"] = float(amount)
+    result = update_operations_batch([payload])
+    updated = result.get("updated_count", 0) > 0
+    return {"success": True, "updated": updated}
+
+
 def delete_operations_batch(operation_ids: list[int]):
     """
     Удаляет несколько операций батчем и пересчитывает историю портфелей.

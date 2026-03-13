@@ -15,7 +15,8 @@ RETURNS TABLE (
     price numeric(20,6),
     quantity numeric(20,6),
     transaction_date timestamp without time zone,
-    realized_pnl numeric(20,6)
+    realized_pnl numeric(20,6),
+    cash_operation_id bigint
 )
 LANGUAGE plpgsql
 AS $$
@@ -39,7 +40,15 @@ BEGIN
         t.price::numeric(20,6) AS price,
         t.quantity::numeric(20,6) AS quantity,
         t.transaction_date,
-        COALESCE(t.realized_pnl, 0)::numeric(20,6) AS realized_pnl
+        COALESCE(t.realized_pnl, 0)::numeric(20,6) AS realized_pnl,
+        -- Связанная денежная операция (cash_operation), если есть
+        (
+            SELECT co.id
+            FROM cash_operations co
+            WHERE co.transaction_id = t.id
+            ORDER BY co.date DESC
+            LIMIT 1
+        ) AS cash_operation_id
     FROM transactions t
     JOIN portfolio_assets pa 
         ON pa.id = t.portfolio_asset_id
@@ -53,5 +62,3 @@ BEGIN
     LIMIT p_limit;
 END;
 $$;
-
-COMMENT ON FUNCTION get_user_transactions(uuid, integer) IS 'Возвращает транзакции пользователя с информацией об активах, портфелях и типах транзакций';

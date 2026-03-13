@@ -68,15 +68,8 @@ export const useTransactionsStore = defineStore('transactions', {
     },
 
     async editTransaction(updated_transaction) {
-      const dashboardStore = useDashboardStore()
-      
       try {
         await transactionsService.editTransaction(updated_transaction)
-        dashboardStore.reloadDashboard(false).catch(err => {
-          if (import.meta.env.VITE_APP_DEV) {
-            console.error('Ошибка обновления dashboard после редактирования транзакции:', err)
-          }
-        })
       } catch (err) {
         if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка редактирования транзакции:', err)

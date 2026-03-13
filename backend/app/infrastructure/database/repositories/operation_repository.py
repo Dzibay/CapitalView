@@ -92,6 +92,19 @@ class OperationRepository(BaseRepository):
         )
         return result or []
 
+    def get_by_transaction_id_sync(self, transaction_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Возвращает первую денежную операцию, связанную с указанной транзакцией.
+        Используется при обновлении транзакции, чтобы найти связанную cash_operation.
+        """
+        result = table_select(
+            "cash_operations",
+            select="*",
+            filters={"transaction_id": transaction_id},
+            order={"column": "date", "desc": True},
+        )
+        return result[0] if result else None
+
     async def get_by_portfolio_async(
         self, portfolio_id: int, select_fields: str = "*",
     ) -> List[Dict[str, Any]]:

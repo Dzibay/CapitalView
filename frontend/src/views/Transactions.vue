@@ -11,7 +11,6 @@ import PageLayout from '../components/PageLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
-
 // Используем stores вместо inject
 const dashboardStore = useDashboardStore()
 const transactionsStore = useTransactionsStore()
@@ -545,7 +544,6 @@ const handleSaveEdit = async (newTx) => {
     return
   }
   
-  // Преобразуем данные для API
   const txData = {
     transaction_id: newTx.transaction_id || newTx.id || originalTx.transaction_id || originalTx.id,
     portfolio_asset_id: newTx.portfolio_asset_id || originalTx.portfolio_asset_id,
@@ -556,18 +554,29 @@ const handleSaveEdit = async (newTx) => {
       : (newTx.transaction_type || 1),
     quantity: parseFloat(newTx.quantity) || 0,
     price: parseFloat(newTx.price) || 0,
-    transaction_date: newTx.transaction_date || originalTx.transaction_date
+    transaction_date: newTx.transaction_date || originalTx.transaction_date,
+    update_related_deposit: !!(newTx.updateRelatedDeposit && newTx.relatedDepositOperation?.id),
+    related_deposit_operation_id: newTx.updateRelatedDeposit ? (newTx.relatedDepositOperation?.id ?? null) : null,
+    related_deposit_amount: newTx.updateRelatedDeposit ? (newTx.relatedDepositOperation?.amount ?? null) : null,
+    related_deposit_date: newTx.updateRelatedDeposit
+      ? (newTx.relatedDepositOperation?.operation_date
+          ? normalizeDateToString(newTx.relatedDepositOperation.operation_date)
+          : null)
+      : null,
   }
   
-  // Нормализуем дату в формат YYYY-MM-DD
   if (txData.transaction_date) {
     const normalizedDate = normalizeDateToString(txData.transaction_date)
     if (normalizedDate) {
       txData.transaction_date = normalizedDate
     }
   }
-  
+
   await editTransaction(txData)
+
+  await dashboardStore.reloadDashboard(false)
+  await dashboardStore.fetchTransactionsAndOperationsInBackground()
+
   showEditModal.value = false
 }
 

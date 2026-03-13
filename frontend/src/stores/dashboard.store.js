@@ -102,10 +102,11 @@ export const useDashboardStore = defineStore('dashboard', {
 
     /**
      * Загружает полные списки транзакций и операций в фоне (не блокирует UI).
-     * Вызывается после успешной загрузки дашборда.
+     * Списки всегда заменяются актуальными данными с сервера (избегаем дубликатов после редактирования).
+     * @returns {Promise<void>} — можно await для ожидания завершения загрузки
      */
     fetchTransactionsAndOperationsInBackground() {
-      Promise.all([
+      return Promise.all([
         transactionsService.getTransactions({ limit: 2000 }).catch(err => {
           if (import.meta.env.VITE_APP_DEV) console.error('Фоновая загрузка транзакций:', err)
           return null
@@ -127,7 +128,7 @@ export const useDashboardStore = defineStore('dashboard', {
         }
         if (opResponse != null) {
           const list = opResponse?.operations || opResponse || []
-          this.addOperations(list)
+          this.addOperations(list, true)
         }
       })
     },
@@ -243,35 +244,28 @@ export const useDashboardStore = defineStore('dashboard', {
       }
     },
 
-    // Добавление операций
-    addOperations(operationsArray) {
-      if (Array.isArray(operationsArray)) {
-        // Если операции еще не загружены, заменяем массив
-        // Если уже загружены, добавляем к существующим, избегая дубликатов
-        if (this.operationsLoaded && this.operations.length > 0) {
-          const existingIds = new Set(this.operations.map(op => op.id || op.cash_operation_id || op.operation_id))
-          const newOperations = operationsArray.filter(op => !existingIds.has(op.id || op.cash_operation_id || op.operation_id))
-          if (newOperations.length > 0) {
-            // Объединяем операции и сортируем по дате (от новых к старым, как приходит с сервера)
-            this.operations = [
-              ...this.operations,
-              ...newOperations
-            ].sort((a, b) => {
-              const dateA = new Date(a.operation_date || a.date || 0).getTime()
-              const dateB = new Date(b.operation_date || b.date || 0).getTime()
-              return dateB - dateA // DESC: новые операции сверху
-            })
-          }
-        } else {
-          // При первой загрузке операции уже отсортированы с сервера, но на всякий случай сортируем
-          this.operations = operationsArray.sort((a, b) => {
+    // Добавление операций. replace=true — полная замена списка (после редактирования).
+    addOperations(operationsArray, replace = false) {
+      if (!Array.isArray(operationsArray)) return
+      const sorted = [...operationsArray].sort((a, b) => {
+        const dateA = new Date(a.operation_date || a.date || 0).getTime()
+        const dateB = new Date(b.operation_date || b.date || 0).getTime()
+        return dateB - dateA // DESC: новые операции сверху
+      })
+      if (replace || !this.operationsLoaded || this.operations.length === 0) {
+        this.operations = sorted
+      } else {
+        const existingIds = new Set(this.operations.map(op => op.id || op.cash_operation_id || op.operation_id))
+        const newOperations = sorted.filter(op => !existingIds.has(op.id || op.cash_operation_id || op.operation_id))
+        if (newOperations.length > 0) {
+          this.operations = [...this.operations, ...newOperations].sort((a, b) => {
             const dateA = new Date(a.operation_date || a.date || 0).getTime()
             const dateB = new Date(b.operation_date || b.date || 0).getTime()
-            return dateB - dateA // DESC: новые операции сверху
+            return dateB - dateA
           })
         }
-        this.operationsLoaded = true
       }
+      this.operationsLoaded = true
     },
 
     // Удаление транзакций из кэша

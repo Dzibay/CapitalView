@@ -625,7 +625,7 @@ BEGIN
         END;
     END LOOP;
 
-    -- ========== Обновление позиций и истории портфелей (один проход по каждому pa_id и portfolio_id с min датой) ==========
+    -- ========== Обновление portfolio_assets, позиций и истории портфелей ==========
     FOR v_portfolio_asset_id, v_min_date IN
         SELECT pa_id, (MIN(d) - INTERVAL '1 day')::date
         FROM (
@@ -641,9 +641,10 @@ BEGIN
         GROUP BY pa_id
     LOOP
         BEGIN
+            PERFORM update_portfolio_asset(v_portfolio_asset_id);
             PERFORM update_portfolio_asset_positions_from_date(v_portfolio_asset_id, v_min_date);
         EXCEPTION WHEN OTHERS THEN
-            RAISE WARNING 'Ошибка при обновлении позиций актива %: %', v_portfolio_asset_id, SQLERRM;
+            RAISE WARNING 'Ошибка при обновлении актива/позиций %: %', v_portfolio_asset_id, SQLERRM;
         END;
     END LOOP;
 

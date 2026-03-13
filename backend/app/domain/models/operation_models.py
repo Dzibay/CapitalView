@@ -3,7 +3,7 @@ Pydantic модели для операций по активам.
 Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Ammortization, Other.
 """
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Union
+from typing import Optional, Union, List
 from datetime import datetime
 
 
@@ -212,3 +212,26 @@ class BatchCreateOperationRequest(BaseModel):
         if op_type in [3, 4]:
             if not self.asset_id:
                 raise ValueError("asset_id обязателен для Dividend/Coupon")
+
+
+class UpdateOperationRequest(BaseModel):
+    """Модель запроса обновления операции (дата и/или сумма). Для синхронизации операции пополнения при редактировании транзакции."""
+    operation_date: Optional[str] = Field(None, description="Новая дата операции")
+    amount: Optional[float] = Field(None, description="Новая сумма операции")
+
+
+class UpdateOperationItem(BaseModel):
+    """Один элемент батчевого обновления операций."""
+    operation_id: int = Field(..., description="ID операции")
+    operation_date: Optional[str] = Field(None, description="Новая дата операции")
+    amount: Optional[float] = Field(None, description="Новая сумма операции")
+
+
+class UpdateOperationsBatchRequest(BaseModel):
+    """Модель запроса батчевого обновления операций."""
+    updates: List[UpdateOperationItem] = Field(..., min_length=1, description="Список обновлений")
+
+
+class DeleteOperationsRequest(BaseModel):
+    """Модель запроса удаления операций (batch)."""
+    ids: List[int] = Field(..., min_length=1, description="Список ID операций для удаления")

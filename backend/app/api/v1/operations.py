@@ -3,19 +3,18 @@ API endpoints для работы с операциями по активам.
 Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Other.
 """
 from fastapi import APIRouter, Query, HTTPException, Depends, Body
-from app.domain.services.operations_service import get_operations, create_operation, create_operations_batch, delete_operations_batch
+from app.domain.services.operations_service import get_operations, create_operation, create_operations_batch, update_operation, update_operations_batch, delete_operations_batch
 from app.domain.services.access_control_service import (
     check_portfolio_access, check_portfolio_asset_access, check_asset_access,
     check_operation_access, check_multiple_operations_access
 )
-from app.domain.models.operation_models import CreateOperationRequest, BatchCreateOperationRequest
+from app.domain.models.operation_models import CreateOperationRequest, BatchCreateOperationRequest, UpdateOperationRequest, UpdateOperationsBatchRequest, DeleteOperationsRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.core.dependencies import get_current_user
 from app.utils.response import success_response
 from app.utils.date import parse_date_range
 import logging
-from typing import Optional, List
-from pydantic import BaseModel
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -158,9 +157,53 @@ async def add_operations_batch_route(
         )
 
 
-class DeleteOperationsRequest(BaseModel):
-    """Модель запроса удаления операций."""
-    ids: List[int] = Body(..., description="Список ID операций для удаления")
+@router.patch("/batch", status_code=HTTPStatus.OK)
+async def update_operations_batch_route(
+    request: UpdateOperationsBatchRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Батчевое обновление операций (дата и/или сумма) с пересчётом аналитики."""
+    ids = [u.operation_id for u in request.updates]
+    check_multiple_operations_access(ids, user["id"])
+    try:
+        payload = [
+            {"operation_id": u.operation_id, "date": u.operation_date, "amount": u.amount}
+            for u in request.updates
+        ]
+        result = update_operations_batch(payload)
+        return success_response(
+            data=result,
+            message=f"Обновлено операций: {result.get('updated_count', 0)}"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при batch обновлении операций: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Ошибка при обновлении операций"
+        )
+
+
+@router.patch("/{operation_id}", status_code=HTTPStatus.OK)
+async def update_operation_route(
+    operation_id: int,
+    data: UpdateOperationRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Обновление операции (дата и/или сумма). Пересчитываются fifo_lots, позиции и дневные значения портфелей."""
+    check_operation_access(operation_id, user["id"])
+    try:
+        result = update_operation(
+            operation_id,
+            operation_date=data.operation_date,
+            amount=data.amount,
+        )
+        return success_response(data=result, message="Операция обновлена")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении операции: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Ошибка при обновлении операции"
+        )
 
 
 @router.delete("/", status_code=HTTPStatus.OK)

@@ -11,6 +11,7 @@ from app.infrastructure.database.repositories.transaction_repository import Tran
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
 from app.infrastructure.database.repositories.asset_repository import AssetRepository
 from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
+from app.infrastructure.database.repositories.operation_repository import OperationRepository
 
 logger = get_logger(__name__)
 
@@ -19,6 +20,7 @@ _transaction_repository = TransactionRepository()
 _portfolio_asset_repository = PortfolioAssetRepository()
 _asset_repository = AssetRepository()
 _portfolio_repository = PortfolioRepository()
+_operation_repository = OperationRepository()
 
 
 def get_transactions(user_id, portfolio_id=None, asset_name=None, start_date=None, end_date=None, limit=1000):
@@ -159,12 +161,7 @@ def create_transaction(
         except Exception as e:
             logger.warning(f"Ошибка при обновлении последней цены актива {asset_id}: {e}", exc_info=True)
 
-    # 3️⃣ Инкрементальные апдейты (БЕЗ глобальных refresh)
-    # Примечание: apply_operations_batch уже обновляет историю, но update_portfolio_asset
-    # обновляет агрегированные данные актива (quantity, average_price и т.д.)
-    rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
-    
-    # 4️⃣ Проверяем неполученные выплаты для созданного актива
+    # 3️⃣ Проверяем неполученные выплаты для созданного актива
     try:
         rpc("check_missed_payouts", {
             "p_portfolio_asset_id": portfolio_asset_id
@@ -209,156 +206,61 @@ def update_transaction(
     transaction_type: Optional[int] = None,
     quantity: Optional[float] = None,
     price: Optional[float] = None,
-    transaction_date: Optional[str] = None
+    transaction_date: Optional[str] = None,
+    update_related_deposit: bool = False,
+    related_deposit_operation_id: Optional[int] = None,
+    related_deposit_amount: Optional[float] = None,
+    related_deposit_date: Optional[str] = None,
 ):
     """
-    Обновляет существующую транзакцию.
-    Удаляет старую транзакцию и создает новую через create_transaction (которая использует apply_transactions_batch).
-    Если параметр не передан, используется значение из существующей транзакции.
+    Обновляет транзакцию через update_operations_batch.
+    Находит связанную cash_operation, формирует payload с новыми значениями
+    (дата, сумма, quantity, price) и передаёт в operations_service.update_operations_batch.
+    Если update_related_deposit=True, обновляет и связанную операцию пополнения.
     """
-    from datetime import datetime
-    
-    # 1️⃣ Получаем информацию о транзакции
+    from app.domain.services import operations_service
+
     old_tx = _transaction_repository.get_by_id_sync(transaction_id)
-    
     if not old_tx:
         raise Exception(f"Транзакция {transaction_id} не найдена")
-    old_portfolio_asset_id = old_tx.get("portfolio_asset_id")
-    old_transaction_date = old_tx.get("transaction_date")
-    
-    # Используем переданные значения или значения из существующей транзакции
-    final_portfolio_asset_id = portfolio_asset_id if portfolio_asset_id is not None else old_portfolio_asset_id
-    final_transaction_type = transaction_type if transaction_type is not None else old_tx.get("transaction_type")
+
     final_quantity = quantity if quantity is not None else old_tx.get("quantity")
     final_price = price if price is not None else old_tx.get("price")
-    final_transaction_date = transaction_date if transaction_date is not None else old_transaction_date
-    
-    # Получаем asset_id из portfolio_asset_id, если не передан
-    if asset_id is None:
-        if final_portfolio_asset_id:
-            pa_data = _portfolio_asset_repository.get_by_id_sync(final_portfolio_asset_id)
-            if pa_data:
-                final_asset_id = pa_data.get("asset_id")
-            else:
-                raise Exception(f"Портфельный актив {final_portfolio_asset_id} не найден")
-        else:
-            raise Exception("Необходимо указать portfolio_asset_id или asset_id")
-    else:
-        final_asset_id = asset_id
-    
-    # Валидация обязательных параметров
-    if final_portfolio_asset_id is None:
-        raise Exception("portfolio_asset_id обязателен")
-    if final_asset_id is None:
-        raise Exception("asset_id обязателен")
-    if final_transaction_type is None:
-        raise Exception("transaction_type обязателен")
-    if final_quantity is None:
-        raise Exception("quantity обязателен")
-    if final_price is None:
-        raise Exception("price обязателен")
-    if final_transaction_date is None:
-        raise Exception("transaction_date обязателен")
-    
-    # Получаем portfolio_id для старого portfolio_asset_id
-    old_portfolio_id = None
-    if old_portfolio_asset_id:
-        old_pa = _portfolio_asset_repository.get_by_id_sync(old_portfolio_asset_id)
-        if old_pa:
-            old_portfolio_id = old_pa.get("portfolio_id")
-    
-    # 2️⃣ Удаляем старую транзакцию через batch функцию (пересчитывает FIFO)
-    delete_result = delete_transactions_batch([transaction_id])
-    if delete_result.get("success") is False:
-        raise Exception(f"Ошибка при удалении транзакции: {delete_result.get('error', 'Неизвестная ошибка')}")
-    
-    # 3️⃣ Создаем новую транзакцию с обновленными данными
-    new_tx_id = create_transaction(
-        user_id=user_id,
-        portfolio_asset_id=final_portfolio_asset_id,
-        asset_id=final_asset_id,
-        transaction_type=final_transaction_type,
-        quantity=final_quantity,
-        price=final_price,
-        transaction_date=final_transaction_date
-    )
-    
-    # 4️⃣ Обновляем portfolio_asset для обоих активов (если изменился)
-    if old_portfolio_asset_id != final_portfolio_asset_id:
-        # Обновляем старый актив
-        if old_portfolio_asset_id:
-            rpc("update_portfolio_asset", {"pa_id": old_portfolio_asset_id})
-        # Обновляем новый актив
-        rpc("update_portfolio_asset", {"pa_id": final_portfolio_asset_id})
-    else:
-        # Если актив не изменился, просто обновляем его
-        rpc("update_portfolio_asset", {"pa_id": final_portfolio_asset_id})
-    
-    # 5️⃣ Получаем portfolio_id для нового portfolio_asset_id
-    new_portfolio_id = None
-    new_pa = _portfolio_asset_repository.get_by_id_sync(final_portfolio_asset_id)
-    if new_pa:
-        new_portfolio_id = new_pa.get("portfolio_id")
-    
-    # 6️⃣ Обновляем историю портфелей с минимальной датой транзакции
-    # Преобразуем дату транзакции в формат YYYY-MM-DD используя единую функцию
-    from_date = normalize_date_to_sql_date(final_transaction_date) or ""
-    
-    # Если есть старая дата, берем минимальную
-    if old_transaction_date:
-        old_date = normalize_date_to_sql_date(old_transaction_date) or ""
-        
-        # Берем минимальную дату
-        if old_date < from_date:
-            from_date = old_date
-    
-    # Обновляем старый портфель, если он изменился
-    if old_portfolio_id and old_portfolio_id != new_portfolio_id:
-        try:
-            rpc("update_portfolio_positions_from_date", {
-                "p_portfolio_id": old_portfolio_id,
-                "p_from_date": from_date
-            })
-            rpc("update_portfolio_values_from_date", {
-                "p_portfolio_id": old_portfolio_id,
-                "p_from_date": from_date
-            })
-        except Exception as e:
-            logger.warning(f"Ошибка при обновлении истории старого портфеля {old_portfolio_id}: {e}", exc_info=True)
-    
-    # Обновляем новый портфель
-    if new_portfolio_id:
-        try:
-            rpc("update_portfolio_positions_from_date", {
-                "p_portfolio_id": new_portfolio_id,
-                "p_from_date": from_date
-            })
-            rpc("update_portfolio_values_from_date", {
-                "p_portfolio_id": new_portfolio_id,
-                "p_from_date": from_date
-            })
-        except Exception as e:
-            logger.warning(f"Ошибка при обновлении истории портфеля {new_portfolio_id}: {e}", exc_info=True)
-    
-    # 7️⃣ Проверяем неполученные выплаты для обоих активов (если актив изменился)
-    # Проверяем новый актив (create_transaction уже проверит его, но на всякий случай проверяем здесь тоже)
-    try:
-        rpc("check_missed_payouts", {
-            "p_portfolio_asset_id": final_portfolio_asset_id
-        })
-    except Exception as e:
-        logger.warning(f"Ошибка при проверке неполученных выплат для нового актива {final_portfolio_asset_id}: {e}", exc_info=True)
-    
-    # Проверяем старый актив, если он изменился
-    if old_portfolio_asset_id != final_portfolio_asset_id and old_portfolio_asset_id:
-        try:
-            rpc("check_missed_payouts", {
-                "p_portfolio_asset_id": old_portfolio_asset_id
-            })
-        except Exception as e:
-            logger.warning(f"Ошибка при проверке неполученных выплат для старого актива {old_portfolio_asset_id}: {e}", exc_info=True)
-    
-    return new_tx_id
+    final_transaction_date = transaction_date if transaction_date is not None else old_tx.get("transaction_date")
+
+    cash_op = _operation_repository.get_by_transaction_id_sync(transaction_id)
+    if not cash_op:
+        raise Exception(f"Не найдена cash_operation для транзакции {transaction_id}")
+
+    final_amount = float(final_quantity) * float(final_price) if final_quantity and final_price else None
+
+    tx_update = {"operation_id": cash_op["id"]}
+    if final_transaction_date is not None:
+        tx_update["date"] = normalize_date_to_string(final_transaction_date, include_time=True) or final_transaction_date
+    if final_amount is not None:
+        tx_update["amount"] = final_amount
+    if final_quantity is not None:
+        tx_update["quantity"] = float(final_quantity)
+    if final_price is not None:
+        tx_update["price"] = float(final_price)
+
+    updates = [tx_update]
+
+    if update_related_deposit and related_deposit_operation_id:
+        deposit_update = {"operation_id": int(related_deposit_operation_id)}
+        dep_date = related_deposit_date or final_transaction_date
+        if dep_date is not None:
+            deposit_update["date"] = normalize_date_to_string(dep_date, include_time=True) or dep_date
+        if related_deposit_amount is not None:
+            deposit_update["amount"] = float(related_deposit_amount)
+        if len(deposit_update) > 1:
+            updates.append(deposit_update)
+
+    result = operations_service.update_operations_batch(updates)
+    if result.get("success") is False:
+        raise Exception(f"Ошибка обновления транзакции: {result.get('error', 'Неизвестная ошибка')}")
+
+    return transaction_id
 
 
 def delete_transactions_batch(transaction_ids: list[int]):

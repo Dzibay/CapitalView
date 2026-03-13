@@ -31,7 +31,7 @@ class Config:
     # CORS
     CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
     CORS_SUPPORTS_CREDENTIALS = True
-    CORS_METHODS = ["GET", "POST", "DELETE", "OPTIONS", "PUT"]
+    CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     
     # Логирование
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
