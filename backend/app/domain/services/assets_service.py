@@ -108,14 +108,15 @@ def create_asset(email: str, data: dict):
                 
                 if asset_id_from_result and portfolio_id:
                     deposit_amount = float(quantity * price)
-                    # Для операции пополнения всегда используем RUB, так как это пополнение счета в рублях
-                    # Важно: currency_id=1 (RUB) независимо от валюты актива, чтобы сумма не конвертировалась
+                    # Валюта операции пополнения = валюта актива (quote_asset_id; 1 = RUB по умолчанию)
+                    asset_row = _asset_repository.get_by_id_sync(asset_id_from_result)
+                    currency_id = (asset_row.get("quote_asset_id") or 1) if asset_row else 1
                     create_operation(
                         user_id=str(user_id),
                         portfolio_id=portfolio_id,
                         operation_type=5,  # Deposit
                         amount=deposit_amount,
-                        currency_id=1,  # RUB - операция пополнения всегда в рублях, независимо от валюты актива
+                        currency_id=currency_id,
                         operation_date=transaction_date,
                         asset_id=asset_id_from_result,  # Привязываем к активу для удаления при удалении актива
                         portfolio_asset_id=portfolio_asset_id_from_result,  # Привязываем к портфельному активу

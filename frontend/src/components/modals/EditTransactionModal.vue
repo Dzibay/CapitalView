@@ -6,6 +6,7 @@ import CustomSelect from '../base/CustomSelect.vue'
 import assetsService from '../../services/assetsService'
 import { useDashboardStore } from '../../stores/dashboard.store'
 import { normalizeDateToString } from '../../utils/date'
+import { getCurrencySymbol } from '../../utils/currencySymbols'
 import ModalBase from './ModalBase.vue'
 
 const props = defineProps({
@@ -37,6 +38,23 @@ const isSystemAsset = computed(() => {
   }
   return false
 })
+
+// Валюта актива для отображения в поле Цена
+const assetCurrencyTicker = computed(() => {
+  if (props.transaction?.currency_ticker) return props.transaction.currency_ticker
+  const refData = dashboardStore.referenceData
+  const assetId = props.transaction?.asset_id
+  if (!refData?.assets || !assetId) return 'RUB'
+  const a = refData.assets.find(x => x.id === assetId)
+  if (!a) return 'RUB'
+  if (a.currency_ticker) return a.currency_ticker
+  if (a.quote_asset_id) {
+    const q = refData.assets.find(x => x.id === a.quote_asset_id)
+    return q?.ticker || 'RUB'
+  }
+  return 'RUB'
+})
+const assetCurrencySymbol = computed(() => getCurrencySymbol(assetCurrencyTicker.value))
 
 watch(
   () => props.transaction,
@@ -396,7 +414,7 @@ const handleSave = () => {
             <div class="form-field">
               <label class="form-label">
                 <DollarSign :size="16" class="label-icon" />
-                Цена (₽)
+                Цена ({{ assetCurrencySymbol || '₽' }})
                 <span v-if="loadingPrice" style="margin-left: 8px; color: #3b82f6; display: inline-flex; align-items: center; gap: 4px;">
                   <Loader2 :size="14" class="spinner-icon" />
                   Загрузка...

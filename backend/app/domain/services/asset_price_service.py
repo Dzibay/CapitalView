@@ -140,6 +140,15 @@ def get_asset_price_history(asset_id: int, start_date: str = None, end_date: str
     try:
         from datetime import datetime, date as date_type
 
+        # Валюта актива для отображения цены (quote_asset_id -> ticker валюты)
+        currency_ticker = "RUB"
+        asset = _asset_repository.get_by_id_sync(asset_id)
+        if asset:
+            quote_id = asset.get("quote_asset_id") or 1
+            quote_asset = _asset_repository.get_by_id_sync(quote_id)
+            if quote_asset and quote_asset.get("ticker"):
+                currency_ticker = quote_asset.get("ticker", "RUB")
+
         query = _asset_repository.get_price_history(asset_id, start_date=start_date, end_date=end_date, limit=limit)
 
         if start_date or end_date:
@@ -181,6 +190,6 @@ def get_asset_price_history(asset_id: int, start_date: str = None, end_date: str
                 filtered.append(row)
             query = filtered
 
-        return {"success": True, "prices": query, "count": len(query)}
+        return {"success": True, "prices": query, "count": len(query), "currency_ticker": currency_ticker}
     except Exception as e:
         return {"success": False, "error": str(e)}

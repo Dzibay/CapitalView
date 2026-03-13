@@ -24,6 +24,7 @@ import operationsService from '../services/operationsService'
 import PageLayout from '../components/PageLayout.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
+import { getCurrencySymbol } from '../utils/currencySymbols'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,6 +37,7 @@ const portfolioAssetId = computed(() => parseInt(route.params.id))
 const isLoading = ref(false)
 const assetInfo = ref(null)
 const priceHistory = ref([])
+const priceHistoryCurrency = ref(null) // Валюта истории цен (из API getAssetPriceHistory)
 const assetDailyValues = ref([]) // История стоимости позиции из portfolio_daily_positions
 const assetInAllPortfolios = ref([])
 const selectedPortfolioId = ref(null)
@@ -120,6 +122,7 @@ async function loadAssetInfo() {
       // Используем историю цен из основного запроса (если есть)
       if (result.portfolio_asset.price_history && result.portfolio_asset.price_history.length > 0) {
         priceHistory.value = result.portfolio_asset.price_history
+        priceHistoryCurrency.value = result.portfolio_asset.currency_ticker || null
       } else if (result.portfolio_asset.asset_id) {
         // Если истории нет в основном запросе, загружаем отдельно (для больших объемов данных)
         await loadPriceHistory(result.portfolio_asset.asset_id)
@@ -207,6 +210,7 @@ async function loadPriceHistory(assetId) {
     const result = await assetsService.getAssetPriceHistory(assetId)
     if (result.success && result.prices) {
       priceHistory.value = result.prices
+      priceHistoryCurrency.value = result.currency_ticker || null
     }
   } catch (error) {
     console.error('Ошибка при загрузке истории цен:', error)
@@ -1489,7 +1493,10 @@ async function handlePortfolioChange(portfolioId) {
           </div>
         </div>
         <div class="asset-price-info">
-          <div class="price-main">{{ selectedPortfolioAsset?.last_price?.toFixed(2) || portfolioAsset.asset.last_price?.toFixed(2) || '-' }}</div>
+          <div class="price-main">
+            {{ selectedPortfolioAsset?.last_price != null ? selectedPortfolioAsset.last_price.toFixed(2) : (portfolioAsset.asset?.last_price != null ? portfolioAsset.asset.last_price.toFixed(2) : '-') }}
+            <span v-if="assetCurrency" class="price-currency"> {{ getCurrencySymbol(assetCurrency) }} ({{ assetCurrency }})</span>
+          </div>
           <div v-if="selectedPortfolioAsset?.daily_change !== undefined && selectedPortfolioAsset.daily_change !== 0" class="price-change">
             <ValueChange 
               :value="selectedPriceChangePercent" 
@@ -1509,7 +1516,7 @@ async function handlePortfolioChange(portfolioId) {
         <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-large)">
           <div class="chart-widget">
             <div class="section-header">
-              <h2 class="section-title">История актива</h2>
+              <h2 class="section-title">История актива <span v-if="assetCurrency && selectedChartType === 'price'" class="chart-currency">(цена в {{ assetCurrency }})</span></h2>
               <div class="chart-controls">
                 <CustomSelect
                   :modelValue="selectedChartType"

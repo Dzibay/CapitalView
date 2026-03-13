@@ -10,6 +10,7 @@ import { useAssetsStore } from '../../stores/assets.store'
 import transactionsService from '../../services/transactionsService'
 import assetsService from '../../services/assetsService'
 import { normalizeDateToString } from '../../utils/date'
+import { getCurrencySymbol } from '../../utils/currencySymbols'
 
 const props = defineProps({
   asset: Object,
@@ -374,6 +375,22 @@ const isCashOperation = computed(() => {
 })
 
 // Показывать галочку для создания операции пополнения только для покупки, комиссии и налога
+// Валюта актива для отображения при создании операции пополнения
+const assetCurrencyTicker = computed(() => {
+  if (props.asset?.currency_ticker) return props.asset.currency_ticker
+  const refData = dashboardStore.referenceData
+  if (!refData?.assets || !props.asset?.asset_id) return 'RUB'
+  const a = refData.assets.find(x => x.id === props.asset.asset_id)
+  if (!a) return 'RUB'
+  if (a.currency_ticker) return a.currency_ticker
+  if (a.quote_asset_id) {
+    const q = refData.assets.find(x => x.id === a.quote_asset_id)
+    return q?.ticker || 'RUB'
+  }
+  return 'RUB'
+})
+const assetCurrencySymbol = computed(() => getCurrencySymbol(assetCurrencyTicker.value))
+
 const showDepositCheckbox = computed(() => {
   return operationType.value === 1 || operationType.value === 7 || operationType.value === 8
 })
@@ -1261,7 +1278,7 @@ const handleSubmit = async () => {
             <div class="form-field">
               <label class="form-label">
                 <DollarSign :size="16" class="label-icon" />
-                Цена (₽)
+                Цена ({{ assetCurrencySymbol || '₽' }})
                 <span v-if="loadingPrice" style="margin-left: 8px; color: #3b82f6;">⏳ Загрузка...</span>
               </label>
               <input 
@@ -1298,8 +1315,9 @@ const handleSubmit = async () => {
           <div v-if="showDepositCheckbox && mode === 'single'" class="toggle-wrapper" style="margin-top: 16px;">
             <ToggleSwitch v-model="createDepositOperation" />
             <span class="toggle-label-text">
-              Добавить операцию пополнения на сумму покупки ({{ (quantity * price).toFixed(2) }} ₽)
+              Добавить операцию пополнения на сумму покупки ({{ (quantity * price).toFixed(2) }} {{ assetCurrencySymbol }})
             </span>
+            <small class="form-hint block" style="margin-top: 6px;">Будет создана операция пополнения в валюте актива ({{ assetCurrencyTicker }})</small>
           </div>
         </div>
 
@@ -1331,8 +1349,9 @@ const handleSubmit = async () => {
           <div v-if="showDepositCheckbox && mode === 'single'" class="toggle-wrapper" style="margin-top: 16px;">
             <ToggleSwitch v-model="createDepositOperation" />
             <span class="toggle-label-text">
-              Добавить операцию пополнения на сумму операции ({{ Math.abs(amount || 0).toFixed(2) }} ₽)
+              Добавить операцию пополнения на сумму операции ({{ Math.abs(amount || 0).toFixed(2) }} {{ assetCurrencySymbol }})
             </span>
+            <small class="form-hint block" style="margin-top: 6px;">Будет создана операция пополнения в валюте актива ({{ assetCurrencyTicker }})</small>
           </div>
         </div>
 
@@ -1480,8 +1499,9 @@ const handleSubmit = async () => {
             <div v-if="showDepositCheckbox && operationsCount > 0" class="toggle-wrapper" style="margin-top: 16px;">
               <ToggleSwitch v-model="createDepositOperation" />
               <span class="toggle-label-text">
-                Добавить операцию пополнения для каждой операции ({{ Math.abs(amount || 0).toFixed(2) }} ₽ × {{ operationsCount }} операций)
+                Добавить операцию пополнения для каждой операции ({{ Math.abs(amount || 0).toFixed(2) }} {{ assetCurrencySymbol }} × {{ operationsCount }} операций)
               </span>
+              <small class="form-hint block" style="margin-top: 6px;">Будет создана операция пополнения в валюте актива ({{ assetCurrencyTicker }})</small>
             </div>
             
             <div v-if="operationsCount > 0" class="info-box">
