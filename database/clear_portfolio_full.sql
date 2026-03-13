@@ -103,9 +103,11 @@ begin
     delete from portfolio_daily_values where portfolio_id = any(v_portfolio_ids);
 
     ------------------------------------------------------------------
-    -- 9. Удаляем задачи импорта, связанные с портфелями
+    -- 9. Удаляем завершённые задачи импорта (не трогаем активные)
     ------------------------------------------------------------------
-    delete from import_tasks where portfolio_id = any(v_portfolio_ids);
+    delete from import_tasks
+    where portfolio_id = any(v_portfolio_ids)
+      and status not in ('pending', 'processing');
 
     ------------------------------------------------------------------
     -- 10. Удаляем портфели
