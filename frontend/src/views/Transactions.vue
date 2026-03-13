@@ -1,12 +1,10 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useTransactionsStore } from '../stores/transactions.store'
 import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/ContextMenu.vue'
-import operationsService from '../services/operationsService'
-import transactionsService from '../services/transactionsService'
 import CustomSelect from '../components/base/CustomSelect.vue'
 import { DateInput } from '../components/base'
 import PageLayout from '../components/PageLayout.vue'
@@ -20,96 +18,10 @@ const transactionsStore = useTransactionsStore()
 
 // Переключатель между транзакциями и операциями
 const viewMode = ref('transactions') // 'transactions' или 'operations'
-const isLoadingOperations = ref(false)
-const isLoadingTransactions = ref(false)
 
-// Используем транзакции из store (аналогично операциям)
+// Транзакции и операции — единственный источник: dashboard store (подгружаются только в фоне вместе с дашбордом)
 const transactions = computed(() => dashboardStore.transactions || [])
-
-// Загрузка всех транзакций через API (аналогично операциям)
-// НЕ используем транзакции из dashboard_data, там только последние 5 на каждый портфель
-const loadTransactions = async (force = false) => {
-  // Используем кэш из store, если транзакции уже загружены и не требуется принудительная перезагрузка
-  if (!force && dashboardStore.transactionsLoaded && dashboardStore.transactions.length > 0) {
-    return
-  }
-  
-  if (isLoadingTransactions.value) return
-  
-  try {
-    isLoadingTransactions.value = true
-    const response = await transactionsService.getTransactions({ limit: 2000 })
-    const transactionsList = response?.transactions || response || []
-    // Нормализуем данные: добавляем id если есть только transaction_id
-    const normalizedTransactions = transactionsList.map(tx => ({
-      ...tx,
-      id: tx.id || tx.transaction_id,
-      transaction_id: tx.transaction_id || tx.id,
-      transaction_type: tx.transaction_type || tx.transaction_type_name
-    }))
-    // Обновляем транзакции в store через метод addTransactions
-    // При принудительной перезагрузке заменяем транзакции полностью
-    dashboardStore.addTransactions(normalizedTransactions, force)
-  } catch (err) {
-    if (import.meta.env.VITE_APP_DEV) {
-      console.error('Ошибка загрузки транзакций:', err)
-    }
-  } finally {
-    isLoadingTransactions.value = false
-  }
-}
-
-// Загружаем транзакции при монтировании компонента (аналогично операциям)
-onMounted(async () => {
-  await loadTransactions()
-})
-
-// Используем операции из store
 const operations = computed(() => dashboardStore.operations || [])
-
-// Загрузка операций (только если нет в кэше)
-const loadOperations = async () => {
-  // Используем кэш из store, если операции уже загружены
-  if (dashboardStore.operationsLoaded && dashboardStore.operations.length > 0) {
-    return
-  }
-  
-  if (isLoadingOperations.value) return
-  
-  try {
-    isLoadingOperations.value = true
-    const response = await operationsService.getOperations({ limit: 2000 })
-    const operationsList = response?.operations || response || []
-    // Обновляем операции в store через метод addOperations (избегает дубликатов)
-    dashboardStore.addOperations(operationsList)
-  } catch (err) {
-    if (import.meta.env.VITE_APP_DEV) {
-      console.error('Ошибка загрузки операций:', err)
-    }
-  } finally {
-    isLoadingOperations.value = false
-  }
-}
-
-// Загружаем операции при переключении на режим операций (только если нет в кэше)
-watch(viewMode, (newMode) => {
-  if (newMode === 'operations') {
-    loadOperations()
-  } else if (newMode === 'transactions') {
-    // При переключении на транзакции убеждаемся, что они загружены
-    loadTransactions()
-  }
-})
-
-// Слушаем изменения в dashboardStore для обновления транзакций после добавления
-// (транзакции могут быть добавлены из других компонентов через transactionsStore)
-watch(() => dashboardStore.lastFetch, () => {
-  // Если транзакции уже загружены в store, перезагружаем их после обновления dashboard
-  // Это нужно, так как добавление транзакции обновляет dashboard
-  if (dashboardStore.transactionsLoaded && dashboardStore.transactions.length > 0 && viewMode.value === 'transactions') {
-    loadTransactions(true)
-  }
-})
 
 // справочник активов (для доп. инфы в подсказках)
 const referenceData = computed(() => dashboardStore.referenceData || {})
@@ -118,21 +30,14 @@ const referenceAssets = computed(() => referenceData.value.assets || [])
 // Обертки для совместимости
 const deleteTransactions = async (transaction_ids) => {
   await transactionsStore.deleteTransactions(transaction_ids)
-  // Транзакции уже удалены из кэша в store через removeTransactions
-  // Перезагружаем транзакции после удаления (принудительно) для получения актуальных данных
-  await loadTransactions(true)
 }
 
 const deleteOperations = async (operation_ids) => {
   await transactionsStore.deleteOperations(operation_ids)
-  // Операции уже удалены из кэша в store через removeOperations
-  // Dashboard обновляется в фоне автоматически
 }
 
 const editTransaction = async (updated_transaction) => {
   await transactionsStore.editTransaction(updated_transaction)
-  // Перезагружаем транзакции после редактирования (принудительно) для получения актуальных данных
-  await loadTransactions(true)
 }
 
 // --- списки для фильтров ---
@@ -1041,8 +946,7 @@ const transactionsSummary = computed(() => {
                 <td colspan="8" class="empty-cell">
                   <div class="empty-state">
                     <span class="empty-icon">🔍</span>
-                    <p v-if="isLoadingOperations">Загрузка операций...</p>
-                    <p v-else>Операции не найдены</p>
+                    <p>Операции не найдены</p>
                   </div>
                 </td>
               </tr>

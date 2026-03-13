@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { fetchDashboardData } from '../services/dashboardService'
+import operationsService from '../services/operationsService'
+import transactionsService from '../services/transactionsService'
 import { useUIStore } from './ui.store'
 
 export const useDashboardStore = defineStore('dashboard', {
@@ -80,7 +82,8 @@ export const useDashboardStore = defineStore('dashboard', {
         }
         
         this.lastFetch = Date.now()
-        
+        // Фоновая загрузка полных списков транзакций и операций — не блокирует отрисовку дашборда
+        this.fetchTransactionsAndOperationsInBackground()
       } catch (err) {
         if (import.meta.env.VITE_APP_DEV && (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error'))) {
             console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
@@ -95,6 +98,38 @@ export const useDashboardStore = defineStore('dashboard', {
 
     async reloadDashboard(showLoading = true) {
       return this.fetchDashboard(true, showLoading)
+    },
+
+    /**
+     * Загружает полные списки транзакций и операций в фоне (не блокирует UI).
+     * Вызывается после успешной загрузки дашборда.
+     */
+    fetchTransactionsAndOperationsInBackground() {
+      Promise.all([
+        transactionsService.getTransactions({ limit: 2000 }).catch(err => {
+          if (import.meta.env.VITE_APP_DEV) console.error('Фоновая загрузка транзакций:', err)
+          return null
+        }),
+        operationsService.getOperations({ limit: 2000 }).catch(err => {
+          if (import.meta.env.VITE_APP_DEV) console.error('Фоновая загрузка операций:', err)
+          return null
+        })
+      ]).then(([txResponse, opResponse]) => {
+        if (txResponse != null) {
+          const list = txResponse?.transactions || txResponse || []
+          const normalized = list.map(tx => ({
+            ...tx,
+            id: tx.id || tx.transaction_id,
+            transaction_id: tx.transaction_id || tx.id,
+            transaction_type: tx.transaction_type || tx.transaction_type_name
+          }))
+          this.addTransactions(normalized, true)
+        }
+        if (opResponse != null) {
+          const list = opResponse?.operations || opResponse || []
+          this.addOperations(list)
+        }
+      })
     },
 
     // Оптимистичное обновление: добавляем актив локально без перезагрузки
