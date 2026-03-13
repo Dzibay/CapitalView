@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useTransactionsStore } from '../stores/transactions.store'
 import { useContextMenu } from '../composables/useContextMenu'
@@ -18,7 +18,14 @@ const transactionsStore = useTransactionsStore()
 // Переключатель между транзакциями и операциями
 const viewMode = ref('transactions') // 'transactions' или 'operations'
 
-// Транзакции и операции — единственный источник: dashboard store (подгружаются только в фоне вместе с дашбордом)
+// Lazy-load: загружаем полные списки при первом открытии страницы
+onMounted(() => {
+  if (!dashboardStore.operationsLoaded) {
+    dashboardStore.fetchTransactionsAndOperationsInBackground()
+  }
+})
+
+// Транзакции и операции — единственный источник: dashboard store
 const transactions = computed(() => dashboardStore.transactions || [])
 const operations = computed(() => dashboardStore.operations || [])
 

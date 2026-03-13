@@ -82,8 +82,8 @@ export const useDashboardStore = defineStore('dashboard', {
         }
         
         this.lastFetch = Date.now()
-        // Фоновая загрузка полных списков транзакций и операций — не блокирует отрисовку дашборда
-        this.fetchTransactionsAndOperationsInBackground()
+        // Полные списки транзакций/операций загружаются лениво при переходе на страницу Transactions
+        // Это экономит 2 тяжёлых запроса при каждом открытии дашборда
       } catch (err) {
         if (import.meta.env.VITE_APP_DEV && (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error'))) {
             console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
@@ -97,7 +97,11 @@ export const useDashboardStore = defineStore('dashboard', {
     },
 
     async reloadDashboard(showLoading = true) {
-      return this.fetchDashboard(true, showLoading)
+      await this.fetchDashboard(true, showLoading)
+      // После мутаций обновляем полные списки, если они уже были загружены
+      if (this.operationsLoaded) {
+        this.fetchTransactionsAndOperationsInBackground()
+      }
     },
 
     /**

@@ -167,15 +167,7 @@ def create_operation(
     
     op_id = op_ids[0]
     
-    # Проверяем неполученные выплаты для операций дивидендов/купонов
-    # Это нужно, так как мы убрали автоматическую проверку из apply_operations_batch
-    if operation_type in [3, 4] and portfolio_asset_id:  # Dividend или Coupon
-        try:
-            rpc("check_missed_payouts", {
-                "p_portfolio_asset_id": portfolio_asset_id
-            })
-        except Exception as e:
-            logger.warning(f"Ошибка при проверке неполученных выплат для актива {portfolio_asset_id}: {e}", exc_info=True)
+    # check_missed_payouts теперь вызывается автоматически внутри apply_operations_batch
     
     # Создаем операцию пополнения для комиссии/налога, если запрошено
     if create_deposit_operation and operation_type in [7, 8]:  # Commission или Tax

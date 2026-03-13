@@ -204,17 +204,9 @@ async def process_import_task(task: dict) -> bool:
             progress_message="Импорт транзакций и операций..."
         )
         
-        result = await import_broker_portfolio(user_email, portfolio_id, broker_data, broker_id_int)
+        result = await import_broker_portfolio(user_email, portfolio_id, broker_data, broker_id_int, api_key=broker_token)
         
-        # Обновляем соединение с брокером (асинхронно)
-        await update_task_status_async(
-            task_id,
-            TaskStatus.PROCESSING,
-            progress=80,
-            progress_message="Обновление соединения с брокером..."
-        )
-        
-        await upsert_broker_connection_async(user_id, broker_id_int, portfolio_id, broker_token)
+        # upsert_broker_connection уже вызывается внутри import_broker_portfolio
         
         # Завершаем задачу
         await update_task_status_async(

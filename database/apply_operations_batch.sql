@@ -669,6 +669,36 @@ BEGIN
         END;
     END LOOP;
 
+    -- ========== Авто-upsert цен для транзакций (перенесено из backend) ==========
+    IF array_length(v_tx_ids, 1) > 0 THEN
+        INSERT INTO asset_prices (asset_id, price, trade_date)
+        SELECT DISTINCT pa.asset_id, tpm.price, tpm.transaction_date::date
+        FROM temp_tx_payment_map tpm
+        JOIN portfolio_assets pa ON pa.id = tpm.portfolio_asset_id
+        WHERE tpm.price > 0
+        ON CONFLICT (asset_id, trade_date) DO NOTHING;
+
+        PERFORM update_asset_latest_prices_batch(
+            (SELECT array_agg(DISTINCT pa.asset_id)
+             FROM temp_tx_payment_map tpm
+             JOIN portfolio_assets pa ON pa.id = tpm.portfolio_asset_id)
+        );
+    END IF;
+
+    -- ========== Авто-проверка missed payouts для Dividend/Coupon (перенесено из backend) ==========
+    FOR v_portfolio_asset_id IN
+        SELECT DISTINCT tso.portfolio_asset_id
+        FROM temp_sorted_ops tso
+        WHERE tso.portfolio_asset_id IS NOT NULL
+          AND (tso.operation_type IN (3, 4) OR tso.operation_type IN (v_buy_op_type_id))
+    LOOP
+        BEGIN
+            PERFORM check_missed_payouts(v_portfolio_asset_id);
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING 'Ошибка при проверке missed payouts для %: %', v_portfolio_asset_id, SQLERRM;
+        END;
+    END LOOP;
+
     DROP TABLE IF EXISTS temp_sorted_ops;
     DROP TABLE IF EXISTS temp_tx_payment_map;
 

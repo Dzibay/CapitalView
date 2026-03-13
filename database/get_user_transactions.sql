@@ -1,6 +1,10 @@
 CREATE OR REPLACE FUNCTION get_user_transactions(
     p_user_id uuid,
-    p_limit integer DEFAULT 1000
+    p_limit integer DEFAULT 1000,
+    p_portfolio_id bigint DEFAULT NULL,
+    p_asset_name text DEFAULT NULL,
+    p_start_date timestamp DEFAULT NULL,
+    p_end_date timestamp DEFAULT NULL
 )
 RETURNS TABLE (
     transaction_id bigint,
@@ -41,7 +45,6 @@ BEGIN
         t.quantity::numeric(20,6) AS quantity,
         t.transaction_date,
         COALESCE(t.realized_pnl, 0)::numeric(20,6) AS realized_pnl,
-        -- Связанная денежная операция (cash_operation), если есть
         (
             SELECT co.id
             FROM cash_operations co
@@ -58,6 +61,12 @@ BEGIN
         ON a.id = pa.asset_id
     LEFT JOIN transactions_type tt ON tt.id = t.transaction_type
     WHERE p.user_id = p_user_id
+      AND (p_portfolio_id IS NULL OR pa.portfolio_id = p_portfolio_id)
+      AND (p_asset_name IS NULL 
+           OR a.name ILIKE '%' || p_asset_name || '%' 
+           OR a.ticker ILIKE '%' || p_asset_name || '%')
+      AND (p_start_date IS NULL OR t.transaction_date >= p_start_date)
+      AND (p_end_date IS NULL OR t.transaction_date <= p_end_date)
     ORDER BY t.transaction_date DESC
     LIMIT p_limit;
 END;

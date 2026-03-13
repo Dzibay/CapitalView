@@ -1,88 +1,55 @@
 """
 Доменный сервис для работы с транзакциями.
-Перенесено из app/services/transactions_service.py
+Оптимизировано: фильтрация в SQL, кэширование operations_type, меньше round-trip.
 """
 from typing import Optional
 from datetime import datetime
 from app.infrastructure.database.database_service import rpc, table_select
-from app.utils.date import normalize_date_to_string, normalize_date_to_sql_date
+from app.utils.date import normalize_date_to_string
 from app.core.logging import get_logger
 from app.infrastructure.database.repositories.transaction_repository import TransactionRepository
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
 from app.infrastructure.database.repositories.asset_repository import AssetRepository
-from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
 from app.infrastructure.database.repositories.operation_repository import OperationRepository
 
 logger = get_logger(__name__)
 
-# Создаем экземпляры репозиториев для использования во всех функциях
 _transaction_repository = TransactionRepository()
 _portfolio_asset_repository = PortfolioAssetRepository()
 _asset_repository = AssetRepository()
-_portfolio_repository = PortfolioRepository()
 _operation_repository = OperationRepository()
+
+# Кэш для operations_type (статическая таблица ~10 строк)
+_operations_type_map: dict = None
+
+
+def _get_operations_type_map() -> dict:
+    global _operations_type_map
+    if _operations_type_map is None:
+        op_types = table_select("operations_type", select="id, name") or []
+        _operations_type_map = {o["name"].lower(): o["id"] for o in op_types if o.get("name")}
+    return _operations_type_map
 
 
 def get_transactions(user_id, portfolio_id=None, asset_name=None, start_date=None, end_date=None, limit=1000):
     """
-    Получает транзакции пользователя с опциональной фильтрацией.
-    
-    Args:
-        user_id: ID пользователя
-        portfolio_id: Фильтр по ID портфеля (опционально)
-        asset_name: Фильтр по названию актива (опционально)
-        start_date: Начальная дата периода (опционально)
-        end_date: Конечная дата периода (опционально)
-        limit: Лимит записей (по умолчанию 1000)
-    
-    Returns:
-        Список транзакций с примененными фильтрами
+    Получает транзакции пользователя с фильтрацией в SQL (не в Python).
     """
-    # Получаем все транзакции (с увеличенным лимитом для фильтрации)
     params = {
         "p_user_id": user_id,
-        "p_limit": limit * 10 if (portfolio_id or asset_name or start_date or end_date) else limit
+        "p_limit": limit or 1000
     }
-    transactions = rpc("get_user_transactions", params) or []
-    
-    # Применяем фильтры на стороне Python
     if portfolio_id:
-        transactions = [t for t in transactions if t.get('portfolio_id') == portfolio_id]
-    
+        params["p_portfolio_id"] = portfolio_id
     if asset_name:
-        asset_name_lower = asset_name.lower()
-        transactions = [
-            t for t in transactions 
-            if asset_name_lower in (t.get('asset_name') or '').lower() or 
-               asset_name_lower in (t.get('ticker') or '').lower()
-        ]
-    
+        params["p_asset_name"] = asset_name
     if start_date:
-        if isinstance(start_date, str):
-            from datetime import datetime
-            try:
-                start_date = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            except:
-                pass
-        transactions = [
-            t for t in transactions 
-            if t.get('transaction_date') and t['transaction_date'] >= start_date
-        ]
-    
+        params["p_start_date"] = start_date
     if end_date:
-        if isinstance(end_date, str):
-            from datetime import datetime
-            try:
-                end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-            except:
-                pass
-        transactions = [
-            t for t in transactions 
-            if t.get('transaction_date') and t['transaction_date'] <= end_date
-        ]
-    
-    # Применяем финальный лимит
-    return transactions[:limit]
+        params["p_end_date"] = end_date
+
+    transactions = rpc("get_user_transactions", params) or []
+    return transactions
 
 
 def create_transaction(
@@ -98,22 +65,15 @@ def create_transaction(
 ):
     """
     Единственный разрешённый способ создания транзакций.
-    Использует apply_operations_batch (создаёт транзакции и cash_operations для Buy/Sell/Redemption).
+    Использует apply_operations_batch (создаёт транзакции, cash_operations, цены, missed payouts в БД).
     FIFO + realized_pnl считаются в БД.
-    
-    Args:
-        create_deposit_operation: Если True и transaction_type=1 (Buy), создает операцию пополнения
     """
-    from datetime import datetime
-
     transaction_date_str = normalize_date_to_string(transaction_date, include_time=True) or ""
     payment = float(price * quantity)
 
-    # Тип операции по типу транзакции: Buy=1, Sell=2, Redemption=3
     op_type_names = {1: "Buy", 2: "Sell", 3: "Redemption"}
     op_name = op_type_names.get(transaction_type, "Buy")
-    op_types = table_select("operations_type", select="id, name") or []
-    op_type_map = {o["name"].lower(): o["id"] for o in op_types if o.get("name")}
+    op_type_map = _get_operations_type_map()
     operation_type_id = op_type_map.get(op_name.lower())
     if not operation_type_id:
         raise Exception(f"Тип операции '{op_name}' не найден в operations_type")
@@ -123,7 +83,6 @@ def create_transaction(
         raise Exception(f"Портфельный актив {portfolio_asset_id} не найден")
     portfolio_id = pa_data.get("portfolio_id")
 
-    # 1️⃣ Создаём транзакцию через apply_operations_batch (одна операция Buy/Sell/Redemption)
     op_payload = [{
         "user_id": str(user_id),
         "portfolio_id": portfolio_id,
@@ -147,35 +106,14 @@ def create_transaction(
         raise Exception("Транзакция не была создана")
     tx_id = tx_ids[0]
 
-    # 2️⃣ Цена актива (idempotent)
-    # Таблица asset_prices не имеет столбца id, первичный ключ составной (asset_id, trade_date)
-    trade_date_only = transaction_date_str.split('T')[0]
-    existing_price = _asset_repository.get_price_history(asset_id, start_date=trade_date_only, end_date=trade_date_only, limit=1)
+    # Цены и check_missed_payouts теперь обрабатываются внутри apply_operations_batch
 
-    if not existing_price:
-        _asset_repository.add_price(asset_id, price, trade_date_only)
-        
-        # Обновляем последнюю цену актива в asset_latest_prices
-        try:
-            _asset_repository.update_latest_price(asset_id)
-        except Exception as e:
-            logger.warning(f"Ошибка при обновлении последней цены актива {asset_id}: {e}", exc_info=True)
-
-    # 3️⃣ Проверяем неполученные выплаты для созданного актива
-    try:
-        rpc("check_missed_payouts", {
-            "p_portfolio_asset_id": portfolio_asset_id
-        })
-    except Exception as e:
-        logger.warning(f"Ошибка при проверке неполученных выплат для актива {portfolio_asset_id}: {e}", exc_info=True)
-
-    # 4️⃣ Создаем операцию пополнения, если запрошено (только для покупки)
+    # Создаем операцию пополнения, если запрошено (только для покупки)
     if create_deposit_operation and transaction_type == 1:
         from app.domain.services.operations_service import create_operation
 
         if portfolio_id is not None:
             deposit_amount = float(quantity * price)
-            # Валюта операции пополнения = валюта актива (quote_asset_id; 1 = RUB по умолчанию)
             asset_row = _asset_repository.get_by_id_sync(asset_id)
             currency_id = (asset_row.get("quote_asset_id") or 1) if asset_row else 1
 
@@ -187,12 +125,11 @@ def create_transaction(
                     amount=deposit_amount,
                     currency_id=currency_id,
                     operation_date=transaction_date_str,
-                    asset_id=asset_id,  # Привязываем к активу для удаления при удалении актива
-                    portfolio_asset_id=portfolio_asset_id  # Привязываем к портфельному активу
+                    asset_id=asset_id,
+                    portfolio_asset_id=portfolio_asset_id
                 )
             except Exception as e:
                 logger.warning(f"Ошибка при создании операции пополнения для транзакции {tx_id}: {e}", exc_info=True)
-                # Не прерываем выполнение, так как транзакция уже создана
 
     return tx_id
 
@@ -214,9 +151,6 @@ def update_transaction(
 ):
     """
     Обновляет транзакцию через update_operations_batch.
-    Находит связанную cash_operation, формирует payload с новыми значениями
-    (дата, сумма, quantity, price) и передаёт в operations_service.update_operations_batch.
-    Если update_related_deposit=True, обновляет и связанную операцию пополнения.
     """
     from app.domain.services import operations_service
 
@@ -266,16 +200,10 @@ def update_transaction(
 def delete_transactions_batch(transaction_ids: list[int]):
     """
     Удаляет несколько транзакций батчем и пересчитывает связанные данные.
-    SQL функция delete_transactions_batch выполняет:
-    - Удаление транзакций
-    - Пересчет FIFO лотов для всех затронутых portfolio_assets
-    - Обновление portfolio_assets
-    - Обновление истории портфелей
     """
     if not transaction_ids:
         return {"success": False, "error": "Список ID транзакций пуст", "deleted_count": 0}
     
-    # Вызываем RPC функцию для batch удаления
     delete_result = rpc("delete_transactions_batch", {"p_transaction_ids": transaction_ids})
     
     if not delete_result or delete_result.get("success") is False:

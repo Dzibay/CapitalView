@@ -1,19 +1,13 @@
 import json
-from app.infrastructure.database.database_service import rpc, table_update
+from app.infrastructure.database.database_service import rpc
 from app.domain.services.user_service import get_user_by_email
 from datetime import datetime
 from app.utils.date import normalize_date_to_string, normalize_date_to_sql_date
 from app.core.logging import get_logger
 from app.infrastructure.database.repositories.asset_repository import AssetRepository
-from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
-from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
-
 logger = get_logger(__name__)
 
-# Создаем экземпляры репозиториев для использования во всех функциях
 _asset_repository = AssetRepository()
-_portfolio_repository = PortfolioRepository()
-_portfolio_asset_repository = PortfolioAssetRepository()
 
 
 def create_asset(email: str, data: dict):
@@ -340,204 +334,28 @@ def get_portfolio_asset_info(portfolio_asset_id: int, user_id: str):
 def move_asset_to_portfolio(portfolio_asset_id: int, target_portfolio_id: int, user_id: int = None):
     """
     Перемещает актив из одного портфеля в другой.
-    
-    Args:
-        portfolio_asset_id: ID портфельного актива для перемещения
-        target_portfolio_id: ID целевого портфеля
-        user_id: ID пользователя (для проверки прав доступа)
-    
-    Returns:
-        dict с результатом операции
+    Оптимизировано: 1 SQL-функция вместо 15-20 round-trip.
     """
     try:
-        # 1️⃣ Получаем информацию о портфельном активе
-        asset_meta = rpc("get_portfolio_asset_meta", {"p_portfolio_asset_id": portfolio_asset_id})
-        
-        if not asset_meta:
-            return {"success": False, "error": "Портфельный актив не найден"}
-        
-        # Обрабатываем результат: может быть словарь (если одна запись) или список
-        if isinstance(asset_meta, dict):
-            meta = asset_meta
-        elif isinstance(asset_meta, list) and len(asset_meta) > 0:
-            meta = asset_meta[0]
-        else:
-            return {"success": False, "error": f"Некорректный формат данных актива: {type(asset_meta)}"}
-        
-        source_portfolio_id = meta.get("portfolio_id")
-        asset_id = meta.get("asset_id")
-        asset_created_at = meta.get("created_at")
-        
-        # Получаем дату первой транзакции по перемещенному активу через прямой SQL запрос
-        from app.infrastructure.database.postgres_service import get_db_connection
-        from psycopg2.extras import RealDictCursor
-        
-        with get_db_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    "SELECT transaction_date FROM transactions WHERE portfolio_asset_id = %s ORDER BY transaction_date ASC LIMIT 1",
-                    (portfolio_asset_id,)
-                )
-                result = cur.fetchone()
-        
-        # Используем дату первой транзакции, если она есть, иначе дату создания актива
-        first_tx_date = None
-        if result:
-            tx_date = result.get("transaction_date")
-            if tx_date:
-                # Преобразуем в строку формата YYYY-MM-DD
-                if isinstance(tx_date, str):
-                    first_tx_date = tx_date[:10] if 'T' in tx_date else tx_date
-                else:
-                    first_tx_date = str(tx_date)[:10]
-        
-        # Если даты первой транзакции нет, используем дату создания актива
-        from_date = first_tx_date if first_tx_date else asset_created_at
-        
-        # Если и даты создания нет, используем минимальную дату
-        if not from_date:
-            from_date = "0001-01-01"
-        elif isinstance(from_date, str) and 'T' in from_date:
-            from_date = from_date[:10]
-        
-        logger.info(f"Перемещение актива {portfolio_asset_id}: первая транзакция = {first_tx_date}, дата создания = {asset_created_at}, используем {from_date}")
-        
-        # Проверяем, что целевой портфель существует и отличается от исходного
-        if source_portfolio_id == target_portfolio_id:
-            return {"success": False, "error": "Актив уже находится в указанном портфеле"}
-        
-        # Проверяем существование целевого портфеля
-        target_portfolio = _portfolio_repository.get_by_id_sync(target_portfolio_id)
-        
-        if not target_portfolio:
-            return {"success": False, "error": "Целевой портфель не найден"}
-        
-        # Проверяем права доступа (если передан user_id)
-        if user_id and target_portfolio["user_id"] != user_id:
-            return {"success": False, "error": "Нет доступа к целевому портфелю"}
-        
-        # 2️⃣ Проверяем, нет ли уже такого актива в целевом портфеле
-        existing_asset = _portfolio_asset_repository.get_by_portfolio_and_asset(target_portfolio_id, asset_id)
-        
-        if existing_asset:
-            return {
-                "success": False,
-                "error": "Актив уже существует в целевом портфеле",
-                "existing_portfolio_asset_id": existing_asset["id"]
-            }
-        
-        # 3️⃣ Обновляем portfolio_id в portfolio_assets
-        _portfolio_asset_repository.update_sync(portfolio_asset_id, {"portfolio_id": target_portfolio_id})
-        
-        # 6️⃣ Обновляем portfolio_id в portfolio_daily_positions
-        table_update(
-            "portfolio_daily_positions",
-            {"portfolio_id": target_portfolio_id},
-            {"portfolio_asset_id": portfolio_asset_id}
-        )
-
-        # 6.1 Переносим cash_operations в целевой портфель:
-        # — по (portfolio_id, asset_id) — Dividend, Coupon и др.; по transaction_id — Buy/Sell/Redemption
-        table_update(
-            "cash_operations",
-            {"portfolio_id": target_portfolio_id},
-            {"portfolio_id": source_portfolio_id, "asset_id": asset_id}
-        )
-
-        # 7️⃣ Пересчитываем позиции перемещенного актива с даты первой транзакции
-        update_asset_pos_result = rpc("update_portfolio_asset_positions_from_date", {
+        user_id_str = str(user_id) if user_id else None
+        result = rpc("move_portfolio_asset", {
             "p_portfolio_asset_id": portfolio_asset_id,
-            "p_from_date": from_date
+            "p_target_portfolio_id": target_portfolio_id,
+            "p_user_id": user_id_str
         })
-        if update_asset_pos_result is False:
-            logger.warning(f"Ошибка при обновлении позиций актива {portfolio_asset_id}")
-        
-        # 8️⃣ Обновляем графики стоимости для исходного портфеля (с даты первой транзакции)
-        update_pos_result = rpc("update_portfolio_positions_from_date", {
-            "p_portfolio_id": source_portfolio_id,
-            "p_from_date": from_date
-        })
-        if update_pos_result is False:
-            logger.warning(f"Ошибка при обновлении позиций портфеля {source_portfolio_id}")
-        
-        update_val_result = rpc("update_portfolio_values_from_date", {
-            "p_portfolio_id": source_portfolio_id,
-            "p_from_date": from_date
-        })
-        if update_val_result is False:
-            logger.warning(f"Ошибка при обновлении значений портфеля {source_portfolio_id}")
-        
-        # 9️⃣ Обновляем графики стоимости для целевого портфеля (с даты первой транзакции)
-        update_pos_result2 = rpc("update_portfolio_positions_from_date", {
-            "p_portfolio_id": target_portfolio_id,
-            "p_from_date": from_date
-        })
-        if update_pos_result2 is False:
-            logger.warning(f"Ошибка при обновлении позиций портфеля {target_portfolio_id}")
-        
-        update_val_result2 = rpc("update_portfolio_values_from_date", {
-            "p_portfolio_id": target_portfolio_id,
-            "p_from_date": from_date
-        })
-        if update_val_result2 is False:
-            logger.warning(f"Ошибка при обновлении значений портфеля {target_portfolio_id}")
-        
-        # 🔟 Получаем всех родителей исходного и целевого портфелей для обновления их истории
-        def get_all_parents(portfolio_id):
-            """Рекурсивно получает всех родителей портфеля вверх по иерархии"""
-            parents = []
-            current_id = portfolio_id
-            
-            while current_id:
-                portfolio = _portfolio_repository.get_by_id_sync(current_id)
-                if not portfolio:
-                    break
-                
-                parent_id = portfolio.get("parent_portfolio_id")
-                if parent_id:
-                    parents.append(parent_id)
-                    current_id = parent_id
-                else:
-                    break
-            
-            return parents
-        
-        # Получаем всех родителей исходного и целевого портфелей
-        source_parents = get_all_parents(source_portfolio_id)
-        target_parents = get_all_parents(target_portfolio_id)
-        
-        # Объединяем и убираем дубликаты
-        all_parents = list(set(source_parents + target_parents))
-        
-        # Обновляем историю для всех родителей
-        for parent_id in all_parents:
+
+        if not result:
+            return {"success": False, "error": "Ошибка при перемещении актива: пустой ответ"}
+
+        if isinstance(result, str):
+            import json as _json
             try:
-                logger.info(f"Обновляем историю родительского портфеля {parent_id} после перемещения актива")
-                rpc("update_portfolio_positions_from_date", {
-                    "p_portfolio_id": parent_id,
-                    "p_from_date": from_date
-                })
-                rpc("update_portfolio_values_from_date", {
-                    "p_portfolio_id": parent_id,
-                    "p_from_date": from_date
-                })
-            except Exception as e:
-                logger.warning(f"Ошибка при обновлении истории родительского портфеля {parent_id}: {e}", exc_info=True)
-        
-        # 9️⃣ Пересчитываем данные портфельного актива
-        update_pa_result = rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
-        if update_pa_result is False:
-            logger.warning(f"Ошибка при обновлении portfolio_asset {portfolio_asset_id}")
-        
-        return {
-            "success": True,
-            "message": "Актив успешно перемещен",
-            "portfolio_asset_id": portfolio_asset_id,
-            "source_portfolio_id": source_portfolio_id,
-            "target_portfolio_id": target_portfolio_id,
-            "updated_parents": all_parents
-        }
-        
+                result = _json.loads(result)
+            except _json.JSONDecodeError:
+                return {"success": False, "error": f"Некорректный ответ: {result}"}
+
+        return result
+
     except Exception as e:
         logger.error(f"Ошибка при перемещении актива: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
