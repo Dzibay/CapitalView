@@ -19,11 +19,11 @@ from app.domain.services.task_service import (
     update_task_status,
     TaskStatus
 )
-from app.domain.services.portfolio_service import import_broker_portfolio
+from app.domain.services.portfolio_import_service import import_broker_portfolio
 from app.domain.services.user_service import get_user_by_id
 from app.domain.services.broker_connections_service import upsert_broker_connection
 from app.constants import BrokerID
-from app.infrastructure.database.postgres_async import rpc_async, table_insert_async, table_update_async, table_select_async
+from app.infrastructure.database.postgres_async import table_insert_async, table_update_async, table_select_async
 
 logger = logging.getLogger(__name__)
 

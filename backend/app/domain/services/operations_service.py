@@ -2,7 +2,7 @@
 Доменный сервис для работы с денежными операциями.
 Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Other.
 """
-from app.infrastructure.database.postgres_service import rpc
+from app.infrastructure.database.database_service import rpc
 from app.domain.services.transactions_service import create_transaction
 from app.utils.date import normalize_date_to_string, normalize_date
 from typing import Optional, Union, List
@@ -314,7 +314,6 @@ def create_operations_batch(
         operations_list.append(op_data)
     
     # Используем batch функцию для создания всех операций за один раз
-    from app.infrastructure.database.postgres_service import rpc
     result = rpc("apply_operations_batch", {
         "p_operations": operations_list
     })

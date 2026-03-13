@@ -52,7 +52,7 @@ class MissedPayoutRepository:
             "missed_payouts",
             filters={"id": missed_payout_id}
         )
-        return result is not None
+        return bool(result)
     
     async def delete_missed_payouts_batch(
         self,

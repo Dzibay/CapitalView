@@ -5,7 +5,7 @@
 Примечание: Использует прямые вызовы к БД для работы с таблицами user_broker_connections и import_tasks,
 так как это служебные таблицы, не являющиеся основными доменными сущностями.
 """
-from app.infrastructure.database.postgres_service import table_select, table_insert, table_update, table_delete
+from app.infrastructure.database.database_service import table_select, table_insert, table_update, table_delete
 from datetime import datetime
 from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
 

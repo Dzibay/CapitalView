@@ -29,7 +29,7 @@ def get_user_by_id(user_id):
 
 def create_user(email: str, password: str):
     """Создает нового пользователя."""
-    hashed = bcrypt.generate_password_hash(password).decode("utf-8")
+    hashed = bcrypt.generate_password_hash(password)
     result = _user_repository.create_sync({"email": email, "password_hash": hashed})
     return result
 

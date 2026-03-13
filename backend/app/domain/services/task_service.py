@@ -7,9 +7,8 @@
 """
 import logging
 from typing import Optional, List, Dict, Any
-from datetime import datetime
-from app.infrastructure.database.postgres_service import table_insert, table_select, rpc
-from app.domain.models.task_models import TaskStatus, TaskType, TaskResponse
+from app.infrastructure.database.database_service import table_insert, table_select, rpc
+from app.domain.models.task_models import TaskStatus, TaskType
 
 logger = logging.getLogger(__name__)
 

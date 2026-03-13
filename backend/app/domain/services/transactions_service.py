@@ -4,7 +4,7 @@
 """
 from typing import Optional
 from datetime import datetime
-from app.infrastructure.database.postgres_service import rpc, table_select
+from app.infrastructure.database.database_service import rpc, table_select
 from app.utils.date import normalize_date_to_string, normalize_date_to_sql_date
 from app.core.logging import get_logger
 from app.infrastructure.database.repositories.transaction_repository import TransactionRepository

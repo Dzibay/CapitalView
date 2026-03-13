@@ -4,15 +4,17 @@ API endpoints для работы с активами.
 """
 from fastapi import APIRouter, Query, HTTPException, Depends
 from app.domain.services.assets_service import (
-    delete_asset, create_asset, add_asset_price, add_asset_prices_batch,
-    get_asset_info, get_asset_price_history, get_portfolio_asset_info,
+    delete_asset, create_asset, get_asset_info, get_portfolio_asset_info,
     move_asset_to_portfolio, get_asset_daily_values, get_asset_in_all_portfolios
+)
+from app.domain.services.asset_price_service import (
+    add_asset_price, add_asset_prices_batch, get_asset_price_history
 )
 from app.domain.services.access_control_service import (
     check_portfolio_access, check_portfolio_asset_access, check_asset_access
 )
 from app.domain.models.asset_models import AddAssetPriceRequest, MoveAssetRequest, BatchAddPriceRequest
-from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
+from app.constants import HTTPStatus
 from app.core.dependencies import get_current_user
 from app.utils.response import success_response
 from typing import Optional, Dict, Any

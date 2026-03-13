@@ -2,15 +2,27 @@
 Инициализация расширений для FastAPI.
 Работает с локальной PostgreSQL.
 """
-from flask_bcrypt import Bcrypt
+from passlib.hash import bcrypt as _bcrypt_hasher
 
-# Bcrypt для хеширования паролей
-bcrypt = Bcrypt()
+
+class PasswordHasher:
+    """Обёртка над passlib bcrypt для хеширования паролей."""
+
+    def generate_password_hash(self, password: str) -> str:
+        return _bcrypt_hasher.hash(password)
+
+    def check_password_hash(self, password_hash: str, password: str) -> bool:
+        try:
+            return _bcrypt_hasher.verify(password, password_hash)
+        except (ValueError, TypeError):
+            return False
+
+
+bcrypt = PasswordHasher()
 
 
 def init_extensions():
     """Инициализирует все расширения для FastAPI."""
-    # Инициализируем пул соединений PostgreSQL
     from app.infrastructure.database.postgres_service import get_connection_pool
     try:
         get_connection_pool()
@@ -19,5 +31,4 @@ def init_extensions():
         print(f"Ошибка инициализации PostgreSQL: {e}")
 
 
-# Инициализируем при импорте
 init_extensions()

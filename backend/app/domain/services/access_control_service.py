@@ -2,7 +2,6 @@
 Сервис для проверки доступа пользователей к ресурсам.
 Обеспечивает защиту от доступа к чужим портфелям, активам, транзакциям и операциям.
 """
-from app.infrastructure.database.postgres_service import rpc
 from fastapi import HTTPException
 from app.constants import HTTPStatus
 from typing import Optional

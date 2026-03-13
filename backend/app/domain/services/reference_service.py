@@ -3,7 +3,7 @@
 Перенесено из app/services/reference_service.py
 """
 import asyncio
-from app.infrastructure.database.postgres_service import rpc
+from app.infrastructure.database.database_service import rpc
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -73,7 +73,7 @@ def get_brokers():
     Примечание: Использует прямой вызов к БД, так как brokers - это справочная таблица,
     не являющаяся основной доменной сущностью.
     """
-    from app.infrastructure.database.postgres_service import table_select
+    from app.infrastructure.database.database_service import table_select
     return table_select("brokers", select="id, name", order={"column": "id"})
 
 

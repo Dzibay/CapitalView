@@ -4,17 +4,13 @@ API endpoints для работы с задачами.
 """
 from fastapi import APIRouter, Query, HTTPException, Depends
 from app.domain.services.task_service import (
-    create_import_task,
     get_task,
     get_user_tasks,
     cancel_task,
-    update_task_status,
-    TaskStatus
 )
-from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
+from app.constants import HTTPStatus
 from app.core.dependencies import get_current_user
 from app.utils.response import success_response
-from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)

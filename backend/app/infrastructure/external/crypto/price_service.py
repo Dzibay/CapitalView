@@ -1,7 +1,8 @@
 """
 Сервис для получения цен криптовалют с CoinGecko API.
 """
-from datetime import date
+import aiohttp
+from datetime import date, datetime
 from typing import Optional, List, Tuple, Dict
 from app.infrastructure.external.common.client import fetch_json
 from app.core.logging import get_logger

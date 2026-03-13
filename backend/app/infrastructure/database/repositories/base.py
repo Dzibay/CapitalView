@@ -1,66 +1,79 @@
 """
-Базовый репозиторий.
-Определяет интерфейс для всех репозиториев.
+Базовый репозиторий с generic CRUD-реализацией.
+Наследники определяют table_name и добавляют специфичные методы.
 """
-from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
+from app.infrastructure.database.database_service import (
+    table_select,
+    table_select_async,
+    table_insert,
+    table_insert_async,
+    table_update,
+    table_update_async,
+    table_delete,
+    table_delete_async,
+)
 
 
-class BaseRepository(ABC):
+class BaseRepository:
     """
-    Базовый класс для всех репозиториев.
-    Определяет общий интерфейс для работы с данными.
+    Generic CRUD-репозиторий.
+
+    Наследники ДОЛЖНЫ определить:
+        table_name: str  — имя таблицы в PostgreSQL
+
+    Опционально можно переопределить:
+        id_column: str   — имя колонки первичного ключа (по умолчанию "id")
     """
-    
-    @abstractmethod
-    async def get_by_id(self, id: int) -> Optional[Dict[str, Any]]:
-        """
-        Получает запись по ID.
-        
-        Args:
-            id: ID записи
-            
-        Returns:
-            Словарь с данными записи или None
-        """
-        pass
-    
-    @abstractmethod
-    async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Создает новую запись.
-        
-        Args:
-            data: Данные для создания
-            
-        Returns:
-            Созданная запись
-        """
-        pass
-    
-    @abstractmethod
-    async def update(self, id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Обновляет запись.
-        
-        Args:
-            id: ID записи
-            data: Данные для обновления
-            
-        Returns:
-            Обновленная запись или None
-        """
-        pass
-    
-    @abstractmethod
-    async def delete(self, id: int) -> bool:
-        """
-        Удаляет запись.
-        
-        Args:
-            id: ID записи
-            
-        Returns:
-            True если удалено успешно, False иначе
-        """
-        pass
+
+    table_name: str = ""
+    id_column: str = "id"
+
+    # ─── helpers ───────────────────────────────────────────────
+
+    def _id_filter(self, id: Any) -> dict:
+        return {self.id_column: id}
+
+    @staticmethod
+    def _first_or_none(rows: Optional[list]) -> Optional[dict]:
+        return rows[0] if rows else None
+
+    # ─── async CRUD ────────────────────────────────────────────
+
+    async def get_by_id(self, id: Any) -> Optional[Dict[str, Any]]:
+        result = await table_select_async(
+            self.table_name, "*", filters=self._id_filter(id), limit=1,
+        )
+        return self._first_or_none(result)
+
+    async def create(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        result = await table_insert_async(self.table_name, data)
+        return self._first_or_none(result)
+
+    async def update(self, id: Any, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        await table_update_async(self.table_name, data, filters=self._id_filter(id))
+        return await self.get_by_id(id)
+
+    async def delete(self, id: Any) -> bool:
+        result = await table_delete_async(self.table_name, filters=self._id_filter(id))
+        return bool(result)
+
+    # ─── sync CRUD ─────────────────────────────────────────────
+
+    def get_by_id_sync(self, id: Any) -> Optional[Dict[str, Any]]:
+        result = table_select(
+            self.table_name, "*", filters=self._id_filter(id), limit=1,
+        )
+        return self._first_or_none(result)
+
+    def create_sync(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        result = table_insert(self.table_name, data)
+        return self._first_or_none(result)
+
+    def update_sync(self, id: Any, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        table_update(self.table_name, data, filters=self._id_filter(id))
+        return self.get_by_id_sync(id)
+
+    def delete_sync(self, id: Any) -> bool:
+        result = table_delete(self.table_name, filters=self._id_filter(id))
+        return bool(result)
