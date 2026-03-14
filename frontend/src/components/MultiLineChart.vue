@@ -34,11 +34,87 @@ const props = defineProps({
 })
 
 const chartCanvas = ref(null)
+const chartWrapper = ref(null)
 let chartInstance = null
 
 const LABEL_FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"
 const LABEL_COLOR = '#94a3b8'
 const LABEL_COLOR_BOLD = '#64748b'
+
+/* --------------------------------------------------------------------------
+   Crosshair plugin — vertical line at hovered point
+-------------------------------------------------------------------------- */
+const crosshairPlugin = {
+  id: 'crosshair',
+  afterDraw(chart) {
+    const active = chart.tooltip?.getActiveElements()
+    if (!active?.length) return
+    const { ctx, chartArea } = chart
+    const x = active[0].element.x
+    ctx.save()
+    ctx.beginPath()
+    ctx.setLineDash([4, 4])
+    ctx.lineWidth = 1
+    ctx.strokeStyle = '#cbd5e1'
+    ctx.moveTo(x, chartArea.top)
+    ctx.lineTo(x, chartArea.bottom)
+    ctx.stroke()
+    ctx.restore()
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Custom external tooltip with CSS transitions
+-------------------------------------------------------------------------- */
+function getOrCreateTooltip(wrapperEl) {
+  let el = wrapperEl.querySelector('.chart-tooltip')
+  if (!el) {
+    el = document.createElement('div')
+    el.className = 'chart-tooltip'
+    wrapperEl.appendChild(el)
+  }
+  return el
+}
+
+function externalTooltipHandler(context) {
+  const { chart, tooltip } = context
+  const wrapper = chart.canvas.closest('.chart-wrapper')
+  if (!wrapper) return
+
+  const el = getOrCreateTooltip(wrapper)
+
+  if (tooltip.opacity === 0) {
+    el.style.opacity = '0'
+    el.style.pointerEvents = 'none'
+    return
+  }
+
+  // Build content
+  const title = tooltip.title?.[0] || ''
+  const lines = (tooltip.body || []).map(b => b.lines?.[0] || '')
+
+  el.innerHTML = `
+    <div class="chart-tooltip__title">${title}</div>
+    ${lines.map(l => `<div class="chart-tooltip__line">${l}</div>`).join('')}
+  `
+
+  // Position
+  const { offsetLeft, offsetTop } = chart.canvas
+  const tipW = el.offsetWidth
+  const tipH = el.offsetHeight
+  let left = offsetLeft + tooltip.caretX
+  let top = offsetTop + tooltip.caretY - tipH - 12
+
+  // Keep within chart bounds
+  if (left + tipW / 2 > chart.width) left = chart.width - tipW / 2
+  if (left - tipW / 2 < 0) left = tipW / 2
+  if (top < 0) top = offsetTop + tooltip.caretY + 12
+
+  el.style.opacity = '1'
+  el.style.left = `${left}px`
+  el.style.top = `${top}px`
+  el.style.pointerEvents = 'none'
+}
 
 function isBoundaryTick(labels, index) {
   if (!labels || index <= 0 || index >= labels.length) return false
@@ -49,11 +125,8 @@ function isBoundaryTick(labels, index) {
     const l = new Date(labels[labels.length - 1])
     if ([d, p, f, l].some(x => isNaN(x.getTime()))) return false
     const totalDays = (l - f) / 86400000
-    // Day labels → bold month transitions
     if (totalDays <= 100) return d.getMonth() !== p.getMonth()
-    // Month labels → bold year transitions only
     if (totalDays <= 1825) return d.getFullYear() !== p.getFullYear()
-    // Year labels → no bolding
     return false
   } catch { return false }
 }
@@ -91,11 +164,6 @@ const shortMonth = (date) => {
 
 /* --------------------------------------------------------------------------
    Adaptive data aggregation with interval-based sampling
-
-   Data point intervals (determines chart resolution):
-     ≤ 400 days  → daily
-     401–3650    → weekly  (every 7 days)
-     > 3650      → monthly (1st of each month)
 -------------------------------------------------------------------------- */
 function aggregateData(dataObj, period, chartType) {
   if (!dataObj?.labels?.length) return { labels: [], datasets: [] }
@@ -262,10 +330,12 @@ const renderChart = (aggr) => {
       borderWidth: i === 0 ? 3 : 2,
       tension: i === 0 ? 0.4 : 0.35,
       pointRadius: 0,
-      pointHoverRadius: i === 0 ? 6 : 4,
+      pointHoverRadius: i === 0 ? 5 : 3,
+      pointHitRadius: 8,
       pointBackgroundColor: ds.color,
       pointBorderColor: '#fff',
-      pointBorderWidth: 2
+      pointHoverBorderWidth: 2,
+      pointBorderWidth: 0
     }
     if (ds.fill) {
       base.fill = true
@@ -305,12 +375,15 @@ const renderChart = (aggr) => {
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: { labels: aggr.labels, datasets },
+    plugins: [crosshairPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
       animation: aggr.labels.length > 200 ? false : { duration: 400 },
       transitions: {
-        active: { animation: { duration: 120 } }
+        active: {
+          animation: { duration: 150, easing: 'easeOutCubic' }
+        }
       },
       interaction: { mode: 'index', intersect: false },
 
@@ -373,15 +446,12 @@ const renderChart = (aggr) => {
               const isLast = index === labels.length - 1
               const monthChanged = prev && d.getMonth() !== prev.getMonth()
 
-              // ≤ 7 days (week): every day, skip last
               if (totalDays <= 7) {
                 if (isLast) return ''
                 if (monthChanged) return monthYr
                 return dm
               }
 
-              // ≤ 45 days (~month): every 2 days from end, skip last
-              // Month boundary always shown as "Мес'ГГ"
               if (totalDays <= 45) {
                 if (isLast) return ''
                 if (monthChanged) return monthYr
@@ -389,7 +459,6 @@ const renderChart = (aggr) => {
                 return diff % 2 === 1 ? dm : ''
               }
 
-              // ≤ 100 days (~3 months): 1st (as Мес'ГГ) and 15th (as D Мес)
               if (totalDays <= 100) {
                 if (monthChanged) return monthYr
                 if (d.getDate() === 15) return dm
@@ -397,7 +466,6 @@ const renderChart = (aggr) => {
                 return ''
               }
 
-              // ≤ 500 days (~year): monthly, year on boundary
               if (totalDays <= 500) {
                 if (index === 0 && d.getDate() <= 7) return sm
                 if (!prev) return ''
@@ -406,7 +474,6 @@ const renderChart = (aggr) => {
                 return ''
               }
 
-              // ≤ 1825 days (~5 years): every 6 months
               if (totalDays <= 1825) {
                 if (index === 0) return d.getFullYear().toString()
                 if (!prev) return ''
@@ -415,7 +482,6 @@ const renderChart = (aggr) => {
                 return ''
               }
 
-              // > 5 years: yearly (dynamic step for ≤ 12 labels)
               const totalYears = totalDays / 365
               const yearStep = totalYears > 12 ? Math.ceil(totalYears / 10) : 1
 
@@ -435,24 +501,10 @@ const renderChart = (aggr) => {
       plugins: {
         legend: { display: false },
         tooltip: {
-          enabled: true,
+          enabled: false,
           mode: 'index',
           intersect: false,
-          backgroundColor: '#1f2937',
-          titleFont: { weight: '500', family: LABEL_FONT },
-          bodyFont: { size: 13, family: LABEL_FONT },
-          padding: 12,
-          cornerRadius: 6,
-          displayColors: false,
-          animation: {
-            duration: 150,
-            easing: 'easeOutQuart'
-          },
-          callbacks: {
-            beforeBody(items) { items.sort((a, b) => b.parsed.y - a.parsed.y) },
-            title: (ctx) => ctx[0].label,
-            label: (ctx) => `${ctx.dataset.label}: ${props.formatCurrency(ctx.parsed.y)}`
-          }
+          external: externalTooltipHandler
         }
       }
     }
@@ -480,7 +532,9 @@ onUnmounted(() => {
 
 <template>
   <div class="chart-container">
-    <canvas ref="chartCanvas"></canvas>
+    <div ref="chartWrapper" class="chart-wrapper">
+      <canvas ref="chartCanvas"></canvas>
+    </div>
   </div>
 </template>
 
@@ -489,5 +543,38 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   position: relative;
+}
+.chart-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+</style>
+
+<style>
+.chart-tooltip {
+  position: absolute;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  pointer-events: none;
+  white-space: nowrap;
+  opacity: 0;
+  transition: left 150ms ease-out, top 150ms ease-out, opacity 120ms ease-out;
+  z-index: 10;
+}
+.chart-tooltip__title {
+  font-weight: 500;
+  font-size: 12px;
+  margin-bottom: 4px;
+  color: #94a3b8;
+}
+.chart-tooltip__line {
+  font-size: 13px;
+  line-height: 1.4;
 }
 </style>

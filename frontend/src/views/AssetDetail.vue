@@ -301,13 +301,9 @@ const quantityByDate = computed(() => {
   const quantityMap = {}
   let cumulativeQuantity = 0
   
-  // Вычисляем накопленное количество для каждой даты из истории цен
-  // Нормализуем даты из истории цен
-  const priceDates = [...new Set(priceHistory.value.map(p => {
-    const date = new Date(p.trade_date)
-    date.setHours(0, 0, 0, 0)
-    return normalizeDateToString(date) || ''
-  }))].sort()
+  const priceDates = [...new Set(
+    priceHistory.value.map(p => (p.trade_date || '').split('T')[0])
+  )].filter(Boolean).sort()
   
   let txIndex = 0
   for (const priceDateStr of priceDates) {
@@ -347,25 +343,23 @@ const chartData = computed(() => {
   const leverage = asset.leverage || 1
   const currencyRate = asset.currency_rate_to_rub || portfolioAsset.value?.asset.currency_rate_to_rub || 1
 
-  // Фильтруем историю цен с первой транзакции только для графиков стоимости позиции и количества
-  // Для графика цены единицы актива показываем полную историю
-  let filteredPrices = [...priceHistory.value]
+  let filteredPrices = priceHistory.value
   if (firstTransactionDate.value && selectedChartType.value !== 'price') {
-    filteredPrices = filteredPrices.filter(p => {
-      const priceDate = new Date(p.trade_date)
-      priceDate.setHours(0, 0, 0, 0)
-      const firstDate = new Date(firstTransactionDate.value)
-      firstDate.setHours(0, 0, 0, 0)
-      return priceDate >= firstDate
-    })
+    const firstDateStr = typeof firstTransactionDate.value === 'string'
+      ? firstTransactionDate.value.split('T')[0]
+      : normalizeDateToString(new Date(firstTransactionDate.value)) || ''
+    filteredPrices = filteredPrices.filter(p => (p.trade_date || '').split('T')[0] >= firstDateStr)
   }
 
   if (!filteredPrices.length) {
     return { labels: [], datasets: [] }
   }
 
-  // Преобразуем историю цен в формат для графика
-  const labels = filteredPrices.map(p => p.trade_date).sort()
+  const priceMap = new Map()
+  for (const p of filteredPrices) {
+    priceMap.set(p.trade_date, p.price)
+  }
+  const labels = [...priceMap.keys()].sort()
   
   let datasets = []
   
@@ -423,20 +417,11 @@ const chartData = computed(() => {
       console.warn('Нет данных assetDailyValues для графика стоимости позиции')
     }
     
-    // Fallback: используем старый метод расчета (если данных из API нет)
     const quantities = quantityByDate.value
     const data = labels.map(date => {
-      // Нормализуем дату для поиска в quantityMap
-      const dateObj = new Date(date)
-      dateObj.setHours(0, 0, 0, 0)
-      const normalizedDate = normalizeDateToString(dateObj) || ''
-      
+      const normalizedDate = date.split('T')[0]
       const qty = quantities[normalizedDate] || 0
-      const price = filteredPrices.find(p => {
-        const pDate = new Date(p.trade_date)
-        pDate.setHours(0, 0, 0, 0)
-        return normalizeDateToString(pDate) === normalizedDate
-      })?.price || 0
+      const price = priceMap.get(date) || 0
       return (qty * price / leverage) * currencyRate
     })
     
@@ -479,15 +464,8 @@ const chartData = computed(() => {
       }
     }
     
-    // Fallback: используем старый метод расчета
     const quantities = quantityByDate.value
-    const data = labels.map(date => {
-      // Нормализуем дату для поиска в quantityMap
-      const dateObj = new Date(date)
-      dateObj.setHours(0, 0, 0, 0)
-      const normalizedDate = normalizeDateToString(dateObj) || ''
-      return quantities[normalizedDate] || 0
-    })
+    const data = labels.map(date => quantities[date.split('T')[0]] || 0)
     
     datasets = [{
       label: 'Количество актива',
@@ -496,11 +474,7 @@ const chartData = computed(() => {
       fill: true
     }]
   } else if (selectedChartType.value === 'price') {
-    // График цены единицы актива - используем оригинальную валюту (без конвертации в рубли)
-    const data = labels.map(date => {
-      const price = filteredPrices.find(p => p.trade_date === date)?.price || 0
-      return price // Не конвертируем в рубли, используем оригинальную цену
-    })
+    const data = labels.map(date => priceMap.get(date) || 0)
     
     datasets = [{
       label: 'Цена единицы актива',
