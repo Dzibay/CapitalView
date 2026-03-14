@@ -205,28 +205,44 @@ async def get_price_moex(session: aiohttp.ClientSession, ticker: str) -> Optiona
     return None
 
 
+def _asset_type_to_market(asset_type_id: Optional[int]) -> Optional[str]:
+    """Определяет рынок MOEX по asset_type_id (None = пробовать оба)."""
+    mapping = {
+        1: "shares",   # Акция
+        10: "shares",  # Фонд
+        11: "shares",  # Фьючерс (торгуются на shares в ISS candles)
+        2: "bonds",    # Облигация
+    }
+    return mapping.get(asset_type_id)
+
+
+# MOEX candles возвращает макс. ~500 строк; 700 календарных дней ≈ 500 торговых
+_BATCH_CALENDAR_DAYS = 700
+
+
 async def get_price_moex_history(
     session: aiohttp.ClientSession,
     ticker: str,
     start_date: Optional[date] = None,
-    days: int = 3650
+    days: int = 3650,
+    asset_type_id: Optional[int] = None,
 ) -> List[Tuple[str, float]]:
     """
-    Получает историю цен актива с MOEX поэтапно (батчами).
-    MOEX API ограничивает количество данных в одном запросе, поэтому запрашиваем по периодам.
+    Получает историю цен актива с MOEX поэтапно (батчами по ~700 дней).
     
     Args:
         session: HTTP сессия
         ticker: Тикер актива
-        start_date: Начальная дата для запроса (если None, начинаем с 2000 года)
-        days: Количество дней истории (не используется, оставлено для совместимости)
+        start_date: Начальная дата (если None, с 2000 года)
+        days: Не используется (совместимость)
+        asset_type_id: Тип актива для выбора рынка (1,10,11→shares, 2→bonds).
+                       Если None — пробует оба.
     
     Returns:
         Список кортежей (дата, цена)
     """
     end = date.today()
     if start_date:
-        # Убеждаемся что start_date это date объект, а не datetime
         if isinstance(start_date, datetime):
             start = start_date.date()
         elif isinstance(start_date, date):
@@ -234,15 +250,14 @@ async def get_price_moex_history(
         else:
             start = date.today()
     else:
-        # Если дата не указана, начинаем с 2000 года для полной истории
         start = date(2000, 1, 1)
-    
-    markets = ["shares", "bonds"]
-    
-    async def fetch_market_history_batch(market: str, batch_start: date, batch_end: date) -> List[Tuple[str, float]]:
-        """Запрашивает историю за один период (батч)"""
+
+    known_market = _asset_type_to_market(asset_type_id)
+    markets = [known_market] if known_market else ["shares", "bonds"]
+
+    async def fetch_batch(market: str, batch_start: date, batch_end: date) -> List[Tuple[str, float]]:
         url = f"{MOEX_BASE_URL}/{market}/securities/{ticker}/candles.json?interval=24&from={batch_start}&to={batch_end}"
-        
+
         for attempt in range(MAX_RETRIES):
             try:
                 async with session.get(url) as resp:
@@ -251,112 +266,72 @@ async def get_price_moex_history(
                             await asyncio.sleep(min(2 ** attempt, 10))
                             continue
                         return []
-                    
+
                     data = await resp.json()
                     candles = data.get('candles', {}).get('data', [])
-                    
                     if not candles:
                         return []
-                    
-                    if market == "shares":
-                        return [(row[6], row[1]) for row in candles if row[1] is not None]
-                    elif market == "bonds":
-                        # Для облигаций используем close цену (row[1]) - это цена в процентах от номинала в валюте облигации
-                        # Структура candles: [open, close, high, low, value, volume, begin, end]
-                        return [
-                            (row[6], row[1])  # (date, close_price в процентах)
-                            for row in candles
-                            if row[1] is not None and row[1] > 0
-                        ]
-            except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
+
+                    # candles: [open, close, high, low, value, volume, begin, end]
+                    return [
+                        (row[6], row[1])
+                        for row in candles
+                        if row[1] is not None and row[1] > 0
+                    ]
+            except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError):
                 if attempt < MAX_RETRIES - 1:
-                    # Для таймаутов увеличиваем задержку
-                    is_timeout = "timeout" in str(e).lower() or "Timeout" in type(e).__name__
-                    delay_base = 3 if is_timeout else 2
-                    delay = min(delay_base * (2 ** attempt), 15)
-                    await asyncio.sleep(delay)
+                    await asyncio.sleep(min(2 ** (attempt + 1), 15))
                     continue
                 return []
-            except Exception as e:
+            except Exception:
                 return []
-        
         return []
-    
+
+    def _parse_last_date(date_str) -> Optional[date]:
+        if isinstance(date_str, str):
+            try:
+                return datetime.strptime(date_str[:10], "%Y-%m-%d").date()
+            except (ValueError, AttributeError):
+                return None
+        if isinstance(date_str, datetime):
+            return date_str.date()
+        if isinstance(date_str, date):
+            return date_str
+        return None
+
     async def fetch_market_history(market: str) -> List[Tuple[str, float]]:
-        """Запрашивает историю поэтапно по периодам"""
-        all_prices = []
+        all_prices: List[Tuple[str, float]] = []
         current_start = start
-        max_iterations = 100  # Защита от бесконечного цикла
-        iteration = 0
-        
-        # Запрашиваем по годам (365 дней) для надежности
-        # MOEX API может ограничивать количество данных, поэтому разбиваем на батчи
-        batch_days = 365  # Запрашиваем по году за раз
-        
-        while current_start < end and iteration < max_iterations:
-            iteration += 1
-            # Вычисляем конец текущего батча
-            batch_end = min(current_start + timedelta(days=batch_days), end)
-            
-            # Запрашиваем данные за этот период
-            batch_prices = await fetch_market_history_batch(market, current_start, batch_end)
-            
+        max_iterations = 50
+
+        for _ in range(max_iterations):
+            if current_start >= end:
+                break
+
+            batch_end = min(current_start + timedelta(days=_BATCH_CALENDAR_DAYS), end)
+            batch_prices = await fetch_batch(market, current_start, batch_end)
+
             if batch_prices:
                 all_prices.extend(batch_prices)
-                # Если получили данные, продолжаем со следующего дня после последней даты
-                # Или переходим к следующему периоду
-                last_date_str = batch_prices[-1][0]
-                try:
-                    # Парсим дату, убеждаемся что это date объект
-                    if isinstance(last_date_str, str):
-                        # Извлекаем только дату (первые 10 символов)
-                        date_part = last_date_str[:10]
-                        parsed_dt = datetime.strptime(date_part, "%Y-%m-%d")
-                        last_date = parsed_dt.date()  # Преобразуем в date
-                    else:
-                        # Если это уже date/datetime объект
-                        if isinstance(last_date_str, datetime):
-                            last_date = last_date_str.date()
-                        elif isinstance(last_date_str, date):
-                            last_date = last_date_str
-                        else:
-                            raise ValueError(f"Неожиданный тип даты: {type(last_date_str)}")
-                    
-                    # Переходим к следующему дню после последней полученной даты
-                    current_start = last_date + timedelta(days=1)
-                    if not isinstance(current_start, date):
-                        current_start = current_start.date() if hasattr(current_start, 'date') else date.today()
-                    
-                    # Если последняя дата уже достигла или превысила end, выходим
-                    if last_date >= end:
+                last_dt = _parse_last_date(batch_prices[-1][0])
+                if last_dt:
+                    if last_dt >= end:
                         break
-                except (ValueError, AttributeError, TypeError) as e:
-                    # Если не удалось распарсить дату, переходим к следующему периоду
+                    current_start = last_dt + timedelta(days=1)
+                else:
                     current_start = batch_end + timedelta(days=1)
-                    if isinstance(current_start, datetime):
-                        current_start = current_start.date()
             else:
-                # Если данных нет, переходим к следующему периоду
                 current_start = batch_end + timedelta(days=1)
-                if isinstance(current_start, datetime):
-                    current_start = current_start.date()
-            
-            # Небольшая задержка между запросами, чтобы не перегружать API
-            await asyncio.sleep(0.1)
-        
-        if iteration >= max_iterations:
-            logger.warning(f"⚠️ Достигнуто максимальное количество итераций ({max_iterations}) для {ticker} на рынке {market}. "
-                         f"Загружено {len(all_prices)} цен. Последняя дата: {all_prices[-1][0] if all_prices else 'N/A'}")
-        
+
         return all_prices
-    
-    tasks = [fetch_market_history(market) for market in markets]
+
+    tasks = [fetch_market_history(m) for m in markets]
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     for result in results:
         if isinstance(result, Exception):
             continue
         if isinstance(result, list) and result:
             return result
-    
+
     return []

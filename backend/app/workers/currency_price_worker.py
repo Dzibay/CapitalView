@@ -49,6 +49,7 @@ async def get_currency_assets() -> List[Dict]:
     result = await db_select(
         "assets",
         "id, ticker",
+        filters={"asset_type_id": 7},
         in_filters={"ticker": CURRENCY_TICKERS}
     )
     

@@ -229,8 +229,9 @@ def process_today_price(
     if last:
         prev_date = last.get("date") or (normalize_date_to_string(last.get("trade_date")) if last.get("trade_date") else None)
 
-    # анти-скачок (для крипты можно увеличить до 20%)
-    if prev_price and abs(price - prev_price) / prev_price > 0.2:
+    if prev_price:
+        prev_price = float(prev_price)
+    if prev_price and abs(float(price) - prev_price) / prev_price > 0.2:
         logger.warning(f"⚠️ Скачок цены для {coingecko_id}: {prev_price} -> {price}")
         return None
 
