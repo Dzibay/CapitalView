@@ -405,19 +405,6 @@ const chartData = computed(() => {
         })
         const labels = filteredValues.map(v => v.report_date)
         
-        // Отладочная информация
-        if (data.length > 0) {
-          const minValue = Math.min(...data)
-          const maxValue = Math.max(...data)
-          console.log('График стоимости позиции:', {
-            записей: data.length,
-            мин: minValue,
-            макс: maxValue,
-            первые_5: data.slice(0, 5),
-            последние_5: data.slice(-5)
-          })
-        }
-        
         datasets = [{
           label: 'Стоимость позиции',
           data,

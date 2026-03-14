@@ -256,7 +256,7 @@ def get_portfolio_asset_info(portfolio_asset_id: int, user_id: str):
             "p_portfolio_asset_id": portfolio_asset_id,
             "p_user_id": user_id,
             "p_include_price_history": True,
-            "p_price_history_limit": 1000  # Лимит для начальной загрузки
+            "p_price_history_limit": 100000
         })
         
         if not result:

@@ -170,7 +170,7 @@ async def get_asset_price_history_route(
     user: dict = Depends(get_current_user),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    limit: int = Query(1000, ge=1)
+    limit: int = Query(100000, ge=1)
 ):
     """Получение истории цен актива."""
     # Проверяем доступ к активу (для кастомных активов)

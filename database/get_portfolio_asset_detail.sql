@@ -2,7 +2,7 @@ CREATE OR REPLACE FUNCTION get_portfolio_asset_detail(
     p_portfolio_asset_id bigint,
     p_user_id uuid,
     p_include_price_history boolean DEFAULT false,
-    p_price_history_limit integer DEFAULT 1000
+    p_price_history_limit integer DEFAULT 100000
 )
 RETURNS jsonb
 LANGUAGE plpgsql

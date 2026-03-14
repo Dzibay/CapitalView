@@ -36,7 +36,7 @@ export default {
     return res.data;
   },
 
-  async getAssetPriceHistory(asset_id, start_date = null, end_date = null, limit = 1000) {
+  async getAssetPriceHistory(asset_id, start_date = null, end_date = null, limit = 100000) {
     const params = { limit };
     if (start_date) params.start_date = start_date;
     if (end_date) params.end_date = end_date;

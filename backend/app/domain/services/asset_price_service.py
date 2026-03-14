@@ -136,7 +136,7 @@ def add_asset_prices_batch(asset_id: int, prices: list):
         return {"success": False, "error": str(e)}
 
 
-def get_asset_price_history(asset_id: int, start_date: str = None, end_date: str = None, limit: int = 1000):
+def get_asset_price_history(asset_id: int, start_date: str = None, end_date: str = None, limit: int = 100000):
     try:
         from datetime import datetime, date as date_type
 

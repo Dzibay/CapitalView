@@ -43,7 +43,7 @@ class AssetRepository(BaseRepository):
         asset_id: int,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        limit: int = 1000,
+        limit: int = 100000,
     ) -> List[Dict[str, Any]]:
         result = table_select(
             "asset_prices", select="*",

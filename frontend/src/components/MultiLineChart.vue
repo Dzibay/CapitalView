@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue' // Добавил onUnmounted
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import {
   Chart,
   LineElement,
@@ -25,7 +25,7 @@ const props = defineProps({
   },
   chartType: {
     type: String,
-    default: null // 'position' | 'quantity' | 'price' или null
+    default: null
   },
   formatCurrency: {
     type: Function,
@@ -33,266 +33,225 @@ const props = defineProps({
   }
 })
 
-// Ссылка на DOM-элемент канваса (вместо ID)
 const chartCanvas = ref(null)
 let chartInstance = null
 
+const LABEL_FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"
+const LABEL_COLOR = '#94a3b8'
+const LABEL_COLOR_BOLD = '#64748b'
+
+function isBoundaryTick(labels, index) {
+  if (!labels || index <= 0 || index >= labels.length) return false
+  try {
+    const d = new Date(labels[index])
+    const p = new Date(labels[index - 1])
+    const f = new Date(labels[0])
+    const l = new Date(labels[labels.length - 1])
+    if ([d, p, f, l].some(x => isNaN(x.getTime()))) return false
+    const totalDays = (l - f) / 86400000
+    // Day labels → bold month transitions
+    if (totalDays <= 100) return d.getMonth() !== p.getMonth()
+    // Month labels → bold year transitions only
+    if (totalDays <= 1825) return d.getFullYear() !== p.getFullYear()
+    // Year labels → no bolding
+    return false
+  } catch { return false }
+}
+
 /* --------------------------------------------------------------------------
-   ДАТЫ И АГРЕГАЦИЯ ПОД ПЕРИОДЫ
+   Helpers
 -------------------------------------------------------------------------- */
-function aggregateData(dataObj, period) {
+const norm = (date) => {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  d.setMilliseconds(0)
+  return d
+}
+
+const parseDate = (d) => {
+  if (typeof d === 'string') {
+    const parts = d.split('T')[0].split('-')
+    if (parts.length === 3)
+      return norm(new Date(+parts[0], +parts[1] - 1, +parts[2]))
+  }
+  return norm(new Date(d))
+}
+
+const fmtDate = (date) => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+const shortMonth = (date) => {
+  const m = date.toLocaleString('ru-RU', { month: 'short' }).replace('.', '')
+  return m.charAt(0).toUpperCase() + m.slice(1)
+}
+
+/* --------------------------------------------------------------------------
+   Adaptive data aggregation with interval-based sampling
+
+   Data point intervals (determines chart resolution):
+     ≤ 400 days  → daily
+     401–3650    → weekly  (every 7 days)
+     > 3650      → monthly (1st of each month)
+-------------------------------------------------------------------------- */
+function aggregateData(dataObj, period, chartType) {
   if (!dataObj?.labels?.length) return { labels: [], datasets: [] }
 
   const today = new Date()
-  
-  // Вспомогательная функция для нормализации даты до начала дня
-  const normalizeDate = (date) => {
-    const d = new Date(date)
-    d.setHours(0, 0, 0, 0)
-    d.setMilliseconds(0)
-    return d
-  }
-  
-  const parseDate = (d) => {
-    // Парсим дату из строки формата YYYY-MM-DD
-    if (typeof d === 'string') {
-      const parts = d.split('T')[0].split('-')
-      if (parts.length === 3) {
-        return normalizeDate(new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])))
-      }
-    }
-    return normalizeDate(new Date(d))
-  }
+  const numDS = dataObj.datasets.length
 
-  const points = dataObj.labels.map((label, index) => ({
-    date: parseDate(label),
-    values: dataObj.datasets.map(ds => ds.data[index])
-  })).sort((a, b) => a.date.getTime() - b.date.getTime())
+  const points = dataObj.labels.map((lbl, i) => ({
+    date: parseDate(lbl),
+    values: dataObj.datasets.map(ds => ds.data[i])
+  })).sort((a, b) => a.date - b.date)
 
-  const firstPoint = points[0]?.date
+  if (!points.length) return { labels: [], datasets: Array.from({ length: numDS }, () => []) }
 
-  let firstDate
+  const firstPt = points[0].date
+  const needsZero = chartType !== 'price'
+
+  let start
   if (period === '1M') {
-    firstDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30)
+    start = norm(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30))
   } else if (period === '1Y') {
-    firstDate = new Date(today.getFullYear(), today.getMonth() - 11, 1)
+    start = norm(new Date(today.getFullYear(), today.getMonth() - 11, 1))
   } else {
-    // Для периода "Все время" начинаем с дня до первой точки данных, чтобы первая отметка была 0
-    if (firstPoint) {
-      firstDate = new Date(firstPoint)
-      firstDate.setDate(firstDate.getDate() - 1) // День до первой точки
-    } else {
-      firstDate = new Date(today)
-    }
+    start = new Date(firstPt)
+    if (needsZero) start.setDate(start.getDate() - 1)
+    start = norm(start)
   }
-  
-  // Нормализуем даты до начала дня
-  firstDate = normalizeDate(firstDate)
-  const lastDate = normalizeDate(today) // Последний день - сегодня (включительно)
-  
+
+  const end = norm(today)
+  const totalDays = Math.round((end - start) / 86400000)
+
+  const samples = []
+
+  if (needsZero && start.getTime() < firstPt.getTime()) {
+    samples.push({ date: new Date(start), zero: true })
+  }
+
+  const dataStart = norm(new Date(Math.max(start.getTime(), firstPt.getTime())))
+
+  if (totalDays <= 400) {
+    let d = new Date(dataStart)
+    while (d <= end) {
+      samples.push({ date: new Date(d), zero: false })
+      d.setDate(d.getDate() + 1)
+      d = norm(d)
+    }
+  } else if (totalDays <= 3650) {
+    let d = new Date(dataStart)
+    while (d <= end) {
+      samples.push({ date: new Date(d), zero: false })
+      d.setDate(d.getDate() + 7)
+      d = norm(d)
+    }
+    const last = samples[samples.length - 1]
+    if (last && last.date.getTime() !== end.getTime())
+      samples.push({ date: new Date(end), zero: false })
+  } else {
+    samples.push({ date: new Date(dataStart), zero: false })
+    let d = new Date(dataStart.getFullYear(), dataStart.getMonth() + 1, 1)
+    d = norm(d)
+    while (d <= end) {
+      samples.push({ date: new Date(d), zero: false })
+      d = new Date(d.getFullYear(), d.getMonth() + 1, 1)
+      d = norm(d)
+    }
+    const last = samples[samples.length - 1]
+    if (last && last.date.getTime() !== end.getTime())
+      samples.push({ date: new Date(end), zero: false })
+  }
+
   const labels = []
-  const datasetBuffers = dataObj.datasets.map(() => [])
-  let idx = 0
-  let lastValues = new Array(dataObj.datasets.length).fill(0)
+  const bufs = Array.from({ length: numDS }, () => [])
+  let pi = 0
+  let cur = new Array(numDS).fill(0)
 
-  // Итерируемся по дням, включая последний день
-  // Используем сравнение по timestamp для корректной работы с датами
-  const firstDateTimestamp = firstDate.getTime()
-  const lastDateTimestamp = lastDate.getTime()
-  
-  // Функция для форматирования даты в YYYY-MM-DD без проблем с часовыми поясами
-  const formatDateLocal = (date) => {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
-  }
-  
-  // Итерируемся по дням, используя локальные даты для избежания проблем с часовыми поясами
-  let currentDate = new Date(firstDate)
-  
-  while (currentDate <= lastDate) {
-    const currentDay = normalizeDate(currentDate)
-    const currentDayTimestamp = currentDay.getTime()
-    
-    if (firstPoint && currentDayTimestamp < firstPoint.getTime()) {
-      // Для дат до первой точки данных устанавливаем значение 0
-      datasetBuffers.forEach((arr) => arr.push(0))
-    } else {
-      // Обновляем lastValues до последней точки, которая <= текущего дня
-      // Используем сравнение по timestamp для точности
-      while (idx < points.length && points[idx].date.getTime() <= currentDayTimestamp) {
-        lastValues = points[idx].values
-        idx++
-      }
-      datasetBuffers.forEach((arr, i) => arr.push(lastValues[i] || 0))
+  for (const s of samples) {
+    const ts = s.date.getTime()
+    while (pi < points.length && points[pi].date.getTime() <= ts) {
+      cur = points[pi].values.map(v => v ?? 0)
+      pi++
     }
-    // Используем локальное форматирование даты вместо toISOString для избежания проблем с часовыми поясами
-    labels.push(formatDateLocal(currentDay))
-    
-    // Переходим к следующему дню, используя локальные методы для избежания проблем с часовыми поясами
-    currentDate.setDate(currentDate.getDate() + 1)
-    currentDate = normalizeDate(currentDate) // Нормализуем после изменения
+    if (s.zero) {
+      bufs.forEach(arr => arr.push(0))
+    } else {
+      bufs.forEach((arr, i) => arr.push(cur[i]))
+    }
+    labels.push(fmtDate(s.date))
   }
 
-  return { labels, datasets: datasetBuffers }
+  return { labels, datasets: bufs }
 }
 
 /* --------------------------------------------------------------------------
-    ОКРУГЛЕНИЕ ОКНА Y
+   Y-axis helpers
 -------------------------------------------------------------------------- */
 function getNiceMax(value) {
-  if (value <= 0) {
-    // Для нулевых или отрицательных значений используем небольшой диапазон
-    return 100
-  }
-  
-  // Добавляем 10% к максимальному значению
+  if (value <= 0) return 100
   const padded = value * 1.1
-  
-  // Определяем порядок величины (логарифм по основанию 10)
-  const order = padded < 1 && padded > 0 
-    ? Math.floor(Math.log10(padded)) 
-    : Math.floor(Math.log10(padded))
-  
-  // Вычисляем базовую величину (степень 10)
-  const magnitude = Math.pow(10, order)
-  
-  // Выбираем "круглый" шаг округления в зависимости от порядка величины
+  const order = Math.floor(Math.log10(padded))
   let step
-  if (order < 0) {
-    // Для значений меньше 1 (0.1, 0.01, 0.001 и т.д.)
-    // Шаг: 0.1, 0.01, 0.001 и т.д. (кратные 5)
-    step = magnitude * 5
-  } else if (order === 0) {
-    // Для единиц (1-9): шаг 5
-    step = 5
-  } else if (order === 1) {
-    // Для десятков (10-99): шаг 10
-    step = 10
-  } else {
-    step = 5 * 10**(order - 1)
-  }
-  
-  // Округляем вверх до ближайшего кратного шага
-  const rounded = Math.ceil(padded / step) * step
-  
-  // Убеждаемся, что округленное значение не меньше исходного (с запасом)
-  return rounded < padded ? rounded + step : rounded
+  if (order < 0) step = Math.pow(10, order) * 5
+  else if (order === 0) step = 5
+  else if (order === 1) step = 10
+  else step = 5 * 10 ** (order - 1)
+  const r = Math.ceil(padded / step) * step
+  return r < padded ? r + step : r
 }
 
 function getNiceMin(value) {
-  // Если значение >= 0, нижняя граница всегда 0
-  if (value >= 0) {
-    return 0
-  }
-  
-  // Для отрицательных значений вычисляем "nice" минимальное значение
-  // Аналогично getNiceMax, но округляем вниз
-  
-  // Вычитаем 10% от минимального значения для запаса
+  if (value >= 0) return 0
   const padded = value * 1.1
-  
-  // Определяем порядок величины (логарифм по основанию 10)
-  // Для отрицательных чисел берем абсолютное значение
-  const absValue = Math.abs(padded)
-  const order = absValue < 1 && absValue > 0 
-    ? Math.floor(Math.log10(absValue)) 
-    : Math.floor(Math.log10(absValue))
-  
-  // Вычисляем базовую величину (степень 10)
-  const magnitude = Math.pow(10, order)
-  
-  // Выбираем "круглый" шаг округления в зависимости от порядка величины
+  const order = Math.floor(Math.log10(Math.abs(padded)))
   let step
-  if (order < 0) {
-    step = magnitude * 5
-  } else if (order === 0) {
-    step = 5
-  } else if (order === 1) {
-    step = 10
-  } else if (order === 2) {
-    step = 50
-  } else if (order === 3) {
-    step = 500
-  } else if (order === 4) {
-    step = 5000
-  } else if (order === 5) {
-    step = 50000
-  } else {
-    step = magnitude * 1.2
-  }
-  
-  // Округляем вниз до ближайшего кратного шага
-  const rounded = Math.floor(padded / step) * step
-  
-  // Убеждаемся, что округленное значение не больше исходного (с запасом)
-  return rounded > padded ? rounded - step : rounded
+  if (order < 0) step = Math.pow(10, order) * 5
+  else if (order === 0) step = 5
+  else if (order === 1) step = 10
+  else if (order === 2) step = 50
+  else if (order === 3) step = 500
+  else if (order === 4) step = 5000
+  else if (order === 5) step = 50000
+  else step = Math.pow(10, order) * 1.2
+  const r = Math.floor(padded / step) * step
+  return r > padded ? r - step : r
 }
 
 /* --------------------------------------------------------------------------
-   РЕНДЕР ГРАФИКА
+   Render
 -------------------------------------------------------------------------- */
 const renderChart = (aggr) => {
-  // ИСПОЛЬЗУЕМ REF ВМЕСТО getElementById
-  const ctx = chartCanvas.value?.getContext("2d")
+  const ctx = chartCanvas.value?.getContext('2d')
   if (!ctx) return
 
   const allValues = aggr.datasets.flat()
-  
-  // Находим минимальное и максимальное значения
-  const minValue = allValues.length > 0 ? Math.min(...allValues) : 0
-  const maxValue = allValues.length > 0 ? Math.max(...allValues) : 100
-  
-  // Вычисляем диапазон значений
+  const minValue = allValues.length ? Math.min(...allValues) : 0
+  const maxValue = allValues.length ? Math.max(...allValues) : 100
   const range = maxValue - minValue
-  
-  // Для коротких периодов (месяц) или графика цены единицы используем адаптивную шкалу
-  // Если диапазон мал относительно значений, используем более точную шкалу
+
   let yMin, yMax
-  
-  // Применяем адаптивную шкалу для периода "месяц" с малыми изменениями
-  const shouldUseAdaptiveScale = 
-    props.period === '1M' && 
-    range > 0 && 
-    range < maxValue * 0.1
-  
-  if (shouldUseAdaptiveScale) {
-    // Для месяца с малыми изменениями используем шкалу, основанную на диапазоне
-    // Добавляем запас 15% сверху и снизу для лучшей визуализации
-    const padding = range * 0.15
-    const adjustedMin = minValue - padding
-    const adjustedMax = maxValue + padding
-    
-    // Округляем до "красивых" значений, но с учетом малого диапазона
-    const rangeOrder = Math.floor(Math.log10(range))
-    let step
-    if (rangeOrder < 0) {
-      step = Math.pow(10, rangeOrder) * 5
-    } else if (rangeOrder === 0) {
-      step = 1
-    } else if (rangeOrder === 1) {
-      step = 10
-    } else if (rangeOrder === 2) {
-      step = 100
-    } else if (rangeOrder === 3) {
-      step = 1000
-    } else {
-      step = Math.pow(10, rangeOrder - 1) * 5
-    }
-    
-    yMin = Math.floor(adjustedMin / step) * step
-    yMax = Math.ceil(adjustedMax / step) * step
-    
-    // Убеждаемся, что min не меньше реального минимума, а max не больше реального максимума
-    if (yMin > minValue) yMin = Math.floor(minValue / step) * step
-    if (yMax < maxValue) yMax = Math.ceil(maxValue / step) * step
-  } else {
-    // Для длинных периодов используем стандартную логику
-    // Если есть значения ниже нуля, нижняя граница динамически подстраивается
-    // Если все значения выше или равны нулю, нижняя граница = 0
+
+  if (props.period === 'All') {
     yMin = minValue < 0 ? getNiceMin(minValue) : 0
     yMax = getNiceMax(maxValue)
+  } else {
+    const pad = range > 0 ? range * 0.15 : Math.max(1, Math.abs(maxValue) * 0.05)
+    const rng = (maxValue + pad) - (minValue - pad)
+    const rOrder = rng > 0 ? Math.floor(Math.log10(rng)) : 0
+    let step
+    if (rOrder < 0) step = Math.pow(10, rOrder) * 5
+    else if (rOrder === 0) step = 1
+    else if (rOrder === 1) step = 10
+    else if (rOrder === 2) step = 100
+    else if (rOrder === 3) step = 1000
+    else step = Math.pow(10, rOrder - 1) * 5
+    yMin = Math.floor((minValue - pad) / step) * step
+    yMax = Math.ceil((maxValue + pad) / step) * step
+    if (minValue >= 0 && yMin < 0) yMin = 0
   }
 
   const datasets = props.chartData.datasets.map((ds, i) => {
@@ -308,24 +267,22 @@ const renderChart = (aggr) => {
       pointBorderColor: '#fff',
       pointBorderWidth: 2
     }
-
     if (ds.fill) {
       base.fill = true
       base.backgroundColor = (context) => {
-        const chart = context.chart
-        const { ctx, chartArea } = chart
+        const { ctx: c, chartArea } = context.chart
         if (!chartArea) return null
-        const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
-        gradient.addColorStop(0, ds.color + '33')
-        gradient.addColorStop(1, ds.color + '00')
-        return gradient
+        const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
+        g.addColorStop(0, ds.color + '33')
+        g.addColorStop(1, ds.color + '00')
+        return g
       }
-    } else base.fill = false
-
+    } else {
+      base.fill = false
+    }
     return base
   })
 
-  // ОБНОВЛЕНИЕ СУЩЕСТВУЮЩЕГО
   if (chartInstance) {
     chartInstance.data.labels = aggr.labels
     chartInstance.data.datasets = datasets
@@ -335,165 +292,139 @@ const renderChart = (aggr) => {
     return
   }
 
-  // СОЗДАНИЕ НОВОГО (ВАЖНО: Добавлена проверка на случай HMR)
-  // Если канвас уже используется (например, Chart.js не успел очиститься), уничтожаем старый экземпляр
-  // Chart.getChart(ctx) ищет существующий инстанс на этом канвасе
-  const existingChart = Chart.getChart(ctx)
-  if (existingChart) {
-    existingChart.destroy()
-  }
+  const existing = Chart.getChart(ctx)
+  if (existing) existing.destroy()
 
-  // Получаем цвета из CSS переменных
-  const getCSSVariable = (varName) => {
-    if (typeof window !== 'undefined') {
-      return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#6b7280'
-    }
-    return '#6b7280'
-  }
-  
-  const axisText = getCSSVariable('--axis-text') || '#6b7280'
-  const axisTextLight = getCSSVariable('--axis-text-light') || '#9ca3af'
-  const axisGrid = getCSSVariable('--axis-grid') || '#e5e7eb'
+  const css = (v) =>
+    typeof window !== 'undefined'
+      ? getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#e5e7eb'
+      : '#e5e7eb'
+
+  const axisGrid = css('--axis-grid') || '#e5e7eb'
 
   chartInstance = new Chart(ctx, {
     type: 'line',
-    data: {
-      labels: aggr.labels,
-      datasets
-    },
+    data: { labels: aggr.labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: aggr.labels.length > 200 ? false : { duration: 400 },
+      transitions: {
+        active: { animation: { duration: 120 } }
+      },
       interaction: { mode: 'index', intersect: false },
 
       scales: {
         y: {
           min: yMin,
           max: yMax,
-          grid: {
-            color: axisGrid,
-            drawBorder: false,
-            lineWidth: 1,
-            drawTicks: false,
-            tickLength: 0
-          },
-          border: {
-            display: false
-          },
+          grid: { color: axisGrid, drawBorder: false, lineWidth: 1, drawTicks: false, tickLength: 0 },
+          border: { display: false },
           ticks: {
             callback: v => {
-              const absValue = Math.abs(v)
-              if (absValue >= 1000) {
-                const kValue = v / 1000
-                const formatted = Math.abs(kValue) % 1 === 0 
-                  ? kValue.toFixed(0) 
-                  : kValue.toFixed(1)
-                return `${formatted}K`
-              }
+              const a = Math.abs(v)
+              if (a >= 1e6) { const m = v / 1e6; return `${m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)}M` }
+              if (a >= 1e3) { const k = v / 1e3; return `${Math.abs(k) % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}K` }
               return v.toString()
             },
-            color: axisTextLight,
-            font: {
-              size: 12,
-              family: 'Inter, system-ui, sans-serif',
-              weight: '500'
-            },
-            padding: 12,
-            stepSize: null,
+            color: LABEL_COLOR,
+            font: { size: 11, family: LABEL_FONT, weight: '300' },
+            padding: 10,
             maxTicksLimit: 8
           }
         },
 
         x: {
           type: 'category',
-          grid: {
-            display: false,
-            drawBorder: false
-          },
-          border: {
-            display: false
-          },
+          grid: { display: false, drawBorder: false },
+          border: { display: false },
           ticks: {
-            color: axisText,
-            font: {
-              size: 12,
-              family: 'Inter, system-ui, sans-serif',
-              weight: '500'
-            },
+            color: (ctx) => isBoundaryTick(ctx.chart?.data?.labels, ctx.index) ? LABEL_COLOR_BOLD : LABEL_COLOR,
+            font: (ctx) => ({
+              size: 11,
+              family: LABEL_FONT,
+              weight: isBoundaryTick(ctx.chart?.data?.labels, ctx.index) ? '500' : '300'
+            }),
             autoSkip: false,
             maxRotation: 0,
             minRotation: 0,
-            padding: 12,
-            callback: function (value, index) {
+            padding: 8,
+
+            callback: function (_value, index) {
               const labels = this.chart.data.labels
               if (!labels || index >= labels.length) return ''
-              
+
               let d
-              try {
-                d = new Date(labels[index])
-                if (isNaN(d.getTime())) return ''
-              } catch (e) {
-                return ''
-              }
-              
-              const prev = index > 0 ? (() => {
-                try {
-                  const prevDate = new Date(labels[index - 1])
-                  return isNaN(prevDate.getTime()) ? null : prevDate
-                } catch {
-                  return null
-                }
-              })() : null
-              
-              const first = (() => {
-                try {
-                  const firstDate = new Date(labels[0])
-                  return isNaN(firstDate.getTime()) ? null : firstDate
-                } catch {
-                  return null
-                }
-              })()
-              
-              const last = (() => {
-                try {
-                  const lastDate = new Date(labels[labels.length - 1])
-                  return isNaN(lastDate.getTime()) ? null : lastDate
-                } catch {
-                  return null
-                }
-              })()
-              
+              try { d = new Date(labels[index]); if (isNaN(d.getTime())) return '' }
+              catch { return '' }
+
+              const prev = index > 0
+                ? (() => { try { const p = new Date(labels[index - 1]); return isNaN(p.getTime()) ? null : p } catch { return null } })()
+                : null
+
+              const first = (() => { try { const f = new Date(labels[0]); return isNaN(f.getTime()) ? null : f } catch { return null } })()
+              const last = (() => { try { const l = new Date(labels[labels.length - 1]); return isNaN(l.getTime()) ? null : l } catch { return null } })()
               if (!first || !last) return ''
-              
-              const totalDays = (last - first) / 86400000
 
-              // Старая логика форматирования подписей
+              const totalDays = (last - first) / 86400000
+              const sm = shortMonth(d)
+              const dm = `${d.getDate()} ${sm}`
+              const monthYr = `${sm}'${String(d.getFullYear()).slice(2)}`
+              const isLast = index === labels.length - 1
+              const monthChanged = prev && d.getMonth() !== prev.getMonth()
+
+              // ≤ 7 days (week): every day, skip last
+              if (totalDays <= 7) {
+                if (isLast) return ''
+                if (monthChanged) return monthYr
+                return dm
+              }
+
+              // ≤ 45 days (~month): every 2 days from end, skip last
+              // Month boundary always shown as "Мес'ГГ"
               if (totalDays <= 45) {
-                const step = Math.ceil(labels.length / 45) || 1
-                if (index === 0) return d.getDate()
-                if (prev && d.getMonth() !== prev.getMonth())
-                  return d.toLocaleString('ru-RU', { month: 'short' })
-                if (index % step === 0) return d.getDate()
+                if (isLast) return ''
+                if (monthChanged) return monthYr
+                const diff = labels.length - 1 - index
+                return diff % 2 === 1 ? dm : ''
+              }
+
+              // ≤ 100 days (~3 months): 1st (as Мес'ГГ) and 15th (as D Мес)
+              if (totalDays <= 100) {
+                if (monthChanged) return monthYr
+                if (d.getDate() === 15) return dm
+                if (index === 0 && d.getDate() <= 7) return dm
                 return ''
               }
 
-              if (index === 0 && d.getDate() < 15)
-                return d.getMonth() === 0
-                  ? d.getFullYear()
-                  : d.toLocaleString('ru-RU', { month: 'short' })
-
-              if (prev && d.getFullYear() !== prev.getFullYear())
-                return d.getFullYear()
-
-              if (prev && d.getMonth() !== prev.getMonth()) {
-                if (totalDays > 540) {
-                  if (d.getMonth() % 3 === 0)
-                    return d.toLocaleString('ru-RU', { month: 'short' })
-                } else {
-                  return d.toLocaleString('ru-RU', { month: 'short' })
-                }
+              // ≤ 500 days (~year): monthly, year on boundary
+              if (totalDays <= 500) {
+                if (index === 0 && d.getDate() <= 7) return sm
+                if (!prev) return ''
+                if (d.getFullYear() !== prev.getFullYear()) return d.getFullYear().toString()
+                if (monthChanged) return sm
+                return ''
               }
 
+              // ≤ 1825 days (~5 years): every 6 months
+              if (totalDays <= 1825) {
+                if (index === 0) return d.getFullYear().toString()
+                if (!prev) return ''
+                if (d.getFullYear() !== prev.getFullYear()) return d.getFullYear().toString()
+                if (monthChanged && (d.getMonth() === 0 || d.getMonth() === 6)) return sm
+                return ''
+              }
+
+              // > 5 years: yearly (dynamic step for ≤ 12 labels)
+              const totalYears = totalDays / 365
+              const yearStep = totalYears > 12 ? Math.ceil(totalYears / 10) : 1
+
+              if (index === 0) return d.getFullYear().toString()
+              if (!prev) return ''
+              if (d.getFullYear() !== prev.getFullYear()) {
+                if ((d.getFullYear() - first.getFullYear()) % yearStep === 0)
+                  return d.getFullYear().toString()
+              }
               return ''
             }
           },
@@ -508,15 +439,17 @@ const renderChart = (aggr) => {
           mode: 'index',
           intersect: false,
           backgroundColor: '#1f2937',
-          titleFont: { weight: 'bold' },
-          bodyFont: { size: 14 },
+          titleFont: { weight: '500', family: LABEL_FONT },
+          bodyFont: { size: 13, family: LABEL_FONT },
           padding: 12,
           cornerRadius: 6,
           displayColors: false,
+          animation: {
+            duration: 150,
+            easing: 'easeOutQuart'
+          },
           callbacks: {
-            beforeBody(items) {
-              items.sort((a, b) => b.parsed.y - a.parsed.y)
-            },
+            beforeBody(items) { items.sort((a, b) => b.parsed.y - a.parsed.y) },
             title: (ctx) => ctx[0].label,
             label: (ctx) => `${ctx.dataset.label}: ${props.formatCurrency(ctx.parsed.y)}`
           }
@@ -527,9 +460,8 @@ const renderChart = (aggr) => {
 }
 
 /* -------------------------------------------------------------------------- */
-
 const update = () => {
-  const aggr = aggregateData(props.chartData, props.period)
+  const aggr = aggregateData(props.chartData, props.period, props.chartType)
   renderChart(aggr)
 }
 
@@ -538,7 +470,6 @@ watch(() => props.period, update)
 
 onMounted(update)
 
-// ЧИСТКА ПРИ УДАЛЕНИИ КОМПОНЕНТА
 onUnmounted(() => {
   if (chartInstance) {
     chartInstance.destroy()
