@@ -78,6 +78,10 @@ async def startup_event():
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     logger.info(f"Log level: {Config.LOG_LEVEL}")
     
+    # Redis
+    from app.infrastructure.cache import init_redis
+    await init_redis(Config.REDIS_URL)
+    
     # Инициализация справочных данных при старте (асинхронно с таймаутом)
     from app.domain.services.reference_service import init_reference_data_async, init_brokers_async
     await init_reference_data_async()
@@ -88,6 +92,9 @@ async def startup_event():
 async def shutdown_event():
     """События при остановке приложения."""
     logger.info("🛑 CapitalView API shutting down...")
+    
+    from app.infrastructure.cache import close_redis
+    await close_redis()
 
 
 @app.get("/")

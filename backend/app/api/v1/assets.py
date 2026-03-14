@@ -16,16 +16,18 @@ from app.domain.services.access_control_service import (
 from app.domain.models.asset_models import AddAssetPriceRequest, MoveAssetRequest, BatchAddPriceRequest
 from app.constants import HTTPStatus
 from app.core.dependencies import get_current_user
+from app.infrastructure.cache import invalidate
 from app.utils.response import success_response
+from app.core.logging import get_logger
 from typing import Optional, Dict, Any
-import logging
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
 
 @router.post("/", status_code=HTTPStatus.CREATED)
+@invalidate("dashboard:{user.id}")
 async def create_asset_route(
     data: Dict[str, Any],
     user: dict = Depends(get_current_user)
@@ -47,6 +49,7 @@ async def create_asset_route(
 
 
 @router.delete("/{asset_id}")
+@invalidate("dashboard:{user.id}")
 async def delete_asset_route(
     asset_id: int,
     user: dict = Depends(get_current_user)
@@ -72,6 +75,7 @@ async def delete_asset_route(
 
 
 @router.post("/price", status_code=HTTPStatus.CREATED)
+@invalidate("dashboard:{user.id}")
 async def add_asset_price_route(
     data: AddAssetPriceRequest,
     user: dict = Depends(get_current_user)
@@ -112,6 +116,7 @@ async def add_asset_price_route(
 
 
 @router.post("/prices/batch", status_code=HTTPStatus.CREATED)
+@invalidate("dashboard:{user.id}")
 async def add_asset_prices_batch_route(
     data: BatchAddPriceRequest,
     user: dict = Depends(get_current_user)
@@ -226,6 +231,7 @@ async def get_portfolio_asset_info_route(
 
 
 @router.post("/portfolio/{portfolio_asset_id}/move")
+@invalidate("dashboard:{user.id}")
 async def move_asset_route(
     portfolio_asset_id: int,
     data: MoveAssetRequest,

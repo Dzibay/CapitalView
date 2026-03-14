@@ -3,13 +3,13 @@ from datetime import datetime, timedelta
 from time import time
 import copy
 from app.domain.services.reference_service import get_reference_data_cached
-from app.domain.services.user_service import get_user_by_email
 from app.domain.services.portfolio_aggregation import (
     create_empty_analytics_maps,
     merge_analytics_arrays_into_maps,
     convert_analytics_maps_to_lists,
 )
 from app.infrastructure.database.database_service import rpc
+from app.infrastructure.cache import cache
 from app.core.logging import get_logger
 from app.utils.date import normalize_date_to_day_string
 
@@ -608,16 +608,13 @@ def _normalize_analytics(analytics):
     return analytics
 
 
-async def get_dashboard_data(user_email: str):
+@cache("dashboard:{user_id}", ttl=300)
+async def get_dashboard_data(user_id: int):
     """
     Оптимизированная функция получения данных дашборда.
     Использует единый SQL запрос для всех данных + правильную агрегацию аналитики.
+    Результат кэшируется в Redis на 5 минут.
     """
-    user = get_user_by_email(user_email)
-    if not user:
-        return None
-
-    user_id = user['id']
     time1 = time()
     
     # Один SQL запрос получает все данные: портфели, активы, историю, аналитику, транзакции, connections

@@ -10,14 +10,15 @@ from app.domain.services.access_control_service import (
 from app.domain.models.transaction_models import CreateTransactionRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.core.dependencies import get_current_user
+from app.infrastructure.cache import invalidate
 from app.utils.response import success_response
 from app.utils.date import parse_date_range
-import logging
+from app.core.logging import get_logger
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -57,6 +58,7 @@ async def get_transactions_route(
 
 
 @router.post("/", status_code=HTTPStatus.CREATED)
+@invalidate("dashboard:{user.id}")
 async def add_transaction_route(
     data: CreateTransactionRequest,
     user: dict = Depends(get_current_user)
@@ -92,6 +94,7 @@ async def add_transaction_route(
 
 
 @router.put("/")
+@invalidate("dashboard:{user.id}")
 async def update_transaction_route(
     transaction_id: int = Body(...),
     portfolio_asset_id: Optional[int] = Body(None),
@@ -140,6 +143,7 @@ async def update_transaction_route(
 
 
 @router.delete("/")
+@invalidate("dashboard:{user.id}")
 async def delete_transactions_route(
     request: DeleteTransactionsRequest,
     user: dict = Depends(get_current_user)

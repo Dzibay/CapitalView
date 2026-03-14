@@ -11,6 +11,7 @@ from app.infrastructure.database.repositories.missed_payout_repository import Mi
 from app.domain.services.access_control_service import check_portfolio_asset_access
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
 from app.domain.services.operations_service import create_operations_from_missed_payouts
+from app.infrastructure.cache import invalidate
 
 router = APIRouter(prefix="/missed-payouts", tags=["missed-payouts"])
 
@@ -246,6 +247,7 @@ async def check_missed_payouts_for_user_route(
 
 
 @router.post("/add-operations-batch")
+@invalidate("dashboard:{user.id}")
 async def add_operations_from_missed_payouts_batch_route(
     missed_payout_ids: List[int] = Body(...),
     user: dict = Depends(get_current_user)

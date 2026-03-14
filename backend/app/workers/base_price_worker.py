@@ -14,6 +14,18 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+async def _invalidate_all_dashboards() -> None:
+    """Invalidate all dashboard caches after price updates."""
+    try:
+        from app.infrastructure.cache.redis_client import redis_available, redis_delete_pattern
+        if redis_available():
+            deleted = await redis_delete_pattern("dashboard:*")
+            if deleted:
+                logger.info(f"Cache: invalidated {deleted} dashboard keys after price update")
+    except Exception as e:
+        logger.debug(f"Cache invalidation skipped: {e}")
+
+
 def filter_new_prices(
     prices: List[Tuple[str, float]],
     asset_id: int,
@@ -167,9 +179,14 @@ async def run_worker_loop(
 
     while True:
         try:
-            await update_today_fn()
+            updated = await update_today_fn()
+            if updated:
+                await _invalidate_all_dashboards()
+            logger.info(
+                f"[{worker_name}] Цикл обновления завершён "
+                f"(обновлено: {updated}), следующий через {interval_seconds // 60} мин"
+            )
         except Exception as e:
             logger.error(f"Ошибка при обновлении сегодняшних цен ({worker_name}): {e}", exc_info=True)
 
-        logger.info(f"Ожидание {interval_seconds // 60} минут ({worker_name})...")
         await asyncio.sleep(interval_seconds)

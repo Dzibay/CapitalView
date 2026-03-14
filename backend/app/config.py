@@ -33,6 +33,9 @@ class Config:
     CORS_SUPPORTS_CREDENTIALS = True
     CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     
+    # Redis (optional — caching disabled if not set)
+    REDIS_URL = os.getenv("REDIS_URL", "")
+    
     # Логирование
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     

@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
+from cachetools import TTLCache
 from app.config import Config
 from app.core.logging import get_logger
 from app.core.exceptions import UnauthorizedError, NotFoundError
@@ -13,8 +14,9 @@ from app.domain.services.user_service import get_user_by_email
 from app.constants import ErrorMessages
 
 logger = get_logger(__name__)
-# Используем auto_error=False, чтобы обрабатывать отсутствие токена вручную
 security = HTTPBearer(auto_error=False)
+
+_user_cache = TTLCache(maxsize=200, ttl=300)
 
 
 def extract_token_from_header(request: Request) -> Optional[str]:
@@ -79,11 +81,16 @@ async def get_current_user(
         logger.error(f"Неожиданная ошибка при декодировании токена: {e}", exc_info=True)
         raise UnauthorizedError("Ошибка аутентификации")
     
-    # Получаем пользователя из базы
+    # Получаем пользователя из in-memory кэша или из базы
+    cached = _user_cache.get(email)
+    if cached:
+        return cached
+
     try:
         user = get_user_by_email(email)
         if not user:
             raise NotFoundError("Пользователь")
+        _user_cache[email] = user
         return user
     except NotFoundError:
         raise

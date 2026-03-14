@@ -529,9 +529,8 @@ async def update_today_prices() -> int:
     today = normalize_date_to_sql_date(now.date())
     trading = is_moex_trading_time()
 
-    
-    # Если торговая сессия закрыта, пропускаем обновление
     if not trading:
+        logger.info(f"Торговая сессия MOEX закрыта (МСК: {now.strftime('%H:%M')}), обновление пропущено")
         return 0
 
     # Получаем MOEX активы с фильтром по asset_type_id
@@ -658,7 +657,15 @@ async def update_today_prices() -> int:
         except Exception as e:
             logger.error(f"Ошибка при обновлении портфелей: {e}", exc_info=True)
 
-    return len(updated_ids)
+    count = len(updated_ids)
+    if count:
+        logger.info(
+            f"Цены MOEX обновлены: {count} активов "
+            f"(из {len(assets)} всего, МСК: {now.strftime('%H:%M')})"
+        )
+    else:
+        logger.info(f"Нет новых цен MOEX (МСК: {now.strftime('%H:%M')})")
+    return count
 
 
 async def worker_loop():

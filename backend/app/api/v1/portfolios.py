@@ -23,10 +23,11 @@ from app.domain.models.portfolio_models import (
     UpdatePortfolioDescriptionRequest,
     ImportBrokerRequest
 )
+from app.infrastructure.cache import invalidate
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
-import logging
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/portfolios", tags=["portfolios"])
 
@@ -47,6 +48,7 @@ async def get_portfolios_route(user: dict = Depends(get_current_user)):
 
 
 @router.post("/", status_code=HTTPStatus.CREATED)
+@invalidate("dashboard:{user.id}")
 async def add_portfolio_route(
     data: CreatePortfolioRequest,
     user: dict = Depends(get_current_user)
@@ -100,6 +102,7 @@ async def get_portfolio_route(
 
 
 @router.delete("/{portfolio_id}")
+@invalidate("dashboard:{user.id}")
 async def delete_portfolio_route(
     portfolio_id: int,
     user: dict = Depends(get_current_user)
@@ -117,6 +120,7 @@ async def delete_portfolio_route(
 
 
 @router.post("/{portfolio_id}/clear")
+@invalidate("dashboard:{user.id}")
 async def portfolio_clear_route(
     portfolio_id: int,
     user: dict = Depends(get_current_user)
@@ -144,6 +148,7 @@ async def get_portfolio_assets_route(
 
 
 @router.post("/{portfolio_id}/description")
+@invalidate("dashboard:{user.id}")
 async def update_portfolio_description_route(
     portfolio_id: int,
     data: UpdatePortfolioDescriptionRequest,
@@ -214,6 +219,7 @@ async def get_portfolio_transactions_route(
 
 
 @router.post("/import-broker", status_code=HTTPStatus.ACCEPTED)
+@invalidate("dashboard:{user.id}")
 async def import_broker_route(
     data: ImportBrokerRequest,
     user: dict = Depends(get_current_user)

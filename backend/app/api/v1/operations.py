@@ -11,12 +11,13 @@ from app.domain.services.access_control_service import (
 from app.domain.models.operation_models import CreateOperationRequest, BatchCreateOperationRequest, UpdateOperationRequest, UpdateOperationsBatchRequest, DeleteOperationsRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.core.dependencies import get_current_user
+from app.infrastructure.cache import invalidate
 from app.utils.response import success_response
 from app.utils.date import parse_date_range
-import logging
+from app.core.logging import get_logger
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/operations", tags=["operations"])
 
@@ -48,6 +49,7 @@ async def get_operations_route(
 
 
 @router.post("/", status_code=HTTPStatus.CREATED)
+@invalidate("dashboard:{user.id}")
 async def add_operation_route(
     data: CreateOperationRequest,
     user: dict = Depends(get_current_user)
@@ -107,6 +109,7 @@ async def add_operation_route(
 
 
 @router.post("/batch", status_code=HTTPStatus.CREATED)
+@invalidate("dashboard:{user.id}")
 async def add_operations_batch_route(
     data: BatchCreateOperationRequest,
     user: dict = Depends(get_current_user)
@@ -158,6 +161,7 @@ async def add_operations_batch_route(
 
 
 @router.patch("/batch", status_code=HTTPStatus.OK)
+@invalidate("dashboard:{user.id}")
 async def update_operations_batch_route(
     request: UpdateOperationsBatchRequest,
     user: dict = Depends(get_current_user)
@@ -184,6 +188,7 @@ async def update_operations_batch_route(
 
 
 @router.patch("/{operation_id}", status_code=HTTPStatus.OK)
+@invalidate("dashboard:{user.id}")
 async def update_operation_route(
     operation_id: int,
     data: UpdateOperationRequest,
@@ -207,6 +212,7 @@ async def update_operation_route(
 
 
 @router.delete("/", status_code=HTTPStatus.OK)
+@invalidate("dashboard:{user.id}")
 async def delete_operations_route(
     request: DeleteOperationsRequest,
     user: dict = Depends(get_current_user)
