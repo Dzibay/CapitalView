@@ -143,7 +143,7 @@ future_payouts AS (
   JOIN assets a ON a.id = pa.asset_id
   JOIN asset_payouts ap ON ap.asset_id = a.id
   WHERE ap.payment_date >= CURRENT_DATE
-    AND ap.payment_date <= CURRENT_DATE + INTERVAL '1 year'
+    AND ap.payment_date <= CURRENT_DATE + INTERVAL '3 years'
     AND COALESCE(pa.quantity, 0) > 0
     AND ap.type IS NOT NULL
     AND ap.type != ''
@@ -710,5 +710,3 @@ LEFT JOIN portfolio_analytics_optimized pa ON pa.portfolio_id = p.id
     RETURN COALESCE(v_result, '[]'::json);
 END;
 $$;
-
-COMMENT ON FUNCTION get_user_portfolios_analytics(uuid) IS 'Возвращает аналитику по всем портфелям пользователя (оптимизировано: 1 scan portfolio_daily_positions, 1 CTE цен)';

@@ -606,22 +606,7 @@ const formatAmountShort = (value) => {
 }
 
 .projection-chart {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
   position: relative;
-}
-
-.projection-chart :deep(div) {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.projection-chart :deep(canvas) {
-  flex: 1;
-  min-height: 0;
+  height: 300px;
 }
 </style>

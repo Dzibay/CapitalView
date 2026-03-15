@@ -2,6 +2,21 @@
 import { computed } from 'vue'
 import BaseChart from './BaseChart.vue'
 
+function deepMerge(target, source) {
+  const result = { ...target }
+  for (const key of Object.keys(source)) {
+    if (
+      source[key] && typeof source[key] === 'object' && !Array.isArray(source[key]) &&
+      target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])
+    ) {
+      result[key] = deepMerge(target[key], source[key])
+    } else {
+      result[key] = source[key]
+    }
+  }
+  return result
+}
+
 const props = defineProps({
   labels: {
     type: Array,
@@ -16,6 +31,10 @@ const props = defineProps({
     default: '300px'
   },
   stacked: {
+    type: Boolean,
+    default: false
+  },
+  horizontal: {
     type: Boolean,
     default: false
   },
@@ -34,6 +53,14 @@ const props = defineProps({
   totals: {
     type: Array,
     default: () => []
+  },
+  extraPlugins: {
+    type: Array,
+    default: () => []
+  },
+  overrideOptions: {
+    type: Object,
+    default: () => ({})
   }
 })
 
@@ -206,7 +233,10 @@ const chartOptions = computed(() => {
     return value.toString()
   }
   
-  return {
+  const interactionMode = props.horizontal ? 'y' : 'index'
+
+  const baseOptions = {
+    ...(props.horizontal ? { indexAxis: 'y' } : {}),
     animation: {
       duration: 1200,
       easing: 'easeOutQuart',
@@ -219,7 +249,7 @@ const chartOptions = computed(() => {
       }
     },
     interaction: {
-      mode: 'index',
+      mode: interactionMode,
       intersect: false
     },
     plugins: {
@@ -227,7 +257,7 @@ const chartOptions = computed(() => {
         display: false
       },
       tooltip: {
-        mode: 'index',
+        mode: interactionMode,
         intersect: false,
         backgroundColor: 'rgba(17, 24, 39, 0.95)',
         backdropFilter: 'blur(8px)',
@@ -303,9 +333,9 @@ const chartOptions = computed(() => {
         ticks: {
           color: axisText,
           font: {
-            size: 12,
-            family: 'Inter, system-ui, sans-serif',
-            weight: '500'
+            size: 11,
+            family: "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+            weight: '300'
           },
           padding: 12,
           maxRotation: props.xAxisRotation,
@@ -495,9 +525,9 @@ const chartOptions = computed(() => {
         ticks: {
           color: axisTextLight,
           font: {
-            size: 12,
-            family: 'Inter, system-ui, sans-serif',
-            weight: '500'
+            size: 11,
+            family: "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+            weight: '300'
           },
           callback: formatYTick,
           padding: 12,
@@ -507,13 +537,16 @@ const chartOptions = computed(() => {
       }
     }
   }
+
+  return deepMerge(baseOptions, props.overrideOptions)
 })
 
-const customPlugins = computed(() => {
+const allPlugins = computed(() => {
+  const plugins = []
   if (props.showTotals && props.totals.length > 0 && totalsPlugin.value && totalsPlugin.value.id) {
-    return [totalsPlugin.value]
+    plugins.push(totalsPlugin.value)
   }
-  return []
+  return [...plugins, ...props.extraPlugins]
 })
 </script>
 
@@ -522,7 +555,7 @@ const customPlugins = computed(() => {
     type="bar"
     :data="chartData"
     :options="chartOptions"
-    :plugins="customPlugins"
+    :plugins="allPlugins"
     :height="height"
   />
 </template>
