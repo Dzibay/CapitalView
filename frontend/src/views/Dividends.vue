@@ -348,7 +348,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
 
 
 
-/* Calendar Controls */
+/* Управление календарём */
 .calendar-controls {
   display: flex;
   justify-content: space-between;
@@ -417,7 +417,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
 .text-green { color: #10b981 !important; }
 .text-gray { color: #9ca3af !important; }
 
-/* Layout Grid */
+/* Сетка разметки */
 .calendar-layout {
   display: grid;
   grid-template-columns: 1fr 320px;
@@ -431,7 +431,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
   }
 }
 
-/* Calendar Grid */
+/* Сетка календаря */
 .calendar-grid {
   background: #fff;
   border-radius: 16px;
@@ -557,7 +557,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
   line-height: 8px;
 }
 
-/* Details Sidebar */
+/* Боковая панель деталей */
 .details-panel {
   background: #fff;
   border-radius: 16px;

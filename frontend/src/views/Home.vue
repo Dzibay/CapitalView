@@ -1494,7 +1494,7 @@ const testimonials = [
   }
 }
 
-/* === Header === */
+/* === Шапка === */
 .landing-header {
   position: fixed;
   top: 0;
@@ -1582,7 +1582,7 @@ const testimonials = [
   }
 }
 
-/* === Hero Section === */
+/* === Главный экран === */
 .hero {
   padding-top: 160px;
   padding-bottom: 100px;
@@ -1869,7 +1869,7 @@ const testimonials = [
   }
 }
 
-/* === Features === */
+/* === Возможности === */
 .section-title {
   text-align: center;
   font-size: 36px;
@@ -1975,7 +1975,7 @@ const testimonials = [
   line-height: 1.6;
 }
 
-/* === Pricing === */
+/* === Тарифы === */
 .pricing-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -2065,7 +2065,7 @@ const testimonials = [
   color: var(--text-gray);
 }
 
-/* === Service Features Section === */
+/* === Раздел функций сервиса === */
 .service-features {
   position: relative;
   z-index: 2;
@@ -2198,7 +2198,7 @@ const testimonials = [
   width: 100%;
 }
 
-/* === Benefits Section === */
+/* === Раздел преимуществ === */
 .benefits-section {
   position: relative;
   z-index: 2;
@@ -2282,7 +2282,7 @@ const testimonials = [
   z-index: 1;
 }
 
-/* === Feature Demo Sections === */
+/* === Демонстрация функций === */
 .feature-demo-section {
   position: relative;
   z-index: 2;
@@ -2322,7 +2322,7 @@ const testimonials = [
   line-height: 1.6;
 }
 
-/* === Custom Assets Demo === */
+/* === Демо пользовательских активов === */
 .demo-container {
   display: grid;
   grid-template-columns: 1fr;
@@ -2945,7 +2945,7 @@ const testimonials = [
   animation: button-pulse 2s ease-in-out infinite;
 }
 
-/* === Demo Controls === */
+/* === Управление демо === */
 .demo-controls {
   display: flex;
   flex-direction: column;
@@ -3026,7 +3026,7 @@ const testimonials = [
   line-height: 1.5;
 }
 
-/* === Portfolio Hierarchy Demo === */
+/* === Демо иерархии портфелей === */
 .hierarchy-demo {
   display: grid;
   grid-template-columns: 1fr;
@@ -3181,7 +3181,7 @@ const testimonials = [
   color: var(--text-gray);
 }
 
-/* === Advanced Features === */
+/* === Продвинутые функции === */
 .advanced-features-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -3234,7 +3234,7 @@ const testimonials = [
   line-height: 1.6;
 }
 
-/* === How It Works Section === */
+/* === Раздел «Как это работает» === */
 .how-it-works {
   position: relative;
   z-index: 2;
@@ -3380,7 +3380,7 @@ const testimonials = [
   }
 }
 
-/* === Integrations Section === */
+/* === Раздел интеграций === */
 .integrations {
   position: relative;
   z-index: 2;
@@ -3808,7 +3808,7 @@ const testimonials = [
   }
 }
 
-/* === Testimonials === */
+/* === Отзывы === */
 .testimonials-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -3872,7 +3872,7 @@ const testimonials = [
 .author-name { font-weight: 600; font-size: 14px; }
 .author-role { font-size: 12px; color: var(--text-gray); }
 
-/* === FAQ Section === */
+/* === Раздел FAQ === */
 .faq {
   position: relative;
   z-index: 2;
@@ -3953,7 +3953,7 @@ const testimonials = [
   font-size: 15px;
 }
 
-/* === Footer === */
+/* === Подвал === */
 .landing-footer {
   padding: 60px 0;
   background: white;
@@ -3982,7 +3982,7 @@ const testimonials = [
 }
 .footer-links a:hover { color: var(--primary); }
 
-/* === Animations === */
+/* === Анимации === */
 .animate-on-scroll {
   opacity: 0;
   transform: translateY(30px);

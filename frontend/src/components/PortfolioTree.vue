@@ -251,7 +251,7 @@ const getDividendYield5Y = (asset) => {
 </template>
 
 <style scoped>
-/* --- General Variables & Layout --- */
+/* --- Общие переменные и разметка --- */
 .portfolio-list {
   display: flex;
   flex-direction: column;
@@ -269,7 +269,7 @@ const getDividendYield5Y = (asset) => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
-/* Child portfolios have less shadow and are indented */
+/* Дочерние портфели с меньшей тенью и отступом */
 .portfolio-card.is-child {
   margin-top: 16px;
   box-shadow: none;
@@ -277,7 +277,7 @@ const getDividendYield5Y = (asset) => {
   background: #fcfcfc;
 }
 
-/* --- Header --- */
+/* --- Шапка --- */
 .portfolio-header {
   display: flex;
   justify-content: space-between;
@@ -339,7 +339,7 @@ const getDividendYield5Y = (asset) => {
   font-size: 14px;
 }
 
-/* --- Body --- */
+/* --- Тело --- */
 .portfolio-body {
   border-top: 1px solid #eef0f2;
 }
@@ -379,7 +379,7 @@ const getDividendYield5Y = (asset) => {
   font-size: 14px;
 }
 
-/* --- Table Styles --- */
+/* --- Стили таблицы --- */
 .table-responsive {
   overflow-x: auto;
 }
@@ -429,7 +429,7 @@ const getDividendYield5Y = (asset) => {
   margin-left: 6px;
 }
 
-/* Column Alignments */
+/* Выравнивание колонок */
 .col-right {
   text-align: right;
 }
@@ -444,7 +444,7 @@ const getDividendYield5Y = (asset) => {
   text-align: center;
 }
 
-/* Font Tweaks */
+/* Настройки шрифта */
 .num-font {
   font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace;
   font-size: 12px;
@@ -454,7 +454,7 @@ const getDividendYield5Y = (asset) => {
   font-weight: 600;
 }
 
-/* Colors */
+/* Цвета */
 .text-green {
   color: #10b981;
 }
@@ -462,7 +462,7 @@ const getDividendYield5Y = (asset) => {
   color: #ef4444;
 }
 
-/* Asset Cell Specifics */
+/* Стили ячеек актива */
 .cell-name.clickable {
   cursor: pointer;
 }
@@ -500,7 +500,7 @@ const getDividendYield5Y = (asset) => {
   font-weight: bold;
 }
 
-/* --- Menu Button --- */
+/* --- Кнопка меню --- */
 .menu-btn {
   background: transparent;
   border: none;
@@ -546,13 +546,13 @@ const getDividendYield5Y = (asset) => {
   letter-spacing: 0.5px;
 }
 
-/* --- Child Portfolios Wrapper --- */
+/* --- Обёртка дочерних портфелей --- */
 .child-portfolios {
-  padding: 0 16px 16px 24px; /* Indent child portfolios */
+  padding: 0 16px 16px 24px; /* Отступ дочерних портфелей */
   background: #ffffff;
 }
 
-/* --- Transitions --- */
+/* --- Переходы --- */
 .slide-fade-enter-active,
 .slide-fade-leave-active {
   transition: all 0.3s ease-out;

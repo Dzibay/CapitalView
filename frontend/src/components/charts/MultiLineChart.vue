@@ -465,7 +465,7 @@ const renderChart = (aggr) => {
                     const prevVisDate = new Date(labels[index - 2])
                     if (!isNaN(prevVisDate.getTime()) && d.getMonth() !== prevVisDate.getMonth())
                       return monthYr
-                  } catch { /* skip */ }
+                  } catch { /* пропускаем */ }
                 }
                 return dm
               }

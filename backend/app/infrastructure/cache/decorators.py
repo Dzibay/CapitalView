@@ -11,7 +11,7 @@ Usage:
     async def add_transaction_route(data, user=Depends(get_current_user)):
         ...
 
-    # Explicit invalidation (for workers, etc.)
+    # Явная инвалидация (для воркеров и т.д.)
     await invalidate_cache("dashboard:*")
 
 Key template syntax:

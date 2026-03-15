@@ -2058,7 +2058,7 @@ async function handlePortfolioChange(portfolioId) {
   color: #92400e;
 }
 
-/* Table styles */
+/* Стили таблицы */
 .table-container {
   overflow-x: auto;
 }

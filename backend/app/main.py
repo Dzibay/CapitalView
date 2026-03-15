@@ -46,7 +46,7 @@ register_error_handlers(app)
 
 
 # Импортируем и регистрируем роутеры
-# API v1
+# Маршруты API v1
 from app.api.v1 import (
     auth,
     portfolios,
@@ -78,7 +78,7 @@ async def startup_event():
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     logger.info(f"Log level: {Config.LOG_LEVEL}")
     
-    # Redis
+    # Подключение Redis
     from app.infrastructure.cache import init_redis
     await init_redis(Config.REDIS_URL)
     

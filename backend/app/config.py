@@ -13,7 +13,7 @@ load_dotenv()
 class Config:
     """Базовый класс конфигурации."""
     
-    # JWT
+    # Настройки JWT
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=7)
     JWT_ALGORITHM = "HS256"
@@ -28,12 +28,12 @@ class Config:
     # Тестовая база данных (для pytest)
     TEST_DB_NAME = os.getenv("TEST_DB_NAME", f"{DB_NAME}_test")
     
-    # CORS
+    # Настройки CORS
     CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
     CORS_SUPPORTS_CREDENTIALS = True
     CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     
-    # Redis (optional — caching disabled if not set)
+    # Redis (опционально — кэширование отключено, если не задан)
     REDIS_URL = os.getenv("REDIS_URL", "")
     
     # Логирование

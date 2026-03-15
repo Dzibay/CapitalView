@@ -30,7 +30,7 @@ MAX_EXAMPLES = 10
 
 
 # ---------------------------------------------------------------------------
-#  Helpers
+#  Вспомогательные функции
 # ---------------------------------------------------------------------------
 
 def determine_asset_type(board_id: str, market: str) -> str:
@@ -130,7 +130,7 @@ def get_bond_currency(ticker: str, existing_asset=None, historical_bonds_currenc
 
 
 # ---------------------------------------------------------------------------
-#  Upsert
+#  Вставка/обновление
 # ---------------------------------------------------------------------------
 
 async def upsert_asset(asset, existing_assets) -> Tuple[str, List[str]]:
@@ -163,7 +163,7 @@ async def upsert_asset(asset, existing_assets) -> Tuple[str, List[str]]:
 
 
 # ---------------------------------------------------------------------------
-#  MOEX data fetchers
+#  Загрузчики данных MOEX
 # ---------------------------------------------------------------------------
 
 async def fetch_all_bonds(session):
@@ -349,7 +349,7 @@ async def fetch_inactive_bonds_currency_batch(session, tickers: list, batch_size
 
 
 # ---------------------------------------------------------------------------
-#  Process shares / bonds
+#  Обработка акций / облигаций
 # ---------------------------------------------------------------------------
 
 async def process_shares(session, existing_assets, type_map, currency_map):
@@ -416,7 +416,7 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
     if i_SECID is None:
         return 0, 0
 
-    # De-duplicate by ticker, keeping highest-priority BOARDID
+    # Удаление дубликатов по тикеру, сохраняя BOARDID с наивысшим приоритетом
     ticker_records: Dict = {}
     for r in rows:
         ticker = r[i_SECID] if i_SECID is not None else None
@@ -559,7 +559,7 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
 
     pbar.close()
 
-    # Summary
+    # Итоги
     logger.info(
         f"[{market}] Добавлено: {inserted}, обновлено: {updated}, "
         f"без изменений: {no_change}, пропущено (нет цен): {skipped_no_prices}"
@@ -573,7 +573,7 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
 
 
 # ---------------------------------------------------------------------------
-#  Duplicate removal
+#  Удаление дубликатов
 # ---------------------------------------------------------------------------
 
 async def remove_duplicate_assets():
@@ -643,7 +643,7 @@ async def remove_duplicate_assets():
 
 
 # ---------------------------------------------------------------------------
-#  Cleanup priceless assets
+#  Очистка активов без цен
 # ---------------------------------------------------------------------------
 
 async def cleanup_priceless_assets(pre_existing_ids: Optional[set] = None) -> int:
@@ -754,7 +754,7 @@ async def cleanup_priceless_assets(pre_existing_ids: Optional[set] = None) -> in
 
 
 # ---------------------------------------------------------------------------
-#  Main entry point
+#  Главная точка входа
 # ---------------------------------------------------------------------------
 
 async def import_moex_assets_async():

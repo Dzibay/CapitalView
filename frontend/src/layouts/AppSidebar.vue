@@ -321,7 +321,7 @@ watch(route, () => {
   gap: 0.375rem; /* 6px */
 }
 
-/* NEW: Added for positioning context */
+/* Контекст позиционирования для подменю */
 .sidebar__nav-list > li {
   position: relative;
 }
@@ -418,7 +418,7 @@ watch(route, () => {
   z-index: 20000;
 }
 
-/* MODIFIED: This now only applies when the sidebar is NOT collapsed */
+/* Применяется только когда сайдбар НЕ свёрнут */
 .sidebar:not(.sidebar--collapsed) .sidebar__submenu--open {
   max-height: 24rem; /* Достаточно большое значение */
 }
@@ -439,7 +439,7 @@ watch(route, () => {
   color: var(--sidebar-text-color-hover);
 }
 
-/* NEW: Fly-out menu styles for collapsed state */
+/* Стили всплывающего меню для свёрнутого сайдбара */
 .sidebar--collapsed .sidebar__submenu {
   position: absolute;
   left: 100%;
@@ -453,17 +453,17 @@ watch(route, () => {
   box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
   
   
-  /* Override styles from expanded mode */
+  /* Переопределение стилей развёрнутого режима */
   max-height: none; 
   
-  /* Hide by default */
+  /* Скрыто по умолчанию */
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
   transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
-/* NEW: Show fly-out menu on parent hover */
+/* Показ всплывающего меню при наведении */
 .sidebar--collapsed .sidebar__nav-list > li:hover > .sidebar__submenu {
   opacity: 1;
   visibility: visible;
@@ -516,7 +516,7 @@ watch(route, () => {
   border: 1px solid grey;
 }
 
-/* Transitions */
+/* Переходы */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease;
