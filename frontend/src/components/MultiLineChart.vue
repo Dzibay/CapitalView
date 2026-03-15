@@ -125,6 +125,10 @@ function isBoundaryTick(labels, index) {
     const l = new Date(labels[labels.length - 1])
     if ([d, p, f, l].some(x => isNaN(x.getTime()))) return false
     const totalDays = (l - f) / 86400000
+    if (totalDays <= 45 && index >= 2) {
+      const pp = new Date(labels[index - 2])
+      if (!isNaN(pp.getTime()) && d.getMonth() !== pp.getMonth()) return true
+    }
     if (totalDays <= 100) return d.getMonth() !== p.getMonth()
     if (totalDays <= 1825) return d.getFullYear() !== p.getFullYear()
     return false
@@ -454,9 +458,16 @@ const renderChart = (aggr) => {
 
               if (totalDays <= 45) {
                 if (isLast) return ''
-                if (monthChanged) return monthYr
                 const diff = labels.length - 1 - index
-                return diff % 2 === 1 ? dm : ''
+                if (diff % 2 !== 1) return ''
+                if (index >= 2) {
+                  try {
+                    const prevVisDate = new Date(labels[index - 2])
+                    if (!isNaN(prevVisDate.getTime()) && d.getMonth() !== prevVisDate.getMonth())
+                      return monthYr
+                  } catch { /* skip */ }
+                }
+                return dm
               }
 
               if (totalDays <= 100) {
