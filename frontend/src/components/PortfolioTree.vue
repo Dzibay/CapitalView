@@ -2,6 +2,7 @@
 import { computed, unref } from "vue";
 import { useRouter } from 'vue-router';
 import { useContextMenu } from '../composables/useContextMenu';
+import { getCurrencySymbol } from '../utils/currencySymbols';
 
 const router = useRouter();
 
@@ -180,8 +181,8 @@ const getDividendYield5Y = (asset) => {
                     </div>
                   </td>
                   <td class="col-right">{{ asset.quantity }}</td>
-                  <td class="col-right num-font">{{ asset.average_price.toFixed(2) }}</td>
-                  <td class="col-right num-font">{{ asset.last_price || '-' }}</td>
+                  <td class="col-right num-font">{{ asset.average_price.toFixed(2) }} {{ getCurrencySymbol(asset.currency_ticker) }}</td>
+                  <td class="col-right num-font">{{ asset.last_price ? asset.last_price + ' ' + getCurrencySymbol(asset.currency_ticker) : '-' }}</td>
                   <td class="col-right num-font bold">
                     {{ Math.max(0, (asset.quantity * asset.last_price / asset.leverage) * asset.currency_rate_to_rub).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽
                   </td>
