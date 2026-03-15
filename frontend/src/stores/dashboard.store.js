@@ -7,15 +7,15 @@ import { useUIStore } from './ui.store'
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     portfolios: [],
-    transactions: [],
-    operations: [], // Кэш операций
+    recentTransactions: [], // Последние 5 транзакций из dashboard (для виджета)
+    transactions: [],       // Полный список транзакций (загружается лениво)
+    operations: [],          // Полный список операций (загружается лениво)
     referenceData: {},
     analytics: [],
-    missedPayoutsCount: 0, // Количество неполученных выплат
+    missedPayoutsCount: 0,
     lastFetch: null,
-    cacheTimeout: parseInt(import.meta.env.VITE_DASHBOARD_CACHE_TIMEOUT || '60000', 10), // Время кеширования из env или 1 минута по умолчанию
-    transactionsLoaded: false,
-    operationsLoaded: false, // Флаг загрузки операций
+    cacheTimeout: parseInt(import.meta.env.VITE_DASHBOARD_CACHE_TIMEOUT || '60000', 10),
+    fullListsLoaded: false,  // Полные списки транзакций и операций загружены
     analyticsLoaded: false
   }),
 
@@ -61,11 +61,13 @@ export const useDashboardStore = defineStore('dashboard', {
         
         if (data?.data) {
           this.portfolios = data.data.portfolios || []
-          // Транзакции теперь приходят вместе с dashboard
-          this.transactions = data.data.transactions || []
-          this.transactionsLoaded = true
+          // Последние транзакции из dashboard — только для виджета, не для страницы Транзакций
+          this.recentTransactions = data.data.transactions || []
+          // Если полные списки ещё не загружены, используем хотя бы то, что есть
+          if (!this.fullListsLoaded) {
+            this.transactions = this.recentTransactions
+          }
           this.referenceData = data.data.referenceData || {}
-          // Количество неполученных выплат теперь приходит вместе с dashboard
           this.missedPayoutsCount = data.data.missed_payouts_count || 0
           
           // Аналитика теперь приходит в полном формате из get_user_portfolios_analytics
@@ -98,8 +100,8 @@ export const useDashboardStore = defineStore('dashboard', {
 
     async reloadDashboard(showLoading = true) {
       await this.fetchDashboard(true, showLoading)
-      // После мутаций обновляем полные списки, если они уже были загружены
-      if (this.operationsLoaded) {
+      // После мутаций всегда обновляем полные списки, если они были загружены
+      if (this.fullListsLoaded) {
         this.fetchTransactionsAndOperationsInBackground()
       }
     },
@@ -134,6 +136,7 @@ export const useDashboardStore = defineStore('dashboard', {
           const list = opResponse?.operations || opResponse || []
           this.addOperations(list, true)
         }
+        this.fullListsLoaded = true
       })
     },
 
@@ -227,36 +230,29 @@ export const useDashboardStore = defineStore('dashboard', {
       }
     },
 
-    // Добавление транзакций
+    // Замена полного списка транзакций
     addTransactions(transactionsArray, replace = false) {
-      if (Array.isArray(transactionsArray)) {
-        // Если требуется замена или транзакции еще не загружены, заменяем массив
-        // Если уже загружены и не требуется замена, добавляем к существующим, избегая дубликатов
-        if (replace || !this.transactionsLoaded || this.transactions.length === 0) {
-          this.transactions = transactionsArray
-        } else {
-          const existingIds = new Set(this.transactions.map(t => t.id || t.transaction_id))
-          const newTransactions = transactionsArray.filter(t => !existingIds.has(t.id || t.transaction_id))
-          if (newTransactions.length > 0) {
-            this.transactions = [
-              ...this.transactions,
-              ...newTransactions
-            ]
-          }
+      if (!Array.isArray(transactionsArray)) return
+      if (replace || this.transactions.length === 0) {
+        this.transactions = transactionsArray
+      } else {
+        const existingIds = new Set(this.transactions.map(t => t.id || t.transaction_id))
+        const newTransactions = transactionsArray.filter(t => !existingIds.has(t.id || t.transaction_id))
+        if (newTransactions.length > 0) {
+          this.transactions = [...this.transactions, ...newTransactions]
         }
-        this.transactionsLoaded = true
       }
     },
 
-    // Добавление операций. replace=true — полная замена списка (после редактирования).
+    // Замена полного списка операций
     addOperations(operationsArray, replace = false) {
       if (!Array.isArray(operationsArray)) return
       const sorted = [...operationsArray].sort((a, b) => {
         const dateA = new Date(a.operation_date || a.date || 0).getTime()
         const dateB = new Date(b.operation_date || b.date || 0).getTime()
-        return dateB - dateA // DESC: новые операции сверху
+        return dateB - dateA
       })
-      if (replace || !this.operationsLoaded || this.operations.length === 0) {
+      if (replace || this.operations.length === 0) {
         this.operations = sorted
       } else {
         const existingIds = new Set(this.operations.map(op => op.id || op.cash_operation_id || op.operation_id))
@@ -269,7 +265,6 @@ export const useDashboardStore = defineStore('dashboard', {
           })
         }
       }
-      this.operationsLoaded = true
     },
 
     // Удаление транзакций из кэша

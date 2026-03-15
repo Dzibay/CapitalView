@@ -191,7 +191,8 @@ recent_transactions AS (
             'transaction_type', tx.transaction_type_name,
             'price', tx.price,
             'quantity', tx.quantity,
-            'transaction_date', tx.transaction_date
+            'transaction_date', tx.transaction_date,
+            'currency_ticker', tx.currency_ticker
         )
         ORDER BY tx.transaction_date DESC
     ) AS transactions
@@ -213,14 +214,16 @@ recent_transactions AS (
             t.price,
             t.quantity,
             t.transaction_date,
+            qa.ticker AS currency_ticker,
             ROW_NUMBER() OVER (PARTITION BY pa.portfolio_id ORDER BY t.transaction_date DESC) AS rn
         FROM transactions t
         JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
         JOIN portfolios_base pb ON pb.id = pa.portfolio_id
         JOIN assets a ON a.id = pa.asset_id
+        LEFT JOIN assets qa ON qa.id = a.quote_asset_id
     ) tx
     WHERE tx.rn <= 5
-)
+),
 
 missed_payouts_count AS (
     SELECT COUNT(*)::int AS count

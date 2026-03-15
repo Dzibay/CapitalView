@@ -12,6 +12,7 @@ import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
+import { getCurrencySymbol } from '../utils/currencySymbols'
 
 const dashboardStore = useDashboardStore()
 const transactionsStore = useTransactionsStore()
@@ -30,9 +31,9 @@ const {
   globalSearch,
 } = storeToRefs(transactionsStore)
 
-// Lazy-load: загружаем полные списки при первом открытии страницы
+// Загружаем полные списки транзакций и операций при открытии страницы
 onMounted(() => {
-  if (!dashboardStore.operationsLoaded) {
+  if (!dashboardStore.fullListsLoaded) {
     dashboardStore.fetchTransactionsAndOperationsInBackground()
   }
 })
@@ -892,9 +893,9 @@ const transactionsSummary = computed(() => {
                 <td class="font-medium">{{ tx.asset_name }}</td>
                 <td class="text-secondary">{{ tx.portfolio_name }}</td>
                 <td class="text-right num-font">{{ tx.quantity }}</td>
-                <td class="text-right num-font">{{ tx.price.toLocaleString() }}</td>
+                <td class="text-right num-font">{{ tx.price.toLocaleString() }} {{ getCurrencySymbol(tx.currency_ticker) }}</td>
                 <td class="text-right num-font font-semibold">
-                  {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}
+                  {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }} {{ getCurrencySymbol(tx.currency_ticker) }}
                 </td>
                 <td class="w-actions">
                   <button class="icon-btn" @click="openMenu($event, 'transaction', tx)">⋯</button>

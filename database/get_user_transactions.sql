@@ -20,7 +20,8 @@ RETURNS TABLE (
     quantity numeric(20,6),
     transaction_date timestamp without time zone,
     realized_pnl numeric(20,6),
-    cash_operation_id bigint
+    cash_operation_id bigint,
+    currency_ticker text
 )
 LANGUAGE plpgsql
 AS $$
@@ -51,7 +52,8 @@ BEGIN
             WHERE co.transaction_id = t.id
             ORDER BY co.date DESC
             LIMIT 1
-        ) AS cash_operation_id
+        ) AS cash_operation_id,
+        qa.ticker AS currency_ticker
     FROM transactions t
     JOIN portfolio_assets pa 
         ON pa.id = t.portfolio_asset_id
@@ -59,6 +61,8 @@ BEGIN
         ON p.id = pa.portfolio_id
     JOIN assets a 
         ON a.id = pa.asset_id
+    LEFT JOIN assets qa
+        ON qa.id = a.quote_asset_id
     LEFT JOIN transactions_type tt ON tt.id = t.transaction_type
     WHERE p.user_id = p_user_id
       AND (p_portfolio_id IS NULL OR pa.portfolio_id = p_portfolio_id)
