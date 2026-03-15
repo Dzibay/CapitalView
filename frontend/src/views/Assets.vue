@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
+import { storeToRefs } from 'pinia';
 import { useDashboardStore } from '../stores/dashboard.store';
 import { useUIStore } from '../stores/ui.store';
 import { useAssetsStore } from '../stores/assets.store';
@@ -16,7 +17,6 @@ import ImportStatusModal from "../components/modals/ImportStatusModal.vue";
 import AddPortfolioModal from "../components/modals/AddPortfolioModal.vue";
 import PortfolioTree from '../components/PortfolioTree.vue';
 import ContextMenu from '../components/base/ContextMenu.vue';
-import { useExpandedState } from '../composables/useExpandedState';
 import { useModals } from '../composables/useModal';
 import { usePortfolio } from '../composables/usePortfolio';
 import { Button, ToggleSwitch } from '../components/base';
@@ -119,8 +119,9 @@ const reloadDashboard = async () => {
   await dashboardStore.reloadDashboard();
 };
 
-// Используем композабл для управления раскрытыми портфелями
-const { expanded: expandedPortfolios, toggle: togglePortfolio } = useExpandedState('expandedPortfolios');
+// Раскрытые портфели и showSoldAssets хранятся в ui.store (с авто-persistence)
+const { expandedPortfolios, showSoldAssets } = storeToRefs(uiStore)
+const togglePortfolio = (id) => uiStore.togglePortfolio(id)
 
 // Используем композабл для управления модалками
 const { modals, open: openModal, close: closeModal } = useModals([
@@ -136,28 +137,6 @@ const { modals, open: openModal, close: closeModal } = useModals([
 // ID текущей задачи импорта
 const currentImportTaskId = ref(null);
 
-// Фильтр для показа проданных активов (с сохранением в localStorage)
-const SHOW_SOLD_ASSETS_KEY = 'showSoldAssets';
-const showSoldAssets = ref(false);
-
-onMounted(() => {
-  try {
-    const stored = localStorage.getItem(SHOW_SOLD_ASSETS_KEY);
-    if (stored !== null) {
-      showSoldAssets.value = stored === '1' || stored === 'true';
-    }
-  } catch (e) {
-    // localStorage может быть недоступен, просто игнорируем
-  }
-});
-
-watch(showSoldAssets, (value) => {
-  try {
-    localStorage.setItem(SHOW_SOLD_ASSETS_KEY, value ? '1' : '0');
-  } catch (e) {
-    // игнорируем ошибки записи в localStorage
-  }
-});
 
 
 // Используем композабл для работы с портфелями
@@ -212,7 +191,6 @@ const refreshPortfolios = async () => {
   await reloadDashboard();
 };
 
-// togglePortfolio уже определен в useExpandedState
 
 // Обработчики для контекстного меню
 const handleAddTransaction = (asset) => {
@@ -396,7 +374,7 @@ const handleMoveAsset = (asset) => {
   flex-shrink: 0;
 }
 
-/* Button groups */
+/* Группы кнопок */
 .button-group-unified {
   display: flex;
   gap: 0;
@@ -533,7 +511,7 @@ const handleMoveAsset = (asset) => {
 }
 
 
-/* Empty State */
+/* Пустое состояние */
 
 .empty-placeholder {
   text-align: center;

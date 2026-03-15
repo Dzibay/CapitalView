@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useTransactionsStore } from '../stores/transactions.store'
 import { useContextMenu } from '../composables/useContextMenu'
@@ -11,12 +12,23 @@ import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
-// Используем stores вместо inject
+
 const dashboardStore = useDashboardStore()
 const transactionsStore = useTransactionsStore()
 
-// Переключатель между транзакциями и операциями
-const viewMode = ref('transactions') // 'transactions' или 'operations'
+const {
+  viewMode,
+  selectedAsset,
+  assetSearch,
+  recentAssets,
+  selectedPortfolio,
+  selectedType,
+  selectedCurrency,
+  periodPreset,
+  startDate,
+  endDate,
+  globalSearch,
+} = storeToRefs(transactionsStore)
 
 // Lazy-load: загружаем полные списки при первом открытии страницы
 onMounted(() => {
@@ -103,21 +115,7 @@ const operationTypes = computed(() => {
   return Array.from(typeSet)
 })
 
-// --- ФИЛЬТРЫ ---
-const selectedAsset = ref('')
-const assetSearch = ref('')
-const recentAssets = ref([])
-
-const selectedPortfolio = ref('')
-const selectedType = ref('') // тип операции
-const selectedCurrency = ref('RUB') // валюта для отображения операций: 'RUB' | 'ORIGINAL'
-
-
-const periodPreset = ref('month') // today | week | month | quarter | year | all | custom
-const startDate = ref('')
-const endDate = ref('')
-
-const globalSearch = ref('')
+// Фильтры хранятся в transactionsStore для сохранения при навигации
 
 // отфильтрованные транзакции/операции
 const filteredTransactions = ref([])
@@ -408,16 +406,8 @@ const applyFilter = () => {
   allSelected.value = false
 }
 
-// сброс фильтров
 const resetFilters = () => {
-  selectedAsset.value = ''
-  assetSearch.value = ''
-  selectedPortfolio.value = ''
-  selectedType.value = ''
-  globalSearch.value = ''
-  periodPreset.value = 'all'
-  startDate.value = ''
-  endDate.value = ''
+  transactionsStore.resetFilters()
   applyFilter()
 }
 
@@ -1110,7 +1100,7 @@ const transactionsSummary = computed(() => {
 </template>
 
 <style scoped>
-/* --- Layout & Typography --- */
+/* --- Разметка и типографика --- */
 .transactions-content {
   display: flex;
   gap: 24px;
@@ -1166,7 +1156,7 @@ const transactionsSummary = computed(() => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-/* --- Bulk Actions --- */
+/* --- Массовые действия --- */
 .bulk-actions {
   display: flex;
   align-items: center;
@@ -1196,17 +1186,17 @@ const transactionsSummary = computed(() => {
   color: #fff;
 }
 
-/* --- Card & Structure --- */
+/* --- Карточка и структура --- */
 .card {
   background: #fff;
   width: 100%;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   border: 1px solid #e5e7eb;
-  overflow: visible; /* allows dropdowns to overflow */
+  overflow: visible; /* позволяет выпадающим спискам выходить за границы */
 }
 
-/* --- Toolbar --- */
+/* --- Панель инструментов --- */
 .toolbar {
   padding: 20px;
   border-bottom: 1px solid #f3f4f6;
@@ -1226,7 +1216,7 @@ const transactionsSummary = computed(() => {
   align-items: center;
 }
 
-/* Inputs */
+/* Поля ввода */
 .input-wrapper {
   position: relative;
   flex: 1;
@@ -1405,7 +1395,7 @@ const transactionsSummary = computed(() => {
   transform: translateY(-50%) scale(0.95);
 }
 
-/* Chips */
+/* Фильтры-чипсы */
 .chips-group {
   display: flex;
   gap: 8px;
@@ -1456,7 +1446,7 @@ const transactionsSummary = computed(() => {
   display: none;
 }
 
-/* Date Range */
+/* Диапазон дат */
 .date-range {
   display: flex;
   align-items: center;
@@ -1491,7 +1481,7 @@ const transactionsSummary = computed(() => {
   user-select: none;
 }
 
-/* --- Table --- */
+/* --- Таблица --- */
 .table-container {
   overflow-x: auto;
 }
@@ -1518,7 +1508,7 @@ const transactionsSummary = computed(() => {
 .transactions-table tr:last-child td { border-bottom: none; }
 .transactions-table tr:hover { background: #f9fafb; }
 
-/* Column Specifics */
+/* Настройки колонок */
 .w-checkbox { width: 40px; text-align: center; }
 .w-actions { width: 40px; }
 .text-right { text-align: right !important; }
@@ -1528,7 +1518,7 @@ const transactionsSummary = computed(() => {
 .td-date { color: #374151; white-space: nowrap; }
 .num-font { font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace; font-size: 13px; letter-spacing: -0.5px; }
 
-/* Badges */
+/* Бейджи */
 .badge {
   display: inline-block;
   padding: 2px 8px;
@@ -1559,7 +1549,7 @@ const transactionsSummary = computed(() => {
 .badge-tax { background: #fee2e2; color: #991b1b; }
 .badge-commission { background: #fef3c7; color: #92400e; }
 
-/* Actions Button */
+/* Кнопка действий */
 .icon-btn {
   background: none;
   border: none;
@@ -1580,7 +1570,7 @@ const transactionsSummary = computed(() => {
   background: #f3f4f6;
 }
 
-/* Asset Dropdown (Search) */
+/* Выпадающий список активов (поиск) */
 .asset-dropdown {
   position: absolute;
   top: calc(100% + 4px);
@@ -1664,7 +1654,7 @@ const transactionsSummary = computed(() => {
   font-style: italic;
 }
 
-/* Footer Summary */
+/* Итоги в подвале */
 .card-footer {
   padding: 16px 20px;
   border-top: 1px solid #e5e7eb;
@@ -1680,12 +1670,12 @@ const transactionsSummary = computed(() => {
 .summary-label { color: #6b7280; font-size: 14px; }
 .summary-value { font-size: 18px; font-weight: 700; color: #111827; }
 
-/* Empty State */
+/* Пустое состояние */
 .empty-cell { text-align: center; padding: 40px; }
 .empty-state { color: #9ca3af; }
 .empty-icon { font-size: 32px; display: block; margin-bottom: 8px; opacity: 0.5; }
 
-/* Custom Checkbox */
+/* Чекбокс */
 .custom-checkbox {
   width: 16px;
   height: 16px;

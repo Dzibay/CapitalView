@@ -4,7 +4,30 @@ import operationsService from '../services/operationsService'
 import { useDashboardStore } from './dashboard.store'
 
 export const useTransactionsStore = defineStore('transactions', {
+  state: () => ({
+    viewMode: 'transactions',
+    selectedAsset: '',
+    assetSearch: '',
+    recentAssets: [],
+    selectedPortfolio: '',
+    selectedType: '',
+    selectedCurrency: 'RUB',
+    periodPreset: 'month',
+    startDate: '',
+    endDate: '',
+    globalSearch: '',
+  }),
   actions: {
+    resetFilters() {
+      this.selectedAsset = ''
+      this.assetSearch = ''
+      this.selectedPortfolio = ''
+      this.selectedType = ''
+      this.globalSearch = ''
+      this.periodPreset = 'all'
+      this.startDate = ''
+      this.endDate = ''
+    },
     async addTransaction({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date, transaction_date, create_deposit_operation = false }) {
       const dashboardStore = useDashboardStore()
       
