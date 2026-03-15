@@ -142,6 +142,17 @@ const { openMenu } = useContextMenu()
 // Карточный вид на планшетах и мобильных (как в PortfolioTree)
 const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1200)
 const isCardView = computed(() => windowWidth.value <= 1024)
+const isMobilePeriod = computed(() => windowWidth.value <= 768)
+
+// Опции периода для выпадающего списка на мобильных
+const periodOptions = [
+  { value: 'today', label: 'Сегодня' },
+  { value: 'week', label: 'Неделя' },
+  { value: 'month', label: 'Месяц' },
+  { value: 'year', label: 'Год' },
+  { value: 'all', label: 'Всё время' },
+  { value: 'custom', label: 'Период...' }
+]
 const updateWindowWidth = () => { windowWidth.value = window.innerWidth }
 onMounted(() => {
   window.addEventListener('resize', updateWindowWidth)
@@ -732,13 +743,13 @@ const showSumsSummary = ref(false)
     <PageHeader title="История транзакций">
       <template #actions>
         <div class="header-actions">
-          <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
+          <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions bulk-actions-desktop">
             <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
             <button @click="deleteSelected" class="btn btn-danger-soft" :disabled="selectedTxIds.length === 0">
               Удалить выбранные ({{ selectedTxIds.length }})
             </button>
           </div>
-          <div v-if="selectedOpIds.length > 0 && viewMode === 'operations'" class="bulk-actions">
+          <div v-if="selectedOpIds.length > 0 && viewMode === 'operations'" class="bulk-actions bulk-actions-desktop">
             <span class="selected-count">Выбрано: {{ selectedOpIds.length }}</span>
             <button @click="deleteSelectedOperations" class="btn btn-danger-soft" :disabled="selectedOpIds.length === 0">
               Удалить выбранные ({{ selectedOpIds.length }})
@@ -843,7 +854,7 @@ const showSumsSummary = ref(false)
                 { value: 'RUB', label: 'Рубли (RUB)' },
                 { value: 'ORIGINAL', label: 'Оригинальная валюта' }
               ]"
-              label="Валюта отображения"
+              label="Валюта"
               placeholder="Выберите валюту"
               @change="applyFilter"
             />
@@ -854,20 +865,34 @@ const showSumsSummary = ref(false)
         </div>
 
         <div class="filters-bottom">
-          <div class="chips-group">
-          <button v-for="p in ['today', 'week', 'month', 'year', 'all']" 
+          <!-- Планшет и десктоп: чипсы -->
+          <div v-if="!isMobilePeriod" class="chips-group">
+            <button v-for="p in ['today', 'week', 'month', 'year', 'all']" 
                     :key="p" 
                     class="chip" 
                     :class="{ active: periodPreset === p }"
                     @click="setPeriodPreset(p); periodPreset = p">
               {{ {today:'Сегодня', week:'Неделя', month:'Месяц', year:'Год', all:'Всё время'}[p] }}
-          </button>
-          <button class="chip" :class="{ active: periodPreset === 'custom' }" @click="periodPreset = 'custom'">
+            </button>
+            <button class="chip" :class="{ active: periodPreset === 'custom' }" @click="periodPreset = 'custom'">
               Период...
-          </button>
-        </div>
+            </button>
+          </div>
+          <!-- Телефоны: выпадающий список -->
+          <div v-else class="period-select-mobile">
+            <CustomSelect
+              v-model="periodPreset"
+              :options="periodOptions"
+              option-value="value"
+              option-label="label"
+              label="Период"
+              placeholder="Период"
+              :show-empty-option="false"
+              @change="(v) => v && setPeriodPreset(v)"
+            />
+          </div>
           
-           <div v-if="periodPreset === 'custom'" class="date-range">
+          <div v-if="periodPreset === 'custom'" class="date-range">
             <DateInput v-model="startDate" class="date-input" />
             <span class="separator">—</span>
             <DateInput v-model="endDate" class="date-input" />
@@ -889,19 +914,19 @@ const showSumsSummary = ref(false)
               <div class="transactions-summary">
                 <div class="summary-item">
                   <span class="summary-item-label">Покупки:</span>
-                  <span class="summary-item-value text-green">
+                  <span class="summary-item-value">
                     {{ transactionsSummary.buy.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
                   </span>
                 </div>
                 <div class="summary-item">
                   <span class="summary-item-label">Продажи:</span>
-                  <span class="summary-item-value text-red">
+                  <span class="summary-item-value">
                     {{ transactionsSummary.sell.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
                   </span>
                 </div>
                 <div class="summary-item">
                   <span class="summary-item-label">Оборот:</span>
-                  <span class="summary-item-value text-red">
+                  <span class="summary-item-value">
                     {{ (transactionsSummary.buy + transactionsSummary.sell).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
                   </span>
                 </div>
@@ -926,40 +951,74 @@ const showSumsSummary = ref(false)
               </div>
             </template>
           </div>
-          
+
+          <!-- Кнопка удаления выбранных — на мобильных показывается здесь, чтобы не сдвигать переключатель в шапке -->
+          <div v-if="(selectedTxIds.length > 0 && viewMode === 'transactions') || (selectedOpIds.length > 0 && viewMode === 'operations')" class="bulk-actions-mobile">
+            <span class="selected-count">Выбрано: {{ viewMode === 'transactions' ? selectedTxIds.length : selectedOpIds.length }}</span>
+            <button
+              v-if="viewMode === 'transactions'"
+              @click="deleteSelected"
+              class="btn btn-danger-soft"
+              :disabled="selectedTxIds.length === 0"
+            >
+              Удалить ({{ selectedTxIds.length }})
+            </button>
+            <button
+              v-else
+              @click="deleteSelectedOperations"
+              class="btn btn-danger-soft"
+              :disabled="selectedOpIds.length === 0"
+            >
+              Удалить ({{ selectedOpIds.length }})
+            </button>
+          </div>
+
           <div class="table-container">
           <!-- Карточки транзакций (планшет/мобильные) -->
-          <div v-if="isCardView && viewMode === 'transactions'" class="transactions-cards">
+          <div v-if="isCardView && viewMode === 'transactions'" class="transactions-cards-wrapper">
+            <div class="cards-select-all">
+              <label class="select-all-label">
+                <input type="checkbox" v-model="allSelected" @change="toggleAll" class="custom-checkbox" />
+                <span>Выбрать все</span>
+              </label>
+            </div>
+            <div class="transactions-cards">
             <div
               v-for="tx in filteredTransactions"
               :key="tx.transaction_id"
               class="transaction-card"
             >
-              <div class="card-row card-row-header">
+              <div class="transaction-card-header">
                 <span class="card-date">{{ formatDate(tx.transaction_date) }}</span>
                 <span :class="['badge', 'badge-' + normalizeType(tx.transaction_type)]">{{ tx.transaction_type }}</span>
               </div>
-              <div class="card-row">
-                <span class="card-label">Актив</span>
-                <span class="card-value font-medium">{{ tx.asset_name }}</span>
-              </div>
-              <div class="card-row">
-                <span class="card-label">Портфель</span>
-                <span class="card-value text-secondary">{{ tx.portfolio_name }}</span>
-              </div>
-              <div class="card-row card-row-numbers">
-                <span>Кол-во {{ tx.quantity }}</span>
-                <span>Цена {{ tx.price.toLocaleString() }} {{ getCurrencySymbol(tx.currency_ticker) }}</span>
-              </div>
-              <div class="card-row card-row-sum">
-                <span class="card-label">Сумма</span>
-                <span class="card-value num-font font-semibold">
-                  {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }} {{ getCurrencySymbol(tx.currency_ticker) }}
-                </span>
-              </div>
-              <div class="card-row card-row-actions">
+              <div class="transaction-card-actions">
                 <input type="checkbox" :value="tx.transaction_id" v-model="selectedTxIds" class="custom-checkbox" />
                 <button class="icon-btn" @click="openMenu($event, 'transaction', tx)">⋯</button>
+              </div>
+              <div class="transaction-card-body">
+                <div class="transaction-card-row">
+                  <span class="card-label">Актив</span>
+                  <span class="card-value font-medium">{{ tx.asset_name }}</span>
+                </div>
+                <div class="transaction-card-row">
+                  <span class="card-label">Портфель</span>
+                  <span class="card-value text-secondary">{{ tx.portfolio_name }}</span>
+                </div>
+                <div class="transaction-card-row">
+                  <span class="card-label">Кол-во</span>
+                  <span class="card-value num-font">{{ tx.quantity }}</span>
+                </div>
+                <div class="transaction-card-row">
+                  <span class="card-label">Цена</span>
+                  <span class="card-value num-font">{{ tx.price.toLocaleString() }} {{ getCurrencySymbol(tx.currency_ticker) }}</span>
+                </div>
+                <div class="transaction-card-row">
+                  <span class="card-label">Сумма</span>
+                  <span class="card-value num-font font-semibold">
+                    {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }} {{ getCurrencySymbol(tx.currency_ticker) }}
+                  </span>
+                </div>
               </div>
             </div>
             <div v-if="filteredTransactions.length === 0" class="empty-cell">
@@ -968,35 +1027,45 @@ const showSumsSummary = ref(false)
                 <p>Транзакции не найдены</p>
               </div>
             </div>
+            </div>
           </div>
           <!-- Карточки операций (планшет/мобильные) -->
-          <div v-else-if="isCardView && viewMode === 'operations'" class="transactions-cards">
+          <div v-else-if="isCardView && viewMode === 'operations'" class="transactions-cards-wrapper">
+            <div class="cards-select-all">
+              <label class="select-all-label">
+                <input type="checkbox" v-model="allOperationsSelected" @change="toggleAllOperations" class="custom-checkbox" />
+                <span>Выбрать все</span>
+              </label>
+            </div>
+            <div class="transactions-cards">
             <div
               v-for="op in filteredOperations"
               :key="op.cash_operation_id || op.id"
               class="transaction-card"
             >
-              <div class="card-row card-row-header">
+              <div class="transaction-card-header">
                 <span class="card-date">{{ formatDate(op.operation_date) }}</span>
                 <span :class="['badge', 'badge-' + normalizeType(op.operation_type)]">{{ op.operation_type }}</span>
               </div>
-              <div class="card-row">
-                <span class="card-label">Актив</span>
-                <span class="card-value font-medium">{{ op.asset_name || '—' }}</span>
-              </div>
-              <div class="card-row">
-                <span class="card-label">Портфель</span>
-                <span class="card-value text-secondary">{{ op.portfolio_name }}</span>
-              </div>
-              <div class="card-row card-row-sum">
-                <span class="card-label">Сумма</span>
-                <span class="card-value num-font font-semibold" :class="getOperationAmount(op) >= 0 ? 'text-green' : 'text-red'">
-                  {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
-                </span>
-              </div>
-              <div class="card-row card-row-actions">
+              <div class="transaction-card-actions">
                 <input type="checkbox" :value="op.cash_operation_id || op.id" v-model="selectedOpIds" class="custom-checkbox" />
                 <button class="icon-btn" @click="openMenu($event, 'operation', op)">⋯</button>
+              </div>
+              <div class="transaction-card-body">
+                <div class="transaction-card-row">
+                  <span class="card-label">Актив</span>
+                  <span class="card-value font-medium">{{ op.asset_name || '—' }}</span>
+                </div>
+                <div class="transaction-card-row">
+                  <span class="card-label">Портфель</span>
+                  <span class="card-value text-secondary">{{ op.portfolio_name }}</span>
+                </div>
+                <div class="transaction-card-row">
+                  <span class="card-label">Сумма</span>
+                  <span class="card-value num-font font-semibold">
+                    {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
+                  </span>
+                </div>
               </div>
             </div>
             <div v-if="filteredOperations.length === 0" class="empty-cell">
@@ -1004,6 +1073,7 @@ const showSumsSummary = ref(false)
                 <span class="empty-icon">🔍</span>
                 <p>Операции не найдены</p>
               </div>
+            </div>
             </div>
           </div>
           <!-- Таблица транзакций (десктоп) -->
@@ -1085,7 +1155,7 @@ const showSumsSummary = ref(false)
                 </td>
                 <td class="font-medium">{{ op.asset_name || '—' }}</td>
                 <td class="text-secondary">{{ op.portfolio_name }}</td>
-                <td class="text-right num-font font-semibold" :class="getOperationAmount(op) >= 0 ? 'text-green' : 'text-red'">
+                <td class="text-right num-font font-semibold">
                   {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
                 </td>
                 <td class="text-right num-font">{{ getOperationCurrency(op) }}</td>
@@ -1120,7 +1190,9 @@ const showSumsSummary = ref(false)
 </template>
 
 <style scoped>
-/* --- Разметка и типографика --- */
+/* =========================================
+   1. БАЗОВАЯ РАЗМЕТКА И ТИПОГРАФИКА
+   ========================================= */
 .transactions-content {
   display: flex;
   gap: 24px;
@@ -1138,37 +1210,31 @@ const showSumsSummary = ref(false)
 
 .transactions-main {
   display: flex;
+  flex-direction: column;
   gap: 20px;
   min-width: 0;
-  flex: 1;
+  width: 100%;
 }
 
-.sums-toggle-row {
-  padding: 10px 0 0;
-  margin-top: 8px;
-  border-top: 1px solid #f3f4f6;
-}
-.sums-summary-block {
-  margin-top: 16px;
-  padding: 16px;
-  background: #f9fafb;
+.card {
+  background: #fff;
+  width: 100%;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
-}
-.sums-block-title {
-  margin: 0 0 12px 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: #111827;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e5e7eb;
+  overflow: visible;
+  box-sizing: border-box;
 }
 
+/* =========================================
+   2. ШАПКА И ПЕРЕКЛЮЧАТЕЛИ
+   ========================================= */
 .header-actions {
   display: flex;
   align-items: center;
   gap: 16px;
   min-height: 40px;
+  flex-wrap: wrap;
 }
 
 .view-mode-switcher {
@@ -1178,7 +1244,6 @@ const showSumsSummary = ref(false)
   padding: 4px;
   border-radius: 8px;
   margin-left: auto;
-  align-self: center;
 }
 
 .view-mode-switcher .btn {
@@ -1202,21 +1267,32 @@ const showSumsSummary = ref(false)
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-/* --- Массовые действия --- */
-.bulk-actions {
+/* Массовые действия (Bulk Actions) */
+.bulk-actions, .bulk-actions-mobile {
   display: flex;
   align-items: center;
   gap: 12px;
   background: #fef2f2;
-  padding: 6px 12px;
   border-radius: 8px;
   border: 1px solid #fee2e2;
 }
+
+.bulk-actions {
+  padding: 6px 12px;
+}
+
+.bulk-actions-mobile {
+  display: none;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+
 .selected-count {
   font-size: 13px;
   font-weight: 600;
   color: #b91c1c;
 }
+
 .btn-danger-soft {
   background: #fff;
   border: 1px solid #fca5a5;
@@ -1227,59 +1303,43 @@ const showSumsSummary = ref(false)
   cursor: pointer;
   transition: all 0.2s;
 }
+
 .btn-danger-soft:hover {
   background: #ef4444;
   color: #fff;
 }
 
-/* --- Карточка и структура --- */
-.card {
-  background: #fff;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  border: 1px solid #e5e7eb;
-  overflow: visible;
-}
-
-/* --- Панель инструментов --- */
+/* =========================================
+   3. ПАНЕЛЬ ИНСТРУМЕНТОВ И ФИЛЬТРЫ
+   ========================================= */
 .toolbar {
   padding: 20px;
   border-bottom: 1px solid #f3f4f6;
-  min-width: 0;
+  box-sizing: border-box;
 }
 
 .filters-top {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 16px;
   align-items: flex-end;
-  flex-wrap: wrap;
   width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
 }
 
 .filters-bottom {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
-/* Поля ввода */
-.input-wrapper {
-  position: relative;
-  flex: 1;
-  max-width: 300px;
-}
-
+/* Поиск актива */
 .asset-search-wrapper {
   position: relative;
-  flex: 1 1 200px;
-  min-width: 0;
-  max-width: 100%;
+  flex: 1 1 360px;
+  min-width: 150px;
 }
 
 .asset-search-wrapper .select-label {
@@ -1292,7 +1352,6 @@ const showSumsSummary = ref(false)
   background: #fff;
   padding: 0 4px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
   z-index: 2;
   pointer-events: none;
 }
@@ -1303,25 +1362,14 @@ const showSumsSummary = ref(false)
   top: 50%;
   transform: translateY(-50%);
   color: #6b7280;
-  font-size: 16px;
   z-index: 1;
-  pointer-events: none;
-  transition: color 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.asset-empty-icon {
-  display: block;
-  margin-bottom: 4px;
-  color: #9ca3af;
 }
 
 .asset-search-wrapper:focus-within .input-icon {
   color: #3b82f6;
 }
 
-.form-input, .form-select {
+.form-input {
   width: 100%;
   padding: 10px 40px 10px 36px;
   border: 1.5px solid #e5e7eb;
@@ -1329,146 +1377,144 @@ const showSumsSummary = ref(false)
   font-size: 14px;
   outline: none;
   transition: all 0.2s ease;
-  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+  background: #fff;
   color: #111827;
-  font-weight: 400;
   min-height: 42px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
-
-.form-input::placeholder {
-  color: #9ca3af;
+  box-sizing: border-box;
 }
 
 .form-input:hover {
   border-color: #d1d5db;
-  background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-  transform: translateY(-1px);
 }
 
 .form-input:focus {
   border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1), 0 4px 12px rgba(59,130,246,0.15);
-  background: #fff;
-  transform: translateY(0);
-}
-.form-select {
-  padding-left: 12px;
-  padding-right: 36px;
-  cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 12px;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-/* Скрываем старые select элементы, если они еще используются */
-.form-select {
-  display: none;
-}
-.form-input:hover, .form-select:hover {
-  border-color: #d1d5db;
-  background-color: #fafafa;
-}
-.form-input:focus, .form-select:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
-  background-color: #fff;
-}
-.form-select option {
-  padding: 10px;
-  background-color: #fff;
-  color: #111827;
-}
-
-.select-group {
-  display: flex;
-  gap: 10px;
-  min-width: 0;
-  max-width: 100%;
-}
-.select-group :deep(.custom-select-wrapper) {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-
-.reset-btn {
-  font-size: 18px;
-  padding: 8px 12px;
-  color: #6b7280;
-  background: #f9fafb;
+/* Выпадающий список поиска (Dropdown) */
+.asset-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  background: white;
   border: 1.5px solid #e5e7eb;
-  cursor: pointer;
   border-radius: 8px;
-  transition: all 0.2s ease;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  list-style: none;
+  padding: 6px 0;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+  margin: 0;
+}
+
+.asset-option {
+  padding: 10px 16px;
+  cursor: pointer;
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  height: 42px;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 1;
+  transition: all 0.15s ease;
+  border-left: 3px solid transparent;
 }
-.reset-btn:hover {
+
+.asset-option:hover {
   background: #f3f4f6;
-  color: #1f2937;
-  border-color: #d1d5db;
+  border-left-color: #3b82f6;
 }
-.reset-btn:active {
-  transform: scale(0.95);
+
+.asset-option mark {
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 600;
+  padding: 0 2px;
+  border-radius: 2px;
 }
-.reset-icon {
-  display: inline-block;
-  transition: transform 0.2s ease;
+
+.meta-ticker {
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
 }
-.reset-btn:hover .reset-icon {
-  transform: rotate(-90deg);
+
+.asset-empty {
+  padding: 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+  font-style: italic;
 }
+
 .clear-btn {
   position: absolute;
   right: 10px;
   top: 50%;
   transform: translateY(-50%);
   background: #f3f4f6;
-  border: 1.5px solid transparent;
+  border: none;
   font-size: 18px;
   color: #6b7280;
   cursor: pointer;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
   z-index: 2;
-  line-height: 1;
-  padding: 0;
-  font-weight: 300;
-}
-.clear-btn:hover {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #dc2626;
-  transform: translateY(-50%) scale(1.1);
-  box-shadow: 0 2px 4px rgba(220,38,38,0.2);
-}
-.clear-btn:active {
-  transform: translateY(-50%) scale(0.95);
 }
 
-/* Фильтры-чипсы */
+.clear-btn:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* Селекты и кнопка сброса - Исправление переполнения */
+.select-group {
+  display: flex;
+  flex-wrap: wrap; /* Позволяет переносить элементы на мобильных */
+  gap: 10px;
+  flex: 2 1 300px;
+  min-width: 0;
+}
+
+.select-group :deep(.custom-select-wrapper) {
+  flex: 1 1 130px; /* Гибкая ширина с базой 130px */
+  min-width: 120px;
+}
+
+.reset-btn {
+  flex: 0 0 42px;
+  height: 42px;
+  font-size: 18px;
+  color: #6b7280;
+  background: #f9fafb;
+  border: 1.5px solid #e5e7eb;
+  cursor: pointer;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.reset-btn:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+/* Чипсы периода */
 .chips-group {
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 8px;
 }
+
 .chip {
   background: #f9fafb;
   border: 1.5px solid #e5e7eb;
@@ -1478,43 +1524,20 @@ const showSumsSummary = ref(false)
   font-weight: 500;
   color: #4b5563;
   cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  position: relative;
-  overflow: hidden;
-}
-.chip::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-  transition: left 0.5s;
-}
-.chip:hover {
-  background: #f3f4f6;
-  border-color: #d1d5db;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-.chip:hover::before {
-  left: 100%;
-}
-.chip.active {
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  color: #2563eb;
-  font-weight: 600;
-  border-color: #3b82f6;
-  box-shadow: 0 2px 8px rgba(59,130,246,0.2);
-  transform: translateY(-1px);
-}
-.chip.active::before {
-  display: none;
+  transition: all 0.2s;
 }
 
-/* Диапазон дат */
+.chip:hover {
+  background: #f3f4f6;
+}
+
+.chip.active {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #3b82f6;
+  font-weight: 600;
+}
+
 .date-range {
   display: flex;
   align-items: center;
@@ -1523,44 +1546,77 @@ const showSumsSummary = ref(false)
   background: #f9fafb;
   border-radius: 8px;
   border: 1.5px solid #e5e7eb;
+  flex-wrap: wrap;
 }
+
 .date-input {
-  padding: 8px 12px;
-  width: auto;
-  min-width: 140px;
+  padding: 8px;
   border: 1.5px solid #d1d5db;
   border-radius: 6px;
   font-size: 13px;
-  transition: all 0.2s ease;
-}
-.date-input:hover {
-  border-color: #9ca3af;
-  background: #fff;
-}
-.date-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
-  outline: none;
-}
-.separator {
-  color: #6b7280;
-  font-weight: 500;
-  font-size: 14px;
-  user-select: none;
 }
 
-/* --- Таблица --- */
+/* =========================================
+   4. БЛОК СУММ И ИТОГОВ
+   ========================================= */
+.sums-toggle-row {
+  padding: 10px 0 0;
+  margin-top: 8px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.sums-summary-block {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+
+.sums-block-title {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  font-weight: 600;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.summary-item, .sum-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  border: 1px solid #e5e7eb;
+  font-size: 13px;
+}
+
+.summary-item-label, .sum-type {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.summary-item-value, .sum-value {
+  font-weight: 600;
+}
+
+/* =========================================
+   5. ТАБЛИЦЫ (Десктоп)
+   ========================================= */
 .table-container {
   overflow-x: auto;
-  min-width: 0;
   width: 100%;
 }
+
 .transactions-table {
   width: 100%;
   min-width: 800px;
   border-collapse: collapse;
   font-size: 14px;
 }
+
 .transactions-table th {
   text-align: left;
   padding: 12px 16px;
@@ -1571,546 +1627,176 @@ const showSumsSummary = ref(false)
   text-transform: uppercase;
   border-bottom: 1px solid #e5e7eb;
 }
+
 .transactions-table td {
   padding: 12px 16px;
   border-bottom: 1px solid #f3f4f6;
   vertical-align: middle;
 }
-.transactions-table tr:last-child td { border-bottom: none; }
-.transactions-table tr:hover { background: #f9fafb; }
 
-/* Карточки транзакций/операций (планшет и мобильные) */
+.transactions-table tr:hover {
+  background: #f9fafb;
+}
+
+/* =========================================
+   6. КАРТОЧКИ (Планшет и Мобильные)
+   ========================================= */
+.transactions-cards-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.cards-select-all {
+  padding: 8px 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
 .transactions-cards {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 0 4px;
-}
-.transaction-card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 12px 14px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-.transaction-card .card-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  padding: 4px 0;
-  font-size: 13px;
+  padding: 12px;
 }
-.transaction-card .card-row-header {
-  flex-wrap: wrap;
-  gap: 8px;
-  padding-bottom: 8px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid #f3f4f6;
-}
-.transaction-card .card-date {
-  color: #374151;
-  font-weight: 500;
-}
-.transaction-card .card-row-numbers {
-  flex-wrap: wrap;
-  color: #6b7280;
-  font-size: 12px;
-}
-.transaction-card .card-row-sum {
-  font-size: 14px;
-}
-.transaction-card .card-label {
-  color: #6b7280;
-  flex-shrink: 0;
-}
-.transaction-card .card-value {
-  text-align: right;
-  word-break: break-word;
-}
-.transaction-card .card-row-actions {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #f3f4f6;
-  justify-content: flex-end;
+
+.transaction-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: 8px;
 }
 
-/* Настройки колонок */
+.transaction-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.transaction-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.transaction-card-body {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+  font-size: 12px;
+}
+
+.transaction-card-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-label { color: #6b7280; }
+.card-value { color: #111827; text-align: right; }
+
+/* =========================================
+   7. УТИЛИТЫ И БЕЙДЖИ
+   ========================================= */
 .w-checkbox { width: 40px; text-align: center; }
 .w-actions { width: 40px; }
 .text-right { text-align: right !important; }
-.font-medium { font-weight: 500; color: #111827; }
-.font-semibold { font-weight: 600; color: #111827; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
 .text-secondary { color: #6b7280; font-size: 13px; }
-.td-date { color: #374151; white-space: nowrap; }
-.num-font { font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace; font-size: 13px; letter-spacing: -0.5px; }
+.num-font { font-family: 'SF Mono', 'Roboto Mono', monospace; }
 
-/* Бейджи */
 .badge {
-  display: inline-block;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: 12px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
 }
 .badge-buy { background: #dcfce7; color: #166534; }
 .badge-sell { background: #fee2e2; color: #991b1b; }
-.badge-dividend { 
-  background: rgba(37, 99, 235, 0.1); 
-  color: var(--payout-dividends, #2563eb); 
-}
-.badge-coupon { 
-  background: rgba(6, 182, 212, 0.1); 
-  color: var(--payout-coupons, #06b6d4); 
-}
-.badge-amortization {
-  background: rgba(251, 146, 60, 0.1);
-  color: var(--payout-amortizations, #fb923c);
-}
-.badge-other { background: #f3f4f6; color: #4b5563; }
+.badge-dividend { background: #eff6ff; color: #2563eb; }
+.badge-coupon { background: #ecfeff; color: #06b6d4; }
 .badge-deposit { background: #ccfbf1; color: #0f766e; }
 .badge-withdraw { background: #ffedd5; color: #9a3412; }
-.badge-tax { background: #fee2e2; color: #991b1b; }
-.badge-commission { background: #fef3c7; color: #92400e; }
-.badge-tax { background: #fee2e2; color: #991b1b; }
-.badge-commission { background: #fef3c7; color: #92400e; }
+.badge-tax, .badge-commission { background: #fef3c7; color: #92400e; }
+.badge-other { background: #f3f4f6; color: #4b5563; }
 
-/* Кнопка действий */
 .icon-btn {
   background: none;
   border: none;
   color: #9ca3af;
   font-size: 16px;
   cursor: pointer;
-  padding: 4px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   border-radius: 4px;
-  transition: all 0.2s;
-}
-.icon-btn:hover { 
-  color: #374151; 
-  background: #f3f4f6;
 }
 
-/* Выпадающий список активов (поиск) */
-.asset-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  width: 100%;
-  background: white;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 8px;
-  margin-top: 4px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05);
-  list-style: none;
-  padding: 6px 0;
-  max-height: 300px;
-  overflow-y: auto;
-  z-index: 100;
-  animation: slideDown 0.2s ease;
-}
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.asset-dropdown::-webkit-scrollbar {
-  width: 6px;
-}
-.asset-dropdown::-webkit-scrollbar-track {
-  background: #f9fafb;
-  border-radius: 3px;
-}
-.asset-dropdown::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
-}
-.asset-dropdown::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
-}
-.asset-option {
-  padding: 10px 16px;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  transition: all 0.15s ease;
-  border-left: 3px solid transparent;
-}
-.asset-option:hover {
-  background: #f3f4f6;
-  border-left-color: #3b82f6;
-  padding-left: 13px;
-}
-.asset-option:active {
-  background: #e5e7eb;
-}
-.asset-option mark {
-  background: #fef3c7;
-  color: #92400e;
-  padding: 0 2px;
-  border-radius: 2px;
-  font-weight: 600;
-}
-.meta-ticker {
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  color: #1e40af;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 12px;
-  letter-spacing: 0.3px;
-  white-space: nowrap;
-}
-.asset-empty {
-  padding: 20px;
-  text-align: center;
-  color: #9ca3af;
-  font-size: 13px;
-  font-style: italic;
-}
+.icon-btn:hover { color: #374151; background: #f3f4f6; }
+.custom-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: #2563eb; }
 
-/* Итоги в подвале */
-.card-footer {
-  padding: 16px 20px;
-  border-top: 1px solid #e5e7eb;
-  background: #fafafa;
-  border-radius: 0 0 12px 12px;
-}
-.summary-block {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  align-items: baseline;
-}
-.summary-label { color: #6b7280; font-size: 14px; }
-.summary-value { font-size: 18px; font-weight: 700; color: #111827; }
-
-/* Пустое состояние */
 .empty-cell { text-align: center; padding: 40px; }
 .empty-state { color: #9ca3af; }
-.empty-icon { font-size: 32px; display: block; margin-bottom: 8px; opacity: 0.5; }
+.empty-icon { font-size: 32px; display: block; opacity: 0.5; }
 
-/* Чекбокс */
-.custom-checkbox {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  accent-color: #2563eb;
-}
-
-/* --- Калькулятор --- */
-/* Суммы транзакций / операций (блок под переключателем) */
-.transactions-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.summary-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 12px;
-  background: #f9fafb;
-  border-radius: 6px;
-}
-
-.summary-item-label {
-  font-size: 13px;
-  color: #6b7280;
-  font-weight: 500;
-}
-
-.summary-item-value {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-/* Калькулятор операций */
-.operations-calculator {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.formula-display {
-  min-height: 50px;
-  padding: 10px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-}
-
-.formula-empty {
-  color: #9ca3af;
-  font-size: 12px;
-  text-align: center;
-  padding: 8px 0;
-}
-
-.formula-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.formula-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background: #fff;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.formula-item.formula-operator {
-  background: #eff6ff;
-  border-color: #3b82f6;
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.formula-item-text {
-  color: #111827;
-}
-
-.formula-remove-btn {
-  background: none;
-  border: none;
-  color: #9ca3af;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  padding: 0;
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 3px;
-  transition: all 0.2s;
-}
-
-.formula-remove-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.calculator-result {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 12px;
-  background: #f0fdf4;
-  border: 2px solid #86efac;
-  border-radius: 6px;
-}
-
-.result-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #166534;
-}
-
-.result-value {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.calculator-operators {
-  display: flex;
-  gap: 6px;
-}
-
-.calc-btn {
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  background: #fff;
-  color: #111827;
-}
-
-.calc-btn:hover:not(:disabled) {
-  background: #f3f4f6;
-  border-color: #9ca3af;
-}
-
-.calc-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.calc-operator {
-  flex: 1;
-  font-size: 16px;
-  font-weight: 600;
-  background: #eff6ff;
-  border-color: #3b82f6;
-  color: #2563eb;
-}
-
-.calc-operator:hover:not(:disabled) {
-  background: #dbeafe;
-}
-
-.calc-clear {
-  flex: 1;
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #dc2626;
-}
-
-.calc-clear:hover:not(:disabled) {
-  background: #fecaca;
-}
-
-.calculator-operations {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.operations-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.operations-buttons {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.calc-operation {
-  text-align: center;
-  justify-content: center;
-  background: #f9fafb;
-  font-size: 12px;
-  padding: 6px 8px;
-}
-
-.calc-operation:hover:not(:disabled) {
-  background: #f3f4f6;
-  border-color: #3b82f6;
-}
-
-.operations-sums {
-  margin-top: 4px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.sums-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #6b7280;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.sums-list {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.sum-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 10px;
-  background: #f9fafb;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.sum-type {
-  color: #6b7280;
-  font-weight: 500;
-}
-
-.sum-value {
-  color: #111827;
-  font-weight: 600;
-}
-
-/* Планшет: список сверху, калькулятор снизу — чтобы список не схлопывался */
+/* =========================================
+   8. АДАПТИВ (MEDIA QUERIES)
+   ========================================= */
 @media (max-width: 1024px) {
   .transactions-content {
     flex-direction: column;
-    align-items: stretch;
   }
-
-  .main-content {
-    flex: 0 0 auto;
-    width: 100%;
-    min-width: 0;
-    min-height: 0;
-  }
-
-  .transactions-main {
-    min-height: 120px;
-  }
+  .chips-group { gap: 6px; }
+  .chip { padding: 6px 12px; font-size: 12px; }
 }
 
-/* Мобильные: карточки вместо таблицы, фильтры колонкой */
 @media (max-width: 768px) {
   .toolbar {
     padding: 12px;
   }
-
-  .reset-btn {
-    flex-basis: auto;
-    order: unset;
+  
+  /* Селекты занимают 100% ширины контейнера на мобильных при нехватке места */
+  .select-group :deep(.custom-select-wrapper) {
+    flex: 1 1 calc(50% - 10px);
+    min-width: 100px;
   }
-
+  
   .asset-search-wrapper {
-    max-width: 100%;
+    flex: 1 1 100%;
   }
-
-  .select-group {
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .table-container {
-    padding: 0;
+  
+  .bulk-actions-desktop { display: none !important; }
+  .bulk-actions-mobile { display: flex; }
+  
+  .filters-bottom {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
 @media (max-width: 480px) {
-  .filters-bottom {
+  /* Перевод селектов в колонку для предотвращения обрезки на супер-узких экранах */
+  .select-group {
     flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
   }
-
-  .chips-group {
-    flex-wrap: wrap;
+  .select-group :deep(.custom-select-wrapper) {
+    width: 100%;
   }
+  .reset-btn { width: 100%; }
+  
+  .transactions-cards { padding: 8px; }
+  .transaction-card-body { grid-template-columns: 1fr; }
 }
 </style>
