@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /assets
+Disallow: /transactions
+Disallow: /dividends
+Disallow: /analitics
+Disallow: /settings
+
+# Sitemap: https://capitalview.ru/sitemap.xml

@@ -76,7 +76,7 @@ watch(() => dashboardStore.portfolios, (portfolios) => {
   <div class="dashboard-layout">
     <AppSidebar :user="authStore.user" :collapsed="uiStore.isSidebarCollapsed" />
     <main class="main-content" :class="{ 'full-width': uiStore.isSidebarCollapsed }">
-      <AppHeader :user="authStore.user" @toggle-sidebar="uiStore.toggleSidebar" />
+      <AppHeader :user="authStore.user" :sidebar-collapsed="uiStore.isSidebarCollapsed" @toggle-sidebar="uiStore.toggleSidebar" />
       <div class="page-content">
         <router-view />
       </div>
