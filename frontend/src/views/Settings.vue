@@ -2,8 +2,8 @@
 import { ref, watch } from 'vue'
 import { useAuthStore } from '../stores/auth.store'
 import { authService } from '../services/authService'
-import PageLayout from '../components/PageLayout.vue'
-import PageHeader from '../components/PageHeader.vue'
+import PageLayout from '../layouts/PageLayout.vue'
+import PageHeader from '../layouts/PageHeader.vue'
 import { User } from 'lucide-vue-next'
 
 const authStore = useAuthStore()

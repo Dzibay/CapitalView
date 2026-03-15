@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { LineChart } from 'lucide-vue-next'
-import MultiLineChart from '../../MultiLineChart.vue'
+import MultiLineChart from '../../charts/MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
 import ValueChange from '../base/ValueChange.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'

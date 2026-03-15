@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import { Bell } from 'lucide-vue-next'
 import { authService } from '../services/authService.js';
 import { useDashboardStore } from '../stores/dashboard.store'
-import MissedPayoutsModal from './modals/MissedPayoutsModal.vue'
+import MissedPayoutsModal from '../components/modals/MissedPayoutsModal.vue'
 
 defineProps({
   user: {

@@ -5,7 +5,6 @@
 </template>
 
 <script setup>
-// Базовый компонент для страниц с унифицированной шириной
 </script>
 
 <style scoped>

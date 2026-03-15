@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Building2, PieChart, TrendingDown, Hash, History } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
-import MultiLineChart from '../components/MultiLineChart.vue'
+import MultiLineChart from '../components/charts/MultiLineChart.vue'
 import { 
   PeriodFilters, 
   WidgetContainer, 
@@ -21,7 +21,7 @@ import CustomSelect from '../components/base/CustomSelect.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import assetsService from '../services/assetsService'
 import operationsService from '../services/operationsService'
-import PageLayout from '../components/PageLayout.vue'
+import PageLayout from '../layouts/PageLayout.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
 import { getCurrencySymbol } from '../utils/currencySymbols'

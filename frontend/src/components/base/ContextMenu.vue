@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { Briefcase, TrendingUp, Receipt, DollarSign, PlusCircle, BarChart3, MoveRight, Trash2, Edit, RotateCcw } from 'lucide-vue-next'
-import { useContextMenu } from '../composables/useContextMenu'
+import { useContextMenu } from '../../composables/useContextMenu'
 
 const emit = defineEmits([
   'clearPortfolio',

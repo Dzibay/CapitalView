@@ -15,14 +15,14 @@ import ImportPortfolioModal from "../components/modals/ImportPortfolioModal.vue"
 import ImportStatusModal from "../components/modals/ImportStatusModal.vue";
 import AddPortfolioModal from "../components/modals/AddPortfolioModal.vue";
 import PortfolioTree from '../components/PortfolioTree.vue';
-import ContextMenu from '../components/ContextMenu.vue';
+import ContextMenu from '../components/base/ContextMenu.vue';
 import { useExpandedState } from '../composables/useExpandedState';
 import { useModals } from '../composables/useModal';
 import { usePortfolio } from '../composables/usePortfolio';
 import { Button, ToggleSwitch } from '../components/base';
 import LoadingState from '../components/base/LoadingState.vue';
-import PageLayout from '../components/PageLayout.vue';
-import PageHeader from '../components/PageHeader.vue';
+import PageLayout from '../layouts/PageLayout.vue';
+import PageHeader from '../layouts/PageHeader.vue';
 
 const selectedAsset = ref(null);
 

@@ -1,5 +1,5 @@
 <script setup>
-import Header from '../components/Header.vue';
+import Header from '../layouts/LandingHeader.vue';
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { authService } from '../services/authService.js';

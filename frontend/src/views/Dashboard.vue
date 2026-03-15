@@ -8,8 +8,8 @@ import { usePortfolioAnalytics } from '../composables/usePortfolioAnalytics'
 
 // Компоненты
 import LoadingState from '../components/base/LoadingState.vue'
-import PageLayout from '../components/PageLayout.vue'
-import PageHeader from '../components/PageHeader.vue'
+import PageLayout from '../layouts/PageLayout.vue'
+import PageHeader from '../layouts/PageHeader.vue'
 
 // Виджеты
 import { 

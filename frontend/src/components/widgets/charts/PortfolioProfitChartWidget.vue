@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
-import MultiLineChart from '../../MultiLineChart.vue'
+import MultiLineChart from '../../charts/MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
 import ValueChange from '../base/ValueChange.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'

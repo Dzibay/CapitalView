@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue';
-import Header from '../components/Header.vue';
+import Header from '../layouts/LandingHeader.vue';
 
 // Анимация появления элементов при скролле
 const observer = ref(null);

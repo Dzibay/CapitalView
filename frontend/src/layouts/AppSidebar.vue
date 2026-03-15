@@ -147,21 +147,6 @@ watch(route, () => {
 
     <!-- Нижний блок: Профиль пользователя -->
     <div class="sidebar__footer">
-      <!-- Аватар -->
-      <!-- <img
-        src="https://placehold.co/40x40/ffffff/333333?text=PS"
-        alt="User Avatar"
-        class="sidebar__user-avatar"
-      />
-
-      <div class="sidebar__user-info" v-if="user">
-        <p class="sidebar__user-name">{{ user.name }}</p>
-        <p class="sidebar__user-role">{{ user.email }}</p>
-      </div>
-
-      <button @click="logout" class="sidebar__logout" >
-        <span v-html="icons.logout" class="sidebar__logout-icon"></span>
-      </button> -->
     </div>
   </aside>
 </template>

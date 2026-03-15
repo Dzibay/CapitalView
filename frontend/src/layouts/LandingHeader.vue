@@ -21,7 +21,6 @@ onMounted(async () => {
       user.value = null;
     }
   } catch {
-    // Токен не найден или недействителен
     user.value = null;
   }
 });

@@ -6,9 +6,9 @@ import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import { useTransactionsStore } from '../stores/transactions.store'
 
-import AppSidebar from '../components/AppSidebar.vue'
-import AppHeader from '../components/AppHeader.vue'
-import AppFooter from '../components/AppFooter.vue'
+import AppSidebar from './AppSidebar.vue'
+import AppHeader from './AppHeader.vue'
+import AppFooter from './AppFooter.vue'
 
 const router = useRouter()
 
