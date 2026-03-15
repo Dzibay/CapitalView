@@ -8,6 +8,7 @@ import { useTransactionsStore } from '../stores/transactions.store'
 
 import AppSidebar from '../components/AppSidebar.vue'
 import AppHeader from '../components/AppHeader.vue'
+import AppFooter from '../components/AppFooter.vue'
 
 const router = useRouter()
 
@@ -79,6 +80,7 @@ watch(() => dashboardStore.portfolios, (portfolios) => {
       <div class="page-content">
         <router-view />
       </div>
+      <AppFooter />
     </main>
   </div>
 </template>
@@ -93,6 +95,8 @@ watch(() => dashboardStore.portfolios, (portfolios) => {
   margin-left: var(--sidebarWidth);
   transition: margin-left 0.3s ease-in-out;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .main-content.full-width {
@@ -102,5 +106,6 @@ watch(() => dashboardStore.portfolios, (portfolios) => {
 .page-content {
   margin-top: var(--headerHeight);
   padding: var(--spacing);
+  flex: 1;
 }
 </style>
