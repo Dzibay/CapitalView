@@ -9,7 +9,7 @@ import {
   PeriodFilters, 
   WidgetContainer, 
   MetricsWidget, 
-  ValueChange, 
+  ValueChangePill, 
   Widget 
 } from '../components/widgets/base'
 import { AssetPortfolioStatsWidget } from '../components/widgets/composite'
@@ -1459,9 +1459,9 @@ async function handlePortfolioChange(portfolioId) {
             <span v-if="assetCurrency" class="price-currency"> {{ getCurrencySymbol(assetCurrency) }} ({{ assetCurrency }})</span>
           </div>
           <div v-if="selectedPortfolioAsset?.daily_change !== undefined && selectedPortfolioAsset.daily_change !== 0" class="price-change">
-            <ValueChange 
-              :value="selectedPriceChangePercent" 
-              :isPositive="selectedPortfolioAsset.daily_change >= 0"
+            <ValueChangePill
+              :value="selectedPriceChangePercent"
+              :is-positive="selectedPortfolioAsset.daily_change >= 0"
               format="percent"
             />
             <span class="price-change-currency">

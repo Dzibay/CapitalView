@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
-import ValueChange from '../base/ValueChange.vue'
+import ValueChangePill from '../base/ValueChangePill.vue'
 import { formatCurrency } from '../../../utils/formatCurrency'
 
 const props = defineProps({
@@ -36,9 +36,9 @@ const props = defineProps({
               {{ formatCurrency(profitLoss?.currentValue || 0) }}
             </div>
             <div v-if="priceGrowth" class="metric-change">
-              <ValueChange 
+              <ValueChangePill 
                 :value="priceGrowth.percent" 
-                :isPositive="priceGrowth.isPositive"
+                :is-positive="priceGrowth.isPositive"
                 format="percent"
               />
             </div>
@@ -50,9 +50,9 @@ const props = defineProps({
               {{ profitLoss?.isProfit ? '+' : '' }}{{ formatCurrency(profitLoss?.profit || 0) }}
             </div>
             <div v-if="profitLoss" class="metric-change">
-              <ValueChange 
+              <ValueChangePill 
                 :value="profitLoss.profitPercent" 
-                :isPositive="profitLoss.isProfit"
+                :is-positive="profitLoss.isProfit"
                 format="percent"
               />
             </div>
@@ -135,18 +135,18 @@ const props = defineProps({
 }
 
 .metric-label {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-label-weight);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #6b7280;
+  color: var(--text-tertiary);
   margin-bottom: 0.5rem;
 }
 
 .metric-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #111827;
+  font-size: var(--text-value-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
   margin-bottom: 0.5rem;
   line-height: 1.2;
 }
@@ -164,13 +164,13 @@ const props = defineProps({
 }
 
 .metric-change {
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-label-weight);
 }
 
 .metric-subtitle {
-  font-size: 0.75rem;
-  color: #9ca3af;
+  font-size: var(--text-caption-size);
+  color: var(--text-quaternary);
   margin-top: 0.5rem;
   line-height: 1.4;
 }
@@ -190,15 +190,15 @@ const props = defineProps({
 }
 
 .detail-label {
-  font-size: 0.75rem;
-  color: #6b7280;
-  font-weight: 500;
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
+  font-weight: var(--text-label-weight);
 }
 
 .detail-value {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #111827;
+  font-size: var(--text-body-secondary-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
 }
 
 @media (max-width: 768px) {

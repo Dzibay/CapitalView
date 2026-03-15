@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { getCurrencySymbol } from '../../../utils/currencySymbols.js'
 import Widget from '../base/Widget.vue'
-import ValueChange from '../base/ValueChange.vue'
+import ValueChangePill from '../base/ValueChangePill.vue'
 import DisplayModeToggle from '../base/DisplayModeToggle.vue'
 import { ArrowUp, ArrowDown } from 'lucide-vue-next'
 
@@ -104,7 +104,7 @@ const topAssets = computed(() => {
             {{ getCurrencySymbol(asset.currency_ticker) }}
           </span>
           <div class="value-change-wrapper">
-            <ValueChange 
+            <ValueChangePill 
               :value="asset.change_percent" 
               format="percent"
             />
@@ -121,44 +121,68 @@ const topAssets = computed(() => {
 </template>
 
 <style scoped>
-.assets-list { 
+.assets-list {
   list-style: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
 }
-.asset-item { 
-  display: flex; 
-  justify-content: space-between; 
-  align-items: center; 
-  padding: 0.75rem 0; 
+
+.asset-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  min-width: 0;
 }
-.asset-item:not(:last-child) { 
-  border-bottom: 1px solid #e5e7eb; 
+
+.asset-item:not(:last-child) {
+  border-bottom: 1px solid #e5e7eb;
 }
-.asset-name { 
-  display: block; 
-  font-weight: 500; 
-  color: #1f2937; 
+
+.asset-info {
+  min-width: 0;
+  flex: 1;
 }
-.asset-ticker { 
-  font-size: 0.875rem; 
-  color: #6b7280; 
+
+.asset-name {
+  display: block;
+  font-weight: var(--text-label-weight);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.asset-value { 
-  text-align: right; 
+
+.asset-ticker {
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
 }
-.value { 
-  display: block; 
-  font-weight: 400; 
+
+.asset-value {
+  text-align: right;
+  flex-shrink: 0;
+  min-width: 0;
 }
+
+.value {
+  display: block;
+  font-weight: var(--text-body-secondary-weight);
+}
+
 .value-change-wrapper {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   justify-content: flex-end;
   margin-top: 0.25rem;
+  flex-wrap: wrap;
 }
+
 .value-change-currency {
-  font-size: 0.875rem;
-  color: #6b7280;
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
 }
 
 .empty-state {
@@ -170,10 +194,9 @@ const topAssets = computed(() => {
 }
 
 .empty-message {
-  color: #6b7280;
-  font-size: 0.875rem;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
   text-align: center;
   margin: 0;
 }
-
 </style>

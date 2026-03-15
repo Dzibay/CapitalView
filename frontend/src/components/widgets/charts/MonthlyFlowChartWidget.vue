@@ -131,9 +131,9 @@ const chartDatasets = computed(() => {
 }
 
 .widget-title h2 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #111827;
+  font-size: var(--text-body-secondary-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -159,8 +159,8 @@ const chartDatasets = computed(() => {
   align-items: center;
   justify-content: center;
   text-align: center;
-  color: #6b7280;
-  font-size: 14px;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
   background: white;
   z-index: 10;
 }

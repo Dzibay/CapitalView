@@ -15,6 +15,10 @@ defineProps({
     type: Boolean,
     default: false,
   },
+  mobileMenuOpen: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['toggle-sidebar'])
@@ -197,5 +201,40 @@ const hasNotifications = computed(() => missedPayoutsCount.value > 0)
 .user-email {
   font-size: 0.875rem;
   color: #6b7280;
+}
+
+@media (max-width: 768px) {
+  .header {
+    left: 0;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .header.header--sidebar-collapsed {
+    left: 0;
+  }
+
+  .user-email {
+    display: none;
+  }
+
+  .user-name {
+    font-size: 0.875rem;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .user-info {
+    display: none;
+  }
 }
 </style>

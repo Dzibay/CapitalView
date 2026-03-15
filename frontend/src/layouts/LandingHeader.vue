@@ -77,4 +77,27 @@ onMounted(async () => {
   padding: 10px;
   width: 100px;
 }
+
+@media (max-width: 768px) {
+  .header {
+    padding: 0.75rem 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .logo {
+    font-size: 1.25rem;
+  }
+
+  .menu a {
+    margin-right: 12px;
+    font-size: 0.9rem;
+  }
+
+  .menu button {
+    width: auto;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+  }
+}
 </style>

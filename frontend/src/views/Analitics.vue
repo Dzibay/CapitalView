@@ -9,7 +9,8 @@ import {
   TotalCapitalWidget, 
   PortfolioProfitWidget, 
   DividendsWidget, 
-  ReturnWidget 
+  ReturnWidget,
+  ConsolidatedStatsWidget
 } from '../components/widgets/stats'
 import { 
   PayoutsChartWidget,
@@ -43,6 +44,7 @@ const {
   portfolioChartData,
   profitChartData
 } = usePortfolioAnalytics()
+
 </script>
 
 <template>
@@ -63,38 +65,54 @@ const {
     <LoadingState v-if="isLoadingAnalytics" message="Загрузка аналитики..." />
 
     <div v-else-if="selectedPortfolioAnalytics" class="widgets-grid">
-      <!-- 4 маленьких виджета вверху -->
-      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-        <TotalCapitalWidget 
-          :total-amount="totalCapitalWidgetData.totalAmount"
-          :invested-amount="totalCapitalWidgetData.investedAmount"
-        />
-      </WidgetContainer>
-      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-        <PortfolioProfitWidget 
-          :total-amount="profitWidgetData.totalAmount"
-          :total-profit="profitWidgetData.totalProfit"
-          :monthly-change="profitWidgetData.monthlyChange"
-          :invested-amount="profitWidgetData.investedAmount"
-          :analytics="profitWidgetData.analytics"
-        />
-      </WidgetContainer>
-      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-        <DividendsWidget 
-          :annual-dividends="calculatedAnnualDividends"
-        />
-      </WidgetContainer>
-      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-        <ReturnWidget 
-          :return-percent="returnData.returnPercent"
-          :return-percent-on-invested="returnData.returnPercentOnInvested"
-          :total-value="returnData.totalValue"
-          :total-invested="returnData.totalInvested"
-        />
-      </WidgetContainer>
+      <!-- Статы: на десктопе — 4 виджета, на мобильном — один сводный -->
+      <div class="stats-desktop">
+        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+          <TotalCapitalWidget 
+            :total-amount="totalCapitalWidgetData.totalAmount"
+            :invested-amount="totalCapitalWidgetData.investedAmount"
+          />
+        </WidgetContainer>
+        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+          <PortfolioProfitWidget 
+            :total-amount="profitWidgetData.totalAmount"
+            :total-profit="profitWidgetData.totalProfit"
+            :monthly-change="profitWidgetData.monthlyChange"
+            :invested-amount="profitWidgetData.investedAmount"
+            :analytics="profitWidgetData.analytics"
+          />
+        </WidgetContainer>
+        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+          <DividendsWidget 
+            :annual-dividends="calculatedAnnualDividends"
+          />
+        </WidgetContainer>
+        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+          <ReturnWidget 
+            :return-percent="returnData.returnPercent"
+            :return-percent-on-invested="returnData.returnPercentOnInvested"
+            :total-value="returnData.totalValue"
+            :total-invested="returnData.totalInvested"
+          />
+        </WidgetContainer>
+      </div>
+      <div class="stats-mobile">
+        <WidgetContainer gridColumn="1" minHeight="var(--widget-height-small)">
+          <ConsolidatedStatsWidget
+            :total-amount="totalCapitalWidgetData.totalAmount"
+            :invested-amount="totalCapitalWidgetData.investedAmount"
+            :total-profit="profitWidgetData.totalProfit"
+            :monthly-change="profitWidgetData.monthlyChange"
+            :analytics="profitWidgetData.analytics"
+            :annual-dividends="calculatedAnnualDividends"
+            :return-percent="returnData.returnPercent"
+            :return-percent-on-invested="returnData.returnPercentOnInvested"
+          />
+        </WidgetContainer>
+      </div>
 
-      <!-- Виджет распределения активов и виджет динамики прибыли -->
-      <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-xlarge)">
+      <!-- Динамика капитала и динамика прибыли — одинаковая высота (large) -->
+      <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-large)">
         <PortfolioChartWidget 
           :chart-data="portfolioChartData"
         />
@@ -107,8 +125,8 @@ const {
         />
       </WidgetContainer>
 
-      <!-- Виджет динамики прибыли -->
-      <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-xlarge)">
+      <!-- Виджет динамики прибыли (та же высота, что и динамика капитала) -->
+      <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-large)">
         <PortfolioProfitChartWidget 
           :chartData="profitChartData"
         />
@@ -168,19 +186,52 @@ const {
   gap: var(--spacing);
   grid-template-columns: repeat(12, 1fr);
   grid-auto-rows: min-content;
+  width: 100%;
+  min-width: 0;
 }
 
-/* Адаптивность для планшетов */
+.stats-desktop {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--spacing);
+}
+.stats-mobile {
+  display: none;
+  grid-column: 1 / -1;
+}
+
+/* Планшет: статы 2x2 (как на дашборде), остальные виджеты на всю ширину */
 @media (max-width: 1200px) {
   .widgets-grid {
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .stats-desktop {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .stats-desktop :deep(.widget-container) {
+    grid-column: span 1 !important;
+  }
+  .widgets-grid > :deep(.widget-container) {
+    grid-column: 1 / -1 !important;
   }
 }
 
-/* Адаптивность для мобильных */
 @media (max-width: 768px) {
   .widgets-grid {
     grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .stats-desktop {
+    display: none;
+  }
+  .stats-mobile {
+    display: block;
+  }
+  .widgets-grid :deep(.widget-container) {
+    grid-column: 1 / -1 !important;
   }
 }
 </style>

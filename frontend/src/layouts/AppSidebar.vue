@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useUIStore } from '../stores/ui.store';
 import { authService } from '../services/authService.js';
 import {
   LayoutDashboard,
@@ -14,10 +15,15 @@ import {
 
 const route = useRoute();
 const router = useRouter();
+const uiStore = useUIStore();
 
 // Свойство для управления состоянием меню из родительского компонента
 defineProps({
   collapsed: {
+    type: Boolean,
+    default: false
+  },
+  mobileOpen: {
     type: Boolean,
     default: false
   },
@@ -75,13 +81,14 @@ updateActiveMenu();
 // Слежение за изменением маршрута
 watch(route, () => {
   updateActiveMenu();
+  uiStore.setMobileMenuOpen(false);
 });
 </script>
 
 
 <template>
   <!-- Основной контейнер боковой панели. Класс 'sidebar--collapsed' добавляется динамически -->
-  <aside class="sidebar" :class="{ 'sidebar--collapsed': collapsed }">
+  <aside class="sidebar" :class="{ 'sidebar--collapsed': collapsed, 'sidebar--mobile-open': mobileOpen }">
     <!-- Верхний блок: Логотип и название -->
     <div class="sidebar__header">
       <div class="sidebar__logo-icon">
@@ -90,9 +97,9 @@ watch(route, () => {
           <Sparkles :size="20" class="logo-icon" />
         </div>
       </div>
-      <!-- Название сайта, которое плавно исчезает -->
+      <!-- Название сайта (скрыто при свёрнутом сайдбаре; на мобильном показываем при открытом меню) -->
       <Transition name="fade-slide">
-        <h1 v-if="!collapsed" class="sidebar__title">
+        <h1 v-if="!collapsed || mobileOpen" class="sidebar__title">
           <span class="title-part">Capital</span><span class="title-part title-part--accent">View</span>
         </h1>
       </Transition>
@@ -105,7 +112,7 @@ watch(route, () => {
         <div v-for="section in menuSections" :key="section.title" class="sidebar__section">
           <!-- Заголовок секции -->
           <Transition name="fade">
-            <div v-if="!collapsed" class="sidebar__section-title">
+            <div v-if="!collapsed || mobileOpen" class="sidebar__section-title">
               {{ section.title }}
             </div>
           </Transition>
@@ -134,9 +141,9 @@ watch(route, () => {
                   <component :is="item.icon" :size="20" :class="{ 'icon-active': item.active }" />
                 </div>
                 
-                <!-- Название элемента меню -->
+                <!-- Название элемента меню (на мобильном всегда видно при открытом меню) -->
                 <Transition name="fade">
-                  <span v-if="!collapsed" class="sidebar__item-name">{{ item.name }}</span>
+                  <span v-if="!collapsed || mobileOpen" class="sidebar__item-name">{{ item.name }}</span>
                 </Transition>
           </router-link>
             </li>
@@ -542,4 +549,34 @@ watch(route, () => {
   transform: translateX(-10px);
 }
 
+/* Адаптив: мобильное меню (оверлей) */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 280px;
+    max-width: 85vw;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+  }
+
+  .sidebar.sidebar--mobile-open {
+    transform: translateX(0);
+  }
+
+  .sidebar.sidebar--collapsed {
+    width: 280px;
+    max-width: 85vw;
+  }
+
+  .sidebar.sidebar--collapsed .sidebar__title,
+  .sidebar.sidebar--collapsed .sidebar__item-name,
+  .sidebar.sidebar--collapsed .sidebar__section-title,
+  .sidebar.sidebar--collapsed .sidebar__submenu-toggle,
+  .sidebar.sidebar--collapsed .sidebar__logout-icon,
+  .sidebar.sidebar--collapsed .sidebar__user-info {
+    opacity: 1;
+    pointer-events: auto;
+    width: auto;
+    overflow: visible;
+  }
+}
 </style>

@@ -96,6 +96,26 @@ export function formatDateForDisplay(date) {
 }
 
 /**
+ * Форматирует дату и время для отображения (DD.MM.YYYY, HH:MM)
+ * Принимает ISO-строку или Date.
+ *
+ * @param {string|Date|any} date - Дата в любом формате (в т.ч. ISO с временем)
+ * @returns {string} - Отформатированная строка или пустая строка
+ */
+export function formatDateTimeForDisplay(date) {
+  if (!date) return ''
+  const d = typeof date === 'string' ? new Date(date) : date
+  if (!(d instanceof Date) || isNaN(d.getTime())) return ''
+  return d.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+/**
  * Извлекает дату из строки в формате YYYY-MM-DD
  * Используется для безопасного извлечения даты без создания Date объекта
  * 

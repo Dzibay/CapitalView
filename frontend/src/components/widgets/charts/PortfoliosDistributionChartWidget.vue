@@ -159,7 +159,7 @@ const total = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  font-size: 13px;
+  font-size: var(--text-caption-size);
 }
 
 .legends {
@@ -168,8 +168,8 @@ const total = computed(() => {
   gap: 12px;
   max-height: 400px;
   overflow-y: auto;
-  font-size: 12px;
-  color: #6B7280;
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
 }
 
 .legend-item {
@@ -196,9 +196,9 @@ const total = computed(() => {
 }
 
 .legend-value {
-  color: #6b7280;
-  font-size: 12px;
-  font-weight: 400;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-body-secondary-weight);
   flex-shrink: 0;
 }
 
@@ -207,8 +207,8 @@ const total = computed(() => {
   align-items: center;
   justify-content: center;
   text-align: center;
-  color: #6b7280;
-  font-size: 14px;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
   padding: 40px 20px;
 }
 

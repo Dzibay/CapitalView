@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
 import CustomSelect from '../../base/CustomSelect.vue'
 import { formatCurrency } from '../../../utils/formatCurrency'
-import ValueChange from '../base/ValueChange.vue'
+import ValueChangePill from '../base/ValueChangePill.vue'
 
 const props = defineProps({
   portfolios: {
@@ -73,9 +73,9 @@ const handlePortfolioChange = (value) => {
         <span class="stat-label">Текущая цена:</span>
         <span class="stat-value">{{ selectedPortfolio.last_price?.toFixed(2) || '-' }}</span>
         <div v-if="selectedPortfolio.daily_change !== 0" class="stat-change">
-          <ValueChange 
+          <ValueChangePill 
             :value="selectedPortfolio.daily_change" 
-            :isPositive="selectedPortfolio.daily_change >= 0"
+            :is-positive="selectedPortfolio.daily_change >= 0"
             format="currency"
           />
         </div>
@@ -145,8 +145,8 @@ const handlePortfolioChange = (value) => {
 }
 
 .stat-label {
-  color: #6b7280;
-  font-size: 0.875rem;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
   flex: 1;
 }
 
@@ -154,13 +154,13 @@ const handlePortfolioChange = (value) => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-weight: 600;
-  color: #111827;
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
   text-align: right;
 }
 
 .stat-change {
-  font-size: 0.75rem;
+  font-size: var(--text-caption-size);
 }
 
 .empty-state {
@@ -168,7 +168,7 @@ const handlePortfolioChange = (value) => {
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  color: #6b7280;
-  font-size: 0.875rem;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
 }
 </style>

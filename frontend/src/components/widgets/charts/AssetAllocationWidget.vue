@@ -111,12 +111,16 @@ watch(() => props.assetAllocation, () => {
   display: flex;
   flex-direction: column;
   align-items: center;
+  width: 100%;
+  min-width: 0;
 }
 
 .chart-wrapper {
   position: relative;
-  width: 300px;
-  height: 300px;
+  width: 280px;
+  height: 280px;
+  max-width: 100%;
+  flex-shrink: 0;
 }
 
 .chart-center {
@@ -129,21 +133,21 @@ watch(() => props.assetAllocation, () => {
 }
 
 .center-label {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
   display: block;
 }
 
 .center-percentage {
-  font-size: 18px;
-  font-weight: bold;
-  color: #111827;
+  font-size: var(--text-value-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
   display: block;
 }
 
 .center-value {
-  font-size: 14px;
-  color: #4b5563;
+  font-size: var(--text-body-secondary-size);
+  color: var(--text-secondary);
   display: block;
 }
 
@@ -152,8 +156,8 @@ watch(() => props.assetAllocation, () => {
   display: flex;
   flex-wrap: wrap;
   gap: 20px;
-  font-size: 12px;
-  color: #6B7280;
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
 }
 
 .legend-item {
@@ -166,5 +170,38 @@ watch(() => props.assetAllocation, () => {
   height: 12px;
   border-radius: 50%;
   margin-right: 8px;
+}
+
+@media (max-width: 1200px) {
+  .chart-wrapper {
+    width: 240px;
+    height: 240px;
+  }
+  .legends {
+    margin-top: 14px;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .chart-wrapper {
+    width: 200px;
+    height: 200px;
+  }
+  .legends {
+    margin-top: 12px;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .chart-wrapper {
+    width: 180px;
+    height: 180px;
+  }
+  .legends {
+    margin-top: 10px;
+    gap: 8px;
+  }
 }
 </style>

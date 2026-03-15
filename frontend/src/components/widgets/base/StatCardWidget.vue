@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import Widget from './Widget.vue'
-import ValueChange from './ValueChange.vue'
+import ValueChangePill from './ValueChangePill.vue'
 import Tooltip from '../../base/Tooltip.vue'
 import { formatCurrency } from '../../../utils/formatCurrency'
 
@@ -188,14 +188,14 @@ const computedChangeIsPositive = computed(() => {
           :content="changeTooltip" 
           position="top"
         >
-          <ValueChange 
+          <ValueChangePill 
             v-if="changeValue !== null && changeValue !== undefined"
             :value="changeValue" 
             :is-positive="computedChangeIsPositive"
             format="percent"
           />
         </Tooltip>
-        <ValueChange 
+        <ValueChangePill 
           v-else-if="changeValue !== null && changeValue !== undefined"
           :value="changeValue" 
           :is-positive="computedChangeIsPositive"
@@ -262,15 +262,15 @@ const computedChangeIsPositive = computed(() => {
 }
 
 .main-value {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #111827;
+  font-size: var(--widget-font-main, 1.5rem);
+  font-weight: var(--widget-font-main-weight, 600);
+  color: var(--text-primary, #111827);
   line-height: 1.2;
 }
 
 .main-value-suffix {
-  font-size: 1rem;
-  color: #6b7280;
+  font-size: var(--widget-font-secondary, 1rem);
+  color: var(--text-tertiary, #6b7280);
   line-height: 1;
   padding-bottom: 0.2rem;
   margin: 0;
@@ -279,8 +279,8 @@ const computedChangeIsPositive = computed(() => {
 .secondary-text {
   margin: 0;
   margin-top: 0;
-  font-size: 1rem;
-  color: #6b7280;
+  font-size: var(--widget-font-secondary, 1rem);
+  color: var(--text-tertiary, #6b7280);
   line-height: 1.2;
 }
 

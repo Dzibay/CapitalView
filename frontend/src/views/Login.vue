@@ -279,6 +279,29 @@ const submitButtonText = computed(() => loading.value ? 'Загрузка...' : 
   text-decoration: underline;
 }
 
+@media (max-width: 480px) {
+  .auth-wrapper {
+    padding: 16px 12px;
+    align-items: flex-start;
+    padding-top: 24px;
+  }
+
+  .auth-card {
+    padding: 24px 20px;
+    max-width: 100%;
+  }
+
+  .auth-title {
+    font-size: 20px;
+    margin-bottom: 20px;
+  }
+
+  .form-input {
+    padding: 10px 14px;
+    font-size: 16px;
+  }
+}
+
 /* === Анимация переходов === */
 .fade-enter-active,
 .fade-leave-active {

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useTransactionsStore } from '../stores/transactions.store'
@@ -7,7 +7,8 @@ import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/base/ContextMenu.vue'
 import CustomSelect from '../components/base/CustomSelect.vue'
-import { DateInput } from '../components/base'
+import { DateInput, ToggleSwitch } from '../components/base'
+import { Search } from 'lucide-vue-next'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
@@ -137,6 +138,17 @@ const currentTransaction = ref(null)
 
 // контекстное меню
 const { openMenu } = useContextMenu()
+
+// Карточный вид на планшетах и мобильных (как в PortfolioTree)
+const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1200)
+const isCardView = computed(() => windowWidth.value <= 1024)
+const updateWindowWidth = () => { windowWidth.value = window.innerWidth }
+onMounted(() => {
+  window.addEventListener('resize', updateWindowWidth)
+})
+onUnmounted(() => {
+  window.removeEventListener('resize', updateWindowWidth)
+})
 
 const handleEditTransaction = (transaction) => {
   openEditModal(transaction)
@@ -710,6 +722,9 @@ const transactionsSummary = computed(() => {
     sell: Math.round(sellSum * 100) / 100
   }
 })
+
+// Показывать блок сумм между фильтрами и таблицей
+const showSumsSummary = ref(false)
 </script>
 
 <template>
@@ -717,6 +732,18 @@ const transactionsSummary = computed(() => {
     <PageHeader title="История транзакций">
       <template #actions>
         <div class="header-actions">
+          <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
+            <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
+            <button @click="deleteSelected" class="btn btn-danger-soft" :disabled="selectedTxIds.length === 0">
+              Удалить выбранные ({{ selectedTxIds.length }})
+            </button>
+          </div>
+          <div v-if="selectedOpIds.length > 0 && viewMode === 'operations'" class="bulk-actions">
+            <span class="selected-count">Выбрано: {{ selectedOpIds.length }}</span>
+            <button @click="deleteSelectedOperations" class="btn btn-danger-soft" :disabled="selectedOpIds.length === 0">
+              Удалить выбранные ({{ selectedOpIds.length }})
+            </button>
+          </div>
           <div class="view-mode-switcher">
             <button 
               class="btn btn-ghost" 
@@ -733,18 +760,6 @@ const transactionsSummary = computed(() => {
               Операции
             </button>
           </div>
-          <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions">
-            <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
-            <button @click="deleteSelected" class="btn btn-danger-soft" :disabled="selectedTxIds.length === 0">
-              Удалить выбранные ({{ selectedTxIds.length }})
-            </button>
-          </div>
-          <div v-if="selectedOpIds.length > 0 && viewMode === 'operations'" class="bulk-actions">
-            <span class="selected-count">Выбрано: {{ selectedOpIds.length }}</span>
-            <button @click="deleteSelectedOperations" class="btn btn-danger-soft" :disabled="selectedOpIds.length === 0">
-              Удалить выбранные ({{ selectedOpIds.length }})
-            </button>
-          </div>
         </div>
       </template>
     </PageHeader>
@@ -752,14 +767,14 @@ const transactionsSummary = computed(() => {
     <div class="transactions-content">
       <div class="main-content">
 
-        <div style="display: flex; gap: 20px;">
+        <div class="transactions-main">
           <div class="card">
           <div class="toolbar">
             <div class="filters-top">
-          <!-- Поиск по активу -->
-          <div v-if="viewMode === 'transactions'" class="asset-search-wrapper">
+              <!-- Поиск по активу -->
+              <div v-if="viewMode === 'transactions'" class="asset-search-wrapper">
             <span class="select-label">Актив</span>
-            <span class="input-icon">🔍</span>
+            <span class="input-icon"><Search :size="16" /></span>
             <input
               type="text"
               v-model="assetSearch"
@@ -774,15 +789,15 @@ const transactionsSummary = computed(() => {
                 <span v-if="getAssetMeta(a)" class="meta-ticker">{{ getAssetMeta(a).ticker }}</span>
               </li>
               <li v-if="filteredAssetsList.length === 0" class="asset-empty">
-                <span style="display: block; margin-bottom: 4px;">🔍</span>
+                <span class="asset-empty-icon"><Search :size="20" /></span>
                 Ничего не найдено
               </li>
             </ul>
-          </div>
-          
-          <div v-if="viewMode === 'operations'" class="asset-search-wrapper">
+              </div>
+
+              <div v-if="viewMode === 'operations'" class="asset-search-wrapper">
             <span class="select-label">Актив</span>
-            <span class="input-icon">🔍</span>
+            <span class="input-icon"><Search :size="16" /></span>
             <input
               type="text"
               v-model="assetSearch"
@@ -796,7 +811,7 @@ const transactionsSummary = computed(() => {
                 <span v-html="highlightMatch(a)" />
               </li>
               <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">
-                <span style="display: block; margin-bottom: 4px;">🔍</span>
+                <span class="asset-empty-icon"><Search :size="20" /></span>
                 Ничего не найдено
               </li>
             </ul>
@@ -832,26 +847,25 @@ const transactionsSummary = computed(() => {
               placeholder="Выберите валюту"
               @change="applyFilter"
             />
-          </div>
-          
-          <button @click="resetFilters" class="btn btn-ghost reset-btn" title="Сбросить фильтры">
-            <span class="reset-icon">↺</span>
-          </button>
-            </div>
+            <button @click="resetFilters" class="btn btn-ghost reset-btn" title="Сбросить фильтры">
+              <span class="reset-icon">↺</span>
+            </button>
+          </div>  
+        </div>
 
-            <div class="filters-bottom">
-           <div class="chips-group">
-            <button v-for="p in ['today', 'week', 'month', 'year', 'all']" 
+        <div class="filters-bottom">
+          <div class="chips-group">
+          <button v-for="p in ['today', 'week', 'month', 'year', 'all']" 
                     :key="p" 
                     class="chip" 
                     :class="{ active: periodPreset === p }"
                     @click="setPeriodPreset(p); periodPreset = p">
               {{ {today:'Сегодня', week:'Неделя', month:'Месяц', year:'Год', all:'Всё время'}[p] }}
-            </button>
-            <button class="chip" :class="{ active: periodPreset === 'custom' }" @click="periodPreset = 'custom'">
+          </button>
+          <button class="chip" :class="{ active: periodPreset === 'custom' }" @click="periodPreset = 'custom'">
               Период...
-            </button>
-          </div>
+          </button>
+        </div>
           
            <div v-if="periodPreset === 'custom'" class="date-range">
             <DateInput v-model="startDate" class="date-input" />
@@ -859,11 +873,141 @@ const transactionsSummary = computed(() => {
             <DateInput v-model="endDate" class="date-input" />
           </div>
             </div>
+
+            <div class="sums-toggle-row">
+              <ToggleSwitch
+                v-model="showSumsSummary"
+                :label="viewMode === 'transactions' ? 'Показывать суммы по транзакциям' : 'Показывать суммы по операциям'"
+              />
+            </div>
+          </div>
+
+          <!-- Блок сумм между фильтрами и таблицей -->
+          <div v-if="showSumsSummary" class="sums-summary-block">
+            <template v-if="viewMode === 'transactions'">
+              <h3 class="sums-block-title">Суммы по транзакциям</h3>
+              <div class="transactions-summary">
+                <div class="summary-item">
+                  <span class="summary-item-label">Покупки:</span>
+                  <span class="summary-item-value text-green">
+                    {{ transactionsSummary.buy.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+                  </span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-item-label">Продажи:</span>
+                  <span class="summary-item-value text-red">
+                    {{ transactionsSummary.sell.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+                  </span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-item-label">Оборот:</span>
+                  <span class="summary-item-value text-red">
+                    {{ (transactionsSummary.buy + transactionsSummary.sell).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+                  </span>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <h3 class="sums-block-title">Суммы по операциям</h3>
+              <div class="operations-sums">
+                <div class="sums-label">Суммы по типам:</div>
+                <div class="sums-list">
+                  <div
+                    v-for="opType in operationTypes"
+                    :key="opType"
+                    class="sum-item"
+                  >
+                    <span class="sum-type">{{ opType }}:</span>
+                    <span class="sum-value">
+                      {{ getOperationTypeSum(opType).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
           
           <div class="table-container">
-          <!-- Таблица транзакций -->
-          <table v-if="viewMode === 'transactions'" class="transactions-table">
+          <!-- Карточки транзакций (планшет/мобильные) -->
+          <div v-if="isCardView && viewMode === 'transactions'" class="transactions-cards">
+            <div
+              v-for="tx in filteredTransactions"
+              :key="tx.transaction_id"
+              class="transaction-card"
+            >
+              <div class="card-row card-row-header">
+                <span class="card-date">{{ formatDate(tx.transaction_date) }}</span>
+                <span :class="['badge', 'badge-' + normalizeType(tx.transaction_type)]">{{ tx.transaction_type }}</span>
+              </div>
+              <div class="card-row">
+                <span class="card-label">Актив</span>
+                <span class="card-value font-medium">{{ tx.asset_name }}</span>
+              </div>
+              <div class="card-row">
+                <span class="card-label">Портфель</span>
+                <span class="card-value text-secondary">{{ tx.portfolio_name }}</span>
+              </div>
+              <div class="card-row card-row-numbers">
+                <span>Кол-во {{ tx.quantity }}</span>
+                <span>Цена {{ tx.price.toLocaleString() }} {{ getCurrencySymbol(tx.currency_ticker) }}</span>
+              </div>
+              <div class="card-row card-row-sum">
+                <span class="card-label">Сумма</span>
+                <span class="card-value num-font font-semibold">
+                  {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }} {{ getCurrencySymbol(tx.currency_ticker) }}
+                </span>
+              </div>
+              <div class="card-row card-row-actions">
+                <input type="checkbox" :value="tx.transaction_id" v-model="selectedTxIds" class="custom-checkbox" />
+                <button class="icon-btn" @click="openMenu($event, 'transaction', tx)">⋯</button>
+              </div>
+            </div>
+            <div v-if="filteredTransactions.length === 0" class="empty-cell">
+              <div class="empty-state">
+                <span class="empty-icon">🔍</span>
+                <p>Транзакции не найдены</p>
+              </div>
+            </div>
+          </div>
+          <!-- Карточки операций (планшет/мобильные) -->
+          <div v-else-if="isCardView && viewMode === 'operations'" class="transactions-cards">
+            <div
+              v-for="op in filteredOperations"
+              :key="op.cash_operation_id || op.id"
+              class="transaction-card"
+            >
+              <div class="card-row card-row-header">
+                <span class="card-date">{{ formatDate(op.operation_date) }}</span>
+                <span :class="['badge', 'badge-' + normalizeType(op.operation_type)]">{{ op.operation_type }}</span>
+              </div>
+              <div class="card-row">
+                <span class="card-label">Актив</span>
+                <span class="card-value font-medium">{{ op.asset_name || '—' }}</span>
+              </div>
+              <div class="card-row">
+                <span class="card-label">Портфель</span>
+                <span class="card-value text-secondary">{{ op.portfolio_name }}</span>
+              </div>
+              <div class="card-row card-row-sum">
+                <span class="card-label">Сумма</span>
+                <span class="card-value num-font font-semibold" :class="getOperationAmount(op) >= 0 ? 'text-green' : 'text-red'">
+                  {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
+                </span>
+              </div>
+              <div class="card-row card-row-actions">
+                <input type="checkbox" :value="op.cash_operation_id || op.id" v-model="selectedOpIds" class="custom-checkbox" />
+                <button class="icon-btn" @click="openMenu($event, 'operation', op)">⋯</button>
+              </div>
+            </div>
+            <div v-if="filteredOperations.length === 0" class="empty-cell">
+              <div class="empty-state">
+                <span class="empty-icon">🔍</span>
+                <p>Операции не найдены</p>
+              </div>
+            </div>
+          </div>
+          <!-- Таблица транзакций (десктоп) -->
+          <table v-else-if="viewMode === 'transactions'" class="transactions-table">
             <thead>
               <tr>
                 <th class="w-checkbox">
@@ -912,7 +1056,7 @@ const transactionsSummary = computed(() => {
             </tbody>
           </table>
 
-          <!-- Таблица операций -->
+          <!-- Таблица операций (десктоп) -->
           <table v-else class="transactions-table">
             <thead>
               <tr>
@@ -960,133 +1104,8 @@ const transactionsSummary = computed(() => {
             </tbody>
           </table>
           </div>
-          </div>
-
-          <!-- Правый блок с калькулятором -->
-          <div class="calculator-sidebar">
-          <div class="calculator-card">
-            <h3 class="calculator-title">
-              {{ viewMode === 'transactions' ? 'Суммы транзакций' : 'Калькулятор операций' }}
-            </h3>
-            
-            <!-- Для транзакций: сумма покупок и продаж -->
-            <div v-if="viewMode === 'transactions'" class="transactions-summary">
-              <div class="summary-item">
-                <span class="summary-item-label">Покупки:</span>
-                <span class="summary-item-value text-green">
-                  {{ transactionsSummary.buy.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-                </span>
-              </div>
-              <div class="summary-item">
-                <span class="summary-item-label">Продажи:</span>
-                <span class="summary-item-value text-red">
-                  {{ transactionsSummary.sell.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-                </span>
-              </div>
-              <div class="summary-item">
-                <span class="summary-item-label">Оборот:</span>
-                <span class="summary-item-value text-red">
-                  {{ (transactionsSummary.buy + transactionsSummary.sell).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-                </span>
-              </div>
-            </div>
-
-            <!-- Для операций: калькулятор -->
-            <div v-else class="operations-calculator">
-              <!-- Формула -->
-              <div class="formula-display">
-                <div v-if="calculatorFormula.length === 0" class="formula-empty">
-                  Добавьте элементы формулы
-                </div>
-                <div v-else class="formula-items">
-                  <div 
-                    v-for="(item, index) in calculatorFormula" 
-                    :key="index"
-                    class="formula-item"
-                    :class="{ 'formula-operator': item.type === 'operator' }"
-                  >
-                    <span class="formula-item-text">{{ item.label }}</span>
-                    <button 
-                      @click="removeFromFormula(index)" 
-                      class="formula-remove-btn"
-                      title="Удалить"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Результат -->
-              <div class="calculator-result">
-                <span class="result-label">Результат:</span>
-                <span class="result-value" :class="calculatorResult >= 0 ? 'text-green' : 'text-red'">
-                  {{ calculatorResult.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-                </span>
-              </div>
-
-              <!-- Кнопки операторов -->
-              <div class="calculator-operators">
-                <button 
-                  @click="addToFormula('operator', '+', '+')" 
-                  class="calc-btn calc-operator"
-                  :disabled="calculatorFormula.length === 0 || calculatorFormula[calculatorFormula.length - 1]?.type === 'operator'"
-                >
-                  +
-                </button>
-                <button 
-                  @click="addToFormula('operator', '-', '-')" 
-                  class="calc-btn calc-operator"
-                  :disabled="calculatorFormula.length === 0 || calculatorFormula[calculatorFormula.length - 1]?.type === 'operator'"
-                >
-                  −
-                </button>
-                <button 
-                  @click="clearFormula()" 
-                  class="calc-btn calc-clear"
-                  :disabled="calculatorFormula.length === 0"
-                >
-                  Очистить
-                </button>
-              </div>
-
-              <!-- Доступные типы операций -->
-              <div class="calculator-operations">
-                <div class="operations-label">Добавить в формулу:</div>
-                <div class="operations-buttons">
-                  <button 
-                    v-for="opType in operationTypes" 
-                    :key="opType"
-                    @click="addToFormula('operation', opType, opType)"
-                    class="calc-btn calc-operation"
-                    :disabled="calculatorFormula.length > 0 && calculatorFormula[calculatorFormula.length - 1]?.type === 'operation'"
-                  >
-                    {{ opType }}
-                  </button>
-                </div>
-              </div>
-
-              <!-- Суммы по типам операций -->
-              <div class="operations-sums">
-                <div class="sums-label">Суммы по типам:</div>
-                <div class="sums-list">
-                  <div 
-                    v-for="opType in operationTypes" 
-                    :key="opType"
-                    class="sum-item"
-                  >
-                    <span class="sum-type">{{ opType }}:</span>
-                    <span class="sum-value">
-                      {{ getOperationTypeSum(opType).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          </div>
         </div>
-
+        </div>
       </div>
     </div>
 
@@ -1106,6 +1125,8 @@ const transactionsSummary = computed(() => {
   display: flex;
   gap: 24px;
   align-items: flex-start;
+  min-width: 0;
+  width: 100%;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: #1f2937;
 }
@@ -1115,17 +1136,39 @@ const transactionsSummary = computed(() => {
   min-width: 0;
 }
 
-.calculator-sidebar {
-  width: 360px;
-  flex-shrink: 0;
-  position: sticky;
-  top: 24px;
+.transactions-main {
+  display: flex;
+  gap: 20px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sums-toggle-row {
+  padding: 10px 0 0;
+  margin-top: 8px;
+  border-top: 1px solid #f3f4f6;
+}
+.sums-summary-block {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+.sums-block-title {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
   gap: 16px;
+  min-height: 40px;
 }
 
 .view-mode-switcher {
@@ -1134,6 +1177,8 @@ const transactionsSummary = computed(() => {
   background: #f3f4f6;
   padding: 4px;
   border-radius: 8px;
+  margin-left: auto;
+  align-self: center;
 }
 
 .view-mode-switcher .btn {
@@ -1191,24 +1236,30 @@ const transactionsSummary = computed(() => {
 .card {
   background: #fff;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   border: 1px solid #e5e7eb;
-  overflow: visible; /* позволяет выпадающим спискам выходить за границы */
+  overflow: visible;
 }
 
 /* --- Панель инструментов --- */
 .toolbar {
   padding: 20px;
   border-bottom: 1px solid #f3f4f6;
+  min-width: 0;
 }
 
 .filters-top {
   display: flex;
   gap: 12px;
   margin-bottom: 16px;
-  align-items: flex-start;
+  align-items: flex-end;
   flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .filters-bottom {
@@ -1226,9 +1277,9 @@ const transactionsSummary = computed(() => {
 
 .asset-search-wrapper {
   position: relative;
-  flex: 1;
-  max-width: 300px;
-  min-width: 180px;
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .asset-search-wrapper .select-label {
@@ -1256,6 +1307,14 @@ const transactionsSummary = computed(() => {
   z-index: 1;
   pointer-events: none;
   transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.asset-empty-icon {
+  display: block;
+  margin-bottom: 4px;
+  color: #9ca3af;
 }
 
 .asset-search-wrapper:focus-within .input-icon {
@@ -1328,8 +1387,13 @@ const transactionsSummary = computed(() => {
 
 .select-group {
   display: flex;
-  gap: 12px;
-  flex: 1;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+.select-group :deep(.custom-select-wrapper) {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 
@@ -1347,6 +1411,9 @@ const transactionsSummary = computed(() => {
   justify-content: center;
   min-width: 44px;
   height: 42px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
 }
 .reset-btn:hover {
   background: #f3f4f6;
@@ -1485,9 +1552,12 @@ const transactionsSummary = computed(() => {
 /* --- Таблица --- */
 .table-container {
   overflow-x: auto;
+  min-width: 0;
+  width: 100%;
 }
 .transactions-table {
   width: 100%;
+  min-width: 800px;
   border-collapse: collapse;
   font-size: 14px;
 }
@@ -1508,6 +1578,63 @@ const transactionsSummary = computed(() => {
 }
 .transactions-table tr:last-child td { border-bottom: none; }
 .transactions-table tr:hover { background: #f9fafb; }
+
+/* Карточки транзакций/операций (планшет и мобильные) */
+.transactions-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 4px;
+}
+.transaction-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.transaction-card .card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.transaction-card .card-row-header {
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.transaction-card .card-date {
+  color: #374151;
+  font-weight: 500;
+}
+.transaction-card .card-row-numbers {
+  flex-wrap: wrap;
+  color: #6b7280;
+  font-size: 12px;
+}
+.transaction-card .card-row-sum {
+  font-size: 14px;
+}
+.transaction-card .card-label {
+  color: #6b7280;
+  flex-shrink: 0;
+}
+.transaction-card .card-value {
+  text-align: right;
+  word-break: break-word;
+}
+.transaction-card .card-row-actions {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f3f4f6;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 /* Настройки колонок */
 .w-checkbox { width: 40px; text-align: center; }
@@ -1685,24 +1812,7 @@ const transactionsSummary = computed(() => {
 }
 
 /* --- Калькулятор --- */
-.calculator-card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.calculator-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 12px 0;
-  color: #111827;
-  border-bottom: 2px solid #e5e7eb;
-  padding-bottom: 8px;
-}
-
-/* Суммы транзакций */
+/* Суммы транзакций / операций (блок под переключателем) */
 .transactions-summary {
   display: flex;
   flex-direction: column;
@@ -1948,15 +2058,59 @@ const transactionsSummary = computed(() => {
   font-weight: 600;
 }
 
-/* Адаптивность */
+/* Планшет: список сверху, калькулятор снизу — чтобы список не схлопывался */
 @media (max-width: 1024px) {
-  .page-layout {
+  .transactions-content {
     flex-direction: column;
+    align-items: stretch;
   }
-  
-  .calculator-sidebar {
+
+  .main-content {
+    flex: 0 0 auto;
     width: 100%;
-    position: static;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .transactions-main {
+    min-height: 120px;
+  }
+}
+
+/* Мобильные: карточки вместо таблицы, фильтры колонкой */
+@media (max-width: 768px) {
+  .toolbar {
+    padding: 12px;
+  }
+
+  .reset-btn {
+    flex-basis: auto;
+    order: unset;
+  }
+
+  .asset-search-wrapper {
+    max-width: 100%;
+  }
+
+  .select-group {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .table-container {
+    padding: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .filters-bottom {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .chips-group {
+    flex-wrap: wrap;
   }
 }
 </style>

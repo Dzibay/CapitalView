@@ -45,11 +45,11 @@ const updateValue = (value) => {
   background: transparent;
   border-radius: 6px;
   padding: 0.5rem 0.875rem;
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-label-weight);
   cursor: pointer;
   transition: all 0.2s;
-  color: #6b7280;
+  color: var(--text-tertiary);
 }
 
 .mode-toggle-btn:hover {

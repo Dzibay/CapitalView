@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 html {
+  overflow-x: hidden;
+  width: 100%;
   font-size: 16px;
   --spacing: 25px;
   --headerHeight: 100px;
@@ -103,6 +105,57 @@ html {
   --text-secondary: #374151;
   --text-tertiary: #6b7280;
   --text-quaternary: #9ca3af;
+
+  /* ============================================
+     ЕДИНАЯ ТИПОГРАФИКА (как в ConsolidatedStatsWidget)
+     Меняйте переменные здесь — стили обновятся по всему сайту.
+     Классы для разметки: .text-heading-1, .text-heading-2, .text-heading-3,
+     .text-value, .text-body, .text-body-secondary, .text-label, .text-caption.
+  */
+  /* Заголовок страницы (С возвращением, ...) */
+  --text-heading-1-size: 1.5rem;
+  --text-heading-1-weight: 700;
+  --text-heading-1-color: var(--text-primary);
+  --text-heading-1-line: 1.2;
+  /* Подзаголовок страницы (Главная, Аналитика) */
+  --text-heading-2-size: 1rem;
+  --text-heading-2-weight: 400;
+  --text-heading-2-color: var(--text-tertiary);
+  --text-heading-2-line: 1.2;
+  /* Заголовок виджета / карточки */
+  --text-heading-3-size: 0.95rem;
+  --text-heading-3-weight: 500;
+  --text-heading-3-color: var(--text-tertiary);
+  /* Основное число (капитал, суммы) */
+  --text-value-size: 1.5rem;
+  --text-value-weight: 600;
+  --text-value-color: var(--text-primary);
+  --text-value-line: 1.2;
+  /* Вторичный текст (Инвестировано, в месяц) */
+  --text-body-secondary-size: 1rem;
+  --text-body-secondary-weight: 400;
+  --text-body-secondary-color: var(--text-tertiary);
+  --text-body-secondary-line: 1.2;
+  /* Подпись (Прибыль, Дивиденды, метки) */
+  --text-label-size: 0.95rem;
+  --text-label-weight: 500;
+  --text-label-color: var(--text-tertiary);
+  /* Мелкий текст (подписи, проценты в пилюлях) */
+  --text-caption-size: 0.875rem;
+  --text-caption-weight: 400;
+  --text-caption-color: var(--text-tertiary);
+  /* Тело текста по умолчанию */
+  --text-body-size: 1rem;
+  --text-body-weight: 400;
+  --text-body-color: var(--text-primary);
+
+  /* Совместимость с виджетами — ссылки на общую типографику */
+  --widget-font-main: var(--text-value-size);
+  --widget-font-main-weight: var(--text-value-weight);
+  --widget-font-secondary: var(--text-body-secondary-size);
+  --widget-font-label: var(--text-label-size);
+  --widget-font-label-weight: var(--text-label-weight);
+  --widget-font-small: var(--text-caption-size);
   
   /* Цвета фона */
   --bg-primary: #ffffff;
@@ -120,6 +173,9 @@ html {
 
 body {
   margin: 0;
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -135,28 +191,126 @@ body {
 .dashboard-layout {
   display: flex;
   background-color: #f9fafb;
+  min-height: 100vh;
+  overflow-x: hidden;
 }
 
+/* Заголовки и параграфы через единую типографику */
 h1 {
-  font-size: 1.5rem;
+  font-size: var(--text-heading-1-size);
+  font-weight: var(--text-heading-1-weight);
+  color: var(--text-heading-1-color);
+  line-height: var(--text-heading-1-line);
+  margin: 0;
 }
 h2, p {
-  font-size: 1rem;
-  color: #6B7280;
-  font-weight: 400;
+  font-size: var(--text-heading-2-size);
+  font-weight: var(--text-heading-2-weight);
+  color: var(--text-heading-2-color);
+  margin: 0;
 }
 
-.capital-values { 
-  font-size: 1.5rem; 
-  font-weight: 700; 
-  color: #111827; 
+.capital-values {
+  font-size: var(--text-value-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-value-color);
+  line-height: var(--text-value-line);
 }
 
 .medium-text {
-  font-size: 1rem;
+  font-size: var(--text-body-size);
   font-weight: 500;
-  color: #000;
+  color: var(--text-primary);
 }
 
-/* Стили для value-change теперь в компоненте ValueChange.vue */
-/* Стили для widget-title теперь в компоненте Widget.vue */
+/* ========== Классы единой типографики (.text-*) ========== */
+.text-heading-1 {
+  font-size: var(--text-heading-1-size);
+  font-weight: var(--text-heading-1-weight);
+  color: var(--text-heading-1-color);
+  line-height: var(--text-heading-1-line);
+  margin: 0;
+}
+.text-heading-2 {
+  font-size: var(--text-heading-2-size);
+  font-weight: var(--text-heading-2-weight);
+  color: var(--text-heading-2-color);
+  line-height: var(--text-heading-2-line);
+  margin: 0;
+}
+.text-heading-3 {
+  font-size: var(--text-heading-3-size);
+  font-weight: var(--text-heading-3-weight);
+  color: var(--text-heading-3-color);
+  margin: 0;
+}
+.text-value {
+  font-size: var(--text-value-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-value-color);
+  line-height: var(--text-value-line);
+}
+.text-body {
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  color: var(--text-body-color);
+}
+.text-body-secondary {
+  font-size: var(--text-body-secondary-size);
+  font-weight: var(--text-body-secondary-weight);
+  color: var(--text-body-secondary-color);
+  line-height: var(--text-body-secondary-line);
+}
+.text-label {
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  color: var(--text-label-color);
+}
+.text-caption {
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-caption-weight);
+  color: var(--text-caption-color);
+}
+
+/* Стили для value-change в компоненте ValueChange.vue */
+/* Стили для widget-title в компоненте Widget.vue */
+
+/* Адаптив: общие правила и типографика */
+@media (max-width: 1200px) {
+  html {
+    --spacing: 18px;
+    --text-heading-1-size: 1.25rem;
+    --text-heading-2-size: 0.9375rem;
+    --text-value-size: 1.25rem;
+    --text-body-secondary-size: 0.9375rem;
+    --text-label-size: 0.875rem;
+    --text-caption-size: 0.8125rem;
+  }
+}
+
+@media (max-width: 768px) {
+  html {
+    --spacing: 14px;
+    --text-heading-1-size: 1.125rem;
+    --text-heading-2-size: 0.875rem;
+    --text-heading-3-size: 0.875rem;
+    --text-value-size: 1.25rem;
+    --text-body-secondary-size: 0.9375rem;
+    --text-label-size: 0.875rem;
+    --text-caption-size: 0.8125rem;
+  }
+}
+
+@media (max-width: 480px) {
+  html {
+    --headerHeight: 64px;
+    --spacing: 12px;
+    --text-heading-1-size: 1rem;
+    --text-heading-2-size: 0.8125rem;
+    --text-heading-3-size: 0.8125rem;
+    --text-value-size: 1.125rem;
+    --text-body-secondary-size: 0.875rem;
+    --text-label-size: 0.8125rem;
+    --text-caption-size: 0.75rem;
+  }
+}

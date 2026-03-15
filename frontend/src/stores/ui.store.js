@@ -4,6 +4,7 @@ export const useUIStore = defineStore('ui', {
   state: () => ({
     loading: false,
     isSidebarCollapsed: false,
+    isMobileMenuOpen: false,
     selectedPortfolioId: null,
     expandedPortfolios: [],
     showSoldAssets: false,
@@ -34,6 +35,10 @@ export const useUIStore = defineStore('ui', {
 
     toggleSidebar() {
       this.isSidebarCollapsed = !this.isSidebarCollapsed
+    },
+
+    setMobileMenuOpen(value) {
+      this.isMobileMenuOpen = !!value
     },
 
     setSelectedPortfolioId(id) {

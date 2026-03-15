@@ -364,6 +364,7 @@ const handleMoveAsset = (asset) => {
   background: transparent;
   padding: 0;
   flex-wrap: wrap;
+  max-width: 100%;
 }
 
 .divider-vertical {
@@ -540,6 +541,88 @@ const handleMoveAsset = (asset) => {
 
 .assets-content {
   margin-top: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
+.assets-content :deep(.portfolio-list) {
+  max-width: 100%;
+}
+
+.assets-content :deep(.table-responsive) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1200px) {
+  .buttons-group {
+    gap: 6px;
+  }
+  .buttons-group :deep(button) {
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .buttons-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .buttons-group :deep(button),
+  .button-group-unified {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .divider-vertical {
+    display: none;
+  }
+
+  /* Вторая строка: Импорт и Обновить в одну строку, без переноса на третий уровень */
+  .button-group-unified {
+    grid-column: span 2;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0;
+  }
+
+  .button-group-unified :deep(button) {
+    flex: 1;
+  }
+
+  .active-tasks-indicator {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    min-width: auto;
+    max-width: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .buttons-group {
+    gap: 4px;
+  }
+  .buttons-group :deep(.btn-text) {
+    display: none;
+  }
+  .buttons-group :deep(button) {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .empty-placeholder {
+    padding: 40px 16px;
+  }
+}
 </style>

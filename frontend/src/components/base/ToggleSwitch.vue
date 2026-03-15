@@ -128,8 +128,15 @@ const handleChange = (event) => {
   font-size: 13px;
   font-weight: 500;
   color: #374151;
-  white-space: nowrap;
   line-height: 1.2;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .toggle-switch-label {
+    white-space: normal;
+    word-break: break-word;
+  }
 }
 
 .toggle-switch--disabled .toggle-switch-input {

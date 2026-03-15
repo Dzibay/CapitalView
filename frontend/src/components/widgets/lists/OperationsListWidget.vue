@@ -145,9 +145,9 @@ thead {
 th {
   padding: 0.75rem 1rem;
   text-align: left;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #6b7280;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-label-weight);
+  color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-bottom: 1px solid #e5e7eb;
@@ -164,16 +164,16 @@ tbody tr:hover {
 
 td {
   padding: 0.75rem 1rem;
-  font-size: 0.875rem;
-  color: #111827;
+  font-size: var(--text-caption-size);
+  color: var(--text-primary);
 }
 
 .badge {
   display: inline-block;
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-label-weight);
   text-transform: uppercase;
   letter-spacing: 0.025em;
 }
@@ -200,6 +200,6 @@ td {
 
 .badge-other {
   background: #f3f4f6;
-  color: #6b7280;
+  color: var(--text-tertiary);
 }
 </style>

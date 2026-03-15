@@ -1,7 +1,7 @@
 <script setup>
 import Widget from './Widget.vue'
 import { formatCurrency } from '../../../utils/formatCurrency'
-import ValueChange from './ValueChange.vue'
+import ValueChangePill from './ValueChangePill.vue'
 
 const props = defineProps({
   title: {
@@ -77,9 +77,9 @@ const formatValue = (item) => {
         <span class="stat-label">{{ item.label }}</span>
         <span class="stat-value">
           <template v-if="item.showValueChange && item.format === 'percent'">
-            <ValueChange 
+            <ValueChangePill 
               :value="item.value" 
-              :isPositive="item.isPositive"
+              :is-positive="item.isPositive"
               format="percent"
             />
           </template>
@@ -123,8 +123,8 @@ const formatValue = (item) => {
 }
 
 .stat-label {
-  color: #6b7280;
-  font-size: 0.875rem;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
   flex: 1;
 }
 
@@ -132,8 +132,8 @@ const formatValue = (item) => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-weight: 600;
-  color: #111827;
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
   text-align: right;
 }
 </style>

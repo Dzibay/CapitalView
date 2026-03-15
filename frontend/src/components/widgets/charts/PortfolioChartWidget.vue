@@ -3,7 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { LineChart } from 'lucide-vue-next'
 import MultiLineChart from '../../charts/MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
-import ValueChange from '../base/ValueChange.vue'
+import ValueChangePill from '../base/ValueChangePill.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
 import ToggleSwitch from '../../base/ToggleSwitch.vue'
 
@@ -221,7 +221,7 @@ onMounted(() => {
 
       <div class="capital-growth">
         <p>Прирост: {{ formatCurrency(growthAmount) }}</p>
-        <ValueChange 
+        <ValueChangePill 
           :value="growthPercent" 
           :is-positive="growthAmount >= 0"
           format="percent"
@@ -243,21 +243,54 @@ onMounted(() => {
 <style scoped>
 .capital-info {
   margin-bottom: 0.75rem;
+  min-width: 0;
+}
+.capital-info :deep(.capital-values) {
+  font-size: var(--widget-font-main, 1.5rem);
 }
 .capital-growth {
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 .chart-wrapper { 
   flex: 1; 
   position: relative; 
-  min-height: 0; /* Позволяет графику правильно сжиматься */
+  min-height: 200px;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
 }
 .header-controls {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
+  gap: 0.75rem;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .chart-wrapper {
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 768px) {
+  .header-controls {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .capital-growth {
+    font-size: var(--widget-font-secondary, 0.9375rem);
+  }
+  .chart-wrapper {
+    min-height: 200px;
+  }
+}
+
+@media (max-width: 480px) {
+  .chart-wrapper {
+    min-height: 180px;
+  }
 }
 </style>

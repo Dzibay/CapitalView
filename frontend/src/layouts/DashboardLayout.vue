@@ -70,13 +70,36 @@ watch(() => dashboardStore.portfolios, (portfolios) => {
   }
 }, { immediate: true })
 
+function handleToggleSidebar() {
+  if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+    uiStore.setMobileMenuOpen(!uiStore.isMobileMenuOpen)
+  } else {
+    uiStore.toggleSidebar()
+  }
+}
+
 </script>
 
 <template>
   <div class="dashboard-layout">
-    <AppSidebar :user="authStore.user" :collapsed="uiStore.isSidebarCollapsed" />
+    <div
+      v-if="uiStore.isMobileMenuOpen"
+      class="sidebar-overlay"
+      aria-hidden="true"
+      @click="uiStore.setMobileMenuOpen(false)"
+    />
+    <AppSidebar
+      :user="authStore.user"
+      :collapsed="uiStore.isSidebarCollapsed"
+      :mobile-open="uiStore.isMobileMenuOpen"
+    />
     <main class="main-content" :class="{ 'full-width': uiStore.isSidebarCollapsed }">
-      <AppHeader :user="authStore.user" :sidebar-collapsed="uiStore.isSidebarCollapsed" @toggle-sidebar="uiStore.toggleSidebar" />
+      <AppHeader
+        :user="authStore.user"
+        :sidebar-collapsed="uiStore.isSidebarCollapsed"
+        :mobile-menu-open="uiStore.isMobileMenuOpen"
+        @toggle-sidebar="handleToggleSidebar"
+      />
       <div class="page-content">
         <router-view />
       </div>
@@ -107,5 +130,41 @@ watch(() => dashboardStore.portfolios, (portfolios) => {
   margin-top: var(--headerHeight);
   padding: var(--spacing);
   flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  width: 100%;
+}
+
+/* Планшет: меньше боковых отступов */
+@media (max-width: 1200px) {
+  .page-content {
+    padding: 16px 12px;
+  }
+}
+
+/* Адаптив: мобильные */
+@media (max-width: 768px) {
+  .main-content,
+  .main-content.full-width {
+    margin-left: 0;
+  }
+
+  .page-content {
+    padding: 10px 12px;
+  }
+}
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 998;
+}
+
+@media (max-width: 768px) {
+  .sidebar-overlay {
+    display: block;
+  }
 }
 </style>

@@ -31,13 +31,18 @@ const props = defineProps({
 .widget {
   background-color: #fff;
   border-radius: 16px;
-  padding: 1.5rem;
+  padding: 1rem 1.25rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
   transition: box-shadow 0.2s;
+}
+@media (max-width: 768px) {
+  .widget {
+    padding: 0.75rem 1rem;
+  }
 }
 
 .widget:hover {
@@ -86,9 +91,9 @@ const props = defineProps({
 }
 
 .widget-title h2 {
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: #6B7280;
+  font-size: var(--text-heading-3-size);
+  font-weight: var(--text-heading-3-weight);
+  color: var(--text-heading-3-color);
   letter-spacing: 0.3px;
   margin: 0;
 }

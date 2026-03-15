@@ -1,17 +1,19 @@
 <template>
   <div class="page-header">
     <div class="page-header-content">
-      <div>
-        <h1>{{ title }}</h1>
-        <h2 v-if="subtitle">{{ subtitle }}</h2>
-      </div>
-      <div v-if="$slots.actions || $slots.menu" class="page-header-right">
+      <!-- Первый уровень: заголовок + переключатель (actions) -->
+      <div class="page-header-row1">
+        <div class="page-header-title">
+          <h1>{{ title }}</h1>
+          <h2 v-if="subtitle">{{ subtitle }}</h2>
+        </div>
         <div v-if="$slots.actions" class="page-header-actions">
           <slot name="actions" />
         </div>
-        <div v-if="$slots.menu" class="page-header-menu">
-          <slot name="menu" />
-        </div>
+      </div>
+      <!-- Второй уровень при сужении: только меню кнопок -->
+      <div v-if="$slots.menu" class="page-header-menu">
+        <slot name="menu" />
       </div>
     </div>
   </div>
@@ -35,68 +37,93 @@ defineProps({
   margin-bottom: var(--spacing);
 }
 
+/* Широкий экран: [ заголовок + переключатель | меню кнопок ] в одну строку */
 .page-header-content {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 1rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+/* Первый уровень: заголовок и actions (переключатель) */
+.page-header-row1 {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: nowrap;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.page-header-title {
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 .page-header h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #111827;
+  font-size: var(--text-heading-1-size);
+  font-weight: var(--text-heading-1-weight);
+  color: var(--text-heading-1-color);
   margin: 0;
-  line-height: 1.2;
+  line-height: var(--text-heading-1-line);
 }
 
 .page-header h2 {
-  font-size: 1rem;
-  color: #6B7280;
-  font-weight: 400;
+  font-size: var(--text-heading-2-size);
+  font-weight: var(--text-heading-2-weight);
+  color: var(--text-heading-2-color);
   margin: 0;
   margin-top: 0.25rem;
-}
-
-.page-header-right {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
 }
 
 .page-header-actions {
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
+@media (max-width: 768px) {
+  .page-header-row1 {
+    flex-wrap: wrap;
+  }
+  .page-header-actions {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* Меню кнопок: одна строка, не переносим кнопки внутри */
 .page-header-menu {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: nowrap;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
-@media (max-width: 768px) {
+/* Меню кнопок переходит вниз до наезда на «Показать проданные активы» */
+@media (max-width: 1240px) {
   .page-header-content {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .page-header-right {
-    width: 100%;
     flex-direction: column;
     align-items: flex-start;
     gap: 0.75rem;
   }
-  
-  .page-header-actions {
-    width: 100%;
-  }
-  
+
   .page-header-menu {
     width: 100%;
+    max-width: 100%;
+  }
+}
+
+/* Очень узкий экран: кнопкам разрешаем перенос, чтобы не уезжали за край */
+@media (max-width: 480px) {
+  .page-header-menu {
+    flex-wrap: wrap;
   }
 }
 </style>

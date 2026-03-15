@@ -66,12 +66,12 @@ const hasPayouts = computed(() => {
 }
 
 .summary-item.primary .summary-label {
-  color: #111827;
-  font-weight: 600;
+  color: var(--text-primary);
+  font-weight: var(--text-value-weight);
 }
 
 .summary-item.primary .summary-value {
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .summary-row {
@@ -81,23 +81,23 @@ const hasPayouts = computed(() => {
 }
 
 .summary-label {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-label-weight);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #6b7280;
+  color: var(--text-tertiary);
   margin-bottom: 0.5rem;
 }
 
 .summary-value {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #111827;
+  font-size: var(--text-value-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
 }
 
 .payouts-count {
-  font-size: 0.75rem;
-  color: #9ca3af;
+  font-size: var(--text-caption-size);
+  color: var(--text-quaternary);
   text-align: center;
   padding-top: 0.5rem;
   border-top: 1px solid #e5e7eb;
@@ -108,7 +108,7 @@ const hasPayouts = computed(() => {
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  color: #6b7280;
-  font-size: 0.875rem;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
 }
 </style>
