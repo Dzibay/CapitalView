@@ -227,8 +227,19 @@ async def import_broker_route(
     """Создает задачу импорта портфеля от брокера."""
     logger.info(f"📥 Запрос создания задачи импорта портфеля от брокера {data.broker_id}")
     
+    from app.domain.services.broker_connections_service import check_broker_token_exists, check_portfolio_broker_conflict
+
+    # Проверяем, не привязан ли портфель к другому брокеру
+    if data.portfolio_id:
+        conflict = check_portfolio_broker_conflict(user["id"], data.broker_id, data.portfolio_id)
+        if conflict:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"Портфель уже привязан к другому брокеру (ID: {conflict['connected_broker_id']}). "
+                       f"Невозможно импортировать данные от другого брокера."
+            )
+
     # Проверяем, не используется ли уже этот токен у пользователя
-    from app.domain.services.broker_connections_service import check_broker_token_exists
     
     token_check = check_broker_token_exists(
         user_id=user["id"],

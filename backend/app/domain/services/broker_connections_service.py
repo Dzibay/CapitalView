@@ -124,6 +124,45 @@ def check_broker_token_exists(user_id: str, broker_id: int, broker_token: str) -
     }
 
 
+def check_portfolio_broker_conflict(user_id: str, broker_id: int, portfolio_id: int) -> dict | None:
+    """
+    Проверяет, не привязан ли портфель (или его родитель) к другому брокеру.
+    Возвращает None если конфликта нет, иначе dict с информацией о конфликте.
+    """
+    user_id_str = str(user_id) if user_id else None
+
+    # Получаем все привязки пользователя
+    connections = get_user_portfolio_connections(user_id_str)
+    if not connections:
+        return None
+
+    # Проверяем сам портфель
+    conn = connections.get(portfolio_id)
+    if conn and conn["broker_id"] != broker_id:
+        return {
+            "portfolio_id": portfolio_id,
+            "connected_broker_id": conn["broker_id"],
+        }
+
+    # Проверяем всех предков портфеля (если он дочерний)
+    portfolio = _portfolio_repository.get_by_id_sync(portfolio_id)
+    if portfolio:
+        parent_id = portfolio.get("parent_portfolio_id")
+        visited = {portfolio_id}
+        while parent_id and parent_id not in visited:
+            visited.add(parent_id)
+            parent_conn = connections.get(parent_id)
+            if parent_conn and parent_conn["broker_id"] != broker_id:
+                return {
+                    "portfolio_id": parent_id,
+                    "connected_broker_id": parent_conn["broker_id"],
+                }
+            parent = _portfolio_repository.get_by_id_sync(parent_id)
+            parent_id = parent.get("parent_portfolio_id") if parent else None
+
+    return None
+
+
 def upsert_broker_connection(user_id, broker_id: int, portfolio_id: int, api_key: str):
     """
     Создаёт или обновляет соединение пользователя с брокером для портфеля.

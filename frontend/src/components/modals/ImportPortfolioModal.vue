@@ -35,7 +35,7 @@
         <div class="form-section">
           <CustomSelect
             v-model="portfolioId"
-            :options="portfolios"
+            :options="availablePortfolios"
             label="Портфель"
             placeholder="Создать новый"
             empty-option-text="Создать новый"
@@ -75,7 +75,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { Upload, Key, FileText, Loader2 } from 'lucide-vue-next'
 import { Button } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
@@ -86,7 +86,7 @@ import ModalBase from './ModalBase.vue'
 const props = defineProps({
   onImport: Function,
   portfolios: Array,
-  onTaskCreated: Function // Callback при создании задачи
+  onTaskCreated: Function
 })
 const emit = defineEmits(['close'])
 
@@ -122,6 +122,47 @@ const portfolioId = ref(null)
 const portfolioName = ref(getDefaultPortfolioName())
 const loading = ref(false)
 const error = ref('')
+
+// Портфели, доступные для выбранного брокера:
+// — без привязки к брокеру
+// — уже привязанные к этому же брокеру
+// — не являющиеся дочерними портфеля другого брокера
+const availablePortfolios = computed(() => {
+  if (!props.portfolios || !brokerId.value) return props.portfolios || []
+
+  const allPortfolios = props.portfolios
+  const blockedIds = new Set()
+
+  const portfoliosWithOtherBroker = allPortfolios.filter(p => {
+    const connBroker = p.connection?.broker_id || null
+    return connBroker && connBroker !== brokerId.value
+  })
+
+  const collectChildren = (parentId) => {
+    allPortfolios.forEach(p => {
+      if (p.parent_portfolio_id === parentId && !blockedIds.has(p.id)) {
+        blockedIds.add(p.id)
+        collectChildren(p.id)
+      }
+    })
+  }
+
+  portfoliosWithOtherBroker.forEach(p => {
+    blockedIds.add(p.id)
+    collectChildren(p.id)
+  })
+
+  return allPortfolios.filter(p => !blockedIds.has(p.id))
+})
+
+watch(brokerId, () => {
+  if (portfolioId.value) {
+    const stillAvailable = availablePortfolios.value.some(p => p.id === portfolioId.value)
+    if (!stillAvailable) {
+      portfolioId.value = null
+    }
+  }
+})
 
 // Загружаем список брокеров
 const loadBrokers = async () => {
