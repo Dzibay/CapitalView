@@ -1,5 +1,4 @@
 <script setup>
-import Header from '../layouts/LandingHeader.vue';
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { authService } from '../services/authService.js';
@@ -7,16 +6,12 @@ import { authService } from '../services/authService.js';
 const route = useRoute();
 const router = useRouter();
 
-// Состояние: true = Вход, false = Регистрация
 const isLoginMode = ref(true);
-
 const email = ref('root@gmail.com');
 const password = ref('root');
 const message = ref('');
 const loading = ref(false);
 
-// Проверка токена при загрузке (только если мы в режиме входа)
-// Теперь это обрабатывается в router guard, но оставляем для совместимости
 onMounted(async () => {
   const token = localStorage.getItem('access_token');
   if (token) {
@@ -26,19 +21,14 @@ onMounted(async () => {
         router.push('/dashboard');
       }
     } catch {
-      // Токен недействителен, остаемся на странице логина
       authService.logout();
     }
   }
 });
 
-// Переключение режимов и очистка ошибок
 const toggleMode = () => {
   isLoginMode.value = !isLoginMode.value;
   message.value = '';
-  // Опционально: можно очищать поля, но часто удобнее оставлять введенное
-  // email.value = '';
-  // password.value = '';
 };
 
 const handleSubmit = async () => {
@@ -52,46 +42,24 @@ const handleSubmit = async () => {
       return;
     }
     if (isLoginMode.value) {
-      // === Логика ВХОДА ===
-      // authService.login уже сохраняет токен автоматически
-      const res = await authService.login(email.value, password.value);
-      
-      // Дополнительная проверка, что токен действительно сохранен
+      await authService.login(email.value, password.value);
       const savedToken = localStorage.getItem('access_token');
-      if (!savedToken) {
-        throw new Error('Не удалось сохранить токен авторизации');
-      }
-      
-      // Небольшая задержка для гарантии сохранения токена перед навигацией
+      if (!savedToken) throw new Error('Не удалось сохранить токен авторизации');
       await new Promise(resolve => setTimeout(resolve, 50));
-      
-      // Получаем путь для редиректа из query параметров или используем dashboard
       const redirectPath = router.currentRoute.value.query.redirect || '/dashboard';
-      
-      // Используем replace вместо push, чтобы избежать возврата на страницу логина через back
       await router.replace(redirectPath);
     } else {
-      // === Логика РЕГИСТРАЦИИ ===
       await authService.register(email.value, password.value);
-      // Сразу логиним после успешной регистрации
-      const res = await authService.login(email.value, password.value);
-      
-      // Дополнительная проверка, что токен действительно сохранен
+      await authService.login(email.value, password.value);
       const savedToken = localStorage.getItem('access_token');
-      if (!savedToken) {
-        throw new Error('Не удалось сохранить токен авторизации');
-      }
-      
-      // Небольшая задержка для гарантии сохранения токена перед навигацией
+      if (!savedToken) throw new Error('Не удалось сохранить токен авторизации');
       await new Promise(resolve => setTimeout(resolve, 50));
-      
       const redirectPath = router.currentRoute.value.query.redirect || '/dashboard';
       await router.replace(redirectPath);
     }
   } catch (err) {
     const defaultMsg = isLoginMode.value ? 'Ошибка входа' : 'Ошибка регистрации';
     message.value = err.response?.data?.msg || err.message || defaultMsg;
-    // Очищаем токен при ошибке (authService.login уже очистит, но для надежности)
     authService.logout();
   } finally {
     loading.value = false;
@@ -128,43 +96,63 @@ const handleGoogleLogin = () => {
 </script>
 
 <template>
-  <div class="page-container">
-    <Header />
-    
-    <div class="auth-wrapper">
+  <div class="login-page">
+    <!-- Фон как на лендинге -->
+    <div class="login-bg" aria-hidden="true">
+      <div class="gradient-mesh">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+      </div>
+    </div>
+
+    <header class="login-header">
+      <div class="header-inner">
+        <router-link to="/" class="logo">Capital<span>View</span></router-link>
+        <router-link to="/" class="btn-ghost">На главную</router-link>
+      </div>
+    </header>
+
+    <main class="auth-wrapper">
       <div class="auth-card">
-        
         <transition name="fade" mode="out-in">
           <div :key="isLoginMode" class="auth-content">
-            <h2 class="auth-title">{{ title }}</h2>
-            
+            <h1 class="auth-title">{{ title }}</h1>
+            <p class="auth-subtitle">
+              {{ isLoginMode ? 'Войдите в аккаунт для доступа к портфелю' : 'Создайте аккаунт и начните отслеживать инвестиции' }}
+            </p>
+
             <form @submit.prevent="handleSubmit" class="auth-form">
               <div class="input-group">
+                <label for="email">Email</label>
                 <input
+                  id="email"
                   v-model="email"
                   type="email"
-                  placeholder="Email"
+                  placeholder="example@mail.ru"
                   required
                   autocomplete="username"
                   class="form-input"
                 />
               </div>
-              
+
               <div class="input-group">
+                <label for="password">Пароль</label>
                 <input
+                  id="password"
                   v-model="password"
                   type="password"
-                  :placeholder="isLoginMode ? 'Пароль' : 'Пароль (мин. 4 символа)'"
+                  :placeholder="isLoginMode ? 'Введите пароль' : 'Минимум 4 символа'"
                   required
                   autocomplete="current-password"
                   class="form-input"
                 />
               </div>
 
-              <div v-if="route.query.error" class="error-message">
+              <div v-if="route.query.error" class="message message-error">
                 {{ oauthErrorText }}
               </div>
-              <div v-else-if="message" class="error-message">
+              <div v-else-if="message" class="message message-error">
                 {{ message }}
               </div>
 
@@ -191,106 +179,254 @@ const handleGoogleLogin = () => {
 
         <div class="auth-footer">
           <p v-if="isLoginMode">
-            Нет аккаунта? 
-            <a href="#" @click.prevent="toggleMode">Зарегистрироваться</a>
+            Нет аккаунта?
+            <button type="button" class="link-btn" @click="toggleMode">Зарегистрироваться</button>
           </p>
           <p v-else>
-            Уже есть аккаунт? 
-            <a href="#" @click.prevent="toggleMode">Войти</a>
+            Уже есть аккаунт?
+            <button type="button" class="link-btn" @click="toggleMode">Войти</button>
           </p>
         </div>
-
       </div>
-    </div>
+    </main>
+
+    <footer class="login-footer">
+      <router-link to="/" class="logo">Capital<span>View</span></router-link>
+      <div class="footer-links">
+        <a href="/privacy" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a>
+        <span class="divider" />
+        <a href="/terms" target="_blank" rel="noopener noreferrer">Условия использования</a>
+      </div>
+      <p class="copyright">© {{ new Date().getFullYear() }} CapitalView</p>
+    </footer>
   </div>
 </template>
 
 <style scoped>
-/* Общий контейнер */
-.page-container {
+.login-page {
+  --color-text: #0f172a;
+  --color-text-secondary: #64748b;
+  --color-primary: #3b82f6;
+  --color-primary-hover: #2563eb;
+  --color-border: #e2e8f0;
+  --color-border-light: #f1f5f9;
+
   min-height: 100vh;
-  background-color: #f3f4f6;
   display: flex;
   flex-direction: column;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Центрирование карточки */
+/* Фон */
+.login-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.gradient-mesh {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, 0.15), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(139, 92, 246, 0.12), transparent),
+    radial-gradient(ellipse 50% 30% at 0% 50%, rgba(236, 72, 153, 0.08), transparent);
+}
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.5;
+  animation: orbFloat 20s ease-in-out infinite;
+}
+
+.orb-1 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.4) 0%, transparent 70%);
+  top: -100px;
+  right: 10%;
+}
+
+.orb-2 {
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.35) 0%, transparent 70%);
+  bottom: 20%;
+  left: -50px;
+  animation-delay: -5s;
+}
+
+.orb-3 {
+  width: 250px;
+  height: 250px;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.25) 0%, transparent 70%);
+  top: 40%;
+  right: -30px;
+  animation-delay: -10s;
+}
+
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(30px, -20px) scale(1.05); }
+  50% { transform: translate(-20px, 30px) scale(0.95); }
+  75% { transform: translate(20px, 20px) scale(1.02); }
+}
+
+/* Хедер */
+.login-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.header-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text);
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+.logo span {
+  color: var(--color-primary);
+}
+
+.btn-ghost {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-primary);
+  text-decoration: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  transition: background 0.2s;
+}
+
+.btn-ghost:hover {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+/* Контент */
 .auth-wrapper {
   flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 20px;
+  padding: 100px 24px 48px;
 }
 
-/* Карточка */
 .auth-card {
-  background: white;
   width: 100%;
   max-width: 420px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   padding: 40px;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  border: 1px solid var(--color-border-light);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.06);
 }
 
 .auth-title {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
+  letter-spacing: -0.03em;
   text-align: center;
-  margin-bottom: 24px;
-  color: #1f2937;
+  margin: 0 0 8px;
+  color: var(--color-text);
 }
 
-/* Форма */
+.auth-subtitle {
+  font-size: 15px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  margin: 0 0 28px;
+  line-height: 1.5;
+}
+
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
-.input-group {
-  width: 100%;
+.input-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
 }
 
 .form-input {
   width: 100%;
   padding: 12px 16px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
   font-size: 15px;
+  color: var(--color-text);
+  background: #fff;
   transition: border-color 0.2s, box-shadow 0.2s;
-  box-sizing: border-box; /* Важно, чтобы padding не ломал ширину */
+  box-sizing: border-box;
+}
+
+.form-input::placeholder {
+  color: #94a3b8;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
-/* Кнопка */
 .btn-primary {
   width: 100%;
-  padding: 12px;
-  background-color: #2563eb;
-  color: white;
+  padding: 14px 24px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 16px;
   font-weight: 600;
   border: none;
-  border-radius: 8px;
+  border-radius: 14px;
   cursor: pointer;
-  transition: background-color 0.2s;
-  font-size: 15px;
-  margin-top: 8px;
+  transition: background 0.2s, transform 0.15s;
 }
 
-.btn-primary:hover {
-  background-color: #1d4ed8;
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .btn-primary:disabled {
-  background-color: #93c5fd;
+  opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
 }
 
 .auth-divider {
@@ -305,12 +441,12 @@ const handleGoogleLogin = () => {
   content: '';
   flex: 1;
   height: 1px;
-  background: #e5e7eb;
+  background: var(--color-border);
 }
 
 .auth-divider span {
   font-size: 13px;
-  color: #9ca3af;
+  color: var(--color-text-secondary);
 }
 
 .btn-google {
@@ -319,11 +455,11 @@ const handleGoogleLogin = () => {
   justify-content: center;
   gap: 10px;
   width: 100%;
-  padding: 12px;
-  background: white;
-  color: #374151;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+  padding: 12px 16px;
+  background: #fff;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
   font-size: 15px;
   font-weight: 500;
   text-decoration: none;
@@ -332,72 +468,120 @@ const handleGoogleLogin = () => {
 }
 
 .btn-google:hover {
-  background: #f9fafb;
-  border-color: #9ca3af;
+  background: var(--color-border-light);
+  border-color: #cbd5e1;
 }
 
 .google-icon {
   flex-shrink: 0;
 }
 
-/* Сообщение об ошибке */
-.error-message {
-  color: #dc2626;
+.message {
+  padding: 10px 14px;
+  border-radius: 10px;
   font-size: 14px;
-  text-align: center;
-  background-color: #fef2f2;
-  padding: 8px;
-  border-radius: 6px;
 }
 
-/* Подвал карточки */
+.message-error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
 .auth-footer {
   margin-top: 24px;
-  text-align: center;
-  border-top: 1px solid #f3f4f6;
   padding-top: 20px;
+  border-top: 1px solid var(--color-border-light);
+  text-align: center;
 }
 
 .auth-footer p {
-  color: #6b7280;
+  color: var(--color-text-secondary);
   font-size: 14px;
   margin: 0;
 }
 
-.auth-footer a {
-  color: #2563eb;
-  text-decoration: none;
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: 14px;
   font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
 }
 
-.auth-footer a:hover {
+.link-btn:hover {
   text-decoration: underline;
+}
+
+/* Футер */
+.login-footer {
+  padding: 24px;
+  text-align: center;
+  border-top: 1px solid var(--color-border-light);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
+}
+
+.login-footer .logo {
+  display: inline-block;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.footer-links a {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.footer-links a:hover {
+  color: var(--color-primary);
+}
+
+.login-footer .divider {
+  width: 1px;
+  height: 12px;
+  background: #cbd5e1;
+}
+
+.copyright {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0;
 }
 
 @media (max-width: 480px) {
   .auth-wrapper {
-    padding: 16px 12px;
+    padding: 88px 16px 32px;
     align-items: flex-start;
-    padding-top: 24px;
   }
 
   .auth-card {
-    padding: 24px 20px;
-    max-width: 100%;
+    padding: 28px 20px;
   }
 
   .auth-title {
-    font-size: 20px;
-    margin-bottom: 20px;
+    font-size: 24px;
   }
 
-  .form-input {
-    padding: 10px 14px;
-    font-size: 16px;
+  .auth-subtitle {
+    font-size: 14px;
   }
 }
 
-/* === Анимация переходов === */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease, transform 0.2s ease;
@@ -406,6 +590,6 @@ const handleGoogleLogin = () => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-  transform: translateY(5px);
+  transform: translateY(8px);
 }
 </style>
