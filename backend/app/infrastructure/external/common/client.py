@@ -2,6 +2,7 @@
 Общий клиент для работы с внешними API.
 """
 import asyncio
+import json
 import aiohttp
 from typing import Optional, Callable, Any
 from app.core.logging import get_logger
@@ -70,7 +71,8 @@ async def fetch_json(
     url: str,
     max_attempts: int = DEFAULT_MAX_RETRIES,
     check_error: Optional[Callable[[Exception], bool]] = None,
-    rate_limit_delay: float = 0.0
+    rate_limit_delay: float = 0.0,
+    ignore_content_type: bool = False
 ) -> Optional[dict]:
     """
     Выполняет HTTP GET запрос и возвращает JSON с повторными попытками.
@@ -81,6 +83,8 @@ async def fetch_json(
         max_attempts: Максимальное количество попыток
         check_error: Функция проверки ошибки (по умолчанию is_connection_error)
         rate_limit_delay: Задержка перед запросом для соблюдения rate limit (в секундах)
+        ignore_content_type: Если True, парсит JSON из text() без проверки Content-Type
+            (для API, возвращающих JSON с mimetype application/javascript и т.п.)
     
     Returns:
         JSON данные или None
@@ -108,6 +112,9 @@ async def fetch_json(
                     logger.warning(f"Ошибка при запросе {url}: статус {resp.status}")
                     return None
                 
+                if ignore_content_type:
+                    text = await resp.text()
+                    return json.loads(text)
                 return await resp.json()
         except Exception as e:
             if check_error(e) and attempt < max_attempts - 1:

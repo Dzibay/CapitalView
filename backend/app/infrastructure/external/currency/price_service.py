@@ -23,6 +23,7 @@ CURRENCY_CODES = {
     "GBP": "R01035",  # Фунт стерлингов
     "CNY": "R01375",  # Китайский юань
     "JPY": "R01820",  # Японская иена
+    "CHF": "R01775",  # Швейцарский франк
 }
 
 # Коды валют для daily_json.js (CharCode)
@@ -32,10 +33,11 @@ CURRENCY_CHAR_CODES = {
     "GBP": "GBP",
     "CNY": "CNY",
     "JPY": "JPY",
+    "CHF": "CHF",
 }
 
 # Поддерживаемые валюты
-SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "CNY", "JPY"]
+SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "CNY", "JPY", "CHF"]
 
 
 
@@ -63,7 +65,7 @@ async def get_currency_rate(session: aiohttp.ClientSession, ticker: str, rate_da
     # Для текущей даты используем упрощенный API
     if rate_date == date.today():
         url = f"{CBR_DAILY_URL}/daily_json.js"
-        data = await fetch_json(session, url)
+        data = await fetch_json(session, url, ignore_content_type=True)
         if data:
             try:
                 valutes = data.get("Valute", {})
@@ -243,7 +245,7 @@ async def get_currency_rates_batch(
     # Для текущей даты используем упрощенный API
     if rate_date == date.today():
         url = f"{CBR_DAILY_URL}/daily_json.js"
-        data = await fetch_json(session, url)
+        data = await fetch_json(session, url, ignore_content_type=True)
         
         if not data:
             return {}
