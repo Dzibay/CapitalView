@@ -38,9 +38,16 @@ export function usePortfolioAnalytics() {
     selectedPortfolioAnalytics.value =
       allAnalytics.find(a => a.portfolio_id === uiStore.selectedPortfolioId) || null
 
+    // Fallback: если нет совпадения (persisted ID, смена устройства), берём первую доступную
+    if (!selectedPortfolioAnalytics.value && allAnalytics.length > 0) {
+      selectedPortfolioAnalytics.value = allAnalytics[0]
+      if (uiStore.selectedPortfolioId !== selectedPortfolioAnalytics.value.portfolio_id) {
+        uiStore.setSelectedPortfolioId(selectedPortfolioAnalytics.value.portfolio_id)
+      }
+    }
+
     if (!selectedPortfolioAnalytics.value) {
       console.warn('⚠️ Аналитика не найдена для портфеля', uiStore.selectedPortfolioId)
-      return
     }
   }
 

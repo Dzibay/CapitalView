@@ -229,7 +229,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
 
     <LoadingState v-if="uiStore.loading" />
 
-    <div v-else>
+    <div v-else class="dividends-content">
       <div class="calendar-controls">
         <div class="month-nav">
           <button class="btn-icon" @click="prevMonth">‹</button>
@@ -348,14 +348,20 @@ watch(() => uiStore.selectedPortfolioId, () => {
 </template>
 
 <style scoped>
-
-
+.dividends-content {
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
 
 /* Управление календарём */
 .calendar-controls {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   background: #fff;
   padding: 16px 24px;
   border-radius: 16px;
@@ -404,6 +410,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
 
 .month-summary {
   text-align: right;
+  min-width: 0;
 }
 .month-summary .label {
   display: block;
@@ -416,6 +423,8 @@ watch(() => uiStore.selectedPortfolioId, () => {
   font-size: 22px;
   font-weight: 700;
   color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .text-green { color: #10b981 !important; }
 .text-gray { color: #9ca3af !important; }
@@ -423,14 +432,31 @@ watch(() => uiStore.selectedPortfolioId, () => {
 /* Сетка разметки */
 .calendar-layout {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
   gap: 24px;
   align-items: start;
+  min-width: 0;
 }
 
 @media (max-width: 900px) {
   .calendar-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .calendar-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .month-nav {
+    justify-content: center;
+  }
+  .month-nav h2 {
+    min-width: auto;
+  }
+  .month-summary {
+    text-align: center;
   }
 }
 
@@ -444,11 +470,12 @@ watch(() => uiStore.selectedPortfolioId, () => {
   height: 650px;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .week-header {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   background: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
@@ -465,10 +492,11 @@ watch(() => uiStore.selectedPortfolioId, () => {
 
 .days-container {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   grid-auto-rows: minmax(100px, 1fr);
   flex: 1;
   min-height: 0;
+  min-width: 0;
 }
 
 .calendar-cell {
@@ -571,6 +599,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
   flex-direction: column;
   height: 650px;
   overflow: hidden;
+  min-width: 0;
 }
 
 .details-header {
@@ -626,6 +655,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
   border-radius: 10px;
   background: #fff;
   transition: transform 0.2s;
+  min-width: 0;
 }
 .event-card:hover {
   border-color: #d1d5db;
@@ -642,6 +672,8 @@ watch(() => uiStore.selectedPortfolioId, () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 4px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .ticker-badge {
@@ -651,11 +683,17 @@ watch(() => uiStore.selectedPortfolioId, () => {
   padding: 2px 8px;
   border-radius: 6px;
   color: #374151;
+  flex-shrink: 0;
 }
 
 .amount {
   font-weight: 700;
   font-size: 15px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .company-name {
@@ -664,11 +702,13 @@ watch(() => uiStore.selectedPortfolioId, () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 140px;
+  min-width: 0;
+  flex: 1;
 }
 .per-share {
   font-size: 12px;
   color: #6b7280;
+  flex-shrink: 0;
 }
 
 .card-footer {

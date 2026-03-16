@@ -69,7 +69,7 @@ const chartDatasets = computed(() => {
 </script>
 
 <template>
-  <Widget title="Выплаты по активам", :icon="HandCoins">
+  <Widget title="Выплаты по активам" :icon="HandCoins">
     <div class="chart-container">
       <BarChart
         v-if="payoutsByAsset && payoutsByAsset.length > 0"

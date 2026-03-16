@@ -163,10 +163,12 @@ const selectOption = (option, emptyText = null) => {
 
 const handleClickOutside = (event) => {
   const target = event.target
-  if (wrapperRef.value && !wrapperRef.value.contains(target)) {
-    isOpen.value = false
-    dropdownPosition.value = 'bottom'
-  }
+  if (!wrapperRef.value) return
+  if (wrapperRef.value.contains(target)) return
+  // Dropdown teleported to body — клик по опции не внутри wrapperRef
+  if (dropdownRef.value?.contains(target)) return
+  isOpen.value = false
+  dropdownPosition.value = 'bottom'
 }
 
 // Закрываем все другие селекты при открытии этого
@@ -265,6 +267,15 @@ const calculateDropdownPosition = (isInitial = false) => {
     // Помечаем, что позиция вычислена и элемент можно показывать
     isDropdownPositioned.value = true
   }, isInitial ? 50 : 0) // Задержка только при первом открытии
+
+  // Fallback: на мобильных Teleport может быть медленнее — через 200ms показываем dropdown
+  if (isInitial && isOpen.value) {
+    setTimeout(() => {
+      if (isOpen.value && !isDropdownPositioned.value && dropdownRef.value) {
+        isDropdownPositioned.value = true
+      }
+    }, 200)
+  }
 }
 
 const toggleDropdown = () => {
@@ -304,9 +315,7 @@ watch(isOpen, (newVal) => {
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   window.addEventListener('closeAllSelects', handleCloseAllSelects)
-  // Пересчитываем позицию при изменении размера окна (без скрытия)
   window.addEventListener('resize', () => calculateDropdownPosition(false))
-  // Пересчитываем при скролле (без скрытия)
   window.addEventListener('scroll', () => calculateDropdownPosition(false), true)
 })
 
@@ -491,6 +500,9 @@ onUnmounted(() => {
   position: relative;
   min-width: 0;
   overflow: hidden;
+  /* Убирает 300ms задержку клика на мобильных */
+  touch-action: manipulation;
+  min-height: 44px;
 }
 
 .custom-select-option > span:first-child {

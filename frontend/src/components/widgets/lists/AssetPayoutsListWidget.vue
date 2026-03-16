@@ -45,7 +45,7 @@ const formatDate = formatDateForDisplay
 </script>
 
 <template>
-  <Widget title="История выплат", :icon="Coins">
+  <Widget title="История выплат" :icon="Coins">
     <div v-if="sortedPayouts.length > 0" class="payouts-list">
       <div 
         v-for="(payout, index) in sortedPayouts" 

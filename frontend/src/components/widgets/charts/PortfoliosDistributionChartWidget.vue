@@ -91,7 +91,7 @@ const total = computed(() => {
 </script>
 
 <template>
-  <Widget title="Распределение портфелей", :icon="PieChart">
+  <Widget title="Распределение портфелей" :icon="PieChart">
     <div v-if="portfolioValues && portfolioValues.length" class="allocation-container">
       <div class="chart-section">
         <DoughnutChart

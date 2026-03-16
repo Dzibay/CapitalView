@@ -349,7 +349,7 @@ const percentPlugin = {
 </script>
 
 <template>
-  <Widget title="Прибыльность активов", :icon="Coins">
+  <Widget title="Прибыльность активов" :icon="Coins">
     <template #header>
       <div class="widget-controls">
         <ToggleSwitch v-model="showSoldAssets" label="Отображать проданные" />

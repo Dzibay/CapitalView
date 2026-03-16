@@ -1,4 +1,5 @@
 <script setup>
+import { onMounted } from 'vue'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import PageLayout from '../layouts/PageLayout.vue'
@@ -31,7 +32,7 @@ import { usePortfolioAnalytics } from '../composables/usePortfolioAnalytics'
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 
-// Используем composable для аналитики портфеля
+// Composable для аналитики портфеля
 const {
   portfolios,
   selectedPortfolio,
@@ -42,8 +43,17 @@ const {
   calculatedAnnualDividends,
   returnData,
   portfolioChartData,
-  profitChartData
+  profitChartData,
+  safeLoadAnalytics
 } = usePortfolioAnalytics()
+
+// При прямом переходе на /analitics данные могут ещё не загрузиться — подстраховка
+onMounted(async () => {
+  if (!portfolios.value?.length) {
+    await dashboardStore.fetchDashboard(false, false)
+    await safeLoadAnalytics()
+  }
+})
 
 </script>
 
@@ -63,6 +73,10 @@ const {
     </PageHeader>
 
     <LoadingState v-if="isLoadingAnalytics" message="Загрузка аналитики..." />
+
+    <div v-else-if="!portfolios.length" class="empty-state">
+      <p>Нет портфелей для отображения аналитики.</p>
+    </div>
 
     <div v-else-if="selectedPortfolioAnalytics" class="widgets-grid">
       <!-- Статы: на десктопе — 4 виджета, на мобильном — один сводный -->
@@ -176,7 +190,9 @@ const {
       </WidgetContainer>
     </div>
 
-    <LoadingState v-else />
+    <div v-else class="empty-state">
+      <p>Нет данных аналитики для выбранного портфеля.</p>
+    </div>
   </PageLayout>
 </template>
 
@@ -233,5 +249,12 @@ const {
   .widgets-grid :deep(.widget-container) {
     grid-column: 1 / -1 !important;
   }
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: #6b7280;
+  font-size: 15px;
 }
 </style>

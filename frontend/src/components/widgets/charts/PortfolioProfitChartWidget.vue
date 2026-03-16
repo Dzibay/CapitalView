@@ -167,7 +167,7 @@ watch(() => props.chartData, () => {
 </script>
 
 <template>
-  <Widget title="Динамика прибыли", :icon="TrendingUp">
+  <Widget title="Динамика прибыли" :icon="TrendingUp">
     <template #header>
       <PeriodFilters v-model="selectedPeriod" />
     </template>
