@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
+import { getCurrencySymbol } from '../utils/currencySymbols'
 import { useUIStore } from '../stores/ui.store'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 import LoadingState from '../components/base/LoadingState.vue'
@@ -36,8 +37,10 @@ const allDividends = computed(() => {
 
   const list = []
   
-  // 2. Проходимся по активам
-  targetPortfolio.combined_assets.forEach(asset => {
+  // 2. Проходимся по активам (исключаем проданные — quantity === 0)
+  targetPortfolio.combined_assets
+    .filter(asset => (asset.quantity || 0) > 0)
+    .forEach(asset => {
     // Ищем массив выплат (в новой структуре это asset.payouts)
     const payouts = asset.payouts || asset.dividends || [] 
     
@@ -77,7 +80,7 @@ const allDividends = computed(() => {
         paymentDate: paymentDate,
         
         value: parseFloat(div.value),
-        currency: div.currency || 'RUB',
+        currency: asset.currency_ticker || div.currency || 'RUB',
         
         // Общая сумма: выплата * кол-во бумаг в портфеле
         totalAmount: parseFloat(div.value) * (asset.quantity || 0), 
@@ -305,13 +308,13 @@ watch(() => uiStore.selectedPortfolioId, () => {
               <div class="card-row">
                 <div class="ticker-badge">{{ item.assetTicker }}</div>
                 <div class="amount" :class="item.isForecast ? 'text-gray' : 'text-green'">
-                  +{{ formatMoney(item.totalAmount.toFixed(2)) }} {{ item.currency }}
+                  +{{ formatMoney(item.totalAmount.toFixed(2)) }} {{ getCurrencySymbol(item.currency) }}
                 </div>
               </div>
               
               <div class="card-row">
                 <div class="company-name">{{ item.assetName }}</div>
-                <div class="per-share">{{ item.value }} / шт</div>
+                <div class="per-share">{{ item.value }} {{ getCurrencySymbol(item.currency) }} / шт</div>
               </div>
 
               <div class="card-footer">
