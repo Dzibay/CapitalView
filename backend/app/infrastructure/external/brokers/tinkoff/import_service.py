@@ -1,6 +1,5 @@
 """
-Сервис импорта портфеля из Tinkoff.
-Перенесено из services/integrations/tinkoff_import.py
+Сервис импорта портфеля из Tinkoff
 """
 from datetime import datetime, timedelta
 from t_tech.invest import Client, InstrumentIdType

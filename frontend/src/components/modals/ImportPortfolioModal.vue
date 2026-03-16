@@ -6,6 +6,8 @@
     </div>
 
     <form v-else @submit.prevent="handleImport">
+        <p class="import-hint">Импорт создаёт новый портфель в «Все активы».</p>
+
         <div class="form-section">
           <CustomSelect
             v-model="brokerId"
@@ -33,26 +35,12 @@
         </div>
 
         <div class="form-section">
-          <CustomSelect
-            v-model="portfolioId"
-            :options="availablePortfolios"
-            label="Портфель"
-            placeholder="Создать новый"
-            empty-option-text="Создать новый"
-            option-label="name"
-            option-value="id"
-            :min-width="'100%'"
-            :flex="'none'"
-          />
-        </div>
-
-        <div v-if="!portfolioId" class="form-section">
           <FormInput
             v-model="portfolioName"
-            label="Название нового портфеля"
+            label="Название портфеля"
             :icon="FileText"
             type="text"
-            placeholder="Введите название портфеля"
+            placeholder="Например: Брокер Tinkoff"
             required
           />
         </div>
@@ -63,7 +51,7 @@
           <Button variant="secondary" type="button" @click="$emit('close')" :disabled="loading">
             Отмена
           </Button>
-          <Button variant="primary" type="submit" :disabled="loading || !brokerId" :loading="loading">
+          <Button variant="primary" type="submit" :disabled="loading || !brokerId || !portfolioName?.trim()" :loading="loading">
             <template #icon>
               <Upload :size="16" />
             </template>
@@ -75,7 +63,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Upload, Key, FileText, Loader2 } from 'lucide-vue-next'
 import { Button } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
@@ -85,7 +73,6 @@ import ModalBase from './ModalBase.vue'
 
 const props = defineProps({
   onImport: Function,
-  portfolios: Array,
   onTaskCreated: Function
 })
 const emit = defineEmits(['close'])
@@ -118,51 +105,9 @@ const token = ref(getDefaultToken())
 const brokerId = ref(null)
 const brokers = ref([])
 const loadingBrokers = ref(false)
-const portfolioId = ref(null)
 const portfolioName = ref(getDefaultPortfolioName())
 const loading = ref(false)
 const error = ref('')
-
-// Портфели, доступные для выбранного брокера:
-// — без привязки к брокеру
-// — уже привязанные к этому же брокеру
-// — не являющиеся дочерними портфеля другого брокера
-const availablePortfolios = computed(() => {
-  if (!props.portfolios || !brokerId.value) return props.portfolios || []
-
-  const allPortfolios = props.portfolios
-  const blockedIds = new Set()
-
-  const portfoliosWithOtherBroker = allPortfolios.filter(p => {
-    const connBroker = p.connection?.broker_id || null
-    return connBroker && connBroker !== brokerId.value
-  })
-
-  const collectChildren = (parentId) => {
-    allPortfolios.forEach(p => {
-      if (p.parent_portfolio_id === parentId && !blockedIds.has(p.id)) {
-        blockedIds.add(p.id)
-        collectChildren(p.id)
-      }
-    })
-  }
-
-  portfoliosWithOtherBroker.forEach(p => {
-    blockedIds.add(p.id)
-    collectChildren(p.id)
-  })
-
-  return allPortfolios.filter(p => !blockedIds.has(p.id))
-})
-
-watch(brokerId, () => {
-  if (portfolioId.value) {
-    const stillAvailable = availablePortfolios.value.some(p => p.id === portfolioId.value)
-    if (!stillAvailable) {
-      portfolioId.value = null
-    }
-  }
-})
 
 // Загружаем список брокеров
 const loadBrokers = async () => {
@@ -203,6 +148,11 @@ const handleImport = async () => {
     return
   }
 
+  if (!portfolioName.value?.trim()) {
+    error.value = 'Введите название портфеля'
+    return
+  }
+
   loading.value = true
   error.value = ''
 
@@ -210,8 +160,8 @@ const handleImport = async () => {
     const result = await props.onImport({
       broker_id: brokerId.value,
       token: token.value,
-      portfolioId: portfolioId.value,
-      portfolio_name: portfolioName.value
+      portfolioId: null,
+      portfolio_name: portfolioName.value.trim()
     })
     
     // Если создана задача, вызываем callback
@@ -229,6 +179,15 @@ const handleImport = async () => {
 </script>
 
 <style scoped>
+.import-hint {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: #eff6ff;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #1e40af;
+}
+
 .form-section {
   margin-bottom: 20px;
 }

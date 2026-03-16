@@ -279,8 +279,7 @@ const handleMoveAsset = (asset) => {
       <ImportPortfolioModal 
         v-if="modals.import" 
         @close="closeModal('import')" 
-        :onImport="importPortfolio" 
-        :portfolios="parsedDashboard.portfolios"
+        :onImport="importPortfolio"
       />
       <ImportStatusModal 
         v-if="modals.importStatus && currentImportTaskId" 

@@ -84,6 +84,12 @@ async def get_tinkoff_portfolio_async(token: str) -> dict:
     return await asyncio.to_thread(get_tinkoff_portfolio, token)
 
 
+async def get_bks_portfolio_async(token: str) -> dict:
+    """Асинхронная обертка для get_bks_portfolio."""
+    from app.infrastructure.external.brokers.bks import get_bks_portfolio
+    return await asyncio.to_thread(get_bks_portfolio, token)
+
+
 async def process_import_task(task: dict) -> bool:
     """
     Обрабатывает задачу импорта портфеля.
@@ -128,6 +134,8 @@ async def process_import_task(task: dict) -> bool:
         
         if broker_id_int == BrokerID.TINKOFF:
             broker_data = await get_tinkoff_portfolio_async(broker_token)
+        elif broker_id_int == BrokerID.BKS:
+            broker_data = await get_bks_portfolio_async(broker_token)
         else:
             raise Exception(f"Импорт для брокера {broker_id_int} не реализован")
         
