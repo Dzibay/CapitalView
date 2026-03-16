@@ -56,7 +56,8 @@ from app.api.v1 import (
     analytics,
     dashboard,
     tasks,
-    missed_payouts
+    missed_payouts,
+    support
 )
 
 # Регистрация API v1 роутеров
@@ -69,6 +70,7 @@ app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(missed_payouts.router, prefix="/api/v1", tags=["missed-payouts"])
+app.include_router(support.router, prefix="/api/v1", tags=["support"])
 
 
 @app.on_event("startup")

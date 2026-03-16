@@ -59,6 +59,9 @@ export const API_ENDPOINTS = {
   MISSED_PAYOUTS: {
     BASE: '/missed-payouts',
   },
+  SUPPORT: {
+    MESSAGE: '/support/message',
+  },
 };
 
 

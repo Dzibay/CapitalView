@@ -7,7 +7,8 @@ import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import Widget from '../components/widgets/base/Widget.vue'
 import WidgetContainer from '../components/widgets/base/WidgetContainer.vue'
-import { User, Lock, LogOut } from 'lucide-vue-next'
+import { supportService } from '../services/supportService'
+import { User, Lock, LogOut, MessageCircle } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -27,7 +28,8 @@ const settings = ref({
     current: '',
     new: '',
     confirm: '',
-  }
+  },
+  support: ''
 })
 
 // Состояния для UI
@@ -37,6 +39,9 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const passwordError = ref('')
 const passwordSuccess = ref('')
+const supportError = ref('')
+const supportSuccess = ref('')
+const isLoadingSupport = ref(false)
 
 // Обновляем значения при изменении пользователя в store
 watch(() => authStore.user, (newUser) => {
@@ -134,6 +139,39 @@ const savePassword = async () => {
     passwordError.value = error.response?.data?.detail || error.message || 'Произошла ошибка при смене пароля'
   } finally {
     isLoadingPassword.value = false
+  }
+}
+
+// Отправка сообщения в поддержку
+const sendSupportMessage = async () => {
+  if (isLoadingSupport.value) return
+
+  const text = settings.value.support?.trim()
+  supportError.value = ''
+  supportSuccess.value = ''
+
+  if (!text) {
+    supportError.value = 'Введите сообщение'
+    return
+  }
+
+  if (text.length > 5000) {
+    supportError.value = 'Сообщение не должно превышать 5000 символов'
+    return
+  }
+
+  isLoadingSupport.value = true
+
+  try {
+    await supportService.sendMessage(text)
+    supportSuccess.value = 'Сообщение отправлено. Мы свяжемся с вами в ближайшее время.'
+    settings.value.support = ''
+    setTimeout(() => { supportSuccess.value = '' }, 5000)
+  } catch (error) {
+    console.error('Ошибка при отправке сообщения:', error)
+    supportError.value = error.response?.data?.detail || error.message || 'Не удалось отправить сообщение'
+  } finally {
+    isLoadingSupport.value = false
   }
 }
 </script>
@@ -247,6 +285,36 @@ const savePassword = async () => {
           </button>
         </Widget>
       </WidgetContainer>
+
+      <!-- Поддержка -->
+      <WidgetContainer :gridColumn="12" minHeight="auto">
+        <Widget title="Поддержка" :icon="MessageCircle">
+          <div v-if="supportError" class="message message-error">{{ supportError }}</div>
+          <div v-if="supportSuccess" class="message message-success">{{ supportSuccess }}</div>
+
+          <div class="form-group">
+            <label for="support-message">Ваше сообщение</label>
+            <textarea
+              id="support-message"
+              v-model="settings.support"
+              placeholder="Опишите ваш вопрос или проблему..."
+              class="form-textarea"
+              rows="4"
+              maxlength="5000"
+              :disabled="isLoadingSupport"
+            />
+            <span class="char-count">{{ (settings.support || '').length }} / 5000</span>
+          </div>
+
+          <button
+            @click="sendSupportMessage"
+            class="btn-primary"
+            :disabled="isLoadingSupport || !settings.support?.trim()"
+          >
+            {{ isLoadingSupport ? 'Отправка...' : 'Отправить в поддержку' }}
+          </button>
+        </Widget>
+      </WidgetContainer>
     </div>
   </PageLayout>
 </template>
@@ -301,6 +369,43 @@ const savePassword = async () => {
   background: var(--bg-tertiary);
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--axis-border);
+  border-radius: 8px;
+  font-size: var(--text-body-secondary-size);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+}
+
+.form-textarea::placeholder {
+  color: var(--text-quaternary);
+}
+
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(82, 125, 229, 0.15);
+}
+
+.form-textarea:disabled {
+  background: var(--bg-tertiary);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.char-count {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-quaternary);
 }
 
 .btn-primary {
