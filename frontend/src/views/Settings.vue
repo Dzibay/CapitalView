@@ -112,8 +112,8 @@ const savePassword = async () => {
     return
   }
 
-  if (newPass.length < 4) {
-    passwordError.value = 'Новый пароль должен быть не менее 4 символов'
+  if (newPass.length < 8 || !/[a-zA-Z]/.test(newPass) || !/\d/.test(newPass)) {
+    passwordError.value = 'Пароль: минимум 8 символов, буквы и цифры'
     return
   }
 
@@ -256,7 +256,7 @@ const sendSupportMessage = async () => {
               id="new-password"
               type="password" 
               v-model="settings.password.new"
-              placeholder="Минимум 4 символа"
+              placeholder="Минимум 8 символов, буквы и цифры"
               class="form-input"
               autocomplete="new-password"
               :disabled="isLoadingPassword"

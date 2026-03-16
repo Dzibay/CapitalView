@@ -311,16 +311,27 @@ const getAssetMeta = (name) => {
   return meta || null
 }
 
-// подсветка совпадения в названии актива
+// Экранирование HTML для защиты от XSS
+const escapeHtml = (str) => {
+  if (str == null) return ''
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+// подсветка совпадения в названии актива (с экранированием для защиты от XSS)
 const highlightMatch = (text) => {
-  if (!assetSearch.value) return text
-  const t = text || ''
+  if (!assetSearch.value) return escapeHtml(text || '')
+  const t = String(text || '')
   const q = assetSearch.value
   const idx = t.toLowerCase().indexOf(q.toLowerCase())
-  if (idx === -1) return t
-  const before = t.slice(0, idx)
-  const match = t.slice(idx, idx + q.length)
-  const after = t.slice(idx + q.length)
+  if (idx === -1) return escapeHtml(t)
+  const before = escapeHtml(t.slice(0, idx))
+  const match = escapeHtml(t.slice(idx, idx + q.length))
+  const after = escapeHtml(t.slice(idx + q.length))
   return `${before}<mark>${match}</mark>${after}`
 }
 

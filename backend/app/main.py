@@ -76,6 +76,7 @@ app.include_router(support.router, prefix="/api/v1", tags=["support"])
 @app.on_event("startup")
 async def startup_event():
     """События при запуске приложения."""
+    Config.validate()
     logger.info("🚀 CapitalView API starting up...")
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     logger.info(f"Log level: {Config.LOG_LEVEL}")
@@ -113,9 +114,11 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+    is_production = os.getenv("ENVIRONMENT", "development") == "production"
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=5000,
-        reload=True
+        port=int(os.getenv("PORT", "5000")),
+        reload=not is_production,
+        workers=4 if is_production else 1,
     )

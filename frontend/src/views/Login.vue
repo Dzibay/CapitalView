@@ -36,8 +36,8 @@ const handleSubmit = async () => {
   loading.value = true;
 
   try {
-    if (!isLoginMode.value && password.value.length < 4) {
-      message.value = 'Пароль должен быть не менее 4 символов';
+    if (!isLoginMode.value && (password.value.length < 8 || !/[a-zA-Z]/.test(password.value) || !/\d/.test(password.value))) {
+      message.value = 'Пароль: минимум 8 символов, буквы и цифры';
       loading.value = false;
       return;
     }
@@ -142,7 +142,7 @@ const handleGoogleLogin = () => {
                   id="password"
                   v-model="password"
                   type="password"
-                  :placeholder="isLoginMode ? 'Введите пароль' : 'Минимум 4 символа'"
+                  :placeholder="isLoginMode ? 'Введите пароль' : 'Минимум 8 символов, буквы и цифры'"
                   required
                   autocomplete="current-password"
                   class="form-input"

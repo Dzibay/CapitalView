@@ -1,25 +1,29 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import DashboardLayout from '../layouts/DashboardLayout.vue'
-import Home from '../views/Home.vue'
-import Login from '../views/Login.vue';
-import Dashboard from '../views/Dashboard.vue';
-import Assets from '../views/Assets.vue'
-import AssetDetail from '../views/AssetDetail.vue';
-import Transactions from '../views/Transactions.vue';
-import Analitics from '../views/Analitics.vue';
-import Dividends from '../views/Dividends.vue';
-import Settings from '../views/Settings.vue';
-import AuthCallback from '../views/AuthCallback.vue';
-import LegalDocument from '../views/LegalDocument.vue';
 import { authService } from '../services/authService';
 import { useAuthStore } from '../stores/auth.store';
+
+// Lazy loading: главная и логин — eager (быстрая первая загрузка)
+const Home = () => import('../views/Home.vue');
+const Login = () => import('../views/Login.vue');
+
+// Остальные маршруты — lazy (загружаются по требованию)
+const LegalDocument = () => import('../views/LegalDocument.vue');
+const AuthCallback = () => import('../views/AuthCallback.vue');
+const DashboardLayout = () => import('../layouts/DashboardLayout.vue');
+const Dashboard = () => import('../views/Dashboard.vue');
+const Analitics = () => import('../views/Analitics.vue');
+const Assets = () => import('../views/Assets.vue');
+const AssetDetail = () => import('../views/AssetDetail.vue');
+const Transactions = () => import('../views/Transactions.vue');
+const Dividends = () => import('../views/Dividends.vue');
+const Settings = () => import('../views/Settings.vue');
 
 const routes = [
   { path: '/', component: Home },
   { path: '/privacy', component: LegalDocument },
   { path: '/terms', component: LegalDocument },
-  { 
-    path: '/login', 
+  {
+    path: '/login',
     component: Login,
     meta: { requiresGuest: true }
   },
@@ -27,15 +31,15 @@ const routes = [
   {
     path: '/',
     component: DashboardLayout,
-    meta: { requiresAuth: true }, // Требует авторизации
+    meta: { requiresAuth: true },
     children: [
       { path: '/dashboard', component: Dashboard },
       { path: '/analitics', component: Analitics },
       { path: '/assets', component: Assets },
       { path: '/assets/:id', component: AssetDetail, props: true },
-      { path: '/transactions', component: Transactions},
-      { path: '/dividends', component: Dividends},
-      { path: '/settings', component: Settings}
+      { path: '/transactions', component: Transactions },
+      { path: '/dividends', component: Dividends },
+      { path: '/settings', component: Settings }
     ]
   }
 ]
