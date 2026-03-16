@@ -45,6 +45,11 @@ const handleSubmit = async () => {
   loading.value = true;
 
   try {
+    if (!isLoginMode.value && password.value.length < 4) {
+      message.value = 'Пароль должен быть не менее 4 символов';
+      loading.value = false;
+      return;
+    }
     if (isLoginMode.value) {
       // === Логика ВХОДА ===
       // authService.login уже сохраняет токен автоматически
@@ -123,7 +128,7 @@ const submitButtonText = computed(() => loading.value ? 'Загрузка...' : 
                 <input
                   v-model="password"
                   type="password"
-                  placeholder="Пароль"
+                  :placeholder="isLoginMode ? 'Пароль' : 'Пароль (мин. 4 символа)'"
                   required
                   autocomplete="current-password"
                   class="form-input"

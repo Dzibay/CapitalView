@@ -8,6 +8,7 @@ export const API_ENDPOINTS = {
     LOGIN: '/auth/login',
     CHECK_TOKEN: '/auth/check-token',
     UPDATE_PROFILE: '/auth/profile',
+    CHANGE_PASSWORD: '/auth/change-password',
   },
   DASHBOARD: {
     BASE: '/dashboard/',

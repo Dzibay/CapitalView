@@ -60,3 +60,30 @@ def update_user(user_id: str, name: str = None, email: str = None):
         return get_user_by_id(user_id)
     
     return _user_repository.update_sync(user_id, update_data)
+
+
+def update_user_password(user_id: str, current_password: str, new_password: str) -> bool:
+    """
+    Обновляет пароль пользователя.
+    
+    Args:
+        user_id: ID пользователя
+        current_password: Текущий пароль для проверки
+        new_password: Новый пароль
+    
+    Returns:
+        True при успехе
+    
+    Raises:
+        ValueError: при неверном текущем пароле
+    """
+    user = get_user_by_id(user_id)
+    if not user:
+        raise ValueError("Пользователь не найден")
+    
+    if not bcrypt.check_password_hash(user["password_hash"], current_password):
+        raise ValueError("Неверный текущий пароль")
+    
+    hashed = bcrypt.generate_password_hash(new_password)
+    _user_repository.update_sync(user_id, {"password_hash": hashed})
+    return True

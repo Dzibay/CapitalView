@@ -127,7 +127,7 @@ html {
   --text-heading-3-weight: 500;
   --text-heading-3-color: var(--text-tertiary);
   /* Основное число (капитал, суммы) */
-  --text-value-size: 1.5rem;
+  --text-value-size: 1.4rem;
   --text-value-weight: 600;
   --text-value-color: var(--text-primary);
   --text-value-line: 1.2;

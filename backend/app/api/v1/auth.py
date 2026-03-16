@@ -3,9 +3,9 @@ API endpoints для аутентификации.
 Версия 1.
 """
 from fastapi import APIRouter, HTTPException, Depends
-from app.domain.services.user_service import create_user, get_user_by_email, update_user
+from app.domain.services.user_service import create_user, get_user_by_email, update_user, update_user_password
 from app.extensions import bcrypt
-from app.domain.models.auth_models import RegisterRequest, LoginRequest, UpdateProfileRequest
+from app.domain.models.auth_models import RegisterRequest, LoginRequest, UpdateProfileRequest, ChangePasswordRequest
 from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.utils.response import success_response
 from app.utils.jwt import create_access_token
@@ -104,6 +104,26 @@ async def update_profile(
             },
             message="Профиль успешно обновлен"
         )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.put("/change-password")
+async def change_password(
+    data: ChangePasswordRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Смена пароля пользователя."""
+    try:
+        update_user_password(
+            user_id=user["id"],
+            current_password=data.current_password,
+            new_password=data.new_password
+        )
+        return success_response(message="Пароль успешно изменён")
     except ValueError as e:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
