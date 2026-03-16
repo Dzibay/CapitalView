@@ -9,6 +9,7 @@ import Transactions from '../views/Transactions.vue';
 import Analitics from '../views/Analitics.vue';
 import Dividends from '../views/Dividends.vue';
 import Settings from '../views/Settings.vue';
+import AuthCallback from '../views/AuthCallback.vue';
 import { authService } from '../services/authService';
 import { useAuthStore } from '../stores/auth.store';
 
@@ -17,8 +18,9 @@ const routes = [
   { 
     path: '/login', 
     component: Login,
-    meta: { requiresGuest: true } // Только для неавторизованных
+    meta: { requiresGuest: true }
   },
+  { path: '/auth/callback', component: AuthCallback },
   {
     path: '/',
     component: DashboardLayout,

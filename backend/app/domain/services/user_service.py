@@ -34,6 +34,31 @@ def create_user(email: str, password: str):
     return result
 
 
+def create_or_get_user_oauth(email: str, name: str = None):
+    """
+    Создаёт пользователя для OAuth (без пароля) или возвращает существующего.
+    
+    Args:
+        email: Email пользователя
+        name: Имя пользователя (опционально)
+    
+    Returns:
+        Пользователь (существующий или только что созданный)
+    """
+    user = get_user_by_email(email)
+    if user:
+        if name and user.get("name") != name:
+            update_user(str(user["id"]), name=name)
+            user = get_user_by_id(user["id"])
+        return user
+    
+    data = {"email": email}
+    if name:
+        data["name"] = name
+    result = _user_repository.create_sync(data)
+    return result
+
+
 def update_user(user_id: str, name: str = None, email: str = None):
     """
     Обновляет данные пользователя.
@@ -80,6 +105,8 @@ def update_user_password(user_id: str, current_password: str, new_password: str)
     user = get_user_by_id(user_id)
     if not user:
         raise ValueError("Пользователь не найден")
+    if not user.get("password_hash"):
+        raise ValueError("У этого аккаунта нет пароля (вход через Google)")
     
     if not bcrypt.check_password_hash(user["password_hash"], current_password):
         raise ValueError("Неверный текущий пароль")
