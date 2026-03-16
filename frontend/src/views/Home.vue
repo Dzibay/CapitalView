@@ -534,12 +534,12 @@ onUnmounted(() => {
           <div class="footer-col">
             <h4>Поддержка</h4>
             <a href="#faq">FAQ</a>
-            <a href="mailto:support@capitalview.ru">Написать нам</a>
+            <router-link :to="{ path: '/login', query: { redirect: '/settings#support' } }">Написать нам</router-link>
           </div>
           <div class="footer-col">
             <h4>Правовая информация</h4>
-            <a href="#">Политика конфиденциальности</a>
-            <a href="#">Условия использования</a>
+            <a href="/privacy" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a>
+            <a href="/terms" target="_blank" rel="noopener noreferrer">Условия использования</a>
           </div>
         </div>
       </div>

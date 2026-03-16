@@ -287,7 +287,7 @@ const sendSupportMessage = async () => {
       </WidgetContainer>
 
       <!-- Поддержка -->
-      <WidgetContainer :gridColumn="12" minHeight="auto">
+      <WidgetContainer id="support" :gridColumn="12" minHeight="auto">
         <Widget title="Поддержка" :icon="MessageCircle">
           <div v-if="supportError" class="message message-error">{{ supportError }}</div>
           <div v-if="supportSuccess" class="message message-success">{{ supportSuccess }}</div>

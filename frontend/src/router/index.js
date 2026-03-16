@@ -10,11 +10,14 @@ import Analitics from '../views/Analitics.vue';
 import Dividends from '../views/Dividends.vue';
 import Settings from '../views/Settings.vue';
 import AuthCallback from '../views/AuthCallback.vue';
+import LegalDocument from '../views/LegalDocument.vue';
 import { authService } from '../services/authService';
 import { useAuthStore } from '../stores/auth.store';
 
 const routes = [
   { path: '/', component: Home },
+  { path: '/privacy', component: LegalDocument },
+  { path: '/terms', component: LegalDocument },
   { 
     path: '/login', 
     component: Login,

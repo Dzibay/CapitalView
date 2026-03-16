@@ -7,11 +7,11 @@
           <span class="version">v1.0</span>
         </div>
         <div class="footer-links">
-          <a href="#">Политика конфиденциальности</a>
+          <a href="/privacy" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a>
           <span class="divider" />
-          <a href="#">Условия использования</a>
+          <a href="/terms" target="_blank" rel="noopener noreferrer">Условия использования</a>
           <span class="divider" />
-          <a href="#">Поддержка</a>
+          <router-link :to="{ path: '/settings', hash: '#support' }">Поддержка</router-link>
         </div>
       </div>
       <div class="footer-bottom">
