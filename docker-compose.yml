@@ -5,18 +5,96 @@ services:
       dockerfile: Dockerfile
     container_name: capitalview-backend
     restart: unless-stopped
+    env_file: .env
     environment:
       - ENVIRONMENT=production
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_NAME=${DB_NAME:-capitalview}
-      - DB_USER=${DB_USER:-capitalview}
-      - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:80}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
-      - BACKEND_URL=${BACKEND_URL:-http://localhost}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - capitalview
+
+  worker-task:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: capitalview-worker-task
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.task_worker_optimized"]
+    env_file: .env
+    environment:
+      - ENVIRONMENT=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - capitalview
+
+  worker-moex-prices:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: capitalview-worker-moex-prices
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.moex_price_worker"]
+    env_file: .env
+    environment:
+      - ENVIRONMENT=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - capitalview
+
+  worker-currency-prices:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: capitalview-worker-currency-prices
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.currency_price_worker"]
+    env_file: .env
+    environment:
+      - ENVIRONMENT=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - capitalview
+
+  worker-crypto-prices:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: capitalview-worker-crypto-prices
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.crypto_price_worker"]
+    env_file: .env
+    environment:
+      - ENVIRONMENT=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,10 +122,11 @@ services:
     image: postgres:15-alpine
     container_name: capitalview-postgres
     restart: unless-stopped
+    env_file: .env
     environment:
-      - POSTGRES_DB=${DB_NAME:-capitalview}
-      - POSTGRES_USER=${DB_USER:-capitalview}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-capitalview}
+      POSTGRES_USER: ${DB_USER:-capitalview}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
