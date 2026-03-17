@@ -28,11 +28,13 @@ if not DB_DIR.exists():
 INIT_SQL = DB_DIR / "init.sql"
 INDEXES_SQL = DB_DIR / "create_indexes.sql"
 
-# Файлы функций (исключаем init, bd, create_indexes)
-FUNCTION_FILES = sorted(
-    f for f in DB_DIR.glob("*.sql")
-    if f.name not in ("init.sql", "bd.sql", "create_indexes.sql")
-)
+# Файлы функций: get_user_portfolios_analytics до get_dashboard_data_complete (зависимость)
+_EXCLUDED = ("init.sql", "bd.sql", "create_indexes.sql")
+_ALL_FUNCTIONS = sorted(f for f in DB_DIR.glob("*.sql") if f.name not in _EXCLUDED)
+_PRIORITY = ["get_user_portfolios_analytics.sql"]  # должен быть до get_dashboard_data_complete
+FUNCTION_FILES = [f for f in _ALL_FUNCTIONS if f.name in _PRIORITY] + [
+    f for f in _ALL_FUNCTIONS if f.name not in _PRIORITY
+]
 
 
 async def run_sql_file(conn, path: Path) -> None:

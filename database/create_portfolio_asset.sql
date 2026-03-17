@@ -1,4 +1,4 @@
-Drop function create_portfolio_asset;
+DROP FUNCTION IF EXISTS create_portfolio_asset(uuid, bigint, bigint, bigint, text, text, bigint, numeric, numeric, date);
 CREATE OR REPLACE FUNCTION create_portfolio_asset(
     p_user_id uuid,
     p_portfolio_id bigint,

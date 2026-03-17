@@ -1,4 +1,4 @@
-drop function delete_portfolio_asset;
+DROP FUNCTION IF EXISTS delete_portfolio_asset(bigint);
 CREATE OR REPLACE FUNCTION delete_portfolio_asset(
     p_portfolio_asset_id bigint
 )
