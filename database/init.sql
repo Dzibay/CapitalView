@@ -299,16 +299,20 @@ INSERT INTO brokers (id, name) OVERRIDING SYSTEM VALUE VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO operations_type (id, name) OVERRIDING SYSTEM VALUE VALUES
-  (1, 'Пополнение'),
-  (2, 'Вывод'),
-  (3, 'Дивиденды'),
-  (4, 'Купоны'),
-  (5, 'Комиссия'),
-  (6, 'Налог')
+  (1, 'Buy'),
+  (2, 'Sell'),
+  (3, 'Dividend'),
+  (4, 'Coupon'),
+  (5, 'Deposit'),
+  (6, 'Withdraw'),
+  (7, 'Commission'),
+  (8, 'Tax'),
+  (9, 'Redemption'),
+  (10, 'Other')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO transactions_type (id, name) OVERRIDING SYSTEM VALUE VALUES
-  (1, 'Покупка'),
-  (2, 'Продажа'),
-  (3, 'Перевод')
+  (1, 'Buy'),
+  (2, 'Sell'),
+  (3, 'Redemption')
 ON CONFLICT (id) DO NOTHING;
