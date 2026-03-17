@@ -1,0 +1,24 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Системные зависимости для psycopg2
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копируем зависимости
+COPY requirements.txt .
+
+# Устанавливаем зависимости (без dev)
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
+
+# Копируем код приложения
+COPY . .
+
+# Порт приложения
+EXPOSE 5000
+
+# Запуск: Gunicorn + Uvicorn workers для production
+CMD ["gunicorn", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:5000"]
