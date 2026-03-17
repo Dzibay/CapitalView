@@ -254,10 +254,28 @@ INSERT INTO asset_types (id, name, is_custom) OVERRIDING SYSTEM VALUE VALUES
   (7, 'Валюта', false)
 ON CONFLICT (id) DO NOTHING;
 
--- RUB (id=1) — базовая валюта (до добавления FK quote_asset_id)
+-- Валюты (asset_type_id=7, quote_asset_id=1=RUB)
+-- RUB — id=1 обязателен (базовая валюта, циклическая ссылка)
 INSERT INTO assets (id, asset_type_id, user_id, name, ticker, quote_asset_id) OVERRIDING SYSTEM VALUE
 SELECT 1, 7, NULL, 'Российский рубль', 'RUB', 1
 WHERE NOT EXISTS (SELECT 1 FROM assets WHERE id = 1);
+
+-- Остальные валюты — по ticker (без фиксированного id, чтобы не конфликтовать с MOEX и др.)
+INSERT INTO assets (asset_type_id, user_id, name, ticker, quote_asset_id)
+SELECT 7, NULL, 'Доллар США', 'USD', 1
+WHERE NOT EXISTS (SELECT 1 FROM assets WHERE ticker = 'USD' AND user_id IS NULL);
+
+INSERT INTO assets (asset_type_id, user_id, name, ticker, quote_asset_id)
+SELECT 7, NULL, 'Евро', 'EUR', 1
+WHERE NOT EXISTS (SELECT 1 FROM assets WHERE ticker = 'EUR' AND user_id IS NULL);
+
+INSERT INTO assets (asset_type_id, user_id, name, ticker, quote_asset_id)
+SELECT 7, NULL, 'Китайский юань', 'CNY', 1
+WHERE NOT EXISTS (SELECT 1 FROM assets WHERE ticker = 'CNY' AND user_id IS NULL);
+
+INSERT INTO assets (asset_type_id, user_id, name, ticker, quote_asset_id)
+SELECT 7, NULL, 'Швейцарский франк', 'CHF', 1
+WHERE NOT EXISTS (SELECT 1 FROM assets WHERE ticker = 'CHF' AND user_id IS NULL);
 
 -- FK quote_asset_id (циклическая ссылка)
 DO $$
