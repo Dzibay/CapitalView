@@ -26,6 +26,7 @@ DB_DIR = _script_dir.parent.parent / "database"
 if not DB_DIR.exists():
     DB_DIR = Path("/app/database")  # Docker: context=., database копируется в /app/database
 INIT_SQL = DB_DIR / "init.sql"
+FIX_DUPLICATES_SQL = DB_DIR / "fix_duplicate_payouts.sql"
 INDEXES_SQL = DB_DIR / "create_indexes.sql"
 
 # Файлы функций: get_user_portfolios_analytics до get_dashboard_data_complete (зависимость)
@@ -61,7 +62,14 @@ async def init_db():
             except Exception as e:
                 logger.warning(f"Ошибка {f.name}: {e}")
 
-        # 3. Индексы
+        # 3. Удаление дубликатов купонов (если есть) перед созданием уникального индекса
+        if FIX_DUPLICATES_SQL.exists():
+            try:
+                await run_sql_file(conn, FIX_DUPLICATES_SQL)
+            except Exception as e:
+                logger.warning(f"fix_duplicate_payouts: {e}")
+
+        # 4. Индексы
         await run_sql_file(conn, INDEXES_SQL)
 
     logger.info("Инициализация БД завершена.")
