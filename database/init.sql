@@ -251,7 +251,11 @@ INSERT INTO asset_types (id, name, is_custom) OVERRIDING SYSTEM VALUE VALUES
   (4, 'Опцион', false),
   (5, 'Фьючерс', false),
   (6, 'Криптовалюта', false),
-  (7, 'Валюта', false)
+  (7, 'Валюта', false),
+  (8, 'Недвижимость', true),
+  (9, 'Драгоценная монета', true),
+  (10, 'Вклад', true),
+  (11, 'Другое', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Валюты (asset_type_id=7, quote_asset_id=1=RUB)

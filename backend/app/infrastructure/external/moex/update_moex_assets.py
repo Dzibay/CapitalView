@@ -654,7 +654,7 @@ async def cleanup_priceless_assets(pre_existing_ids: Optional[set] = None) -> in
     """
     logger.info("Очистка активов без ценовых данных...")
 
-    moex_types = [1, 2, 10, 11]
+    moex_types = [1, 2, 3, 4, 5]
     all_moex = await table_select_async(
         "assets", "id, ticker, name, properties, user_id",
         in_filters={"asset_type_id": moex_types}, limit=None,
@@ -769,7 +769,7 @@ async def import_moex_assets_async():
 
     # 2. Загрузка существующих активов
     logger.info("--- Этап 2: Загрузка существующих активов из БД ---")
-    type_map = {"Акция": 1, "Облигация": 2, "Фонд": 10, "Валюта": 7, "Фьючерс": 11}
+    type_map = {"Акция": 1, "Облигация": 2, "Фонд": 3, "Опцион": 4, "Фьючерс": 5, "Валюта": 7}
 
     raw = await table_select_async(
         "assets", "id, ticker, asset_type_id, name, properties, user_id, quote_asset_id",
