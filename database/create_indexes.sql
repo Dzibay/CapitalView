@@ -139,6 +139,12 @@ CREATE INDEX IF NOT EXISTS idx_asset_payouts_asset_type
 ON asset_payouts(asset_id, type)
 WHERE type IS NOT NULL;
 
+-- Уникальность купонов: (asset_id, payment_date, type) — предотвращает дубли при update_coupons
+-- Если есть дубликаты, сначала: psql -f fix_duplicate_payouts.sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_payouts_unique_coupon
+ON asset_payouts(asset_id, payment_date, type)
+WHERE type = 'coupon' AND payment_date IS NOT NULL;
+
 -- ============================================================================
 -- ТАБЛИЦА: portfolio_daily_positions
 -- ============================================================================
@@ -224,13 +230,3 @@ CREATE INDEX IF NOT EXISTS idx_missed_payouts_asset_id ON missed_payouts(asset_i
 CREATE INDEX IF NOT EXISTS idx_missed_payouts_payout_id ON missed_payouts(payout_id);
 CREATE INDEX IF NOT EXISTS idx_missed_payouts_created_at ON missed_payouts(created_at DESC);
 
--- ============================================================================
--- УДАЛЕНИЕ ДУБЛИРУЮЩИХ И БЕСПОЛЕЗНЫХ ИНДЕКСОВ
--- (standalone date-индексы без portfolio/asset контекста)
--- ============================================================================
-
-DROP INDEX IF EXISTS idx_transactions_date;
-DROP INDEX IF EXISTS idx_cash_operations_date;
-DROP INDEX IF EXISTS idx_portfolio_daily_positions_date;
-DROP INDEX IF EXISTS idx_portfolio_daily_values_date;
-DROP INDEX IF EXISTS idx_asset_prices_date;

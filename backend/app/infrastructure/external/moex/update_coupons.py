@@ -58,28 +58,25 @@ async def update_all_coupons():
     print("📥 Загрузка существующих купонов из БД...")
     existing_payouts = await db_select(
         "asset_payouts",
-        "asset_id, record_date, value, type",
+        "asset_id, record_date, payment_date, value, type",
         filters={"type": "coupon"},
         limit=None
     )
     
-    # Создаем множество ключей для быстрой проверки дубликатов
-    # Ключ: (asset_id, record_date, value, type)
+    # Ключ: (asset_id, payment_date, value, type) — payment_date (coupondate) уникален для каждого купона
+    # record_date может совпадать у разных купонов, payment_date — надёжный идентификатор
     existing_keys = set()
     for payout in existing_payouts:
-        record_date = payout.get("record_date")
-        if not record_date:
+        payment_date = payout.get("payment_date") or payout.get("record_date")
+        if not payment_date:
             continue
-        
-        # Нормализуем дату для сравнения
-        if isinstance(record_date, str):
-            record_date = normalize_date(record_date)
-        
-        if record_date:
+        if isinstance(payment_date, str):
+            payment_date = normalize_date(payment_date)
+        if payment_date:
             value = round(float(payout.get("value") or 0), 2)
             p_type = payout.get("type") or "coupon"
-            key = (payout["asset_id"], record_date.isoformat() if hasattr(record_date, 'isoformat') else str(record_date), value, p_type)
-            existing_keys.add(key)
+            date_str = payment_date.isoformat() if hasattr(payment_date, "isoformat") else str(payment_date)
+            existing_keys.add((payout["asset_id"], date_str, value, p_type))
     
     print(f"✅ Загружено {len(existing_keys)} существующих купонов")
     
@@ -109,28 +106,25 @@ async def update_all_coupons():
             ticker = bond["ticker"]
             
             for payout in payouts:
+                payment_date = normalize_date(payout.get("payment_date"))
                 record_date = normalize_date(payout.get("record_date"))
-                if not record_date:
+                if not payment_date and not record_date:
                     continue
-                
+                # payment_date (coupondate) — основной идентификатор купона
+                date_for_key = payment_date or record_date
                 value = round(float(payout.get("value") or 0), 2)
                 p_type = "coupon"
-                
-                # Проверяем на дубликаты
-                key = (asset_id, record_date.isoformat(), value, p_type)
+                key = (asset_id, date_for_key.isoformat(), value, p_type)
                 if key in existing_keys:
                     continue
-                
-                existing_keys.add(key)  # Добавляем в множество, чтобы избежать дубликатов в рамках одного запуска
-                
-                payment_date = normalize_date(payout.get("payment_date"))
+                existing_keys.add(key)
                 
                 new_payout = {
                     "asset_id": asset_id,
-                    "record_date": record_date.isoformat(),
+                    "record_date": record_date.isoformat() if record_date else None,
                     "payment_date": payment_date.isoformat() if payment_date else None,
                     "value": value,
-                    "dividend_yield": None,  # Для купонов dividend_yield не применим
+                    "dividend_yield": None,
                     "type": p_type
                 }
                 
