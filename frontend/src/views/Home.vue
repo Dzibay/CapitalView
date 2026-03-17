@@ -105,30 +105,15 @@ const comingSoonBrokers = [
   { name: 'Альфа', initials: 'А', color: '#ef3124' }
 ]
 
+// Временно: сервис бесплатный
 const pricing = [
   {
-    title: 'Начинающий',
+    title: 'Сервис временно бесплатный',
     price: '0 ₽',
     period: '',
-    features: ['До 3 портфелей', 'Базовая аналитика', 'Ручной ввод сделок', 'Email-поддержка'],
+    features: ['Все функции доступны бесплатно', 'Неограниченные портфели', 'Импорт из Т-Инвестиции', 'Дивидендный календарь', 'Полная аналитика'],
     cta: 'Начать бесплатно',
-    popular: false
-  },
-  {
-    title: 'Инвестор',
-    price: '299 ₽',
-    period: '/ мес',
-    features: ['Неограниченные портфели', 'Импорт из Т-Инвестиции', 'Дивидендный календарь', 'Приоритетная поддержка'],
-    cta: 'Выбрать тариф',
     popular: true
-  },
-  {
-    title: 'PRO',
-    price: '599 ₽',
-    period: '/ мес',
-    features: ['Все функции Инвестора', 'Налоговые отчёты', 'API доступ', 'Персональный менеджер'],
-    cta: 'Выбрать PRO',
-    popular: false
   }
 ]
 
@@ -165,7 +150,7 @@ const faq = [
   },
   {
     question: 'Можно ли использовать бесплатно?',
-    answer: 'Да. Бесплатный тариф позволяет вести до 3 портфелей с базовой аналитикой. Также доступен 30-дневный пробный период на тарифе «Инвестор» — без привязки карты.'
+    answer: 'Да. Сервис временно полностью бесплатный — все функции доступны без ограничений. Неограниченные портфели, импорт из Т-Инвестиции, дивидендный календарь и полная аналитика.'
   },
   {
     question: 'Есть ли мобильное приложение?',
@@ -221,7 +206,7 @@ onUnmounted(() => {
           <div class="nav-links">
             <a href="#features" @click="closeMobileMenu" style="--i:1">Возможности</a>
             <a href="#how-it-works" @click="closeMobileMenu" style="--i:2">Как это работает</a>
-            <a href="#pricing" @click="closeMobileMenu" style="--i:3">Тарифы</a>
+            <a href="#pricing" @click="closeMobileMenu" style="--i:3">Бесплатно</a>
             <a href="#faq" @click="closeMobileMenu" style="--i:4">FAQ</a>
           </div>
           <div class="mobile-only-actions" style="--i:5">
@@ -249,7 +234,7 @@ onUnmounted(() => {
         <div class="hero-content reveal">
           <div class="hero-badge">
             <Check :size="14" :stroke-width="2.5" />
-            Бесплатно 30 дней
+            Сервис временно бесплатный
           </div>
           <h1 class="hero-title">Ваши инвестиции.<br>Одна картина.</h1>
           <p class="hero-subtitle">
@@ -439,17 +424,17 @@ onUnmounted(() => {
 
     <section id="pricing" class="section">
       <div class="container">
-        <h2 class="section-heading reveal">Простые тарифы</h2>
-        <p class="section-subheading reveal">Начните бесплатно. Переходите на PRO, когда будете готовы.</p>
+        <h2 class="section-heading reveal">Сервис временно бесплатный</h2>
+        <p class="section-subheading reveal">Все функции доступны без ограничений. Начните пользоваться прямо сейчас.</p>
 
-        <div class="pricing-grid">
+        <div class="pricing-grid pricing-grid-single">
           <div
             v-for="plan in pricing"
             :key="plan.title"
             class="pricing-card reveal"
             :class="{ popular: plan.popular }"
           >
-            <div v-if="plan.popular" class="popular-tag">Популярный</div>
+            <div v-if="plan.popular" class="popular-tag">Бесплатно</div>
             <h3>{{ plan.title }}</h3>
             <div class="price">
               {{ plan.price }}
@@ -528,7 +513,7 @@ onUnmounted(() => {
           <div class="footer-col">
             <h4>Продукт</h4>
             <a href="#features">Возможности</a>
-            <a href="#pricing">Тарифы</a>
+            <a href="#pricing">Бесплатно</a>
             <a href="#integrations">Интеграции</a>
           </div>
           <div class="footer-col">
@@ -1512,6 +1497,12 @@ onUnmounted(() => {
   margin: 56px auto 0;
 }
 
+.pricing-grid-single {
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .pricing-card {
   background: var(--color-bg);
   border-radius: 20px;
@@ -1599,11 +1590,6 @@ onUnmounted(() => {
   width: 100%;
 }
 
-@media (min-width: 768px) {
-  .pricing-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
 
 /* ========================================
    Testimonials
