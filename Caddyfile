@@ -1,0 +1,8 @@
+# CapitalView — Caddy reverse proxy с автоматическим SSL (Let's Encrypt)
+# Домен: capital-view.ru, www.capital-view.ru
+# Caddy автоматически получает и обновляет сертификаты
+# Для уведомлений об истечении сертификата добавьте: tls { email ваш@email.com }
+
+capital-view.ru, www.capital-view.ru {
+    reverse_proxy frontend:80
+}
