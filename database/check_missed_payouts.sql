@@ -129,7 +129,7 @@ BEGIN
           AND portfolio_id = v_portfolio_id
           AND asset_id = v_asset_id
           AND type = v_operation_type_id
-          AND date::date BETWEEN v_payout.payment_date - INTERVAL '10 days' AND v_payout.payment_date + INTERVAL '10 days'
+          AND date::date BETWEEN v_payout.payment_date - INTERVAL '14 days' AND v_payout.payment_date + INTERVAL '14 days'
           AND ABS(COALESCE(amount_rub, amount) - v_expected_amount) < 0.01; -- Допускаем небольшую погрешность в сумме
         
         -- Если выплата не была получена (или получена не полностью)
