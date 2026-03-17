@@ -7,8 +7,8 @@ const route = useRoute();
 const router = useRouter();
 
 const isLoginMode = ref(true);
-const email = ref('root@gmail.com');
-const password = ref('root');
+const email = ref('');
+const password = ref('');
 const message = ref('');
 const loading = ref(false);
 
