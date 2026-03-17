@@ -127,7 +127,7 @@ async def process_crypto_assets(session: aiohttp.ClientSession, existing_assets:
     else:
         print(f"   💵 Найден актив USD с ID: {quote_asset_id}")
     
-    crypto_list = await get_crypto_list(session, limit=250)
+    crypto_list = await get_crypto_list(session, limit=10)
     
     if not crypto_list:
         print(f"   ⚠️ Нет данных о криптовалютах")

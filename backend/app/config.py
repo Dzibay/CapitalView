@@ -15,7 +15,8 @@ class Config:
     
     # Настройки JWT
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=7)
+    _jwt_days = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES_DAYS", "1"))
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=max(1, _jwt_days))
     JWT_ALGORITHM = "HS256"
     
     # PostgreSQL (локальная база данных)

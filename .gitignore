@@ -4,7 +4,8 @@
 
 # Виртуальное окружение
 venv/
-backend/.env
+.env
+.env.production.example
 
 # Python cache
 __pycache__/
@@ -24,7 +25,6 @@ __pycache__/
 
 frontend/.vscode/
 frontend/.vite/
-frontend/.env
 
 
 # Node modules

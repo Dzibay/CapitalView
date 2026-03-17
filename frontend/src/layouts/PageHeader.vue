@@ -49,8 +49,7 @@ defineProps({
 /* Первый уровень: заголовок и actions (переключатель) */
 .page-header-row1 {
   display: flex;
-  align-items: flex-end;
-  gap: 1rem;
+  align-items: center;
   flex-wrap: nowrap;
   min-width: 0;
   width: 100%;
@@ -87,12 +86,12 @@ defineProps({
 }
 
 @media (max-width: 768px) {
-  .page-header-row1 {
-    flex-wrap: wrap;
-  }
   .page-header-actions {
     min-width: 0;
     max-width: 100%;
+  }
+  .page-header-title {
+    width: 40%;
   }
 }
 
