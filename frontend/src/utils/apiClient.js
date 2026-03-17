@@ -4,8 +4,12 @@
  */
 import axios from 'axios';
 
-// В режиме разработки используем прокси из Vite, в продакшене - полный URL
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// В production всегда используем относительный путь — браузер подставит текущий protocol (https)
+// Иначе возможна ошибка Mixed Content при http:// в baseURL
+let API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+if (import.meta.env.PROD && API_BASE_URL.startsWith('http://')) {
+  API_BASE_URL = '/api/v1';
+}
 
 // Таймаут из переменных окружения или по умолчанию 30 секунд
 const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '30000', 10);
