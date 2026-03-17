@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -11,8 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Копируем зависимости
 COPY requirements.txt .
 
-# Устанавливаем зависимости (без dev)
-RUN pip install --no-cache-dir -r requirements.txt gunicorn
+# Устанавливаем зависимости (BuildKit cache для pip ускоряет пересборки)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt gunicorn
 
 # Копируем код приложения
 COPY . .
