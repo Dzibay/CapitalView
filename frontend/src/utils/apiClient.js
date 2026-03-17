@@ -1,64 +1,61 @@
-/**
- * Единый API клиент для всех запросов к backend
- * Устраняет дублирование authHeaders и базового URL
- */
 import axios from 'axios';
 
-// В production явно используем текущий origin (https) — устраняет Mixed Content при http в baseURL
+/**
+ * Оптимизированное получение базового URL.
+ * Если API на том же домене, лучше использовать относительный путь.
+ */
 function getApiBaseUrl() {
   if (import.meta.env.DEV) {
+    // В разработке (Vite) обычно используем прокси или полный URL
     return import.meta.env.VITE_API_BASE_URL || '/api/v1';
   }
-  return `${window.location.origin}/api/v1`;
+  // В продакшене используем относительный путь. 
+  // Браузер сам подставит текущий протокол (https) и домен.
+  return '/api/v1'; 
 }
-const API_BASE_URL = getApiBaseUrl();
 
-// Таймаут из переменных окружения или по умолчанию 30 секунд
-const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '30000', 10);
-
-// Создаем экземпляр axios с базовой конфигурацией
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: API_TIMEOUT,
+  timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000', 10),
 });
 
-// Interceptor для добавления токена авторизации к каждому запросу
 apiClient.interceptors.request.use(
   (config) => {
+    // Исправление Mixed Content: 
+    // Если мы на HTTPS, убеждаемся, что URL запроса не начинается с http://
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+      if (config.url?.startsWith('http://')) {
+        config.url = config.url.replace('http://', 'https://');
+      }
+      // Если baseURL был задан как http, исправляем его
+      if (config.baseURL?.startsWith('http://')) {
+        config.baseURL = config.baseURL.replace('http://', 'https://');
+      }
+    }
+
     const token = localStorage.getItem('access_token');
     if (token) {
-      config.headers = config.headers || {};
-      config.headers['Authorization'] = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Interceptor для обработки ошибок авторизации и сетевых ошибок
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Обработка сетевых ошибок
-    if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-      console.error('Network Error: Backend server may be down or unreachable');
-      console.error('Attempted URL:', error.config?.baseURL + error.config?.url);
-      // Не перенаправляем на логин при сетевой ошибке, просто пробрасываем ошибку
-      return Promise.reject(error);
-    }
-    
-    // Обработка ошибок авторизации
+    // Обработка 401 (Unauthorized)
     if (error.response?.status === 401) {
-      const isAuthRoute = error.config?.url?.includes('/auth/login') || 
-                         error.config?.url?.includes('/auth/register');
+      const isAuthRoute = error.config?.url?.includes('/auth/');
       
       if (!isAuthRoute) {
         localStorage.removeItem('access_token');
+        // Используем router.push, если есть доступ к роутеру, 
+        // но window.location тоже рабочий вариант для жесткого ресета состояния
         if (window.location.pathname !== '/login') {
           window.location.href = '/login';
         }
@@ -69,4 +66,3 @@ apiClient.interceptors.response.use(
 );
 
 export default apiClient;
-
