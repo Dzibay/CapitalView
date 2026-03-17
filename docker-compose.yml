@@ -3,6 +3,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: capitalview-backend
     container_name: capitalview-backend
     restart: unless-stopped
     env_file: .env
@@ -18,9 +19,7 @@ services:
       - capitalview
 
   worker-task:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: capitalview-backend
     container_name: capitalview-worker-task
     restart: unless-stopped
     command: ["python", "-m", "app.workers.task_worker_optimized"]
@@ -37,9 +36,7 @@ services:
       - capitalview
 
   worker-moex-prices:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: capitalview-backend
     container_name: capitalview-worker-moex-prices
     restart: unless-stopped
     command: ["python", "-m", "app.workers.moex_price_worker"]
@@ -56,9 +53,7 @@ services:
       - capitalview
 
   worker-currency-prices:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: capitalview-backend
     container_name: capitalview-worker-currency-prices
     restart: unless-stopped
     command: ["python", "-m", "app.workers.currency_price_worker"]
@@ -75,9 +70,7 @@ services:
       - capitalview
 
   worker-crypto-prices:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: capitalview-backend
     container_name: capitalview-worker-crypto-prices
     restart: unless-stopped
     command: ["python", "-m", "app.workers.crypto_price_worker"]
