@@ -802,7 +802,22 @@ async def import_moex_assets_async():
     # 3. Загрузка данных из MOEX
     logger.info("--- Этап 3: Загрузка данных из MOEX ---")
 
+    currency_assets = await table_select_async(
+        "assets", "id, ticker", filters={"asset_type_id": 7}, limit=None,
+    )
+    currency_map: Dict = {"RUB": 1, "SUR": 1}
+    for c in currency_assets:
+        t = c.get("ticker")
+        if t:
+            currency_map[t.upper()] = c["id"]
+
     async with create_moex_session() as session:
+        # 3.1. Акции — быстрый запрос, обрабатываем первыми
+        logger.info("--- Этап 3.1: Загрузка акций ---")
+        shares_result = await process_shares(session, existing_assets, type_map, currency_map)
+
+        # 3.2. Облигации — долгая загрузка
+        logger.info("--- Этап 3.2: Загрузка облигаций ---")
         bonds_rows, bonds_cols = await fetch_all_bonds(session)
         active_bonds_data = await fetch_active_bonds_currency(session)
 
@@ -837,24 +852,14 @@ async def import_moex_assets_async():
         bonds_currency = {**active_bonds_currency, **inactive_bonds_currency}
         logger.info(f"Валют облигаций загружено: {len(bonds_currency)}")
 
-        currency_assets = await table_select_async(
-            "assets", "id, ticker", filters={"asset_type_id": 7}, limit=None,
+        # 4. Обработка облигаций
+        logger.info("--- Этап 4: Обработка облигаций ---")
+        bonds_result = await process_bonds(
+            bonds_rows, bonds_cols, existing_assets, type_map, currency_map,
+            bonds_currency, active_bonds_data, inactive_bonds_data,
         )
-        currency_map: Dict = {"RUB": 1, "SUR": 1}
-        for c in currency_assets:
-            t = c.get("ticker")
-            if t:
-                currency_map[t.upper()] = c["id"]
 
-        # 4. Обработка
-        logger.info("--- Этап 4: Обработка активов ---")
-        results = await asyncio.gather(
-            process_shares(session, existing_assets, type_map, currency_map),
-            process_bonds(
-                bonds_rows, bonds_cols, existing_assets, type_map, currency_map,
-                bonds_currency, active_bonds_data, inactive_bonds_data,
-            ),
-        )
+        results = [shares_result, bonds_result]
 
     # 5. Очистка (только среди активов, которые были в БД до импорта)
     pre_existing_ids = {a["id"] for a in existing_assets.values()}
