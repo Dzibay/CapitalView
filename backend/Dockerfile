@@ -10,14 +10,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем зависимости
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # Устанавливаем зависимости (BuildKit cache для pip ускоряет пересборки)
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt gunicorn
 
-# Копируем код приложения
-COPY . .
+# Копируем код приложения и SQL для init_db
+COPY backend/ .
+COPY database/ /app/database/
 
 # Порт приложения
 EXPOSE 5000

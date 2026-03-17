@@ -1,0 +1,292 @@
+-- =============================================================================
+-- CapitalView — Инициализация БД (таблицы, справочники, индексы)
+-- =============================================================================
+-- Запуск с сервера (БД без внешнего IP, доступна только из приватной сети):
+--   docker compose run --rm backend python -m scripts.init_db
+-- =============================================================================
+
+-- Таблицы в порядке зависимостей (FK)
+CREATE TABLE IF NOT EXISTS users (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  email text NOT NULL UNIQUE,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  password_hash text,
+  name text DEFAULT 'Профессиональный инвестор',
+  CONSTRAINT users_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS asset_types (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  name text,
+  is_custom boolean,
+  CONSTRAINT asset_types_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS brokers (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  name text,
+  CONSTRAINT brokers_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS operations_type (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  name text,
+  CONSTRAINT operations_type_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS transactions_type (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  name text,
+  CONSTRAINT transactions_type_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS portfolios (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid,
+  parent_portfolio_id bigint,
+  name text,
+  description jsonb,
+  CONSTRAINT portfolios_pkey PRIMARY KEY (id),
+  CONSTRAINT portfolios_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT portfolios_parent_portfolio_id_fkey FOREIGN KEY (parent_portfolio_id) REFERENCES portfolios(id)
+);
+
+-- assets: сначала без FK quote_asset_id (циклическая ссылка)
+CREATE TABLE IF NOT EXISTS assets (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  asset_type_id bigint,
+  user_id uuid,
+  name text,
+  ticker text,
+  properties jsonb,
+  quote_asset_id bigint DEFAULT 1,
+  CONSTRAINT assets_pkey PRIMARY KEY (id),
+  CONSTRAINT assets_asset_type_id_fkey FOREIGN KEY (asset_type_id) REFERENCES asset_types(id),
+  CONSTRAINT assets_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS portfolio_assets (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  portfolio_id bigint,
+  asset_id bigint,
+  quantity numeric(20,6),
+  average_price numeric(20,6),
+  created_at timestamp(0) without time zone DEFAULT CURRENT_TIMESTAMP,
+  leverage bigint DEFAULT 1,
+  CONSTRAINT portfolio_assets_pkey PRIMARY KEY (id),
+  CONSTRAINT portfolio_assets_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id),
+  CONSTRAINT portfolio_assets_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id)
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  portfolio_asset_id bigint,
+  transaction_type bigint,
+  price numeric(20,6),
+  quantity numeric(20,6),
+  transaction_date timestamp(0) without time zone DEFAULT CURRENT_TIMESTAMP,
+  user_id uuid,
+  realized_pnl numeric(20,6),
+  CONSTRAINT transactions_pkey PRIMARY KEY (id),
+  CONSTRAINT transactions_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES portfolio_assets(id),
+  CONSTRAINT transactions_transaction_type_fkey FOREIGN KEY (transaction_type) REFERENCES transactions_type(id),
+  CONSTRAINT transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS cash_operations (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid,
+  portfolio_id bigint,
+  type bigint,
+  amount numeric(20,6),
+  currency bigint,
+  date date,
+  transaction_id bigint,
+  asset_id bigint,
+  amount_rub numeric(20,2),
+  CONSTRAINT cash_operations_pkey PRIMARY KEY (id),
+  CONSTRAINT cash_operations_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT cash_operations_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id),
+  CONSTRAINT cash_operations_currency_fkey FOREIGN KEY (currency) REFERENCES assets(id),
+  CONSTRAINT cash_operations_type_fkey FOREIGN KEY (type) REFERENCES operations_type(id),
+  CONSTRAINT cash_operations_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES transactions(id),
+  CONSTRAINT cash_operations_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id)
+);
+
+CREATE TABLE IF NOT EXISTS fifo_lots (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  portfolio_asset_id bigint,
+  remaining_qty numeric,
+  price numeric,
+  created_at timestamp without time zone,
+  CONSTRAINT fifo_lots_pkey PRIMARY KEY (id),
+  CONSTRAINT fifo_lots_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES portfolio_assets(id)
+);
+
+CREATE TABLE IF NOT EXISTS asset_prices (
+  asset_id bigint NOT NULL,
+  price numeric(20,6) NOT NULL,
+  trade_date date NOT NULL,
+  CONSTRAINT asset_prices_pkey PRIMARY KEY (asset_id, trade_date),
+  CONSTRAINT asset_prices_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id)
+);
+
+CREATE TABLE IF NOT EXISTS asset_payouts (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  asset_id bigint,
+  value numeric(20,6),
+  dividend_yield numeric(10,4),
+  last_buy_date date,
+  record_date date,
+  payment_date date,
+  type text,
+  CONSTRAINT asset_payouts_pkey PRIMARY KEY (id),
+  CONSTRAINT asset_payouts_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id)
+);
+
+CREATE TABLE IF NOT EXISTS asset_latest_prices (
+  asset_id bigint NOT NULL,
+  today_price numeric(20,6),
+  today_date date,
+  yesterday_price numeric(20,6),
+  yesterday_date date,
+  curr_price numeric(20,6),
+  curr_date date,
+  prev_price numeric(20,6),
+  prev_date date,
+  updated_at timestamp(0) without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT asset_latest_prices_pkey PRIMARY KEY (asset_id),
+  CONSTRAINT asset_latest_prices_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id)
+);
+
+CREATE TABLE IF NOT EXISTS portfolio_daily_positions (
+  portfolio_id bigint NOT NULL,
+  portfolio_asset_id bigint NOT NULL,
+  report_date date NOT NULL,
+  quantity numeric NOT NULL,
+  cumulative_invested numeric NOT NULL,
+  average_price numeric NOT NULL,
+  position_value numeric,
+  realized_pnl numeric DEFAULT 0,
+  payouts numeric DEFAULT 0,
+  commissions numeric DEFAULT 0,
+  taxes numeric DEFAULT 0,
+  total_pnl numeric,
+  CONSTRAINT portfolio_daily_positions_pkey PRIMARY KEY (portfolio_asset_id, report_date)
+);
+
+CREATE TABLE IF NOT EXISTS portfolio_daily_values (
+  portfolio_id bigint NOT NULL,
+  report_date date NOT NULL,
+  total_value numeric,
+  total_invested numeric,
+  total_payouts numeric,
+  total_realized numeric,
+  total_pnl numeric,
+  total_commissions numeric DEFAULT 0,
+  total_taxes numeric DEFAULT 0,
+  balance numeric DEFAULT 0,
+  CONSTRAINT portfolio_daily_values_pkey PRIMARY KEY (portfolio_id, report_date)
+);
+
+CREATE TABLE IF NOT EXISTS import_tasks (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  portfolio_id bigint,
+  task_type character varying NOT NULL,
+  status character varying NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
+  broker_id character varying,
+  broker_token text,
+  priority integer DEFAULT 0,
+  created_at timestamp without time zone DEFAULT now(),
+  started_at timestamp without time zone,
+  completed_at timestamp without time zone,
+  error_message text,
+  result jsonb,
+  retry_count integer DEFAULT 0,
+  max_retries integer DEFAULT 3,
+  progress integer DEFAULT 0,
+  progress_message text,
+  portfolio_name character varying,
+  CONSTRAINT import_tasks_pkey PRIMARY KEY (id),
+  CONSTRAINT import_tasks_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT import_tasks_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id)
+);
+
+CREATE TABLE IF NOT EXISTS user_broker_connections (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid,
+  broker_id bigint,
+  portfolio_id bigint,
+  api_key text,
+  last_sync_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP(0),
+  CONSTRAINT user_broker_connections_pkey PRIMARY KEY (id),
+  CONSTRAINT user_broker_connections_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT user_broker_connections_broker_id_fkey FOREIGN KEY (broker_id) REFERENCES brokers(id),
+  CONSTRAINT user_broker_connections_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id)
+);
+
+CREATE TABLE IF NOT EXISTS missed_payouts (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  portfolio_id bigint NOT NULL,
+  portfolio_asset_id bigint NOT NULL,
+  asset_id bigint NOT NULL,
+  payout_id bigint NOT NULL,
+  created_at timestamp(0) without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT missed_payouts_pkey PRIMARY KEY (id),
+  CONSTRAINT missed_payouts_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT missed_payouts_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,
+  CONSTRAINT missed_payouts_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES portfolio_assets(id) ON DELETE CASCADE,
+  CONSTRAINT missed_payouts_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE,
+  CONSTRAINT missed_payouts_payout_id_fkey FOREIGN KEY (payout_id) REFERENCES asset_payouts(id) ON DELETE CASCADE,
+  CONSTRAINT missed_payouts_unique UNIQUE (portfolio_asset_id, payout_id)
+);
+
+-- Справочные данные (если пусто)
+INSERT INTO asset_types (id, name, is_custom) OVERRIDING SYSTEM VALUE VALUES
+  (1, 'Акция', false),
+  (2, 'Облигация', false),
+  (3, 'Фонд', false),
+  (4, 'Опцион', false),
+  (5, 'Фьючерс', false),
+  (6, 'Криптовалюта', false),
+  (7, 'Валюта', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- RUB (id=1) — базовая валюта (до добавления FK quote_asset_id)
+INSERT INTO assets (id, asset_type_id, user_id, name, ticker, quote_asset_id) OVERRIDING SYSTEM VALUE
+SELECT 1, 7, NULL, 'Российский рубль', 'RUB', 1
+WHERE NOT EXISTS (SELECT 1 FROM assets WHERE id = 1);
+
+-- FK quote_asset_id (циклическая ссылка)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'assets_quote_asset_id_fkey') THEN
+    ALTER TABLE assets ADD CONSTRAINT assets_quote_asset_id_fkey FOREIGN KEY (quote_asset_id) REFERENCES assets(id);
+  END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+SELECT setval('asset_types_id_seq', (SELECT COALESCE(MAX(id), 1) FROM asset_types));
+SELECT setval('assets_id_seq', (SELECT COALESCE(MAX(id), 1) FROM assets));
+
+INSERT INTO brokers (id, name) OVERRIDING SYSTEM VALUE VALUES
+  (1, 'Тинькофф'),
+  (2, 'БКС')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO operations_type (id, name) OVERRIDING SYSTEM VALUE VALUES
+  (1, 'Пополнение'),
+  (2, 'Вывод'),
+  (3, 'Дивиденды'),
+  (4, 'Купоны'),
+  (5, 'Комиссия'),
+  (6, 'Налог')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO transactions_type (id, name) OVERRIDING SYSTEM VALUE VALUES
+  (1, 'Покупка'),
+  (2, 'Продажа'),
+  (3, 'Перевод')
+ON CONFLICT (id) DO NOTHING;
