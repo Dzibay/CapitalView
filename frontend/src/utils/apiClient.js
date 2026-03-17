@@ -4,12 +4,14 @@
  */
 import axios from 'axios';
 
-// В production всегда используем относительный путь — браузер подставит текущий protocol (https)
-// Иначе возможна ошибка Mixed Content при http:// в baseURL
-let API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
-if (import.meta.env.PROD && API_BASE_URL.startsWith('http://')) {
-  API_BASE_URL = '/api/v1';
+// В production явно используем текущий origin (https) — устраняет Mixed Content при http в baseURL
+function getApiBaseUrl() {
+  if (import.meta.env.DEV) {
+    return import.meta.env.VITE_API_BASE_URL || '/api/v1';
+  }
+  return `${window.location.origin}/api/v1`;
 }
+const API_BASE_URL = getApiBaseUrl();
 
 // Таймаут из переменных окружения или по умолчанию 30 секунд
 const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '30000', 10);
