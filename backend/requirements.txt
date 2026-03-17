@@ -1,3 +1,5 @@
+--extra-index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple
+
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.3
 aiosignal==1.4.0
