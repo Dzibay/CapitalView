@@ -1,4 +1,4 @@
-drop function clear_portfolio_full;
+DROP FUNCTION IF EXISTS clear_portfolio_full(bigint, boolean);
 create or replace function clear_portfolio_full(
     p_portfolio_id bigint,
     p_delete_self boolean default false
