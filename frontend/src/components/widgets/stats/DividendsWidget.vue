@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { HandCoins } from 'lucide-vue-next'
 import StatCardWidget from '../base/StatCardWidget.vue'
 
 const props = defineProps({
@@ -18,6 +19,7 @@ const monthlyAverage = computed(() => {
 <template>
   <StatCardWidget
     title="Дивиденды"
+    :icon="HandCoins"
     :main-value="annualDividends"
     main-value-format="currency"
     main-value-tooltip="Среднегодовые дивиденды всех активов в портфеле"

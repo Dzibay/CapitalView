@@ -9,7 +9,6 @@
 5. Внешние API вызовы выполняются в отдельном потоке
 """
 import asyncio
-import logging
 from typing import Optional
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -19,16 +18,18 @@ from app.domain.services.task_service import (
     update_task_status,
     TaskStatus
 )
-from app.domain.services.portfolio_service import import_broker_portfolio
+from app.domain.services.portfolio_import_service import import_broker_portfolio
 from app.domain.services.user_service import get_user_by_id
 from app.domain.services.broker_connections_service import upsert_broker_connection
 from app.constants import BrokerID
-from app.infrastructure.database.supabase_async import rpc_async, table_insert_async, table_update_async, table_select_async
+from app.infrastructure.database.postgres_async import table_insert_async, table_update_async, table_select_async
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Настройки воркера
-POLL_INTERVAL = 5  # Интервал опроса очереди (секунды)
+POLL_INTERVAL = 10  # Интервал опроса очереди когда нет задач (секунды)
+POLL_INTERVAL_WHEN_BUSY = 2  # Интервал опроса когда есть активные задачи (секунды)
 MAX_CONCURRENT_TASKS = 3  # Максимальное количество одновременных задач
 MAX_RETRIES = 3  # Максимальное количество попыток
 
@@ -77,10 +78,16 @@ async def upsert_broker_connection_async(user_id, broker_id: int, portfolio_id: 
     )
 
 
-async def get_tinkoff_portfolio_async(token: str, days: int = 365) -> dict:
+async def get_tinkoff_portfolio_async(token: str) -> dict:
     """Асинхронная обертка для get_tinkoff_portfolio (может быть очень медленным)."""
     from app.infrastructure.external.brokers.tinkoff import get_tinkoff_portfolio
-    return await asyncio.to_thread(get_tinkoff_portfolio, token, days)
+    return await asyncio.to_thread(get_tinkoff_portfolio, token)
+
+
+async def get_bks_portfolio_async(token: str) -> dict:
+    """Асинхронная обертка для get_bks_portfolio."""
+    from app.infrastructure.external.brokers.bks import get_bks_portfolio
+    return await asyncio.to_thread(get_bks_portfolio, token)
 
 
 async def process_import_task(task: dict) -> bool:
@@ -126,7 +133,9 @@ async def process_import_task(task: dict) -> bool:
         broker_id_int = int(broker_id) if isinstance(broker_id, str) else broker_id
         
         if broker_id_int == BrokerID.TINKOFF:
-            broker_data = await get_tinkoff_portfolio_async(broker_token, 365)
+            broker_data = await get_tinkoff_portfolio_async(broker_token)
+        elif broker_id_int == BrokerID.BKS:
+            broker_data = await get_bks_portfolio_async(broker_token)
         else:
             raise Exception(f"Импорт для брокера {broker_id_int} не реализован")
         
@@ -203,17 +212,9 @@ async def process_import_task(task: dict) -> bool:
             progress_message="Импорт транзакций и операций..."
         )
         
-        result = await import_broker_portfolio(user_email, portfolio_id, broker_data, broker_id_int)
+        result = await import_broker_portfolio(user_email, portfolio_id, broker_data, broker_id_int, api_key=broker_token)
         
-        # Обновляем соединение с брокером (асинхронно)
-        await update_task_status_async(
-            task_id,
-            TaskStatus.PROCESSING,
-            progress=80,
-            progress_message="Обновление соединения с брокером..."
-        )
-        
-        await upsert_broker_connection_async(user_id, broker_id_int, portfolio_id, broker_token)
+        # upsert_broker_connection уже вызывается внутри import_broker_portfolio
         
         # Завершаем задачу
         await update_task_status_async(
@@ -290,8 +291,11 @@ async def worker_loop():
                     task_id = task["task_id"]
                     
                     # Проверяем, не обрабатывается ли уже эта задача
+                    # Это может произойти, если задача была получена несколько раз до обновления статуса
                     if task_id in active_tasks:
-                        logger.warning(f"Задача {task_id} уже в обработке, пропускаем")
+                        logger.debug(f"Задача {task_id} уже в обработке в этом воркере, пропускаем")
+                        # Делаем небольшую задержку перед следующей попыткой
+                        await asyncio.sleep(1)
                         continue
                     
                     # КРИТИЧНО: Обновляем статус на processing СРАЗУ после получения задачи
@@ -306,7 +310,10 @@ async def worker_loop():
                     
                     if not status_updated:
                         # Не удалось обновить статус - возможно, задача уже обрабатывается другим воркером
-                        logger.warning(f"Не удалось обновить статус задачи {task_id}, возможно уже обрабатывается, пропускаем")
+                        # Это нормальная ситуация при параллельной работе нескольких воркеров
+                        logger.debug(f"Не удалось обновить статус задачи {task_id}, возможно уже обрабатывается другим воркером, пропускаем")
+                        # Делаем небольшую задержку перед следующей попыткой
+                        await asyncio.sleep(1)
                         continue
                     
                     logger.info(f"Найдена задача {task_id}, статус обновлен на processing, начинаем обработку")
@@ -317,10 +324,13 @@ async def worker_loop():
                     )
                 else:
                     # Нет задач, ждем перед следующей проверкой
-                    await asyncio.sleep(POLL_INTERVAL)
+                    # Используем больший интервал, если нет активных задач
+                    interval = POLL_INTERVAL_WHEN_BUSY if len(active_tasks) > 0 else POLL_INTERVAL
+                    await asyncio.sleep(interval)
             else:
                 # Все слоты заняты, ждем перед следующей проверкой
-                await asyncio.sleep(POLL_INTERVAL)
+                # Используем меньший интервал, так как есть активные задачи
+                await asyncio.sleep(POLL_INTERVAL_WHEN_BUSY)
             
             # Убрана дополнительная задержка - она уже есть в if/else выше
             
@@ -333,10 +343,8 @@ def run_worker():
     """
     Запускает воркер (точка входа для отдельного процесса).
     """
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    from app.core.logging import init_logging
+    init_logging()
     
     try:
         asyncio.run(worker_loop())

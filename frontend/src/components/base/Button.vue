@@ -93,7 +93,7 @@ const handleClick = (event) => {
   font-family: inherit;
 }
 
-/* Sizes */
+/* Размеры */
 .btn-sm {
   height: 32px;
   padding: 0 12px;
@@ -125,7 +125,7 @@ const handleClick = (event) => {
   width: 44px;
 }
 
-/* Primary variant */
+/* Основной вариант */
 .btn-primary {
   background: linear-gradient(135deg, #527de5, #6b91ea);
   color: white;
@@ -143,7 +143,7 @@ const handleClick = (event) => {
   box-shadow: 0 1px 2px rgba(82, 125, 229, 0.2);
 }
 
-/* Secondary variant */
+/* Вторичный вариант */
 .btn-secondary {
   background: white;
   color: #374151;
@@ -163,7 +163,7 @@ const handleClick = (event) => {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-/* Outline variant */
+/* Контурный вариант */
 .btn-outline {
   background: transparent;
   border: 1px solid #e5e7eb;
@@ -182,7 +182,7 @@ const handleClick = (event) => {
   background: #e0f2fe;
 }
 
-/* Ghost variant */
+/* Прозрачный вариант */
 .btn-ghost {
   background: transparent;
   color: #6b7280;
@@ -194,7 +194,7 @@ const handleClick = (event) => {
   color: #527de5;
 }
 
-/* Danger variant */
+/* Вариант «опасность» */
 .btn-danger {
   background: #ef4444;
   color: white;
@@ -212,7 +212,7 @@ const handleClick = (event) => {
   box-shadow: 0 1px 2px rgba(239, 68, 68, 0.2);
 }
 
-/* Icon */
+/* Иконка */
 .btn-icon {
   display: flex;
   align-items: center;
@@ -236,12 +236,12 @@ const handleClick = (event) => {
   height: 18px;
 }
 
-/* Text */
+/* Текст */
 .btn-text {
   line-height: 1;
 }
 
-/* Spinner */
+/* Спиннер */
 .btn-spinner {
   display: flex;
   align-items: center;
@@ -263,7 +263,7 @@ const handleClick = (event) => {
   }
 }
 
-/* Disabled state */
+/* Состояние «отключено» */
 .btn-disabled,
 .btn:disabled {
   opacity: 0.6;

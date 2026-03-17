@@ -1,16 +1,21 @@
 import { defineStore } from 'pinia'
 import { fetchDashboardData } from '../services/dashboardService'
+import operationsService from '../services/operationsService'
+import transactionsService from '../services/transactionsService'
 import { useUIStore } from './ui.store'
 
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     portfolios: [],
-    transactions: [],
+    recentTransactions: [], // Последние 5 транзакций из dashboard (для виджета)
+    transactions: [],       // Полный список транзакций (загружается лениво)
+    operations: [],          // Полный список операций (загружается лениво)
     referenceData: {},
     analytics: [],
+    missedPayoutsCount: 0,
     lastFetch: null,
-    cacheTimeout: 60000, // 1 минута кеширования
-    transactionsLoaded: false,
+    cacheTimeout: parseInt(import.meta.env.VITE_DASHBOARD_CACHE_TIMEOUT || '60000', 10),
+    fullListsLoaded: false,  // Полные списки транзакций и операций загружены
     analyticsLoaded: false
   }),
 
@@ -33,7 +38,7 @@ export const useDashboardStore = defineStore('dashboard', {
   },
 
   actions: {
-    async fetchDashboard(force = false) {
+    async fetchDashboard(force = false, showLoading = true) {
       const uiStore = useUIStore()
       
       // Кеширование: не загружаем, если данные свежие
@@ -42,16 +47,27 @@ export const useDashboardStore = defineStore('dashboard', {
         return
       }
 
-      uiStore.setLoading(true)
+      if (showLoading) {
+        uiStore.setLoading(true)
+      }
       try {
         const data = await fetchDashboardData()
         
+        // Отладочный вывод только в dev при явном включении
+        if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_DASHBOARD_DATA) {
+          console.log('📊 Dashboard Data:', JSON.parse(JSON.stringify(data)))
+        }
+        
         if (data?.data) {
           this.portfolios = data.data.portfolios || []
-          // Транзакции теперь приходят вместе с dashboard
-          this.transactions = data.data.transactions || []
-          this.transactionsLoaded = true
+          // Последние транзакции из dashboard — только для виджета, не для страницы Транзакций
+          this.recentTransactions = data.data.transactions || []
+          // Если полные списки ещё не загружены, используем хотя бы то, что есть
+          if (!this.fullListsLoaded) {
+            this.transactions = this.recentTransactions
+          }
           this.referenceData = data.data.referenceData || {}
+          this.missedPayoutsCount = data.data.missed_payouts_count || 0
           
           // Аналитика теперь приходит в полном формате из get_user_portfolios_analytics
           // Она уже в правильном формате с totals, monthly_flow, monthly_payouts, asset_distribution, etc.
@@ -67,19 +83,60 @@ export const useDashboardStore = defineStore('dashboard', {
         }
         
         this.lastFetch = Date.now()
-        
+        // Полные списки транзакций/операций загружаются лениво при переходе на страницу Transactions
+        // Это экономит 2 тяжёлых запроса при каждом открытии дашборда
       } catch (err) {
-        if (import.meta.env.DEV && (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error'))) {
+        if (import.meta.env.VITE_APP_DEV && (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error'))) {
             console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
         }
         throw err
       } finally {
-        uiStore.setLoading(false)
+        if (showLoading) {
+          uiStore.setLoading(false)
+        }
       }
     },
 
-    async reloadDashboard() {
-      return this.fetchDashboard(true)
+    async reloadDashboard(showLoading = true) {
+      await this.fetchDashboard(true, showLoading)
+      // После мутаций всегда обновляем полные списки, если они были загружены
+      if (this.fullListsLoaded) {
+        this.fetchTransactionsAndOperationsInBackground()
+      }
+    },
+
+    /**
+     * Загружает полные списки транзакций и операций в фоне (не блокирует UI).
+     * Списки всегда заменяются актуальными данными с сервера (избегаем дубликатов после редактирования).
+     * @returns {Promise<void>} — можно await для ожидания завершения загрузки
+     */
+    fetchTransactionsAndOperationsInBackground() {
+      return Promise.all([
+        transactionsService.getTransactions({ limit: 2000 }).catch(err => {
+          if (import.meta.env.VITE_APP_DEV) console.error('Фоновая загрузка транзакций:', err)
+          return null
+        }),
+        operationsService.getOperations({ limit: 2000 }).catch(err => {
+          if (import.meta.env.VITE_APP_DEV) console.error('Фоновая загрузка операций:', err)
+          return null
+        })
+      ]).then(([txResponse, opResponse]) => {
+        if (txResponse != null) {
+          const list = txResponse?.transactions || txResponse || []
+          const normalized = list.map(tx => ({
+            ...tx,
+            id: tx.id || tx.transaction_id,
+            transaction_id: tx.transaction_id || tx.id,
+            transaction_type: tx.transaction_type || tx.transaction_type_name
+          }))
+          this.addTransactions(normalized, true)
+        }
+        if (opResponse != null) {
+          const list = opResponse?.operations || opResponse || []
+          this.addOperations(list, true)
+        }
+        this.fullListsLoaded = true
+      })
     },
 
     // Оптимистичное обновление: добавляем актив локально без перезагрузки
@@ -172,20 +229,58 @@ export const useDashboardStore = defineStore('dashboard', {
       }
     },
 
-    // Добавление транзакций
-    addTransactions(transactionsArray) {
-      if (Array.isArray(transactionsArray)) {
-        // Если транзакции еще не загружены, заменяем массив
-        // Если уже загружены, добавляем к существующим (для обновления)
-        if (this.transactionsLoaded && this.transactions.length > 0) {
-          this.transactions = [
-            ...this.transactions,
-            ...transactionsArray
-          ]
-        } else {
-          this.transactions = transactionsArray
+    // Замена полного списка транзакций
+    addTransactions(transactionsArray, replace = false) {
+      if (!Array.isArray(transactionsArray)) return
+      if (replace || this.transactions.length === 0) {
+        this.transactions = transactionsArray
+      } else {
+        const existingIds = new Set(this.transactions.map(t => t.id || t.transaction_id))
+        const newTransactions = transactionsArray.filter(t => !existingIds.has(t.id || t.transaction_id))
+        if (newTransactions.length > 0) {
+          this.transactions = [...this.transactions, ...newTransactions]
         }
-        this.transactionsLoaded = true
+      }
+    },
+
+    // Замена полного списка операций
+    addOperations(operationsArray, replace = false) {
+      if (!Array.isArray(operationsArray)) return
+      const sorted = [...operationsArray].sort((a, b) => {
+        const dateA = new Date(a.operation_date || a.date || 0).getTime()
+        const dateB = new Date(b.operation_date || b.date || 0).getTime()
+        return dateB - dateA
+      })
+      if (replace || this.operations.length === 0) {
+        this.operations = sorted
+      } else {
+        const existingIds = new Set(this.operations.map(op => op.id || op.cash_operation_id || op.operation_id))
+        const newOperations = sorted.filter(op => !existingIds.has(op.id || op.cash_operation_id || op.operation_id))
+        if (newOperations.length > 0) {
+          this.operations = [...this.operations, ...newOperations].sort((a, b) => {
+            const dateA = new Date(a.operation_date || a.date || 0).getTime()
+            const dateB = new Date(b.operation_date || b.date || 0).getTime()
+            return dateB - dateA
+          })
+        }
+      }
+    },
+
+    // Удаление транзакций из кэша
+    removeTransactions(transactionIds) {
+      if (Array.isArray(transactionIds)) {
+        this.transactions = this.transactions.filter(
+          tx => !transactionIds.includes(tx.id || tx.transaction_id)
+        )
+      }
+    },
+
+    // Удаление операций из кэша
+    removeOperations(operationIds) {
+      if (Array.isArray(operationIds)) {
+        this.operations = this.operations.filter(
+          op => !operationIds.includes(op.id || op.cash_operation_id)
+        )
       }
     }
   }

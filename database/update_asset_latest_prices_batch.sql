@@ -1,9 +1,7 @@
--- Функция для массового обновления нескольких активов (для использования после массовых операций)
 CREATE OR REPLACE FUNCTION update_asset_latest_prices_batch(p_asset_ids BIGINT[])
 RETURNS VOID AS $$
 BEGIN
-    -- Используем оптимизированный запрос для обновления только указанных активов
-    INSERT INTO asset_latest_prices_full_table (
+    INSERT INTO asset_latest_prices (
         asset_id,
         today_price,
         today_date,
@@ -20,10 +18,10 @@ BEGIN
             asset_id,
             price,
             trade_date,
-            trade_date::date AS price_date,
-            ROW_NUMBER() OVER (PARTITION BY asset_id, trade_date::date ORDER BY trade_date DESC) AS date_rank,
+            trade_date AS price_date,
+            ROW_NUMBER() OVER (PARTITION BY asset_id, trade_date ORDER BY trade_date DESC) AS date_rank,
             ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY trade_date DESC) AS all_rank,
-            CASE WHEN trade_date::date IN (CURRENT_DATE, CURRENT_DATE - 1)
+            CASE WHEN trade_date IN (CURRENT_DATE, CURRENT_DATE - 1)
                  THEN ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY trade_date DESC)
                  ELSE NULL
             END AS recent_rank

@@ -2,7 +2,7 @@ CREATE OR REPLACE FUNCTION get_portfolio_asset_detail(
     p_portfolio_asset_id bigint,
     p_user_id uuid,
     p_include_price_history boolean DEFAULT false,
-    p_price_history_limit integer DEFAULT 1000
+    p_price_history_limit integer DEFAULT 100000
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -11,13 +11,10 @@ DECLARE
     result jsonb;
     v_asset_id bigint;
 BEGIN
-    -- Получаем asset_id для использования в истории цен
     SELECT a.id INTO v_asset_id
     FROM portfolio_assets pa
     JOIN assets a ON a.id = pa.asset_id
     WHERE pa.id = p_portfolio_asset_id;
-    -- Получаем основную информацию о портфельном активе
-    -- ОПТИМИЗИРОВАНО: используем данные из portfolio_daily_positions для asset_value и invested_value
     SELECT jsonb_build_object(
         'portfolio_asset', (
             SELECT jsonb_build_object(
@@ -40,8 +37,6 @@ BEGIN
                 'currency_ticker', qa.ticker,
                 'quote_asset_id', a.quote_asset_id,
                 'currency_rate_to_rub', COALESCE(curr.curr_price, 1),
-                -- ОПТИМИЗИРОВАНО: используем предрассчитанные значения из portfolio_daily_positions
-                -- Если данных нет - это ошибка системы
                 'asset_value', pdp.position_value,
                 'invested_value', pdp.cumulative_invested,
                 'realized_pnl', COALESCE(pdp.realized_pnl, 0),
@@ -56,12 +51,9 @@ BEGIN
             JOIN portfolios p ON p.id = pa.portfolio_id
             JOIN assets a ON a.id = pa.asset_id
             LEFT JOIN asset_types at ON at.id = a.asset_type_id
-            LEFT JOIN asset_latest_prices_full apf ON apf.asset_id = pa.asset_id
+            LEFT JOIN asset_latest_prices apf ON apf.asset_id = pa.asset_id
             LEFT JOIN assets qa ON qa.id = a.quote_asset_id
-            LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = a.quote_asset_id
-            -- ОПТИМИЗИРОВАНО: получаем последние значения из portfolio_daily_positions
-            -- Используем DISTINCT ON для оптимизации (быстрее с индексом idx_portfolio_daily_positions_asset_date_desc)
-            -- Если данных нет - это ошибка системы
+            LEFT JOIN asset_latest_prices curr ON curr.asset_id = a.quote_asset_id
             INNER JOIN LATERAL (
                 SELECT DISTINCT ON (portfolio_asset_id)
                     position_value,
@@ -128,10 +120,8 @@ BEGIN
                         ELSE 0
                     END,
                     'profit_rub', pdp2.position_value - pdp2.cumulative_invested,
-                    -- ОПТИМИЗИРОВАНО: используем предрассчитанные значения из portfolio_daily_positions
                     'asset_value', pdp2.position_value,
                     'invested_value', pdp2.cumulative_invested,
-                    -- ОПТИМИЗИРОВАНО: добавляем аналитические поля из portfolio_daily_positions
                     'realized_pnl', COALESCE(pdp2.realized_pnl, 0),
                     'payouts', COALESCE(pdp2.payouts, 0),
                     'commissions', COALESCE(pdp2.commissions, 0),
@@ -146,12 +136,9 @@ BEGIN
             FROM portfolios p2
             INNER JOIN portfolio_assets pa2 ON pa2.portfolio_id = p2.id
             LEFT JOIN assets a2 ON a2.id = pa2.asset_id
-            LEFT JOIN asset_latest_prices_full apf2 ON apf2.asset_id = pa2.asset_id
+            LEFT JOIN asset_latest_prices apf2 ON apf2.asset_id = pa2.asset_id
             LEFT JOIN assets qa2 ON qa2.id = a2.quote_asset_id
-            LEFT JOIN asset_latest_prices_full curr2 ON curr2.asset_id = a2.quote_asset_id
-            -- ОПТИМИЗИРОВАНО: получаем последние значения из portfolio_daily_positions для каждого актива
-            -- Используем DISTINCT ON для оптимизации (быстрее с индексом idx_portfolio_daily_positions_asset_date_desc)
-            -- Если данных нет - это ошибка системы
+            LEFT JOIN asset_latest_prices curr2 ON curr2.asset_id = a2.quote_asset_id
             INNER JOIN LATERAL (
                 SELECT DISTINCT ON (portfolio_asset_id)
                     position_value,
@@ -165,11 +152,9 @@ BEGIN
                 WHERE portfolio_asset_id = pa2.id
                 ORDER BY portfolio_asset_id, report_date DESC
             ) pdp2 ON TRUE
-            -- ОПТИМИЗИРОВАНО: используем portfolio_daily_values для total_value портфеля
-            -- Используем DISTINCT ON для оптимизации (быстрее с индексом idx_portfolio_daily_values_portfolio_date_desc)
             LEFT JOIN LATERAL (
                 SELECT DISTINCT ON (portfolio_id)
-                    total_value
+                    total_value + COALESCE(balance, 0) AS total_value
                 FROM portfolio_daily_values
                 WHERE portfolio_id = p2.id
                 ORDER BY portfolio_id, report_date DESC
@@ -181,14 +166,13 @@ BEGIN
             WHEN p_include_price_history AND v_asset_id IS NOT NULL THEN (
                 SELECT COALESCE(jsonb_agg(
                     jsonb_build_object(
-                        'id', ap.id,
                         'price', ap.price,
                         'trade_date', ap.trade_date
                     )
                     ORDER BY ap.trade_date DESC
                 ), '[]'::jsonb)
                 FROM (
-                    SELECT ap.id, ap.price, ap.trade_date
+                    SELECT ap.price, ap.trade_date
                     FROM asset_prices ap
                     WHERE ap.asset_id = v_asset_id
                     ORDER BY ap.trade_date DESC
@@ -197,7 +181,6 @@ BEGIN
             )
             ELSE '[]'::jsonb
         END,
-        -- ОПТИМИЗИРОВАНО: добавляем daily_values из portfolio_daily_positions для выбранного портфеля
         'daily_values', (
             SELECT COALESCE(jsonb_agg(
                 jsonb_build_object(
@@ -217,7 +200,6 @@ BEGIN
             FROM portfolio_daily_positions pdp
             WHERE pdp.portfolio_asset_id = p_portfolio_asset_id
         ),
-        -- ОПТИМИЗИРОВАНО: добавляем cash_operations для выбранного портфеля и актива
         'cash_operations', (
             SELECT COALESCE(jsonb_agg(
                 jsonb_build_object(
@@ -255,11 +237,9 @@ BEGIN
             JOIN portfolios p ON p.id = pa.portfolio_id
             LEFT JOIN assets a ON a.id = co.asset_id
             LEFT JOIN assets cur ON cur.id = co.currency
-            LEFT JOIN asset_latest_prices_full curr ON curr.asset_id = co.currency
+            LEFT JOIN asset_latest_prices curr ON curr.asset_id = co.currency
             WHERE co.user_id = p_user_id
               AND co.portfolio_id = pa.portfolio_id
-              -- ОПТИМИЗИРОВАНО: исключаем операции без привязки к активу (Deposit, Withdraw)
-              -- Они относятся к портфелю в целом, а не к конкретному активу
               AND co.asset_id = pa.asset_id
               -- Исключаем операции типа Deposit (5) и Withdraw (6)
               AND co.type NOT IN (5, 6)

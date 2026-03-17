@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { Hash } from 'lucide-vue-next'
 import EditGoalModal from '../../modals/EditGoalModal.vue'
 import GoalProgressChart from '../../charts/GoalProgressChart.vue'
 import Widget from '../base/Widget.vue'
@@ -39,9 +40,7 @@ function saveGoal(newGoal) {
       props.goalData.monthlyContribution = newGoal.monthlyContribution || 0
       props.goalData.annualReturn = annualReturnValue
       props.goalData.useInflation = newGoal.useInflation || false
-      props.goalData.use_inflation = newGoal.useInflation || false
       props.goalData.inflationRate = newGoal.inflationRate || 7.5
-      props.goalData.inflation_rate = newGoal.inflationRate || 7.5
       showModal.value = false
     })
     .catch(err => {
@@ -103,11 +102,11 @@ const annualReturn = computed(() => {
   return props.goalData?.annualReturn || props.defaultReturnPercent || 0
 })
 const useInflation = computed(() => {
-  return props.goalData?.useInflation || props.goalData?.use_inflation || false
+  return props.goalData?.useInflation || false
 })
 
 const inflationRate = computed(() => {
-  return props.goalData?.inflationRate || props.goalData?.inflation_rate || 7.5
+  return props.goalData?.inflationRate || 7.5
 })
 
 // Расчет прогноза достижения цели
@@ -125,8 +124,8 @@ const goalProjection = computed(() => {
   const annualReturnPercent = annualReturn.value || 0
   
   // Получаем значения инфляции
-  const useInflationValue = props.goalData?.useInflation || props.goalData?.use_inflation || false
-  const inflationRateValue = props.goalData?.inflationRate || props.goalData?.inflation_rate || 7.5
+  const useInflationValue = props.goalData?.useInflation || false
+  const inflationRateValue = props.goalData?.inflationRate || 7.5
   
   // Месячная доходность (приблизительно)
   const monthlyReturnRate = annualReturnPercent / 12 / 100
@@ -363,7 +362,7 @@ const formatAmountShort = (value) => {
 </script>
 
 <template>
-  <Widget title="Прогноз достижения цели">
+  <Widget title="Прогноз достижения цели" :icon="Hash">
     <template #header>
       <button @click="openModal" class="edit-button">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -375,46 +374,44 @@ const formatAmountShort = (value) => {
     </template>
 
     <template v-if="hasGoal">
-      <!-- Информация о цели с круговым прогрессом -->
+      <!-- Круг прогресса, капитал/цель и срок — в одну линию -->
       <div class="goal-summary">
-        <div class="progress-circle-wrapper">
-          <svg class="progress-circle" viewBox="0 0 100 100">
-            <circle
-              class="progress-circle-bg"
-              cx="50"
-              cy="50"
-              r="45"
-              fill="none"
-              stroke="#e5e7eb"
-              stroke-width="8"
-            />
-            <circle
-              class="progress-circle-fill"
-              cx="50"
-              cy="50"
-              r="45"
-              fill="none"
-              stroke="#5478EA"
-              stroke-width="8"
-              :stroke-dasharray="`${2 * Math.PI * 45}`"
-              :stroke-dashoffset="`${2 * Math.PI * 45 * (1 - progressPercentage / 100)}`"
-              transform="rotate(-90 50 50)"
-            />
-          </svg>
-          <div class="progress-percentage">{{ progressPercentage.toFixed(0) }}%</div>
-        </div>
-        
-        <div class="goal-amounts-info">
-          <div class="capital-info">
+        <div style="display: flex; gap: 1rem;">
+          <div class="progress-circle-wrapper">
+            <svg class="progress-circle" viewBox="0 0 100 100">
+              <circle
+                class="progress-circle-bg"
+                cx="50"
+                cy="50"
+                r="45"
+                fill="none"
+                stroke="#e5e7eb"
+                stroke-width="8"
+              />
+              <circle
+                class="progress-circle-fill"
+                cx="50"
+                cy="50"
+                r="45"
+                fill="none"
+                stroke="#5478EA"
+                stroke-width="8"
+                :stroke-dasharray="`${2 * Math.PI * 45}`"
+                :stroke-dashoffset="`${2 * Math.PI * 45 * (1 - progressPercentage / 100)}`"
+                transform="rotate(-90 50 50)"
+              />
+            </svg>
+            <div class="progress-percentage">{{ progressPercentage.toFixed(0) }}%</div>
+          </div>
+          <div class="goal-amounts-info">
             <div class="capital-amounts">
               <span class="current-amount">{{ formatAmountShort(props.goalData.currentAmount || 0) }}</span>
               <span class="separator">/</span>
               <span class="target-amount">{{ formatAmountShort(currentTargetAmount) }}</span>
             </div>
-            <div class="capital-label">Капитал</div>
+            <span class="capital-label">Капитал</span>
           </div>
         </div>
-        
         <div v-if="timeToGoal" class="achievement-info">
           <div class="achievement-icon">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5478EA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -456,14 +453,14 @@ const formatAmountShort = (value) => {
 /* Убраны стили .widget, .widget-title - теперь используется компонент Widget */
 
 .edit-button {
-  background: #f3f4f6;
-  color: #374151;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
   border: none;
   border-radius: 8px;
   padding: 0.5rem 0.875rem;
   cursor: pointer;
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-label-weight);
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
@@ -472,8 +469,8 @@ const formatAmountShort = (value) => {
 }
 
 .edit-button:hover {
-  background: #e5e7eb;
-  color: #111827;
+  background: var(--bg-quaternary);
+  color: var(--text-primary);
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -488,6 +485,8 @@ const formatAmountShort = (value) => {
   gap: 1rem;
   align-items: center;
   margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .progress-circle-wrapper {
@@ -525,51 +524,48 @@ const formatAmountShort = (value) => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: #111827;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
 }
 
 .goal-amounts-info {
   flex: 1;
   display: flex;
   flex-direction: column;
-}
-
-.capital-info {
-  display: flex;
-  flex-direction: column;
   gap: 0.25rem;
+  min-width: 0;
+  justify-content: center;
 }
 
 .capital-amounts {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.375rem;
-  font-weight: 600;
-  color: #111827;
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
 }
 
 .current-amount {
-  color: #111827;
-  font-size: 1.125rem;
+  color: var(--text-primary);
+  font-size: var(--text-value-size);
 }
 
 .separator {
-  color: #9ca3af;
-  font-weight: 400;
-  font-size: 0.875rem;
+  color: var(--text-quaternary);
+  font-weight: var(--text-body-secondary-weight);
+  font-size: var(--text-body-secondary-size);
 }
 
 .target-amount {
-  color: #6b7280;
-  font-size: 0.875rem;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
 }
 
 .capital-label {
-  font-size: 0.75rem;
-  color: #6b7280;
-  font-weight: 500;
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
+  font-weight: var(--text-label-weight);
 }
 
 .achievement-info {
@@ -579,7 +575,8 @@ const formatAmountShort = (value) => {
   padding: 0.375rem 0.625rem;
   background: #f9fafb;
   border-radius: 6px;
-  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .achievement-icon svg {
@@ -591,38 +588,61 @@ const formatAmountShort = (value) => {
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .achievement-time {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: #111827;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
   line-height: 1.2;
 }
 
 .achievement-year {
-  font-size: 0.6875rem;
-  color: #6b7280;
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
   line-height: 1.2;
 }
 
 .projection-chart {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
   position: relative;
+  height: 300px;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  max-width: 100%;
 }
 
-.projection-chart :deep(div) {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+@media (max-width: 768px) {
+  .goal-summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .goal-amounts-info {
+    width: 100%;
+  }
+  .achievement-info {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .projection-chart {
+    height: 260px;
+    width: 100%;
+  }
 }
 
-.projection-chart :deep(canvas) {
-  flex: 1;
-  min-height: 0;
+@media (max-width: 480px) {
+  .progress-circle-wrapper {
+    width: 56px;
+    height: 56px;
+  }
+  .current-amount {
+    font-size: var(--text-body-secondary-size);
+  }
+  .projection-chart {
+    height: 220px;
+  }
 }
 </style>

@@ -2,7 +2,9 @@
 import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
 import { formatCurrency, formatOperationAmount } from '../../../utils/formatCurrency'
+import { formatDateForDisplay } from '../../../utils/date'
 import EmptyState from '../base/EmptyState.vue'
+import { Coins } from 'lucide-vue-next'
 
 const props = defineProps({
   payouts: {
@@ -39,18 +41,11 @@ const getPayoutTypeClass = (type) => {
   return 'other'
 }
 
-const formatDate = (date) => {
-  if (!date) return '-'
-  return new Date(date).toLocaleDateString('ru-RU', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-}
+const formatDate = formatDateForDisplay
 </script>
 
 <template>
-  <Widget title="История выплат">
+  <Widget title="История выплат" :icon="Coins">
     <div v-if="sortedPayouts.length > 0" class="payouts-list">
       <div 
         v-for="(payout, index) in sortedPayouts" 
@@ -110,43 +105,43 @@ const formatDate = (date) => {
   display: inline-block;
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-label-weight);
   text-transform: uppercase;
 }
 
 .payout-type.dividend {
   background: transparent;
-  color: #6b7280;
+  color: var(--text-tertiary);
   border: 1px solid #e5e7eb;
 }
 
 .payout-type.coupon {
   background: transparent;
-  color: #6b7280;
+  color: var(--text-tertiary);
   border: 1px solid #e5e7eb;
 }
 
 .payout-type.other {
   background: transparent;
-  color: #6b7280;
+  color: var(--text-tertiary);
   border: 1px solid #e5e7eb;
 }
 
 .payout-amount {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: #111827;
+  font-size: var(--text-value-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
 }
 
 .payout-date {
-  font-size: 0.875rem;
-  color: #6b7280;
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
   margin-bottom: 0.25rem;
 }
 
 .payout-meta {
-  font-size: 0.75rem;
-  color: #9ca3af;
+  font-size: var(--text-caption-size);
+  color: var(--text-quaternary);
 }
 </style>

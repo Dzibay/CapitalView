@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
+import { formatDateForDisplay } from '../../../utils/date'
 import { formatCurrency, formatOperationAmount } from '../../../utils/formatCurrency'
 import EmptyState from '../base/EmptyState.vue'
 
@@ -32,11 +33,13 @@ const props = defineProps({
         if (type === 2) return 'Продажа'
         if (type === 3) return 'Дивиденды'
         if (type === 4) return 'Купоны'
+        if (type === 9) return 'Погашение'  // Ammortization/Redemption
       }
       if (typeof type === 'string') {
         const t = type.toLowerCase()
         if (t.includes('покуп') || t.includes('buy')) return 'Покупка'
         if (t.includes('прод') || t.includes('sell')) return 'Продажа'
+        if (t.includes('погаш') || t.includes('redemption') || t.includes('амортиз') || t.includes('amortization') || t.includes('ammortization')) return 'Погашение'
         if (t.includes('див') || t.includes('div')) return 'Дивиденды'
         if (t.includes('купон') || t.includes('coupon')) return 'Купоны'
       }
@@ -53,6 +56,7 @@ const props = defineProps({
         if (type === 2) return 'sell'
         if (type === 3) return 'dividend'
         if (type === 4) return 'coupon'
+        if (type === 9) return 'redemption'  // Ammortization/Redemption
       }
       if (typeof type === 'string') {
         const t = type.toLowerCase()
@@ -67,10 +71,7 @@ const props = defineProps({
   // Функция для форматирования даты
   formatDate: {
     type: Function,
-    default: (date) => {
-      if (!date) return '-'
-      return new Date(date).toLocaleDateString('ru-RU')
-    }
+    default: formatDateForDisplay
   },
   // Функция для форматирования суммы операции (опционально, для кастомного форматирования с валютой)
   formatAmount: {
@@ -144,9 +145,9 @@ thead {
 th {
   padding: 0.75rem 1rem;
   text-align: left;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #6b7280;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-label-weight);
+  color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-bottom: 1px solid #e5e7eb;
@@ -163,16 +164,16 @@ tbody tr:hover {
 
 td {
   padding: 0.75rem 1rem;
-  font-size: 0.875rem;
-  color: #111827;
+  font-size: var(--text-caption-size);
+  color: var(--text-primary);
 }
 
 .badge {
   display: inline-block;
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-label-weight);
   text-transform: uppercase;
   letter-spacing: 0.025em;
 }
@@ -199,6 +200,6 @@ td {
 
 .badge-other {
   background: #f3f4f6;
-  color: #6b7280;
+  color: var(--text-tertiary);
 }
 </style>

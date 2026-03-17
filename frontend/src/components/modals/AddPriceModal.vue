@@ -1,7 +1,10 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { Button } from '../base'
+import { Check, DollarSign, Calendar, Settings, RefreshCw, TrendingUp } from 'lucide-vue-next'
+import { Button, DateInput } from '../base'
 import assetsService from '../../services/assetsService'
+import { normalizeDateToString } from '../../utils/date'
+import ModalBase from './ModalBase.vue'
 
 const props = defineProps({
   asset: Object,
@@ -15,14 +18,14 @@ const mode = ref('single')
 
 // Поля для одиночной цены
 const price = ref(0)
-const date = ref(new Date().toISOString().slice(0, 10))
+const date = ref(normalizeDateToString(new Date()) || '')
 
 // Поля для динамики цены
 // Инициализируем начальную цену из average_price актива, если доступна
 const startPrice = ref(0)
 const endPrice = ref(0)
 const startDate = ref('')
-const endDate = ref(new Date().toISOString().slice(0, 10))
+const endDate = ref(normalizeDateToString(new Date()) || '')
 const interval = ref('month') // 'day', 'week', 'month'
 
 const error = ref('')
@@ -42,7 +45,7 @@ const initializeDefaults = () => {
     if (props.asset.first_purchase_date) {
       const date = new Date(props.asset.first_purchase_date)
       if (!isNaN(date.getTime())) {
-        startDate.value = date.toISOString().slice(0, 10)
+        startDate.value = normalizeDateToString(date) || ''
       }
     }
   }
@@ -121,7 +124,7 @@ const generatePricePoints = () => {
     const interpolatedPrice = startPrice.value + (priceDiff * progress)
     
     points.push({
-      date: currentDate.toISOString().slice(0, 10),
+      date: normalizeDateToString(currentDate) || '',
       price: Math.max(0.01, parseFloat(interpolatedPrice.toFixed(2))) // Минимум 0.01
     })
     
@@ -240,297 +243,175 @@ const onModeChange = () => {
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Добавление цены актива</h2>
-        <button class="close-btn" @click="emit('close')" aria-label="Закрыть">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+  <ModalBase title="Добавление цены актива" :icon="DollarSign" :wide="true" @close="emit('close')">
+    <form @submit.prevent="handleSubmit">
+      <div class="form-section">
+        <div class="asset-info">
+          <TrendingUp :size="18" class="asset-icon" />
+          <div>
+            <strong>{{ asset.name }}</strong>
+            <span class="ticker">({{ asset.ticker }})</span>
+          </div>
+        </div>
       </div>
 
-      <form @submit.prevent="handleSubmit" class="form-content">
-        <div class="form-section">
-          <div class="asset-info">
-            <span class="asset-icon">📈</span>
-            <div>
-              <strong>{{ asset.name }}</strong>
-              <span class="ticker">({{ asset.ticker }})</span>
-            </div>
-          </div>
+      <!-- Переключатель режима -->
+      <div class="form-section">
+        <div class="section-divider"></div>
+        <label class="form-label">
+          <Settings :size="16" class="label-icon" />
+          Режим добавления
+        </label>
+        <div class="mode-switch">
+          <button
+            type="button"
+            :class="['mode-btn', { active: mode === 'single' }]"
+            @click="mode = 'single'"
+          >
+            Одна цена
+          </button>
+          <button
+            type="button"
+            :class="['mode-btn', { active: mode === 'dynamic' }]"
+            @click="mode = 'dynamic'; onModeChange()"
+          >
+            Динамика цены
+          </button>
         </div>
+      </div>
 
-        <!-- Переключатель режима -->
+      <!-- Режим: одна цена -->
+      <template v-if="mode === 'single'">
         <div class="form-section">
           <div class="section-divider"></div>
-          <label class="form-label">
-            <span class="label-icon">⚙️</span>
-            Режим добавления
-          </label>
-          <div class="mode-switch">
-            <button
-              type="button"
-              :class="['mode-btn', { active: mode === 'single' }]"
-              @click="mode = 'single'"
-            >
-              Одна цена
-            </button>
-            <button
-              type="button"
-              :class="['mode-btn', { active: mode === 'dynamic' }]"
-              @click="mode = 'dynamic'; onModeChange()"
-            >
-              Динамика цены
-            </button>
-          </div>
-        </div>
-
-        <!-- Режим: одна цена -->
-        <template v-if="mode === 'single'">
-          <div class="form-section">
-            <div class="section-divider"></div>
-            <div class="form-row">
-              <div class="form-field">
-                <label class="form-label">
-                  <span class="label-icon">💰</span>
-                  Цена (₽)
-                </label>
-                <input type="number" v-model.number="price" min="0" step="0.01" class="form-input" required />
-              </div>
-              <div class="form-field">
-                <label class="form-label">
-                  <span class="label-icon">📅</span>
-                  Дата
-                </label>
-                <input type="date" v-model="date" required class="form-input" />
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <!-- Режим: динамика цены -->
-        <template v-else>
-          <div class="form-section">
-            <div class="section-divider"></div>
-            <div class="form-row">
-              <div class="form-field">
-                <label class="form-label">
-                  <span class="label-icon">💰</span>
-                  Начальная цена (₽)
-                </label>
-                <input type="number" v-model.number="startPrice" min="0" step="0.01" class="form-input" required />
-              </div>
-              <div class="form-field">
-                <label class="form-label">
-                  <span class="label-icon">💰</span>
-                  Конечная цена (₽)
-                </label>
-                <input type="number" v-model.number="endPrice" min="0" step="0.01" class="form-input" required />
-              </div>
-            </div>
-          </div>
-
-          <div class="form-section">
-            <div class="section-divider"></div>
-            <div class="form-row">
-              <div class="form-field">
-                <label class="form-label">
-                  <span class="label-icon">📅</span>
-                  Начальная дата
-                </label>
-                <input type="date" v-model="startDate" required class="form-input" />
-              </div>
-              <div class="form-field">
-                <label class="form-label">
-                  <span class="label-icon">📅</span>
-                  Конечная дата
-                </label>
-                <input type="date" v-model="endDate" required class="form-input" />
-              </div>
-            </div>
-          </div>
-
-          <div class="form-section">
-            <div class="section-divider"></div>
+          <div class="form-row">
             <div class="form-field">
               <label class="form-label">
-                <span class="label-icon">🔄</span>
-                Интервал
+                <DollarSign :size="16" class="label-icon" />
+                Цена (₽)
               </label>
-              <select v-model="interval" class="form-input">
-                <option value="day">Ежедневно</option>
-                <option value="week">Еженедельно</option>
-                <option value="month">Ежемесячно</option>
-              </select>
+              <input type="number" v-model.number="price" min="0" step="0.01" class="form-input" required />
             </div>
-            <div v-if="pricePointsCount > 0" class="info-box">
-              <span class="info-icon">ℹ️</span>
-              <span>Будет создано <strong>{{ pricePointsCount }}</strong> записей цен</span>
+            <div class="form-field">
+              <label class="form-label">
+                <Calendar :size="16" class="label-icon" />
+                Дата
+              </label>
+              <DateInput v-model="date" required />
             </div>
           </div>
-        </template>
-
-        <div v-if="error" class="error">{{ error }}</div>
-
-        <div class="form-actions">
-          <button type="button" class="btn btn-secondary" @click="emit('close')" :disabled="saving">
-            Отмена
-          </button>
-          <button type="submit" class="btn btn-primary" :disabled="saving">
-            <span class="btn-icon">✓</span>
-            {{ saving ? 'Сохранение...' : (mode === 'single' ? 'Добавить' : 'Создать динамику') }}
-          </button>
         </div>
-      </form>
-    </div>
-  </div>
+      </template>
+
+      <!-- Режим: динамика цены -->
+      <template v-else>
+        <div class="form-section">
+          <div class="section-divider"></div>
+          <div class="form-row">
+            <div class="form-field">
+              <label class="form-label">
+                <DollarSign :size="16" class="label-icon" />
+                Начальная цена (₽)
+              </label>
+              <input type="number" v-model.number="startPrice" min="0" step="0.01" class="form-input" required />
+            </div>
+            <div class="form-field">
+              <label class="form-label">
+                <DollarSign :size="16" class="label-icon" />
+                Конечная цена (₽)
+              </label>
+              <input type="number" v-model.number="endPrice" min="0" step="0.01" class="form-input" required />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-divider"></div>
+          <div class="form-row">
+            <div class="form-field">
+              <label class="form-label">
+                <Calendar :size="16" class="label-icon" />
+                Начальная дата
+              </label>
+              <DateInput v-model="startDate" required />
+            </div>
+            <div class="form-field">
+              <label class="form-label">
+                <Calendar :size="16" class="label-icon" />
+                Конечная дата
+              </label>
+              <DateInput v-model="endDate" required />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-divider"></div>
+          <div class="form-field">
+            <label class="form-label">
+              <RefreshCw :size="16" class="label-icon" />
+              Интервал
+            </label>
+            <select v-model="interval" class="form-input">
+              <option value="day">Ежедневно</option>
+              <option value="week">Еженедельно</option>
+              <option value="month">Ежемесячно</option>
+            </select>
+          </div>
+          <div v-if="pricePointsCount > 0" class="info-box">
+            <span class="info-icon">ℹ️</span>
+            <span>Будет создано <strong>{{ pricePointsCount }}</strong> записей цен</span>
+          </div>
+        </div>
+      </template>
+
+      <div v-if="error" class="error">{{ error }}</div>
+
+      <div class="form-actions">
+        <Button variant="secondary" type="button" @click="emit('close')" :disabled="saving">
+          Отмена
+        </Button>
+        <Button variant="primary" type="submit" :loading="saving">
+          <template #icon>
+            <Check :size="16" />
+          </template>
+          {{ saving ? 'Сохранение...' : (mode === 'single' ? 'Добавить' : 'Создать динамику') }}
+        </Button>
+      </div>
+    </form>
+  </ModalBase>
 </template>
 
 <style scoped>
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(8px);
-  padding: 16px;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.modal {
-  background: white;
-  border-radius: 20px;
-  width: 100%;
-  max-width: 600px;
-  max-height: 90vh;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes slideUp {
-  from {
-    transform: scale(0.95) translateY(10px);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1) translateY(0);
-    opacity: 1;
-  }
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid #f3f4f6;
-  background: linear-gradient(to bottom, #ffffff, #fafafa);
-  flex-shrink: 0;
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-  color: #111827;
-  letter-spacing: -0.02em;
-}
-
-.close-btn {
-  background: #f3f4f6;
-  border: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #6b7280;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.close-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
-  transform: scale(1.05);
-}
-
-.close-btn:active {
-  transform: scale(0.95);
-}
-
-.close-btn svg {
-  width: 18px;
-  height: 18px;
-}
-
-.form-content {
-  padding: 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.form-content::-webkit-scrollbar {
-  width: 8px;
-}
-
-.form-content::-webkit-scrollbar-track {
-  background: #f9fafb;
-}
-
-.form-content::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 4px;
-}
-
-.form-content::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
-}
-
 .form-section {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .form-section:last-of-type {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .section-divider {
   height: 1px;
   background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
-  margin: 20px 0;
+  margin: 16px 0;
 }
 
 .asset-info {
-  padding: 14px 18px;
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
-  border-radius: 12px;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-radius: 10px;
   border: 1px solid #e5e7eb;
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 15px;
+  gap: 10px;
+  font-size: 14px;
 }
 
 .asset-icon {
-  font-size: 20px;
-  opacity: 0.9;
+  color: #6b7280;
+  flex-shrink: 0;
+  opacity: 0.8;
 }
 
 .asset-info strong {
@@ -540,31 +421,31 @@ const onModeChange = () => {
 
 .ticker {
   color: #6b7280;
-  margin-left: 8px;
-  font-size: 14px;
+  margin-left: 6px;
+  font-size: 13px;
 }
 
 .form-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-size: 14px;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
   font-weight: 600;
   color: #374151;
   letter-spacing: -0.01em;
 }
 
 .label-icon {
-  font-size: 16px;
-  opacity: 0.85;
+  color: #6b7280;
+  flex-shrink: 0;
 }
 
 .form-input {
   width: 100%;
-  padding: 11px 14px;
+  padding: 9px 12px;
   border: 1.5px solid #e5e7eb;
-  border-radius: 12px;
+  border-radius: 10px;
   font-size: 14px;
   transition: all 0.2s ease;
   background: #fff;
@@ -581,7 +462,7 @@ const onModeChange = () => {
 .form-input:focus {
   outline: none;
   border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
   background: #fff;
 }
 
@@ -593,7 +474,7 @@ const onModeChange = () => {
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 12px;
 }
 
 .form-field {
@@ -656,76 +537,21 @@ const onModeChange = () => {
 }
 
 .error {
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: #fef2f2;
   border: 1px solid #fecaca;
-  border-radius: 12px;
+  border-radius: 10px;
   color: #dc2626;
   font-size: 13px;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.error::before {
-  content: '⚠️';
-  font-size: 16px;
+  margin-bottom: 12px;
 }
 
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  padding-top: 20px;
-  margin-top: 12px;
+  gap: 10px;
+  padding-top: 16px;
+  margin-top: 8px;
   border-top: 1px solid #f3f4f6;
-}
-
-.btn {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #e5e7eb;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
-  transform: translateY(-1px);
-}
-
-.btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.btn-icon {
-  font-size: 16px;
 }
 </style>

@@ -1,9 +1,28 @@
 <script setup>
-import { computed, unref } from "vue";
+import { computed, unref, ref, onMounted, onUnmounted } from "vue";
 import { useRouter } from 'vue-router';
 import { useContextMenu } from '../composables/useContextMenu';
+import { getCurrencySymbol } from '../utils/currencySymbols';
 
 const router = useRouter();
+
+// На планшетах и мобильных показываем карточки вместо таблицы (без скролла)
+const isMobileView = ref(typeof window !== 'undefined' && window.innerWidth <= 1024);
+function updateMobileView() {
+  if (typeof window !== 'undefined') {
+    isMobileView.value = window.innerWidth <= 1024;
+  }
+}
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', updateMobileView);
+  }
+});
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', updateMobileView);
+  }
+});
 
 // ✅ сохраняем props в переменную
 const props = defineProps({
@@ -145,7 +164,8 @@ const getDividendYield5Y = (asset) => {
           <div v-if="!portfolio.assets?.length && !portfolio.children?.length" class="empty-state">
             В этом портфеле пока нет активов
           </div>
-          <div v-if="portfolio.assets && portfolio.assets.length > 0" class="table-responsive">
+          <!-- Десктоп: таблица -->
+          <div v-if="portfolio.assets && portfolio.assets.length > 0 && !isMobileView" class="table-responsive">
             <table class="asset-table">
               <thead>
                 <tr>
@@ -180,8 +200,8 @@ const getDividendYield5Y = (asset) => {
                     </div>
                   </td>
                   <td class="col-right">{{ asset.quantity }}</td>
-                  <td class="col-right num-font">{{ asset.average_price.toFixed(2) }}</td>
-                  <td class="col-right num-font">{{ asset.last_price || '-' }}</td>
+                  <td class="col-right num-font">{{ asset.average_price.toFixed(2) }} {{ getCurrencySymbol(asset.currency_ticker) }}</td>
+                  <td class="col-right num-font">{{ asset.last_price ? asset.last_price + ' ' + getCurrencySymbol(asset.currency_ticker) : '-' }}</td>
                   <td class="col-right num-font bold">
                     {{ Math.max(0, (asset.quantity * asset.last_price / asset.leverage) * asset.currency_rate_to_rub).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽
                   </td>
@@ -219,6 +239,56 @@ const getDividendYield5Y = (asset) => {
               </tbody>
             </table>
           </div>
+          <!-- Мобильная/планшет: карточки без скролла -->
+          <div v-if="portfolio.assets && portfolio.assets.length > 0 && isMobileView" class="asset-cards">
+            <div
+              v-for="asset in portfolio.assets"
+              :key="asset.portfolio_asset_id"
+              class="asset-card"
+              :class="{ 'sold-asset': (asset.quantity || 0) === 0 }"
+            >
+              <div class="asset-card-header" @click="router.push(`/assets/${asset.portfolio_asset_id}`)">
+                <div class="asset-card-title">
+                  <span class="asset-name">{{ asset.name }}</span>
+                  <span v-if="(asset.quantity || 0) === 0" class="sold-badge">(Продан)</span>
+                </div>
+                <div class="asset-card-meta">
+                  <span class="asset-ticker">{{ asset.ticker }}</span>
+                  <span v-if="asset.leverage && asset.leverage > 1" class="badge-leverage">×{{ asset.leverage }}</span>
+                </div>
+              </div>
+              <div class="asset-card-body">
+                <div class="asset-card-row">
+                  <span class="asset-card-label">Кол-во</span>
+                  <span class="asset-card-value">{{ asset.quantity }}</span>
+                </div>
+                <div class="asset-card-row">
+                  <span class="asset-card-label">Цена</span>
+                  <span class="asset-card-value num-font">{{ asset.last_price ? asset.last_price + ' ' + getCurrencySymbol(asset.currency_ticker) : '–' }}</span>
+                </div>
+                <div class="asset-card-row">
+                  <span class="asset-card-label">Стоимость</span>
+                  <span class="asset-card-value num-font bold">{{ Math.max(0, (asset.quantity * asset.last_price / (asset.leverage || 1)) * (asset.currency_rate_to_rub || 1)).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽</span>
+                </div>
+                <div class="asset-card-row">
+                  <span class="asset-card-label">P&L</span>
+                  <span class="asset-card-value num-font" :class="(asset.last_price - asset.average_price) >= 0 ? 'text-green' : 'text-red'">{{ ((asset.last_price - asset.average_price) / asset.average_price * 100).toFixed(2) }}%</span>
+                </div>
+              </div>
+              <div class="asset-card-actions">
+                <button class="menu-btn icon-btn" @click.stop="openMenu($event, 'asset', asset)" aria-label="Меню">⋮</button>
+              </div>
+            </div>
+          </div>
+          <!-- Баланс портфеля - отображается внизу, под активами -->
+          <div v-if="portfolio.balance !== undefined && portfolio.balance !== null && portfolio.balance !== 0" class="portfolio-balance-section">
+            <div class="balance-row">
+              <span class="balance-label">Свободный баланс:</span>
+              <span class="balance-amount">
+                {{ portfolio.balance.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} ₽
+              </span>
+            </div>
+          </div>
           <div v-if="portfolio.children && portfolio.children.length" class="child-portfolios">
             <PortfolioTree
               :portfolios="portfolio.children"
@@ -241,10 +311,13 @@ const getDividendYield5Y = (asset) => {
 </template>
 
 <style scoped>
-/* --- General Variables & Layout --- */
+/* --- Общие переменные и разметка --- */
 .portfolio-list {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
 }
 
 .portfolio-card {
@@ -254,12 +327,14 @@ const getDividendYield5Y = (asset) => {
   border: 1px solid #eef0f2;
   overflow: hidden;
   transition: box-shadow 0.2s;
+  min-width: 0;
+  max-width: 100%;
 }
 .portfolio-card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
-/* Child portfolios have less shadow and are indented */
+/* Дочерние портфели с меньшей тенью и отступом */
 .portfolio-card.is-child {
   margin-top: 16px;
   box-shadow: none;
@@ -267,7 +342,7 @@ const getDividendYield5Y = (asset) => {
   background: #fcfcfc;
 }
 
-/* --- Header --- */
+/* --- Шапка --- */
 .portfolio-header {
   display: flex;
   justify-content: space-between;
@@ -277,6 +352,7 @@ const getDividendYield5Y = (asset) => {
   cursor: pointer;
   user-select: none;
   transition: background 0.2s;
+  min-width: 0;
 }
 .portfolio-card.is-child > .portfolio-header {
   background: #fcfcfc;
@@ -289,6 +365,8 @@ const getDividendYield5Y = (asset) => {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex: 1;
 }
 
 .toggle-icon {
@@ -304,12 +382,24 @@ const getDividendYield5Y = (asset) => {
   display: flex;
   align-items: baseline;
   gap: 10px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .portfolio-name {
   font-weight: 600;
   font-size: 16px;
   color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-values {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
 }
 
 .portfolio-value {
@@ -322,9 +412,39 @@ const getDividendYield5Y = (asset) => {
   font-size: 14px;
 }
 
-/* --- Body --- */
+/* --- Тело --- */
 .portfolio-body {
   border-top: 1px solid #eef0f2;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* --- Баланс портфеля --- */
+.portfolio-balance-section {
+  padding: 12px 20px;
+  border-top: 1px solid #eef0f2;
+  background: #fafbfc;
+  font-size: 13px;
+}
+
+.balance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.balance-label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.balance-amount {
+  color: #1e293b;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace;
 }
 
 .empty-state {
@@ -335,16 +455,79 @@ const getDividendYield5Y = (asset) => {
   font-size: 14px;
 }
 
-/* --- Table Styles --- */
+/* --- Стили таблицы --- */
 .table-responsive {
-  overflow-x: auto;
+  width: 100%;
+  max-width: 100%; /* Ограничиваем контейнер */
+  overflow-x: auto; /* Включаем прокрутку */
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch; /* Плавный скролл на iOS */
+  position: relative;
+}
+
+/* Мобильные: ещё меньше отступов иерархии и карточек */
+@media (max-width: 768px) {
+  .portfolio-header {
+    padding: 10px 12px;
+  }
+  .portfolio-card.is-child {
+    margin-top: 8px;
+  }
+  .child-portfolios {
+    padding: 0 0 8px 10px;
+  }
+  .portfolio-balance-section {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .empty-state {
+    padding: 16px;
+    font-size: 13px;
+  }
+  .asset-cards {
+    padding: 10px;
+    gap: 8px;
+  }
+  .asset-card {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .portfolio-header {
+    padding: 8px 10px;
+  }
+  .portfolio-card.is-child {
+    margin-top: 6px;
+  }
+  .child-portfolios {
+    padding: 0 0 6px 8px;
+  }
+  .portfolio-name {
+    font-size: 14px;
+  }
+  .portfolio-value {
+    font-size: 12px;
+  }
+  .asset-cards {
+    padding: 8px;
+    gap: 6px;
+  }
+  .asset-card {
+    padding: 8px;
+  }
+  .asset-card-body {
+    font-size: 11px;
+  }
 }
 
 .asset-table {
   width: 100%;
+  min-width: 700px;
   border-collapse: collapse;
   font-size: 13px;
   color: #334155;
+  table-layout: auto;
 }
 
 .asset-table th {
@@ -360,6 +543,42 @@ const getDividendYield5Y = (asset) => {
   padding: 12px 16px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
+}
+
+/* Планшет: компактная таблица (если показывается) и меньшие отступы иерархии */
+@media (max-width: 1200px) {
+  .portfolio-header {
+    padding: 12px 14px;
+  }
+  .portfolio-card.is-child {
+    margin-top: 10px;
+  }
+  .child-portfolios {
+    padding: 0 0 10px 14px;
+  }
+  .portfolio-balance-section {
+    padding: 10px 14px;
+  }
+  .asset-table {
+    font-size: 12px;
+    min-width: 620px;
+  }
+  .asset-table th,
+  .asset-table td {
+    padding: 8px 10px;
+  }
+  .col-name {
+    min-width: 120px;
+  }
+  .num-font {
+    font-size: 11px;
+  }
+  .asset-name {
+    font-size: 13px;
+  }
+  .asset-ticker {
+    font-size: 10px;
+  }
 }
 
 .asset-table tr:last-child td {
@@ -385,7 +604,7 @@ const getDividendYield5Y = (asset) => {
   margin-left: 6px;
 }
 
-/* Column Alignments */
+/* Выравнивание колонок */
 .col-right {
   text-align: right;
 }
@@ -400,7 +619,7 @@ const getDividendYield5Y = (asset) => {
   text-align: center;
 }
 
-/* Font Tweaks */
+/* Настройки шрифта */
 .num-font {
   font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace;
   font-size: 12px;
@@ -410,7 +629,7 @@ const getDividendYield5Y = (asset) => {
   font-weight: 600;
 }
 
-/* Colors */
+/* Цвета */
 .text-green {
   color: #10b981;
 }
@@ -418,7 +637,7 @@ const getDividendYield5Y = (asset) => {
   color: #ef4444;
 }
 
-/* Asset Cell Specifics */
+/* Стили ячеек актива */
 .cell-name.clickable {
   cursor: pointer;
 }
@@ -456,7 +675,7 @@ const getDividendYield5Y = (asset) => {
   font-weight: bold;
 }
 
-/* --- Menu Button --- */
+/* --- Кнопка меню --- */
 .menu-btn {
   background: transparent;
   border: none;
@@ -502,13 +721,105 @@ const getDividendYield5Y = (asset) => {
   letter-spacing: 0.5px;
 }
 
-/* --- Child Portfolios Wrapper --- */
+/* --- Мобильные карточки активов (без скролла) --- */
+.asset-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.asset-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 8px 12px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.asset-card.sold-asset {
+  opacity: 0.7;
+}
+
+.asset-card-header {
+  grid-column: 1;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.asset-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.asset-card-title .asset-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.asset-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.asset-card-body {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 16px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.asset-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.asset-card-label {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.asset-card-value {
+  color: #334155;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.asset-card-actions {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  justify-self: end;
+}
+
+/* --- Обёртка дочерних портфелей --- */
 .child-portfolios {
-  padding: 0 16px 16px 24px; /* Indent child portfolios */
+  padding: 0 16px 16px 24px; /* Отступ дочерних портфелей */
   background: #ffffff;
 }
 
-/* --- Transitions --- */
+/* --- Переходы --- */
 .slide-fade-enter-active,
 .slide-fade-leave-active {
   transition: all 0.3s ease-out;

@@ -1,14 +1,15 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Building2, PieChart, TrendingDown, Hash, History } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
-import MultiLineChart from '../components/MultiLineChart.vue'
+import MultiLineChart from '../components/charts/MultiLineChart.vue'
 import { 
   PeriodFilters, 
   WidgetContainer, 
   MetricsWidget, 
-  ValueChange, 
+  ValueChangePill, 
   Widget 
 } from '../components/widgets/base'
 import { AssetPortfolioStatsWidget } from '../components/widgets/composite'
@@ -20,8 +21,10 @@ import CustomSelect from '../components/base/CustomSelect.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import assetsService from '../services/assetsService'
 import operationsService from '../services/operationsService'
-import PageLayout from '../components/PageLayout.vue'
+import PageLayout from '../layouts/PageLayout.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
+import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
+import { getCurrencySymbol } from '../utils/currencySymbols'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +37,7 @@ const portfolioAssetId = computed(() => parseInt(route.params.id))
 const isLoading = ref(false)
 const assetInfo = ref(null)
 const priceHistory = ref([])
+const priceHistoryCurrency = ref(null) // Валюта истории цен (из API getAssetPriceHistory)
 const assetDailyValues = ref([]) // История стоимости позиции из portfolio_daily_positions
 const assetInAllPortfolios = ref([])
 const selectedPortfolioId = ref(null)
@@ -118,6 +122,7 @@ async function loadAssetInfo() {
       // Используем историю цен из основного запроса (если есть)
       if (result.portfolio_asset.price_history && result.portfolio_asset.price_history.length > 0) {
         priceHistory.value = result.portfolio_asset.price_history
+        priceHistoryCurrency.value = result.portfolio_asset.currency_ticker || null
       } else if (result.portfolio_asset.asset_id) {
         // Если истории нет в основном запросе, загружаем отдельно (для больших объемов данных)
         await loadPriceHistory(result.portfolio_asset.asset_id)
@@ -205,6 +210,7 @@ async function loadPriceHistory(assetId) {
     const result = await assetsService.getAssetPriceHistory(assetId)
     if (result.success && result.prices) {
       priceHistory.value = result.prices
+      priceHistoryCurrency.value = result.currency_ticker || null
     }
   } catch (error) {
     console.error('Ошибка при загрузке истории цен:', error)
@@ -275,7 +281,7 @@ const firstTransactionDate = computed(() => {
   // Находим самую раннюю дату
   const firstDate = new Date(Math.min(...dates))
   firstDate.setHours(0, 0, 0, 0)
-  return firstDate.toISOString().split('T')[0]
+  return normalizeDateToString(firstDate) || ''
 })
 
 // Вычисляем накопленное количество на каждую дату для выбранного портфеля
@@ -288,20 +294,16 @@ const quantityByDate = computed(() => {
   const txList = [...transactions]
     .map(tx => ({
       ...tx,
-      date: new Date(tx.transaction_date).toISOString().split('T')[0]
+      date: normalizeDateToString(tx.transaction_date) || ''
     }))
     .sort((a, b) => a.date.localeCompare(b.date))
   
   const quantityMap = {}
   let cumulativeQuantity = 0
   
-  // Вычисляем накопленное количество для каждой даты из истории цен
-  // Нормализуем даты из истории цен
-  const priceDates = [...new Set(priceHistory.value.map(p => {
-    const date = new Date(p.trade_date)
-    date.setHours(0, 0, 0, 0)
-    return date.toISOString().split('T')[0]
-  }))].sort()
+  const priceDates = [...new Set(
+    priceHistory.value.map(p => (p.trade_date || '').split('T')[0])
+  )].filter(Boolean).sort()
   
   let txIndex = 0
   for (const priceDateStr of priceDates) {
@@ -313,11 +315,12 @@ const quantityByDate = computed(() => {
       // Сравниваем даты как строки
       if (txDateStr > priceDateStr) break
       
-      // transaction_type: 1 = buy (плюс), 2 = sell (минус)
+      // transaction_type: 1 = buy (плюс), 2 = sell (минус), 3 = redemption (минус)
       const txQuantity = Number(tx.quantity) || 0
       if (tx.transaction_type === 1 || (typeof tx.transaction_type === 'string' && tx.transaction_type.toLowerCase() === 'buy')) {
         cumulativeQuantity += txQuantity
-      } else if (tx.transaction_type === 2 || (typeof tx.transaction_type === 'string' && tx.transaction_type.toLowerCase() === 'sell')) {
+      } else if (tx.transaction_type === 2 || tx.transaction_type === 3 || 
+                 (typeof tx.transaction_type === 'string' && (tx.transaction_type.toLowerCase() === 'sell' || tx.transaction_type.toLowerCase().includes('redemption') || tx.transaction_type.toLowerCase().includes('погаш')))) {
         cumulativeQuantity -= txQuantity
       }
       
@@ -340,25 +343,23 @@ const chartData = computed(() => {
   const leverage = asset.leverage || 1
   const currencyRate = asset.currency_rate_to_rub || portfolioAsset.value?.asset.currency_rate_to_rub || 1
 
-  // Фильтруем историю цен с первой транзакции только для графиков стоимости позиции и количества
-  // Для графика цены единицы актива показываем полную историю
-  let filteredPrices = [...priceHistory.value]
+  let filteredPrices = priceHistory.value
   if (firstTransactionDate.value && selectedChartType.value !== 'price') {
-    filteredPrices = filteredPrices.filter(p => {
-      const priceDate = new Date(p.trade_date)
-      priceDate.setHours(0, 0, 0, 0)
-      const firstDate = new Date(firstTransactionDate.value)
-      firstDate.setHours(0, 0, 0, 0)
-      return priceDate >= firstDate
-    })
+    const firstDateStr = typeof firstTransactionDate.value === 'string'
+      ? firstTransactionDate.value.split('T')[0]
+      : normalizeDateToString(new Date(firstTransactionDate.value)) || ''
+    filteredPrices = filteredPrices.filter(p => (p.trade_date || '').split('T')[0] >= firstDateStr)
   }
 
   if (!filteredPrices.length) {
     return { labels: [], datasets: [] }
   }
 
-  // Преобразуем историю цен в формат для графика
-  const labels = filteredPrices.map(p => p.trade_date).sort()
+  const priceMap = new Map()
+  for (const p of filteredPrices) {
+    priceMap.set(p.trade_date, p.price)
+  }
+  const labels = [...priceMap.keys()].sort()
   
   let datasets = []
   
@@ -398,19 +399,6 @@ const chartData = computed(() => {
         })
         const labels = filteredValues.map(v => v.report_date)
         
-        // Отладочная информация
-        if (data.length > 0) {
-          const minValue = Math.min(...data)
-          const maxValue = Math.max(...data)
-          console.log('График стоимости позиции:', {
-            записей: data.length,
-            мин: minValue,
-            макс: maxValue,
-            первые_5: data.slice(0, 5),
-            последние_5: data.slice(-5)
-          })
-        }
-        
         datasets = [{
           label: 'Стоимость позиции',
           data,
@@ -429,20 +417,11 @@ const chartData = computed(() => {
       console.warn('Нет данных assetDailyValues для графика стоимости позиции')
     }
     
-    // Fallback: используем старый метод расчета (если данных из API нет)
     const quantities = quantityByDate.value
     const data = labels.map(date => {
-      // Нормализуем дату для поиска в quantityMap
-      const dateObj = new Date(date)
-      dateObj.setHours(0, 0, 0, 0)
-      const normalizedDate = dateObj.toISOString().split('T')[0]
-      
+      const normalizedDate = date.split('T')[0]
       const qty = quantities[normalizedDate] || 0
-      const price = filteredPrices.find(p => {
-        const pDate = new Date(p.trade_date)
-        pDate.setHours(0, 0, 0, 0)
-        return pDate.toISOString().split('T')[0] === normalizedDate
-      })?.price || 0
+      const price = priceMap.get(date) || 0
       return (qty * price / leverage) * currencyRate
     })
     
@@ -485,15 +464,8 @@ const chartData = computed(() => {
       }
     }
     
-    // Fallback: используем старый метод расчета
     const quantities = quantityByDate.value
-    const data = labels.map(date => {
-      // Нормализуем дату для поиска в quantityMap
-      const dateObj = new Date(date)
-      dateObj.setHours(0, 0, 0, 0)
-      const normalizedDate = dateObj.toISOString().split('T')[0]
-      return quantities[normalizedDate] || 0
-    })
+    const data = labels.map(date => quantities[date.split('T')[0]] || 0)
     
     datasets = [{
       label: 'Количество актива',
@@ -502,11 +474,7 @@ const chartData = computed(() => {
       fill: true
     }]
   } else if (selectedChartType.value === 'price') {
-    // График цены единицы актива - используем оригинальную валюту (без конвертации в рубли)
-    const data = labels.map(date => {
-      const price = filteredPrices.find(p => p.trade_date === date)?.price || 0
-      return price // Не конвертируем в рубли, используем оригинальную цену
-    })
+    const data = labels.map(date => priceMap.get(date) || 0)
     
     datasets = [{
       label: 'Цена единицы актива',
@@ -658,22 +626,26 @@ const commissionsTotal = computed(() => {
 })
 
 // Расчет общей прибыли для выбранного портфеля
+// ИСПРАВЛЕНО: используем total_pnl из portfolio_daily_positions вместо пересчета
 const selectedTotalProfit = computed(() => {
-  if (!selectedProfitLoss.value) return null
+  if (!selectedPortfolioAsset.value) return null
   
-  const unrealized = selectedProfitLoss.value.profit
-  const realized = realizedProfit.value
-  const payoutAmount = receivedPayouts.value
-  const commissions = commissionsTotal.value
-  const total = unrealized + realized + payoutAmount - commissions
+  // Используем total_pnl из portfolio_daily_positions (уже рассчитан в БД)
+  const totalPnl = selectedPortfolioAsset.value.total_pnl || 0
+  
+  // Для совместимости разбиваем на компоненты (если нужно для отображения)
+  const unrealized = selectedProfitLoss.value?.profit || 0
+  const realized = realizedProfit.value || 0
+  const payoutAmount = selectedPortfolioAsset.value.payouts || 0
+  const commissions = Math.abs(selectedPortfolioAsset.value.commissions || 0)
   
   return {
     unrealized,
     realized,
     payouts: payoutAmount,
     commissions,
-    total,
-    isProfit: total >= 0
+    total: totalPnl,  // Используем total_pnl из таблицы
+    isProfit: totalPnl >= 0
   }
 })
 
@@ -994,8 +966,11 @@ const payouts = computed(() => {
   if (!assetInfo.value) return null
   
   // Получаем все выплаты из asset_payouts (не только полученные)
-  // Данные приходят из бэкенда как 'payouts' (преобразовано из 'all_payouts')
-  const payoutHistory = assetInfo.value.payouts || []
+  // Данные приходят из бэкенда как 'all_payouts' (массив объектов выплат)
+  // 'payouts' - это число (накопленная сумма), а 'all_payouts' - массив истории выплат
+  const payoutHistoryRaw = assetInfo.value.all_payouts || assetInfo.value.payouts || []
+  // Убеждаемся, что payoutHistory - это массив
+  const payoutHistory = Array.isArray(payoutHistoryRaw) ? payoutHistoryRaw : []
   
   let dividends = 0
   let coupons = 0
@@ -1052,26 +1027,26 @@ const priceGrowth = computed(() => {
 })
 
 // Общая прибыль (unrealized + realized + выплаты - комиссии)
-// ОПТИМИЗИРОВАНО: используем данные из portfolio_daily_positions
+// ИСПРАВЛЕНО: используем total_pnl из portfolio_daily_positions вместо пересчета
 const totalProfit = computed(() => {
-  if (!profitLoss.value || !selectedPortfolioAsset.value) return null
+  if (!selectedPortfolioAsset.value) return null
   
-  const unrealizedProfit = profitLoss.value.profit || 0
+  // Используем total_pnl из portfolio_daily_positions (уже рассчитан в БД)
+  const totalPnl = selectedPortfolioAsset.value.total_pnl || 0
+  
+  // Для совместимости разбиваем на компоненты (если нужно для отображения)
+  const unrealizedProfit = profitLoss.value?.profit || 0
   const realized = realizedProfit.value || 0
-  // ОПТИМИЗИРОВАНО: используем payouts из portfolio_daily_positions (уже в RUB)
   const payoutAmount = selectedPortfolioAsset.value.payouts || 0
-  // ОПТИМИЗИРОВАНО: используем commissions из portfolio_daily_positions (уже в RUB)
   const commissions = selectedPortfolioAsset.value.commissions || 0
-  
-  const total = unrealizedProfit + realized + payoutAmount - commissions
   
   return {
     unrealized: unrealizedProfit,
     realized,
     payouts: payoutAmount,
     commissions,
-    total,
-    isProfit: total >= 0
+    total: totalPnl,  // Используем total_pnl из таблицы
+    isProfit: totalPnl >= 0
   }
 })
 
@@ -1178,8 +1153,10 @@ const allOperations = computed(() => {
       operationType = 5 // Пополнение
     } else if (opType.includes('вывод') || opType.includes('withdraw')) {
       operationType = 6 // Вывод
+    } else if (opType.includes('погаш') || opType.includes('redemption') || opType.includes('амортиз') || opType.includes('amortization') || opType.includes('ammortization')) {
+      operationType = 9 // Погашение (Ammortization/Redemption)
     } else if (opType.includes('другое') || opType.includes('other')) {
-      operationType = 9 // Другое
+      operationType = 10 // Другое
     }
     
     // Если не удалось определить по названию, пытаемся по operation_type_id (если есть)
@@ -1273,7 +1250,7 @@ const getPayoutTypeClass = (type) => {
 
 const formatPayoutDate = (date) => {
   if (!date) return '-'
-  return new Date(date).toLocaleDateString('ru-RU')
+  return formatDateForDisplay(date)
 }
 
 // Нормализация типа операции (как на странице Transactions)
@@ -1282,6 +1259,7 @@ const normalizeType = (type, opType = null) => {
   if (opType === 'transaction') {
     if (type === 1) return 'buy'
     if (type === 2) return 'sell'
+    if (type === 3) return 'redemption'
   }
   
   // Для всех операций (по числовому типу)
@@ -1294,7 +1272,8 @@ const normalizeType = (type, opType = null) => {
     if (type === 6) return 'withdraw'
     if (type === 7) return 'commission'
     if (type === 8) return 'tax'
-    if (type === 9) return 'other'
+    if (type === 9) return 'redemption'  // Ammortization/Redemption
+    if (type === 10) return 'other'
   }
   
   // Для строковых типов
@@ -1302,6 +1281,7 @@ const normalizeType = (type, opType = null) => {
     const t = type.toLowerCase()
     if (t.includes('покуп') || t.includes('buy')) return 'buy'
     if (t.includes('прод') || t.includes('sell')) return 'sell'
+    if (t.includes('погаш') || t.includes('redemption') || t.includes('амортиз') || t.includes('amortization') || t.includes('ammortization')) return 'redemption'
     if (t.includes('див') || t.includes('div')) return 'dividend'
     if (t.includes('купон') || t.includes('coupon')) return 'coupon'
     if (t.includes('пополн') || t.includes('deposit')) return 'deposit'
@@ -1328,14 +1308,7 @@ const normalizeType = (type, opType = null) => {
 }
 
 // Форматирование даты
-const formatDate = (date) => {
-  if (!date) return '—'
-  return new Date(date).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  })
-}
+const formatDate = formatDateForDisplay
 
 // Получение текстового названия типа операции для отображения
 const getOperationTypeLabel = (op) => {
@@ -1345,6 +1318,7 @@ const getOperationTypeLabel = (op) => {
   if (op.type === 'transaction') {
     if (operationType === 1) return 'Покупка'
     if (operationType === 2) return 'Продажа'
+    if (operationType === 3) return 'Погашение'
   }
   
   // Для всех остальных операций
@@ -1354,7 +1328,8 @@ const getOperationTypeLabel = (op) => {
   if (operationType === 6) return 'Вывод'
   if (operationType === 7) return 'Комиссия'
   if (operationType === 8) return 'Налог'
-  if (operationType === 9) return 'Другое'
+  if (operationType === 9) return 'Погашение'  // Ammortization/Redemption
+  if (operationType === 10) return 'Другое'
   
   // Fallback: пытаемся определить по строковому типу
   const opTypeStr = (op.operation_type || op.type || '').toLowerCase()
@@ -1479,11 +1454,14 @@ async function handlePortfolioChange(portfolioId) {
           </div>
         </div>
         <div class="asset-price-info">
-          <div class="price-main">{{ selectedPortfolioAsset?.last_price?.toFixed(2) || portfolioAsset.asset.last_price?.toFixed(2) || '-' }}</div>
+          <div class="price-main">
+            {{ selectedPortfolioAsset?.last_price != null ? selectedPortfolioAsset.last_price.toFixed(2) : (portfolioAsset.asset?.last_price != null ? portfolioAsset.asset.last_price.toFixed(2) : '-') }}
+            <span v-if="assetCurrency" class="price-currency"> {{ getCurrencySymbol(assetCurrency) }} ({{ assetCurrency }})</span>
+          </div>
           <div v-if="selectedPortfolioAsset?.daily_change !== undefined && selectedPortfolioAsset.daily_change !== 0" class="price-change">
-            <ValueChange 
-              :value="selectedPriceChangePercent" 
-              :isPositive="selectedPortfolioAsset.daily_change >= 0"
+            <ValueChangePill
+              :value="selectedPriceChangePercent"
+              :is-positive="selectedPortfolioAsset.daily_change >= 0"
               format="percent"
             />
             <span class="price-change-currency">
@@ -1499,7 +1477,7 @@ async function handlePortfolioChange(portfolioId) {
         <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-large)">
           <div class="chart-widget">
             <div class="section-header">
-              <h2 class="section-title">История актива</h2>
+              <h2 class="section-title">История актива <span v-if="assetCurrency && selectedChartType === 'price'" class="chart-currency">(цена в {{ assetCurrency }})</span></h2>
               <div class="chart-controls">
                 <CustomSelect
                   :modelValue="selectedChartType"
@@ -1534,7 +1512,7 @@ async function handlePortfolioChange(portfolioId) {
 
         <!-- Описание актива (заглушка) -->
         <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-large)">
-          <Widget title="Описание актива">
+          <Widget title="Описание актива" :icon="Hash">
             <div class="asset-description-placeholder">
               <p>Описание актива будет здесь</p>
             </div>
@@ -1546,24 +1524,24 @@ async function handlePortfolioChange(portfolioId) {
       <div class="widgets-grid">
         <!-- Основная информация -->
         <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <MetricsWidget title="Основная информация" :items="basicInfoItems" />
+          <MetricsWidget title="Основная информация" :icon="Building2" :items="basicInfoItems" />
         </WidgetContainer>
 
         <!-- Вклад в портфель -->
         <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <MetricsWidget title="Вклад в портфель" :items="contributionItems" />
+          <MetricsWidget title="Вклад в портфель" :icon="PieChart" :items="contributionItems" />
         </WidgetContainer>
 
         <!-- Прибыль и убытки -->
         <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <MetricsWidget title="Прибыль и убытки" :items="profitLossItems" />
+          <MetricsWidget title="Прибыль и убытки" :icon="TrendingDown" :items="profitLossItems" />
         </WidgetContainer>
       </div>
 
       <!-- Операции (транзакции + все операции) -->
       <div class="widgets-grid">
         <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
-          <Widget title="Операции">
+          <Widget title="Операции" :icon="History">
             <div class="table-container">
               <table class="transactions-table">
                 <thead>
@@ -2080,7 +2058,7 @@ async function handlePortfolioChange(portfolioId) {
   color: #92400e;
 }
 
-/* Table styles */
+/* Стили таблицы */
 .table-container {
   overflow-x: auto;
 }

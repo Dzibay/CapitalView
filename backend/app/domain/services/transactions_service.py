@@ -1,73 +1,55 @@
 """
 Доменный сервис для работы с транзакциями.
-Перенесено из app/services/transactions_service.py
+Оптимизировано: фильтрация в SQL, кэширование operations_type, меньше round-trip.
 """
-from app.infrastructure.database.supabase_service import table_select, table_insert, rpc
+from typing import Optional
+from datetime import datetime
+from app.infrastructure.database.database_service import rpc, table_select
+from app.utils.date import normalize_date_to_string
 from app.core.logging import get_logger
+from app.infrastructure.database.repositories.transaction_repository import TransactionRepository
+from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
+from app.infrastructure.database.repositories.asset_repository import AssetRepository
+from app.infrastructure.database.repositories.operation_repository import OperationRepository
 
 logger = get_logger(__name__)
+
+_transaction_repository = TransactionRepository()
+_portfolio_asset_repository = PortfolioAssetRepository()
+_asset_repository = AssetRepository()
+_operation_repository = OperationRepository()
+
+# Кэш для operations_type (статическая таблица ~10 строк)
+_operations_type_map: dict = None
+
+
+def _get_operations_type_map() -> dict:
+    global _operations_type_map
+    if _operations_type_map is None:
+        op_types = table_select("operations_type", select="id, name") or []
+        _operations_type_map = {o["name"].lower(): o["id"] for o in op_types if o.get("name")}
+    return _operations_type_map
 
 
 def get_transactions(user_id, portfolio_id=None, asset_name=None, start_date=None, end_date=None, limit=1000):
     """
-    Получает транзакции пользователя с опциональной фильтрацией.
-    
-    Args:
-        user_id: ID пользователя
-        portfolio_id: Фильтр по ID портфеля (опционально)
-        asset_name: Фильтр по названию актива (опционально)
-        start_date: Начальная дата периода (опционально)
-        end_date: Конечная дата периода (опционально)
-        limit: Лимит записей (по умолчанию 1000)
-    
-    Returns:
-        Список транзакций с примененными фильтрами
+    Получает транзакции пользователя с фильтрацией в SQL (не в Python).
     """
-    # Получаем все транзакции (с увеличенным лимитом для фильтрации)
     params = {
         "p_user_id": user_id,
-        "p_limit": limit * 10 if (portfolio_id or asset_name or start_date or end_date) else limit
+        "p_limit": limit or 1000
     }
-    transactions = rpc("get_user_transactions", params) or []
-    
-    # Применяем фильтры на стороне Python
     if portfolio_id:
-        transactions = [t for t in transactions if t.get('portfolio_id') == portfolio_id]
-    
+        params["p_portfolio_id"] = portfolio_id
     if asset_name:
-        asset_name_lower = asset_name.lower()
-        transactions = [
-            t for t in transactions 
-            if asset_name_lower in (t.get('asset_name') or '').lower() or 
-               asset_name_lower in (t.get('ticker') or '').lower()
-        ]
-    
+        params["p_asset_name"] = asset_name
     if start_date:
-        if isinstance(start_date, str):
-            from datetime import datetime
-            try:
-                start_date = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            except:
-                pass
-        transactions = [
-            t for t in transactions 
-            if t.get('transaction_date') and t['transaction_date'] >= start_date
-        ]
-    
+        params["p_start_date"] = start_date
     if end_date:
-        if isinstance(end_date, str):
-            from datetime import datetime
-            try:
-                end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-            except:
-                pass
-        transactions = [
-            t for t in transactions 
-            if t.get('transaction_date') and t['transaction_date'] <= end_date
-        ]
-    
-    # Применяем финальный лимит
-    return transactions[:limit]
+        params["p_end_date"] = end_date
+
+    transactions = rpc("get_user_transactions", params) or []
+    return transactions
 
 
 def create_transaction(
@@ -75,45 +57,79 @@ def create_transaction(
     user_id: int,
     portfolio_asset_id: int,
     asset_id: int,
-    transaction_type: int,   # 1 = buy, 2 = sell
+    transaction_type: int,   # 1 = buy, 2 = sell, 3 = redemption
     quantity: float,
     price: float,
-    transaction_date: str
+    transaction_date: str,
+    create_deposit_operation: bool = False
 ):
     """
     Единственный разрешённый способ создания транзакций.
+    Использует apply_operations_batch (создаёт транзакции, cash_operations, цены, missed payouts в БД).
     FIFO + realized_pnl считаются в БД.
     """
+    transaction_date_str = normalize_date_to_string(transaction_date, include_time=True) or ""
+    payment = float(price * quantity)
 
-    # 1️⃣ Создаём транзакцию через FIFO-safe RPC
-    tx_id = rpc("apply_transaction", {
-        "p_user_id": user_id,
-        "p_portfolio_asset_id": portfolio_asset_id,
-        "p_transaction_type": transaction_type,
-        "p_quantity": quantity,
-        "p_price": price,
-        "p_transaction_date": transaction_date
-    })
+    op_type_names = {1: "Buy", 2: "Sell", 3: "Redemption"}
+    op_name = op_type_names.get(transaction_type, "Buy")
+    op_type_map = _get_operations_type_map()
+    operation_type_id = op_type_map.get(op_name.lower())
+    if not operation_type_id:
+        raise Exception(f"Тип операции '{op_name}' не найден в operations_type")
 
-    if not tx_id:
-        raise Exception("apply_transaction failed")
+    pa_data = _portfolio_asset_repository.get_by_id_sync(portfolio_asset_id)
+    if not pa_data:
+        raise Exception(f"Портфельный актив {portfolio_asset_id} не найден")
+    portfolio_id = pa_data.get("portfolio_id")
 
-    # 2️⃣ Цена актива (idempotent)
-    existing_price = table_select(
-        "asset_prices",
-        "id",
-        filters={"asset_id": asset_id, "trade_date": transaction_date}
-    )
+    op_payload = [{
+        "user_id": str(user_id),
+        "portfolio_id": portfolio_id,
+        "operation_type": operation_type_id,
+        "operation_date": transaction_date_str,
+        "portfolio_asset_id": portfolio_asset_id,
+        "quantity": float(quantity),
+        "price": float(price),
+        "payment": payment,
+        "amount": payment,
+    }]
+    result = rpc("apply_operations_batch", {"p_operations": op_payload})
 
-    if not existing_price:
-        table_insert("asset_prices", {
-            "asset_id": asset_id,
-            "price": price,
-            "trade_date": transaction_date
-        })
+    if not result or result.get("inserted_count", 0) == 0:
+        failed = result.get("failed_operations", [])
+        error_msg = failed[0].get("error", "Unknown error") if failed else "apply_operations_batch failed"
+        raise Exception(f"Ошибка создания транзакции: {error_msg}")
 
-    # 3️⃣ Инкрементальные апдейты (БЕЗ глобальных refresh)
-    rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
+    tx_ids = result.get("transaction_ids", [])
+    if not tx_ids or len(tx_ids) == 0:
+        raise Exception("Транзакция не была создана")
+    tx_id = tx_ids[0]
+
+    # Цены и check_missed_payouts теперь обрабатываются внутри apply_operations_batch
+
+    # Создаем операцию пополнения, если запрошено (только для покупки)
+    if create_deposit_operation and transaction_type == 1:
+        from app.domain.services.operations_service import create_operation
+
+        if portfolio_id is not None:
+            deposit_amount = float(quantity * price)
+            asset_row = _asset_repository.get_by_id_sync(asset_id)
+            currency_id = (asset_row.get("quote_asset_id") or 1) if asset_row else 1
+
+            try:
+                create_operation(
+                    user_id=str(user_id),
+                    portfolio_id=portfolio_id,
+                    operation_type=5,  # Deposit
+                    amount=deposit_amount,
+                    currency_id=currency_id,
+                    operation_date=transaction_date_str,
+                    asset_id=asset_id,
+                    portfolio_asset_id=portfolio_asset_id
+                )
+            except Exception as e:
+                logger.warning(f"Ошибка при создании операции пополнения для транзакции {tx_id}: {e}", exc_info=True)
 
     return tx_id
 
@@ -122,143 +138,72 @@ def update_transaction(
     *,
     transaction_id: int,
     user_id: int,
-    portfolio_asset_id: int,
-    asset_id: int,
-    transaction_type: int,
-    quantity: float,
-    price: float,
-    transaction_date: str
+    portfolio_asset_id: Optional[int] = None,
+    asset_id: Optional[int] = None,
+    transaction_type: Optional[int] = None,
+    quantity: Optional[float] = None,
+    price: Optional[float] = None,
+    transaction_date: Optional[str] = None,
+    update_related_deposit: bool = False,
+    related_deposit_operation_id: Optional[int] = None,
+    related_deposit_amount: Optional[float] = None,
+    related_deposit_date: Optional[str] = None,
 ):
     """
-    Обновляет существующую транзакцию.
-    Удаляет старую транзакцию и создает новую через apply_transaction.
+    Обновляет транзакцию через update_operations_batch.
     """
-    from datetime import datetime
-    
-    # 1️⃣ Получаем информацию о транзакции
-    existing_tx = table_select(
-        "transactions",
-        select="*",
-        filters={"id": transaction_id},
-        limit=1
-    )
-    
-    if not existing_tx:
+    from app.domain.services import operations_service
+
+    old_tx = _transaction_repository.get_by_id_sync(transaction_id)
+    if not old_tx:
         raise Exception(f"Транзакция {transaction_id} не найдена")
-    
-    old_tx = existing_tx[0]
-    old_portfolio_asset_id = old_tx.get("portfolio_asset_id")
-    old_transaction_date = old_tx.get("transaction_date")
-    
-    # Получаем portfolio_id для старого portfolio_asset_id
-    old_portfolio_id = None
-    if old_portfolio_asset_id:
-        old_pa = table_select(
-            "portfolio_assets",
-            select="portfolio_id",
-            filters={"id": old_portfolio_asset_id},
-            limit=1
-        )
-        if old_pa:
-            old_portfolio_id = old_pa[0].get("portfolio_id")
-    
-    # 2️⃣ Удаляем старую транзакцию через batch функцию (пересчитывает FIFO)
-    delete_result = delete_transactions_batch([transaction_id])
-    if delete_result.get("success") is False:
-        raise Exception(f"Ошибка при удалении транзакции: {delete_result.get('error', 'Неизвестная ошибка')}")
-    
-    # 3️⃣ Создаем новую транзакцию с обновленными данными
-    new_tx_id = create_transaction(
-        user_id=user_id,
-        portfolio_asset_id=portfolio_asset_id,
-        asset_id=asset_id,
-        transaction_type=transaction_type,
-        quantity=quantity,
-        price=price,
-        transaction_date=transaction_date
-    )
-    
-    # 4️⃣ Если portfolio_asset_id изменился, обновляем оба
-    if old_portfolio_asset_id != portfolio_asset_id:
-        rpc("update_portfolio_asset", {"pa_id": portfolio_asset_id})
-    
-    # 5️⃣ Получаем portfolio_id для нового portfolio_asset_id
-    new_portfolio_id = None
-    new_pa = table_select(
-        "portfolio_assets",
-        select="portfolio_id",
-        filters={"id": portfolio_asset_id},
-        limit=1
-    )
-    if new_pa:
-        new_portfolio_id = new_pa[0].get("portfolio_id")
-    
-    # 6️⃣ Обновляем историю портфелей с минимальной датой транзакции
-    # Преобразуем дату транзакции в формат YYYY-MM-DD
-    if isinstance(transaction_date, str):
-        from_date = transaction_date[:10] if 'T' in transaction_date else transaction_date
-    elif hasattr(transaction_date, 'date'):
-        from_date = transaction_date.date().isoformat()
-    else:
-        from_date = str(transaction_date)[:10]
-    
-    # Если есть старая дата, берем минимальную
-    if old_transaction_date:
-        if isinstance(old_transaction_date, str):
-            old_date = old_transaction_date[:10] if 'T' in old_transaction_date else old_transaction_date
-        elif hasattr(old_transaction_date, 'date'):
-            old_date = old_transaction_date.date().isoformat()
-        else:
-            old_date = str(old_transaction_date)[:10]
-        
-        # Берем минимальную дату
-        if old_date < from_date:
-            from_date = old_date
-    
-    # Обновляем старый портфель, если он изменился
-    if old_portfolio_id and old_portfolio_id != new_portfolio_id:
-        try:
-            rpc("update_portfolio_positions_from_date", {
-                "p_portfolio_id": old_portfolio_id,
-                "p_from_date": from_date
-            })
-            rpc("update_portfolio_values_from_date", {
-                "p_portfolio_id": old_portfolio_id,
-                "p_from_date": from_date
-            })
-        except Exception as e:
-            logger.warning(f"Ошибка при обновлении истории старого портфеля {old_portfolio_id}: {e}", exc_info=True)
-    
-    # Обновляем новый портфель
-    if new_portfolio_id:
-        try:
-            rpc("update_portfolio_positions_from_date", {
-                "p_portfolio_id": new_portfolio_id,
-                "p_from_date": from_date
-            })
-            rpc("update_portfolio_values_from_date", {
-                "p_portfolio_id": new_portfolio_id,
-                "p_from_date": from_date
-            })
-        except Exception as e:
-            logger.warning(f"Ошибка при обновлении истории портфеля {new_portfolio_id}: {e}", exc_info=True)
-    
-    return new_tx_id
+
+    final_quantity = quantity if quantity is not None else old_tx.get("quantity")
+    final_price = price if price is not None else old_tx.get("price")
+    final_transaction_date = transaction_date if transaction_date is not None else old_tx.get("transaction_date")
+
+    cash_op = _operation_repository.get_by_transaction_id_sync(transaction_id)
+    if not cash_op:
+        raise Exception(f"Не найдена cash_operation для транзакции {transaction_id}")
+
+    final_amount = float(final_quantity) * float(final_price) if final_quantity and final_price else None
+
+    tx_update = {"operation_id": cash_op["id"]}
+    if final_transaction_date is not None:
+        tx_update["date"] = normalize_date_to_string(final_transaction_date, include_time=True) or final_transaction_date
+    if final_amount is not None:
+        tx_update["amount"] = final_amount
+    if final_quantity is not None:
+        tx_update["quantity"] = float(final_quantity)
+    if final_price is not None:
+        tx_update["price"] = float(final_price)
+
+    updates = [tx_update]
+
+    if update_related_deposit and related_deposit_operation_id:
+        deposit_update = {"operation_id": int(related_deposit_operation_id)}
+        dep_date = related_deposit_date or final_transaction_date
+        if dep_date is not None:
+            deposit_update["date"] = normalize_date_to_string(dep_date, include_time=True) or dep_date
+        if related_deposit_amount is not None:
+            deposit_update["amount"] = float(related_deposit_amount)
+        if len(deposit_update) > 1:
+            updates.append(deposit_update)
+
+    result = operations_service.update_operations_batch(updates)
+    if result.get("success") is False:
+        raise Exception(f"Ошибка обновления транзакции: {result.get('error', 'Неизвестная ошибка')}")
+
+    return transaction_id
 
 
 def delete_transactions_batch(transaction_ids: list[int]):
     """
     Удаляет несколько транзакций батчем и пересчитывает связанные данные.
-    SQL функция delete_transactions_batch выполняет:
-    - Удаление транзакций
-    - Пересчет FIFO лотов для всех затронутых portfolio_assets
-    - Обновление portfolio_assets
-    - Обновление истории портфелей
     """
     if not transaction_ids:
         return {"success": False, "error": "Список ID транзакций пуст", "deleted_count": 0}
     
-    # Вызываем RPC функцию для batch удаления
     delete_result = rpc("delete_transactions_batch", {"p_transaction_ids": transaction_ids})
     
     if not delete_result or delete_result.get("success") is False:

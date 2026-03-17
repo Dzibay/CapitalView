@@ -2,11 +2,11 @@ Drop function create_portfolio_asset;
 CREATE OR REPLACE FUNCTION create_portfolio_asset(
     p_user_id uuid,
     p_portfolio_id bigint,
-    p_asset_id bigint DEFAULT NULL,  -- NULL для кастомного актива
+    p_asset_id bigint DEFAULT NULL,
     p_asset_type_id bigint DEFAULT NULL,
     p_name text DEFAULT NULL,
-    p_ticker text DEFAULT NULL,  -- Не используется для кастомных активов
-    p_currency_id bigint DEFAULT NULL,  -- quote_asset_id
+    p_ticker text DEFAULT NULL,
+    p_currency_id bigint DEFAULT NULL,
     p_quantity numeric DEFAULT 0,
     p_price numeric DEFAULT 0,
     p_transaction_date date DEFAULT CURRENT_DATE
@@ -27,10 +27,10 @@ DECLARE
     v_asset_name text;
     v_asset_ticker text;
     v_result text;
+    v_tx_result jsonb;
+    v_tx_ids bigint[];
+    v_buy_op_type_id bigint;
 BEGIN
-    -- Начинаем транзакцию (автоматически в PostgreSQL)
-    
-    -- Валидация входных данных
     IF p_portfolio_id IS NULL THEN
         RETURN json_build_object(
             'success', false,
@@ -38,7 +38,6 @@ BEGIN
         )::text;
     END IF;
     
-    -- Проверяем существование портфеля и принадлежность пользователю
     IF NOT EXISTS (
         SELECT 1 FROM portfolios 
         WHERE id = p_portfolio_id AND user_id = p_user_id
@@ -49,9 +48,7 @@ BEGIN
         )::text;
     END IF;
     
-    -- Если актив кастомный (p_asset_id IS NULL) - всегда создаем новый уникальный актив
     IF p_asset_id IS NULL THEN
-        -- Валидация для кастомного актива
         IF p_asset_type_id IS NULL OR p_name IS NULL OR p_currency_id IS NULL THEN
             RETURN json_build_object(
                 'success', false,
@@ -59,7 +56,6 @@ BEGIN
             )::text;
         END IF;
         
-        -- Проверяем, что тип актива кастомный
         IF NOT EXISTS (
             SELECT 1 FROM asset_types 
             WHERE id = p_asset_type_id AND is_custom = true
@@ -70,24 +66,22 @@ BEGIN
             )::text;
         END IF;
         
-        -- Создаем новый кастомный актив (всегда новый, не ищем существующий)
         INSERT INTO assets (
             asset_type_id,
             user_id,
             name,
-            ticker,  -- Может быть NULL для кастомных активов
+            ticker,
             properties,
             quote_asset_id
         ) VALUES (
             p_asset_type_id,
             p_user_id,
             p_name,
-            NULL,  -- Тикер не обязателен для кастомных активов
+            NULL,
             '{}'::jsonb,
             p_currency_id
         ) RETURNING id INTO v_asset_id;
         
-        -- Добавляем цену кастомного актива
         INSERT INTO asset_prices (
             asset_id,
             price,
@@ -98,14 +92,12 @@ BEGIN
             p_transaction_date
         );
         
-        -- Обновляем последнюю цену актива
-        PERFORM update_asset_latest_price(v_asset_id);
+        PERFORM update_asset_latest_prices_batch(ARRAY[v_asset_id]);
         
         v_asset_name := p_name;
         v_asset_ticker := NULL;
         
     ELSE
-        -- Системный актив - используем существующий
         SELECT name, ticker INTO v_asset_name, v_asset_ticker
         FROM assets
         WHERE id = p_asset_id;
@@ -119,7 +111,6 @@ BEGIN
         
         v_asset_id := p_asset_id;
         
-        -- Проверяем, есть ли цена на эту дату, если нет - добавляем
         IF NOT EXISTS (
             SELECT 1 FROM asset_prices 
             WHERE asset_id = v_asset_id AND trade_date = p_transaction_date
@@ -134,19 +125,16 @@ BEGIN
                 p_transaction_date
             );
             
-            -- Обновляем последнюю цену актива
-            PERFORM update_asset_latest_price(v_asset_id);
+            PERFORM update_asset_latest_prices_batch(ARRAY[v_asset_id]);
         END IF;
     END IF;
     
-    -- Проверяем, есть ли актив в портфеле
     SELECT id, quantity, average_price
     INTO v_existing_pa_id, v_current_quantity, v_current_avg_price
     FROM portfolio_assets
     WHERE portfolio_id = p_portfolio_id AND asset_id = v_asset_id;
     
     IF v_existing_pa_id IS NOT NULL THEN
-        -- Актив уже есть в портфеле - обновляем количество и среднюю цену
         v_new_quantity := v_current_quantity + p_quantity;
         IF v_new_quantity > 0 THEN
             v_new_avg_price := ((v_current_avg_price * v_current_quantity) + (p_price * p_quantity)) / v_new_quantity;
@@ -162,7 +150,6 @@ BEGIN
         
         v_portfolio_asset_id := v_existing_pa_id;
     ELSE
-        -- Создаем новую запись в portfolio_assets
         INSERT INTO portfolio_assets (
             portfolio_id,
             asset_id,
@@ -179,26 +166,31 @@ BEGIN
         v_new_avg_price := p_price;
     END IF;
     
-    -- Добавляем транзакцию покупки только если quantity > 0
     IF p_quantity > 0 THEN
-        v_tx_id := apply_transaction(
-            p_user_id := p_user_id,
-            p_portfolio_asset_id := v_portfolio_asset_id,
-            p_transaction_type := 1,  -- BUY
-            p_quantity := p_quantity,
-            p_price := p_price,
-            p_transaction_date := p_transaction_date
+        SELECT id INTO v_buy_op_type_id FROM operations_type WHERE name = 'Buy' LIMIT 1;
+        v_tx_result := apply_operations_batch(
+            jsonb_build_array(
+                jsonb_build_object(
+                    'user_id', p_user_id::text,
+                    'portfolio_id', p_portfolio_id,
+                    'operation_type', v_buy_op_type_id,
+                    'operation_date', p_transaction_date::text,
+                    'portfolio_asset_id', v_portfolio_asset_id,
+                    'quantity', p_quantity,
+                    'price', p_price,
+                    'payment', p_quantity * p_price,
+                    'amount', p_quantity * p_price
+                )
+            )
         );
+        
+        v_tx_ids := ARRAY(SELECT jsonb_array_elements_text(v_tx_result->'transaction_ids')::bigint);
+        IF array_length(v_tx_ids, 1) > 0 THEN
+            v_tx_id := v_tx_ids[1];
+        END IF;
+        
     END IF;
     
-    -- Обновляем историю портфеля с даты транзакции
-    BEGIN
-        PERFORM update_portfolio_values_from_date(p_portfolio_id, p_transaction_date);
-    EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'Ошибка при обновлении истории портфеля: %', SQLERRM;
-    END;
-    
-    -- Получаем последнюю цену актива
     SELECT price INTO v_last_price
     FROM asset_prices
     WHERE asset_id = v_asset_id
@@ -209,7 +201,15 @@ BEGIN
         v_last_price := p_price;
     END IF;
     
-    -- Формируем результат
+    -- Проверяем неполученные выплаты для созданного актива
+    BEGIN
+        PERFORM check_missed_payouts(v_portfolio_asset_id);
+    EXCEPTION
+        WHEN OTHERS THEN
+            -- Игнорируем ошибки проверки выплат, чтобы не прерывать создание актива
+            NULL;
+    END;
+    
     v_result := json_build_object(
         'success', true,
         'message', 'Актив успешно добавлен в портфель',
@@ -234,7 +234,6 @@ BEGIN
     RETURN v_result;
     
 EXCEPTION WHEN OTHERS THEN
-    -- В случае ошибки транзакция автоматически откатывается
     RETURN json_build_object(
         'success', false,
         'error', format('Ошибка при создании актива: %s', SQLERRM)

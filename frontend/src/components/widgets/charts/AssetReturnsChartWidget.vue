@@ -1,11 +1,12 @@
 <script setup>
 import { computed, ref } from 'vue'
-import BaseChart from '../../charts/BaseChart.vue'
+import BarChart from '../../charts/BarChart.vue'
 import Widget from '../base/Widget.vue'
 import DisplayModeToggle from '../base/DisplayModeToggle.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
 import EmptyState from '../base/EmptyState.vue'
 import ToggleSwitch from '../../base/ToggleSwitch.vue'
+import { Coins } from 'lucide-vue-next'
 
 const props = defineProps({
   assetReturns: {
@@ -171,206 +172,102 @@ const chartHeight = computed(() => {
   return `${calculatedHeight}px`
 })
 
-const chartData = computed(() => {
-  if (sortedAssetsData.value.length === 0) {
-    return { labels: [], datasets: [] }
-  }
-  
-  const labels = sortedAssetsData.value.map(a => a?.asset_ticker || a?.asset_name || 'Unknown')
-  
-  // Определяем значения в зависимости от режима отображения и периода
-  let values, signs
-  if (displayMode.value === 'currency') {
-    // В режиме валюты используем total_return за выбранный период
-    values = sortedAssetsData.value.map(a => Math.abs(a.periodData.total_return || 0))
-    signs = sortedAssetsData.value.map(a => {
-      const returnValue = a.periodData.total_return || 0
-      return returnValue >= 0
-    })
-  } else {
-    // В режиме процентов используем return_percent за выбранный период
-    values = sortedAssetsData.value.map(a => Math.abs(a.periodData.return_percent || 0))
-    signs = sortedAssetsData.value.map(a => {
-      const percent = a.periodData.return_percent || 0
-      return percent >= 0
-    })
-  }
-  
-  return {
-    labels,
-    datasets: [
-      {
-        label: displayMode.value === 'currency' ? 'Прибыль' : 'Доходность',
-        data: values,
-        backgroundColor: signs.map(isPositive => isPositive ? 'rgba(16, 185, 129, 0.85)' : 'rgba(239, 68, 68, 0.85)'),
-        borderColor: signs.map(isPositive => isPositive ? '#10b981' : '#ef4444'),
-        borderWidth: 0,
-        borderRadius: 4,
-        maxBarThickness: 30,
-        // Сохраняем исходные данные для использования в плагинах
-        _originalData: sortedAssetsData.value
-      }
-    ]
-  }
+const chartLabels = computed(() => {
+  return sortedAssetsData.value.map(a => a?.asset_ticker || a?.asset_name || 'Unknown')
 })
 
-const chartOptions = computed(() => {
-  // Получаем цвета из CSS переменных
-  const getCSSVariable = (varName) => {
-    if (typeof window !== 'undefined') {
-      return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#6b7280'
-    }
-    return '#6b7280'
+const chartDatasets = computed(() => {
+  if (sortedAssetsData.value.length === 0) return []
+
+  let values, signs
+  if (displayMode.value === 'currency') {
+    values = sortedAssetsData.value.map(a => Math.abs(a.periodData.total_return || 0))
+    signs = sortedAssetsData.value.map(a => (a.periodData.total_return || 0) >= 0)
+  } else {
+    values = sortedAssetsData.value.map(a => Math.abs(a.periodData.return_percent || 0))
+    signs = sortedAssetsData.value.map(a => (a.periodData.return_percent || 0) >= 0)
   }
-  
-  const axisText = getCSSVariable('--axis-text') || '#6b7280'
-  const axisTextLight = getCSSVariable('--axis-text-light') || '#9ca3af'
-  const axisGrid = getCSSVariable('--axis-grid') || '#e5e7eb'
-  
-  return {
-    indexAxis: 'y', // Горизонтальная ориентация
-    interaction: {
-      mode: 'y', // Для горизонтальных баров используем только Y-ось
-      intersect: false
-    },
-    plugins: {
-      legend: {
-        display: false
-      },
-      tooltip: {
-        mode: 'y', // Для горизонтальных баров используем только Y-ось
-        intersect: false,
-        backgroundColor: 'rgba(31, 41, 55, 0.95)',
-        titleColor: '#fff',
-        bodyColor: '#fff',
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        borderWidth: 1,
-        padding: 12,
-        cornerRadius: 8,
-        displayColors: true,
-        z: 1000, // Увеличиваем z-index для tooltip, чтобы он был поверх текста на графике
-        callbacks: {
-          title: (context) => {
-            return context[0].label || ''
-          },
-          label: (context) => {
-            const chart = context.chart
-            const index = context.dataIndex
-            
-            // Получаем исходные данные из dataset
-            const originalData = chart.data.datasets[0]._originalData || []
-            const asset = originalData[index]
-            
-            if (!asset || !asset.periodData) return []
-            
-            const periodData = asset.periodData
-            const returnPercent = periodData.return_percent || 0
-            const totalReturn = periodData.total_return || 0
-            const priceChange = periodData.price_change || 0
-            const realizedProfit = periodData.realized_profit || 0
-            const totalPayouts = periodData.total_payouts || 0
-            const investedAmount = periodData.invested_amount || 0
-            const currentValue = periodData.current_value || 0
-            
-            const periodLabel = selectedPeriod.value === '1Y' ? ' (за год)' : 
-                               selectedPeriod.value === '1M' ? ' (за месяц)' : ' (все время)'
-            
-            // Получаем комиссии из данных актива (если есть)
-            const totalCommissions = Number(asset?.total_commissions || asset?.total_commissions_all || asset?.total_commissions_year || asset?.total_commissions_month || 0)
-            
-            const labels = [
-              `Доходность${periodLabel}: ${formatPercent(returnPercent)}`,
-              '',
-              'Состав прибыли:',
-              `  Общая прибыль: ${formatMoney(totalReturn)}`,
-              `  Нереализованная прибыль: ${formatMoney(priceChange)}`,
-              `  Реализованная прибыль: ${formatMoney(realizedProfit)}`,
-              `  Выплаты: ${formatMoney(totalPayouts)}`,
-              totalCommissions !== 0 ? `  Комиссии: ${formatMoney(-Math.abs(totalCommissions))} (уменьшают прибыль)` : null
-            ].filter(Boolean) // Убираем null значения
-            
-            return labels
-          }
-        }
-      }
-    },
-    scales: {
-      x: {
-        beginAtZero: true,
-        min: 0, // Все бары начинаются с нуля (только правая сторона)
-        grid: {
-          color: axisGrid,
-          drawBorder: false,
-          lineWidth: 1,
-          drawTicks: false,
-          tickLength: 0
-        },
-        border: {
-          display: false
-        },
-        ticks: {
-          color: axisTextLight,
-          font: {
-            size: 12,
-            family: 'Inter, system-ui, sans-serif',
-            weight: '500'
-          },
-          callback: (value) => {
-            if (displayMode.value === 'currency') {
-              // Для валюты используем форматирование денег
-              const absValue = Math.abs(value)
-              if (absValue >= 1000) {
-                const kValue = value / 1000
-                const formatted = Math.abs(kValue) % 1 === 0 
-                  ? kValue.toFixed(0) 
-                  : kValue.toFixed(1)
-                return `${formatted}K ₽`
-              }
-              return formatMoney(value)
-            } else {
-              // Для процентов используем форматирование без знака "+"
-              return formatPercentAxis(value)
-            }
-          },
-          padding: 12,
-          stepSize: null,
-          maxTicksLimit: 8
-        }
-      },
-      y: {
-        grid: {
-          display: false,
-          drawBorder: false
-        },
-        border: {
-          display: false
-        },
-        ticks: {
-          color: axisText,
-          font: {
-            size: 12,
-            family: 'Inter, system-ui, sans-serif',
-            weight: '500'
-          },
-          padding: 12,
-          // Показываем все активы на оси Y
-          autoSkip: false,
-          // Для названий активов разрешаем наклон
-          maxRotation: 45,
-          minRotation: 0,
-          // Убеждаемся, что все метки отображаются
-          callback: function(value, index) {
-            const labels = this.chart.data.labels
-            if (labels && index < labels.length) {
-              return labels[index] || ''
-            }
-            return ''
-          }
-        }
-      }
+
+  return [
+    {
+      label: displayMode.value === 'currency' ? 'Прибыль' : 'Доходность',
+      data: values,
+      backgroundColor: signs.map(isPositive => isPositive ? 'rgba(16, 185, 129, 0.85)' : 'rgba(239, 68, 68, 0.85)'),
+      borderColor: signs.map(isPositive => isPositive ? '#10b981' : '#ef4444'),
+      borderWidth: 0,
+      borderRadius: 4,
+      maxBarThickness: 30,
+      _originalData: sortedAssetsData.value
     }
-  }
+  ]
 })
+
+const overrideOptions = computed(() => ({
+  plugins: {
+    tooltip: {
+      z: 1000,
+      callbacks: {
+        title: (context) => context[0].label || '',
+        label: (context) => {
+          const originalData = context.chart.data.datasets[0]._originalData || []
+          const asset = originalData[context.dataIndex]
+          if (!asset || !asset.periodData) return []
+
+          const pd = asset.periodData
+          const periodLabel = selectedPeriod.value === '1Y' ? ' (за год)' :
+                             selectedPeriod.value === '1M' ? ' (за месяц)' : ' (все время)'
+          const totalCommissions = Number(asset?.total_commissions || asset?.total_commissions_all || asset?.total_commissions_year || asset?.total_commissions_month || 0)
+
+          return [
+            `Доходность${periodLabel}: ${formatPercent(pd.return_percent || 0)}`,
+            '',
+            'Состав прибыли:',
+            `  Общая прибыль: ${formatMoney(pd.total_return || 0)}`,
+            `  Нереализованная прибыль: ${formatMoney(pd.price_change || 0)}`,
+            `  Реализованная прибыль: ${formatMoney(pd.realized_profit || 0)}`,
+            `  Выплаты: ${formatMoney(pd.total_payouts || 0)}`,
+            ...(totalCommissions !== 0 ? [`  Комиссии: ${formatMoney(-Math.abs(totalCommissions))} (уменьшают прибыль)`] : [])
+          ]
+        }
+      }
+    }
+  },
+  scales: {
+    x: {
+      beginAtZero: true,
+      min: 0,
+      grid: {
+        display: true
+      },
+      ticks: {
+        callback: (value) => {
+          if (displayMode.value === 'currency') {
+            const absValue = Math.abs(value)
+            if (absValue >= 1000) {
+              const kValue = value / 1000
+              return `${Math.abs(kValue) % 1 === 0 ? kValue.toFixed(0) : kValue.toFixed(1)}K ₽`
+            }
+            return formatMoney(value)
+          }
+          return formatPercentAxis(value)
+        }
+      }
+    },
+    y: {
+      grid: { display: false },
+      ticks: {
+        autoSkip: false,
+        maxRotation: 45,
+        minRotation: 0,
+        callback: function(value, index) {
+          const labels = this.chart.data.labels
+          if (labels && index < labels.length) return labels[index] || ''
+          return ''
+        }
+      }
+    }
+  }
+}))
 
 // Плагин для отображения процентов/валюты справа от баров
 // Скрываем текст при наведении, чтобы не перекрывать tooltip
@@ -452,7 +349,7 @@ const percentPlugin = {
 </script>
 
 <template>
-  <Widget title="Прибыльность активов">
+  <Widget title="Прибыльность активов" :icon="Coins">
     <template #header>
       <div class="widget-controls">
         <ToggleSwitch v-model="showSoldAssets" label="Отображать проданные" />
@@ -462,12 +359,13 @@ const percentPlugin = {
     </template>
 
     <div class="chart-container" :style="{ minHeight: chartHeight }">
-      <BaseChart
-        v-if="chartData.labels && chartData.labels.length > 0"
-        type="bar"
-        :data="chartData"
-        :options="chartOptions"
-        :plugins="[percentPlugin]"
+      <BarChart
+        v-if="chartLabels.length > 0"
+        :labels="chartLabels"
+        :datasets="chartDatasets"
+        :horizontal="true"
+        :extraPlugins="[percentPlugin]"
+        :overrideOptions="overrideOptions"
         :height="chartHeight"
       />
       <EmptyState v-else message="Нет данных о доходности активов" />

@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
-import MultiLineChart from '../../MultiLineChart.vue'
+import MultiLineChart from '../../charts/MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
-import ValueChange from '../base/ValueChange.vue'
+import ValueChangePill from '../base/ValueChangePill.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
+import { TrendingUp } from 'lucide-vue-next'
 
 // --------------------------------------------------------------
 // ПРОПСЫ
@@ -166,7 +167,7 @@ watch(() => props.chartData, () => {
 </script>
 
 <template>
-  <Widget title="Динамика прибыли">
+  <Widget title="Динамика прибыли" :icon="TrendingUp">
     <template #header>
       <PeriodFilters v-model="selectedPeriod" />
     </template>
@@ -178,7 +179,7 @@ watch(() => props.chartData, () => {
 
       <div class="capital-growth">
         <p>Прирост: {{ formatCurrency(profitAbs) }}</p>
-        <ValueChange 
+        <ValueChangePill 
           :value="profitPercent" 
           :is-positive="profitAbs >= 0"
           format="percent"
@@ -212,5 +213,6 @@ watch(() => props.chartData, () => {
   flex: 1;
   position: relative;
   min-height: 0;
+  max-height: 300px;
 }
 </style>

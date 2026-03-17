@@ -6,18 +6,24 @@ Worker для обновления курсов валют к рублю.
 """
 import asyncio
 import aiohttp
-import logging
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, List, Tuple
 from tqdm.asyncio import tqdm_asyncio
 
-from app.infrastructure.database.supabase_async import db_select, db_rpc, table_insert_async
+from app.infrastructure.database.postgres_async import db_select, db_rpc
 from app.infrastructure.external.currency.price_service import (
-    get_currency_rate,
     get_currency_rate_history,
-    get_currency_rates_batch
+    get_currency_rates_batch,
 )
-from app.utils.date import parse_date as normalize_date
+from app.infrastructure.external.common.client import create_http_session
+from app.workers.common.price_utils import get_last_prices_from_latest_prices
+from app.workers.base_price_worker import (
+    filter_new_prices,
+    batch_upsert_prices,
+    update_latest_and_portfolios,
+    run_worker_loop,
+)
+from app.utils.date import parse_date as normalize_date, normalize_date_to_sql_date
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -30,7 +36,7 @@ sem = asyncio.Semaphore(MAX_PARALLEL)
 UPDATE_INTERVAL_SECONDS = 60 * 60
 
 # Основные валюты для обновления
-CURRENCY_TICKERS = ["USD"] # , "EUR", "GBP", "CNY", "JPY"
+CURRENCY_TICKERS = ["USD", "EUR", "GBP", "CNY", "JPY"]
 
 
 async def get_currency_assets() -> List[Dict]:
@@ -43,6 +49,7 @@ async def get_currency_assets() -> List[Dict]:
     result = await db_select(
         "assets",
         "id, ticker",
+        filters={"asset_type_id": 7},
         in_filters={"ticker": CURRENCY_TICKERS}
     )
     
@@ -60,52 +67,6 @@ async def get_currency_assets() -> List[Dict]:
     return assets
 
 
-async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, Dict]:
-    """
-    Получает последние курсы и даты для валют из таблицы asset_latest_prices_full.
-    
-    Args:
-        asset_ids: Список ID валютных активов
-        
-    Returns:
-        Словарь {asset_id: {"price": float, "date": str, "trade_date": date}}
-    """
-    if not asset_ids:
-        return {}
-    
-    last_prices_map = {}
-    
-    try:
-        result = await db_select(
-            "asset_latest_prices_full",
-            "asset_id, curr_price, curr_date",
-            in_filters={"asset_id": asset_ids}
-        )
-        
-        if result:
-            for row in result:
-                asset_id = row.get("asset_id")
-                curr_price = row.get("curr_price")
-                curr_date = row.get("curr_date")
-                if asset_id and curr_date:
-                    date_str = None
-                    if isinstance(curr_date, str):
-                        date_str = curr_date[:10]
-                    elif hasattr(curr_date, 'isoformat'):
-                        date_str = curr_date.isoformat()
-                    else:
-                        date_str = str(curr_date)[:10]
-                    
-                    if date_str:
-                        last_prices_map[asset_id] = {
-                            "price": curr_price,
-                            "date": date_str,
-                            "trade_date": curr_date
-                        }
-    except Exception as e:
-        logger.error(f"Ошибка при получении последних курсов: {type(e).__name__}: {e}")
-    
-    return last_prices_map
 
 
 async def update_currency_history(
@@ -156,101 +117,16 @@ async def update_currency_history(
     if not rates:
         if last_date:
             return True, None, []
-        else:
-            logger.warning(f"⚠️ Не удалось получить курсы для {ticker} (asset_id: {asset_id})")
-            return False, None, []
-    
-    # Фильтруем курсы: берем те, что >= последней даты
-    new_prices_data = []
-    if last_date:
-        last_dt = normalize_date(last_date)
-        if last_dt:
-            if isinstance(last_dt, datetime):
-                last_dt = last_dt.date()
-            
-            if isinstance(last_dt, date):
-                for trade_date, rate in rates:
-                    price_date = normalize_date(trade_date)
-                    if price_date:
-                        if isinstance(price_date, datetime):
-                            price_date = price_date.date()
-                        if isinstance(price_date, date) and price_date >= last_dt:
-                            new_prices_data.append({
-                                "asset_id": asset_id,
-                                "price": rate,
-                                "trade_date": trade_date
-                            })
-        else:
-            new_prices_data = [
-                {
-                    "asset_id": asset_id,
-                    "price": rate,
-                    "trade_date": trade_date
-                }
-                for trade_date, rate in rates
-            ]
-    else:
-        new_prices_data = [
-            {
-                "asset_id": asset_id,
-                "price": rate,
-                "trade_date": trade_date
-            }
-            for trade_date, rate in rates
-        ]
-    
+        logger.warning(f"Не удалось получить курсы для {ticker} (asset_id: {asset_id})")
+        return False, None, []
+
+    new_prices_data = filter_new_prices(rates, asset_id, last_date)
+
     if not new_prices_data:
-        if last_date:
-            return True, None, []
-        else:
-            logger.warning(f"⚠️ Получены курсы для {ticker}, но после фильтрации новых курсов нет")
-            return True, None, []
-    
-    min_date = min(price["trade_date"][:10] for price in new_prices_data)
+        return True, None, []
+
+    min_date = min(normalize_date_to_sql_date(p["trade_date"]) or "" for p in new_prices_data)
     return True, min_date, new_prices_data
-
-
-async def upsert_asset_prices(prices: List[Dict], batch_size: int = 1000) -> int:
-    """
-    Вставляет или обновляет цены активов батчами.
-    
-    Args:
-        prices: Список словарей с ценами {asset_id, price, trade_date}
-        batch_size: Размер батча для вставки
-        
-    Returns:
-        Количество вставленных/обновленных записей
-    """
-    if not prices:
-        return 0
-    
-    # Удаляем дубликаты по (asset_id, trade_date)
-    seen = set()
-    unique_prices = []
-    for price in prices:
-        key = (price["asset_id"], price["trade_date"][:10])
-        if key not in seen:
-            seen.add(key)
-            unique_prices.append(price)
-    
-    total_inserted = 0
-    total_batches = (len(unique_prices) + batch_size - 1) // batch_size
-    
-    for i in range(0, len(unique_prices), batch_size):
-        batch = unique_prices[i:i + batch_size]
-        batch_num = i // batch_size + 1
-        
-        try:
-            # Используем RPC функцию для upsert
-            await db_rpc("upsert_asset_prices", {"p_prices": batch})
-            total_inserted += len(batch)
-            
-            if batch_num % 10 == 0 or batch_num == total_batches:
-                logger.info(f"  ✅ Вставлено {min(i + batch_size, len(unique_prices))}/{len(unique_prices)} курсов")
-        except Exception as e:
-            logger.error(f"⚠️ Ошибка при вставке батча {batch_num}: {type(e).__name__}: {e}")
-    
-    return total_inserted
 
 
 async def update_history_prices() -> int:
@@ -279,7 +155,7 @@ async def update_history_prices() -> int:
     for asset_id, data in last_date_map.items():
         last_date_str_map[asset_id] = data["date"]
     
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         tasks = []
         for asset in assets:
             task = update_currency_history(session, asset, last_date_str_map)
@@ -310,27 +186,11 @@ async def update_history_prices() -> int:
             logger.warning(f"⚠️ Не удалось получить курсы для {ticker} (asset_id: {asset_id})")
     
     if all_new_prices:
-        logger.info(f"💾 Вставка {len(all_new_prices)} новых курсов батчами...")
-        total_inserted = await upsert_asset_prices(all_new_prices)
-        logger.info(f"✅ Вставлено курсов: {total_inserted}")
-    
-    # Обновляем asset_latest_prices_full для обновленных валют
+        await batch_upsert_prices(all_new_prices)
+
     if asset_date_map:
-        updated_asset_ids = list(asset_date_map.keys())
-        logger.info(f"🔄 Обновление цен для {len(updated_asset_ids)} валют...")
-        batch_size = 500
-        for i in range(0, len(updated_asset_ids), batch_size):
-            batch_ids = updated_asset_ids[i:i + batch_size]
-            try:
-                await db_rpc('update_asset_latest_prices_batch', {
-                    'p_asset_ids': batch_ids
-                })
-                logger.info(f"  ✅ Обновлено {min(i + batch_size, len(updated_asset_ids))}/{len(updated_asset_ids)} валют")
-            except Exception as e:
-                logger.error(f"  ⚠️ Ошибка при обновлении батча {i//batch_size + 1}: {type(e).__name__}: {e}")
-    
-    logger.info(f"✅ Обработано валют: успешно {success_count}, ошибок {error_count}, без новых данных {len(assets) - success_count - error_count}")
-    
+        await update_latest_and_portfolios(list(asset_date_map.keys()), asset_date_map)
+
     return success_count
 
 
@@ -348,7 +208,7 @@ async def update_today_prices() -> int:
         logger.warning("⚠️ Не найдено валютных активов для обновления")
         return 0
     
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         # Получаем текущие курсы батчем
         tickers = [a["ticker"] for a in assets]
         rates = await get_currency_rates_batch(session, tickers)
@@ -364,7 +224,7 @@ async def update_today_prices() -> int:
         
         if ticker in rates:
             rate = rates[ticker]
-            today = date.today().isoformat()
+            today = normalize_date_to_sql_date(date.today())
             
             updates_batch.append({
                 "asset_id": asset_id,
@@ -373,59 +233,25 @@ async def update_today_prices() -> int:
             })
     
     if not updates_batch:
-        logger.info("📊 Активов с новыми данными: 0")
         return 0
-    
-    # Удаляем дубликаты
-    seen = set()
-    unique_updates = []
-    for update in updates_batch:
-        key = (update["asset_id"], update["trade_date"][:10])
-        if key not in seen:
-            seen.add(key)
-            unique_updates.append(update)
-    
-    logger.info(f"💾 Вставка {len(unique_updates)} сегодняшних курсов...")
-    total_inserted = await upsert_asset_prices(unique_updates)
-    
-    updated_ids = list({row["asset_id"] for row in unique_updates})
-    
-    # Обновляем asset_latest_prices_full
-    if updated_ids:
-        logger.info(f"🔄 Обновление цен для {len(updated_ids)} валют...")
-        try:
-            await db_rpc('update_asset_latest_prices_batch', {
-                'p_asset_ids': updated_ids
-            })
-            logger.info(f"  ✅ Обновлено {len(updated_ids)} валют")
-        except Exception as e:
-            logger.error(f"  ⚠️ Ошибка при обновлении: {type(e).__name__}: {e}")
-    
-    logger.info(f"✅ Обработано валют: успешно {len(updated_ids)}, ошибок 0, без новых данных {len(assets) - len(updated_ids)}")
-    logger.info(f"📊 Активов с новыми данными: {len(updated_ids)}/{len(assets)}")
-    
+
+    await batch_upsert_prices(updates_batch)
+
+    updated_ids = list({row["asset_id"] for row in updates_batch})
+    today_str = normalize_date_to_sql_date(date.today())
+    asset_date_map = {aid: today_str for aid in updated_ids}
+    await update_latest_and_portfolios(updated_ids, asset_date_map)
+
     return len(updated_ids)
 
 
 async def worker_loop():
-    """Основной цикл воркера."""
-    logger.info("🚀 Currency Price Worker запущен")
-    
-    # Начальное обновление истории
-    logger.info("📈 Начальное обновление истории курсов...")
-    try:
-        await update_history_prices()
-    except Exception as e:
-        logger.error(f"❌ Ошибка при начальном обновлении истории: {e}", exc_info=True)
-    
-    # Периодическое обновление сегодняшних курсов
-    while True:
-        try:
-            await asyncio.sleep(UPDATE_INTERVAL_SECONDS)
-            await update_today_prices()
-        except Exception as e:
-            logger.error(f"❌ Ошибка при обновлении сегодняшних курсов: {e}", exc_info=True)
-            await asyncio.sleep(60)  # Ждем минуту перед повтором
+    await run_worker_loop(
+        "Currency Price Worker",
+        update_history_prices,
+        update_today_prices,
+        UPDATE_INTERVAL_SECONDS,
+    )
 
 
 if __name__ == "__main__":

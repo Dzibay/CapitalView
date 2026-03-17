@@ -55,6 +55,14 @@ export const authService = {
         return res.data;
     },
 
+    async changePassword(currentPassword, newPassword) {
+        const res = await apiClient.put(API_ENDPOINTS.AUTH.CHANGE_PASSWORD, {
+            current_password: currentPassword,
+            new_password: newPassword,
+        });
+        return res.data;
+    },
+
     logout() {
         localStorage.removeItem('access_token');
     },

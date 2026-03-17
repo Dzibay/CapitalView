@@ -41,6 +41,7 @@ const updateValue = (value) => {
   padding: 0.25rem;
   border-radius: 8px;
   gap: 0.25rem;
+  flex-wrap: wrap;
 }
 
 .filter-btn {
@@ -48,10 +49,10 @@ const updateValue = (value) => {
   background: transparent;
   border-radius: 6px;
   padding: 0.5rem 0.9rem;
-  font-size: 0.9rem;
+  font-size: var(--text-body-secondary-size);
   cursor: pointer;
   transition: background-color 0.2s, color 0.2s;
-  color: #6b7280;
+  color: var(--text-tertiary);
 }
 
 .filter-btn:hover {
@@ -63,5 +64,27 @@ const updateValue = (value) => {
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   color: #5478EA;
   font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .period-filters {
+    padding: 0.2rem;
+    gap: 0.2rem;
+  }
+  .filter-btn {
+    padding: 0.4rem 0.65rem;
+    font-size: var(--text-caption-size);
+  }
+}
+
+@media (max-width: 480px) {
+  .period-filters {
+    padding: 0.15rem;
+    gap: 0.15rem;
+  }
+  .filter-btn {
+    padding: 0.35rem 0.5rem;
+    font-size: var(--text-caption-size);
+  }
 }
 </style>

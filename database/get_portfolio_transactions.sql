@@ -1,9 +1,49 @@
+CREATE OR REPLACE FUNCTION get_portfolio_transactions(
+    p_portfolio_id bigint
+)
+RETURNS TABLE (
+    transaction_id bigint,
+    portfolio_asset_id bigint,
+    portfolio_id bigint,
+    asset_id bigint,
+    asset_name text,
+    ticker text,
+    transaction_type text,
+    transaction_type_id bigint,
+    price numeric(20,6),
+    quantity numeric(20,6),
+    transaction_date timestamp without time zone,
+    realized_pnl numeric(20,6)
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        t.id AS transaction_id,
+        pa.id AS portfolio_asset_id,
+        pa.portfolio_id,
+        a.id AS asset_id,
+        a.name AS asset_name,
+        a.ticker,
+        CASE t.transaction_type
+            WHEN 1 THEN 'Покупка'
+            WHEN 2 THEN 'Продажа'
+            WHEN 3 THEN 'Погашение'
+            ELSE COALESCE(tt.name, 'Неизвестно')
+        END AS transaction_type,
+        t.transaction_type AS transaction_type_id,
+        t.price::numeric(20,6) AS price,
+        t.quantity::numeric(20,6) AS quantity,
+        t.transaction_date,
+        COALESCE(t.realized_pnl, 0)::numeric(20,6) AS realized_pnl
+    FROM transactions t
+    JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
+    JOIN assets a ON a.id = pa.asset_id
+    LEFT JOIN transactions_type tt ON tt.id = t.transaction_type
+    WHERE pa.portfolio_id = p_portfolio_id
+    ORDER BY t.transaction_date DESC;
+END;
+$$;
 
-  SELECT t.id, a.name, a.ticker, tt.name,
-         t.quantity, t.price, t.transaction_date
-  FROM transactions t
-  JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
-  JOIN assets a ON a.id = pa.asset_id
-  JOIN transactions_type tt ON tt.id = t.transaction_type
-  WHERE pa.portfolio_id = p_portfolio_id
-  ORDER BY t.transaction_date DESC;
+COMMENT ON FUNCTION get_portfolio_transactions(bigint) IS 'Возвращает все транзакции портфеля с информацией об активах и типах транзакций';

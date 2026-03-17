@@ -7,6 +7,15 @@ export default {
     return res.data;
   },
 
+  async getBrokers() {
+    const res = await apiClient.get(API_ENDPOINTS.PORTFOLIO.BROKERS);
+    // Структура ответа: { success: true, brokers: [...] } (data объединяется с корнем)
+    if (res.data && res.data.success && res.data.brokers) {
+      return res.data.brokers;
+    }
+    return [];
+  },
+
   async importPortfolio(broker_id, token, portfolio_id, portfolio_name) {
     const payload = { broker_id, token, portfolio_id, portfolio_name };
     const res = await apiClient.post(API_ENDPOINTS.PORTFOLIO.IMPORT_BROKER, payload);

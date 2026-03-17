@@ -1,14 +1,8 @@
--- Функция для получения следующей задачи для обработки
--- Возвращает задачу с наивысшим приоритетом, которая еще не обрабатывается
--- Улучшенная функция для атомарного получения и обновления задачи
--- Атомарно получает задачу и обновляет её статус на 'processing'
--- Это предотвращает получение одной и той же задачи дважды
-
 CREATE OR REPLACE FUNCTION get_next_pending_task()
 RETURNS TABLE (
-    task_id INTEGER,
+    task_id BIGINT,
     user_id UUID,
-    portfolio_id INTEGER,
+    portfolio_id BIGINT,
     task_type VARCHAR,
     broker_id VARCHAR,
     broker_token TEXT,
@@ -16,12 +10,8 @@ RETURNS TABLE (
     priority INTEGER
 ) AS $$
 DECLARE
-    v_task_id INTEGER;
+    v_task_id BIGINT;
 BEGIN
-    -- Атомарно получаем и обновляем задачу в одной транзакции
-    -- FOR UPDATE SKIP LOCKED блокирует строку только для текущей транзакции
-    -- UPDATE сразу меняет статус, чтобы другие воркеры не могли взять эту задачу
-    
     UPDATE import_tasks
     SET 
         status = 'processing',
@@ -38,7 +28,6 @@ BEGIN
     )
     RETURNING id INTO v_task_id;
     
-    -- Если задача была обновлена, возвращаем её данные
     IF v_task_id IS NOT NULL THEN
         RETURN QUERY
         SELECT 

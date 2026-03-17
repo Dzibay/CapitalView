@@ -1,4 +1,7 @@
-
+CREATE OR REPLACE FUNCTION get_reference_data()
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
 DECLARE
     asset_types JSONB;
     currencies JSONB;
@@ -23,8 +26,11 @@ BEGIN
     LIMIT 100;
 
     RETURN jsonb_build_object(
-        'asset_types', asset_types,
-        'currencies', currencies,
-        'assets', system_assets
+        'asset_types', COALESCE(asset_types, '[]'::jsonb),
+        'currencies', COALESCE(currencies, '[]'::jsonb),
+        'assets', COALESCE(system_assets, '[]'::jsonb)
     );
 END;
+$$;
+
+COMMENT ON FUNCTION get_reference_data() IS 'Возвращает справочные данные: типы активов, валюты и системные активы';

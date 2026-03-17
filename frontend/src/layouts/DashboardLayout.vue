@@ -6,8 +6,9 @@ import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import { useTransactionsStore } from '../stores/transactions.store'
 
-import AppSidebar from '../components/AppSidebar.vue'
-import AppHeader from '../components/AppHeader.vue'
+import AppSidebar from './AppSidebar.vue'
+import AppHeader from './AppHeader.vue'
+import AppFooter from './AppFooter.vue'
 
 const router = useRouter()
 
@@ -48,7 +49,7 @@ onMounted(async () => {
       uiStore.initSelectedPortfolioId(dashboardStore.portfolios)
     }
   } catch (err) {
-    if (import.meta.env.DEV) {
+    if (import.meta.env.VITE_APP_DEV) {
       console.error('Ошибка при загрузке данных:', err)
     }
     // При ошибке сети не перенаправляем на логин, просто показываем ошибку
@@ -69,16 +70,40 @@ watch(() => dashboardStore.portfolios, (portfolios) => {
   }
 }, { immediate: true })
 
+function handleToggleSidebar() {
+  if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+    uiStore.setMobileMenuOpen(!uiStore.isMobileMenuOpen)
+  } else {
+    uiStore.toggleSidebar()
+  }
+}
+
 </script>
 
 <template>
   <div class="dashboard-layout">
-    <AppSidebar :user="authStore.user" :collapsed="uiStore.isSidebarCollapsed" />
+    <div
+      v-if="uiStore.isMobileMenuOpen"
+      class="sidebar-overlay"
+      aria-hidden="true"
+      @click="uiStore.setMobileMenuOpen(false)"
+    />
+    <AppSidebar
+      :user="authStore.user"
+      :collapsed="uiStore.isSidebarCollapsed"
+      :mobile-open="uiStore.isMobileMenuOpen"
+    />
     <main class="main-content" :class="{ 'full-width': uiStore.isSidebarCollapsed }">
-      <AppHeader :user="authStore.user" @toggle-sidebar="uiStore.toggleSidebar" />
+      <AppHeader
+        :user="authStore.user"
+        :sidebar-collapsed="uiStore.isSidebarCollapsed"
+        :mobile-menu-open="uiStore.isMobileMenuOpen"
+        @toggle-sidebar="handleToggleSidebar"
+      />
       <div class="page-content">
         <router-view />
       </div>
+      <AppFooter />
     </main>
   </div>
 </template>
@@ -93,6 +118,8 @@ watch(() => dashboardStore.portfolios, (portfolios) => {
   margin-left: var(--sidebarWidth);
   transition: margin-left 0.3s ease-in-out;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .main-content.full-width {
@@ -102,5 +129,42 @@ watch(() => dashboardStore.portfolios, (portfolios) => {
 .page-content {
   margin-top: var(--headerHeight);
   padding: var(--spacing);
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  width: 100%;
+}
+
+/* Планшет: меньше боковых отступов */
+@media (max-width: 1200px) {
+  .page-content {
+    padding: 16px 12px;
+  }
+}
+
+/* Адаптив: мобильные */
+@media (max-width: 768px) {
+  .main-content,
+  .main-content.full-width {
+    margin-left: 0;
+  }
+
+  .page-content {
+    padding: 10px 12px;
+  }
+}
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 998;
+}
+
+@media (max-width: 768px) {
+  .sidebar-overlay {
+    display: block;
+  }
 }
 </style>

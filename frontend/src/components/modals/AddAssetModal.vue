@@ -1,22 +1,11 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2>Добавить актив</h2>
-        <button class="close-btn" @click="$emit('close')" aria-label="Закрыть">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
+  <ModalBase title="Добавить актив" :icon="PlusCircle" :wide="true" @close="$emit('close')">
+    <div v-if="saving" class="modal-loading">
+      <Loader2 :size="32" class="spinner-icon" />
+      <span>Сохраняем...</span>
+    </div>
 
-      <div v-if="saving" class="modal-loading">
-        <div class="spinner"></div>
-        <span>Сохраняем...</span>
-      </div>
-
-      <form v-else @submit.prevent="submitForm" class="form-content">
+    <form v-else @submit.prevent="submitForm">
         <!-- Портфель -->
         <div class="form-section">
           <CustomSelect
@@ -35,7 +24,7 @@
         <!-- Тип актива -->
         <div class="form-section">
           <label class="form-label">
-            <span class="label-icon">📊</span>
+            <BarChart3 :size="16" class="label-icon" />
             Тип актива
           </label>
           <div class="asset-choice">
@@ -44,30 +33,29 @@
               :class="{ active: assetTypeChoice === 'system' }"
               @click="setAssetTypeChoice('system')"
             >
-              <span class="choice-icon">🔍</span>
-              Системный
+              <Search :size="16" class="choice-icon" />
+              <span>Системный</span>
             </button>
             <button
               type="button"
               :class="{ active: assetTypeChoice === 'custom' }"
               @click="setAssetTypeChoice('custom')"
             >
-              <span class="choice-icon">✨</span>
-              Кастомный
+              <Sparkles :size="16" class="choice-icon" />
+              <span>Кастомный</span>
             </button>
           </div>
         </div>
 
         <!-- Информация об активе -->
         <div class="form-section">
-          <div class="section-divider"></div>
           <div v-if="assetTypeChoice === 'system'" class="asset-search-block">
             <label class="form-label">
-              <span class="label-icon">📈</span>
+              <TrendingUp :size="16" class="label-icon" />
               Актив
             </label>
             <div class="search-wrapper">
-              <span class="search-icon">🔍</span>
+              <Search :size="16" class="search-icon" />
               <input
                 type="text"
                 v-model="searchQuery"
@@ -82,31 +70,32 @@
                   :key="a.id"
                   @click="selectAsset(a)"
                 >
-                  <span class="asset-name">{{ a.name }}</span>
-                  <span class="asset-ticker">{{ a.ticker || '—' }}</span>
+                  <div class="asset-info-row">
+                    <span class="asset-name">{{ a.name }}</span>
+                    <span class="asset-ticker">{{ a.ticker || '—' }}</span>
+                  </div>
                 </li>
                 <li class="create-new" v-if="filteredAssets.length === 0">
-                  <span class="empty-icon">🔍</span>
-                  Актив не найден. Выберите "Кастомный" для создания нового.
+                  <Search :size="20" class="empty-icon" />
+                  <span>Актив не найден. Выберите "Кастомный" для создания нового.</span>
                 </li>
               </ul>
             </div>
             <div v-if="form.asset_id" class="selected-asset">
-              <span class="check-icon">✓</span>
+              <CheckCircle2 :size="16" class="check-icon" />
               <span>Выбран: <strong>{{ searchQuery }}</strong></span>
             </div>
           </div>
 
           <div v-if="assetTypeChoice === 'custom'" class="custom-asset-fields">
-            <div class="form-row">
-              <div class="form-field">
-                <label class="form-label">
-                  <span class="label-icon">📝</span>
-                  Название
-                </label>
-                <input v-model="form.name" type="text" required class="form-input" />
-              </div>
-            </div>
+            <FormInput
+              v-model="form.name"
+              label="Название"
+              :icon="FileText"
+              type="text"
+              placeholder="Введите название актива"
+              required
+            />
             <div class="form-row">
               <div class="form-field">
                 <CustomSelect
@@ -140,8 +129,6 @@
 
         <!-- Параметры покупки -->
         <div class="form-section">
-          <div class="section-divider"></div>
-          
           <!-- Переключатель использования рыночной цены (только для системных активов) -->
           <div v-if="assetTypeChoice === 'system'" class="toggle-wrapper">
             <ToggleSwitch v-model="useMarketPrice" />
@@ -151,45 +138,53 @@
           </div>
           
           <div class="form-row">
-            <div class="form-field">
-              <label class="form-label">
-                <span class="label-icon">🔢</span>
-                Количество
-              </label>
-              <input v-model.number="form.quantity" type="number" min="0" step="0.000001" required class="form-input" />
-              <small class="form-hint" style="margin-top: 4px;">
-                Можно вводить до 6 знаков после запятой
-              </small>
-            </div>
-            <div class="form-field">
-              <label class="form-label">
-                <span class="label-icon">💰</span>
-                Средняя цена
-                <span v-if="loadingPrice" style="margin-left: 8px; color: #3b82f6;">⏳ Загрузка...</span>
-              </label>
-              <input 
-                v-model.number="form.average_price" 
-                type="number" 
-                min="0" 
-                step="0.000001" 
-                required 
-                class="form-input"
-                :disabled="useMarketPrice && loadingPrice"
-              />
-              <small class="form-hint" style="margin-top: 4px;" v-if="useMarketPrice && assetTypeChoice === 'system'">
-                Цена автоматически обновляется при изменении даты
-              </small>
-              <small class="form-hint" style="margin-top: 4px;">
-                Можно вводить до 6 знаков после запятой
-              </small>
-            </div>
+            <FormInput
+              v-model.number="form.quantity"
+              label="Количество"
+              :icon="Hash"
+              type="number"
+              min="0"
+              step="0.000001"
+              placeholder="0.000000"
+              hint="Количество единиц актива в портфеле"
+              required
+            />
+            <FormInput
+              v-model.number="form.average_price"
+              :label="'Средняя цена' + (form.asset_id ? ` (${depositCurrencySymbol || '₽'})` : '')"
+              :icon="DollarSign"
+              :loading-icon="loadingPrice ? Loader2 : null"
+              type="number"
+              min="0"
+              step="0.000001"
+              placeholder="0.00"
+              :disabled="useMarketPrice && loadingPrice"
+              :hint="useMarketPrice && assetTypeChoice === 'system' ? 'Цена автоматически обновляется при изменении даты' : 'Цена за единицу актива'"
+              required
+            />
           </div>
-          <div class="form-field">
+          <div class="form-field date-field">
             <label class="form-label">
-              <span class="label-icon">📅</span>
+              <Calendar :size="16" class="label-icon" />
               Дата добавления
             </label>
-            <input v-model="form.date" type="date" required class="form-input" />
+            <DateInput v-model="form.date" :min="minDate" required />
+            <small v-if="minDate && assetTypeChoice === 'system'" class="form-hint">
+              <CalendarDays :size="12" class="hint-icon" />
+              Первая доступная дата: {{ minDate }}
+            </small>
+          </div>
+          
+          <!-- Галочка для создания операции пополнения при создании актива с покупкой -->
+          <div v-if="form.quantity > 0 && form.average_price > 0" class="toggle-wrapper deposit-toggle">
+            <ToggleSwitch v-model="createDepositOperation" />
+            <div class="toggle-content">
+              <Wallet :size="14" class="toggle-icon" />
+              <span class="toggle-label-text">
+                Добавить операцию пополнения на сумму покупки ({{ (form.quantity * form.average_price).toFixed(2) }} {{ depositCurrencySymbol }})
+              </span>
+            </div>
+            <small class="form-hint block" style="margin-top: 6px;">Будет создана операция пополнения в валюте актива ({{ depositCurrencyTicker }})</small>
           </div>
         </div>
 
@@ -205,19 +200,39 @@
           </Button>
         </div>
       </form>
-    </div>
-  </div>
+  </ModalBase>
 </template>
 
 <script setup>
 import { reactive, ref, computed, watch } from 'vue'
-import { Check } from 'lucide-vue-next'
-import { Button, ToggleSwitch } from '../base'
+import { normalizeDateToString } from '../../utils/date'
+import ModalBase from './ModalBase.vue'
+import { 
+  Check, 
+  PlusCircle, 
+  Loader2, 
+  BarChart3, 
+  Search, 
+  Sparkles, 
+  TrendingUp, 
+  CheckCircle2, 
+  FileText, 
+  Hash, 
+  DollarSign, 
+  Calendar, 
+  CalendarDays,
+  Wallet
+} from 'lucide-vue-next'
+import { Button, ToggleSwitch, DateInput } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
+import FormInput from '../base/FormInput.vue'
 import assetsService from '../../services/assetsService'
 import { useDashboardStore } from '../../stores/dashboard.store'
+import { useTransactionsStore } from '../../stores/transactions.store'
+import { getCurrencySymbol } from '../../utils/currencySymbols'
 
 const dashboardStore = useDashboardStore()
+const transactionsStore = useTransactionsStore()
 
 const props = defineProps({
   onSave: Function, // функция сохранения из родителя
@@ -236,7 +251,7 @@ const initialFormState = {
   currency: null,
   quantity: 0,
   average_price: 0,
-  date: new Date().toISOString().slice(0, 10)
+  date: normalizeDateToString(new Date()) || ''
 }
 
 const form = reactive({ ...initialFormState })
@@ -245,10 +260,29 @@ const searchQuery = ref("")
 const assetTypeChoice = ref("system") // 'system' или 'custom' - по умолчанию системный
 
 // Использование рыночной цены для системных активов
-const useMarketPrice = ref(false) // Переключатель для автоматической загрузки рыночной цены
+const useMarketPrice = ref(true) // Переключатель для автоматической загрузки рыночной цены (включен по умолчанию)
+const lastMarketPrice = ref(null) // Последняя загруженная рыночная цена
 const loadingPrice = ref(false) // Состояние загрузки рыночной цены
 const priceHistoryCache = ref(null) // Кэш истории цен актива
 const isLoadingHistory = ref(false) // Флаг для предотвращения двойной загрузки истории
+const minDate = ref(null) // Минимальная дата (первая цена в истории)
+
+// Галочка для создания операции пополнения на сумму покупки (по умолчанию включена)
+const createDepositOperation = ref(true)
+
+// Валюта выбранного актива для сообщения об операции пополнения
+const depositCurrencyTicker = computed(() => {
+  if (!form.asset_id || !props.referenceData?.assets) return 'RUB'
+  const a = props.referenceData.assets.find(x => x.id === form.asset_id)
+  if (!a) return 'RUB'
+  if (a.currency_ticker) return a.currency_ticker
+  if (a.quote_asset_id && props.referenceData.assets) {
+    const q = props.referenceData.assets.find(x => x.id === a.quote_asset_id)
+    return q?.ticker || 'RUB'
+  }
+  return (typeof a.currency === 'string' ? a.currency : null) || 'RUB'
+})
+const depositCurrencySymbol = computed(() => getCurrencySymbol(depositCurrencyTicker.value))
 
 // Фильтруем валюты: исключаем криптовалюты (asset_type_id = 6), оставляем только фиатные валюты (asset_type_id = 7)
 const fiatCurrencies = computed(() => {
@@ -290,6 +324,12 @@ const submitForm = async () => {
     return;
   }
   
+  // Проверка для системного актива: дата не должна быть раньше первой цены
+  if (assetTypeChoice.value === 'system' && minDate.value && form.date && new Date(form.date) < new Date(minDate.value)) {
+    alert(`Дата добавления не может быть раньше первой доступной даты: ${minDate.value}`);
+    return;
+  }
+  
   // Для кастомного актива: заполняем asset_id как null и убираем ticker
   if (assetTypeChoice.value === 'custom') {
       form.asset_id = null;
@@ -299,7 +339,12 @@ const submitForm = async () => {
   if (!props.onSave) return
   saving.value = true
   try {
-    await props.onSave({ ...form })  // ждём промис от родителя
+    // Создаем актив с флагом создания операции пополнения
+    await props.onSave({ 
+      ...form,
+      create_deposit_operation: createDepositOperation.value && form.quantity > 0 && form.average_price > 0
+    })  // ждём промис от родителя
+    
     emit('close')
   } catch (err) {
     console.error(err)
@@ -319,7 +364,7 @@ const filteredAssets = computed(() => {
   )
 })
 
-const selectAsset = (asset) => {
+const selectAsset = async (asset) => {
   form.asset_id = asset.id
   // Устанавливаем name, ticker и currency для системного актива, 
   // чтобы передать их на backend (если это требуется) и для отображения в поле поиска
@@ -331,11 +376,17 @@ const selectAsset = (asset) => {
   
   // Очищаем кэш истории цен при выборе нового актива
   priceHistoryCache.value = null
-  // Если переключатель включен, загружаем историю для нового актива
-  if (useMarketPrice.value && form.date) {
-    loadPriceHistory().then(() => {
-      loadMarketPrice(true)
-    })
+  minDate.value = null
+  lastMarketPrice.value = null
+  
+  // Загружаем историю цен для системного актива
+  if (asset.user_id === null || asset.is_custom === false) {
+    await loadPriceHistoryForDateRestriction()
+    // Загружаем рыночную цену по умолчанию, если тумблер включен
+    if (useMarketPrice.value && form.date) {
+      await loadPriceHistory()
+      await loadMarketPrice(true)
+    }
   }
 }
 
@@ -369,7 +420,7 @@ async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
       // Используем дату на день позже, чтобы включить саму дату операции
       const targetDateObj = new Date(targetDate)
       targetDateObj.setHours(23, 59, 59, 999) // Конец дня, чтобы включить саму дату
-      const endDateStr = targetDateObj.toISOString().slice(0, 10) // YYYY-MM-DD
+      const endDateStr = normalizeDateToString(targetDateObj) || '' // YYYY-MM-DD
       
       const priceHistoryResponse = await assetsService.getAssetPriceHistory(
         assetId,
@@ -505,6 +556,55 @@ async function loadPriceHistory() {
   }
 }
 
+// Функция для загрузки истории цен и установки ограничения даты
+async function loadPriceHistoryForDateRestriction() {
+  if (!form.asset_id) {
+    return
+  }
+  
+  try {
+    isLoadingHistory.value = true
+    
+    // Загружаем полную историю цен актива
+    const priceHistoryResponse = await assetsService.getAssetPriceHistory(
+      form.asset_id,
+      null, // start_date - не ограничиваем
+      null, // end_date - не ограничиваем, загружаем всю историю
+      10000 // Большой лимит для получения всей истории
+    )
+    
+    if (priceHistoryResponse.success && priceHistoryResponse.prices && priceHistoryResponse.prices.length > 0) {
+      // Сохраняем историю в кэш
+      priceHistoryCache.value = priceHistoryResponse.prices
+      
+      // Находим первую дату с ценой (самую раннюю)
+      const sortedPrices = [...priceHistoryResponse.prices].sort((a, b) => {
+        const dateA = new Date(a.trade_date)
+        const dateB = new Date(b.trade_date)
+        return dateA - dateB
+      })
+      
+      if (sortedPrices.length > 0) {
+        const firstPriceDate = sortedPrices[0].trade_date
+        minDate.value = firstPriceDate
+        
+        // Если текущая дата раньше первой цены, обновляем её
+        if (form.date && new Date(form.date) < new Date(firstPriceDate)) {
+          form.date = firstPriceDate
+        }
+      }
+    } else {
+      // Если истории цен нет, сбрасываем ограничение
+      minDate.value = null
+    }
+  } catch (e) {
+    console.error('Ошибка при загрузке истории цен для ограничения даты:', e)
+    minDate.value = null
+  } finally {
+    isLoadingHistory.value = false
+  }
+}
+
 // Функция для получения рыночной цены на дату транзакции и заполнения поля цены
 async function loadMarketPrice(silent = false) {
   if (!form.asset_id) {
@@ -529,6 +629,7 @@ async function loadMarketPrice(silent = false) {
     
     if (marketPrice && marketPrice > 0) {
       form.average_price = marketPrice
+      lastMarketPrice.value = marketPrice
       return true
     }
     
@@ -545,9 +646,9 @@ async function loadMarketPrice(silent = false) {
 
 // Автоматическая загрузка истории цен и рыночной цены при включении переключателя
 watch(useMarketPrice, async (newValue, oldValue) => {
-  // Загружаем историю цен и цену только при включении переключателя (переходе с false на true)
+  // Загружаем историю цен и цену при включении переключателя
   // Только для системных активов
-  if (newValue && !oldValue && assetTypeChoice.value === 'system' && form.asset_id && form.date) {
+  if (newValue && assetTypeChoice.value === 'system' && form.asset_id && form.date) {
     // Загружаем историю цен один раз при включении переключателя (если еще не загружена)
     const historyLoaded = await loadPriceHistory()
     
@@ -557,6 +658,16 @@ watch(useMarketPrice, async (newValue, oldValue) => {
     }
   }
   // При выключении переключателя НЕ очищаем кэш - сохраняем для повторного использования
+})
+
+// Отслеживание ручного изменения цены
+watch(() => form.average_price, (newPrice, oldPrice) => {
+  // Если цена изменена вручную и отличается от последней рыночной цены, выключаем тумблер
+  if (useMarketPrice.value && lastMarketPrice.value !== null && 
+      Math.abs(newPrice - lastMarketPrice.value) > 0.0001 && 
+      oldPrice !== undefined) {
+    useMarketPrice.value = false
+  }
 })
 
 // Автоматическое обновление цены при изменении даты, если переключатель включен
@@ -569,9 +680,10 @@ watch(() => form.date, async (newDate, oldDate) => {
 }, { immediate: false })
 
 // Очистка кэша истории цен при изменении актива
-watch(() => form.asset_id, (newAssetId, oldAssetId) => {
+watch(() => form.asset_id, async (newAssetId, oldAssetId) => {
   if (newAssetId !== oldAssetId) {
     priceHistoryCache.value = null
+    minDate.value = null
     // Если переключатель включен и актив изменился, загружаем новую историю
     if (useMarketPrice.value && assetTypeChoice.value === 'system' && newAssetId && form.date) {
       loadPriceHistory().then(() => {
@@ -586,6 +698,7 @@ watch(assetTypeChoice, (newChoice) => {
   if (newChoice === 'custom') {
     useMarketPrice.value = false
     priceHistoryCache.value = null
+    minDate.value = null
   }
 })
 
@@ -599,138 +712,21 @@ setAssetTypeChoice('system')
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(8px);
-  padding: 16px;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.modal-content {
-  background: white;
-  width: 100%;
-  max-width: 520px;
-  max-height: 90vh;
-  border-radius: 20px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes slideUp {
-  from {
-    transform: scale(0.95) translateY(10px);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1) translateY(0);
-    opacity: 1;
-  }
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
-  border-bottom: 1px solid #f3f4f6;
-  background: #fff;
-  flex-shrink: 0;
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #111827;
-  letter-spacing: -0.01em;
-}
-
-.close-btn {
-  background: #f3f4f6;
-  border: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #6b7280;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.close-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
-  transform: scale(1.05);
-}
-
-.close-btn:active {
-  transform: scale(0.95);
-}
-
-.close-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.form-content {
-  padding: 20px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.form-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.form-content::-webkit-scrollbar-track {
-  background: #f9fafb;
-}
-
-.form-content::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
-}
-
-.form-content::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
-}
 
 .form-section {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .form-section:last-of-type {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
-.section-divider {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
-  margin: 16px 0;
-}
 
 .form-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 10px;
   font-size: 13px;
   font-weight: 600;
   color: #374151;
@@ -738,8 +734,18 @@ setAssetTypeChoice('system')
 }
 
 .label-icon {
-  font-size: 14px;
-  opacity: 0.8;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.loading-icon {
+  color: #3b82f6;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .modal-loading {
@@ -748,27 +754,36 @@ setAssetTypeChoice('system')
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  gap: 12px;
+  gap: 16px;
   font-weight: 500;
   font-size: 14px;
   color: #6b7280;
 }
 
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #e5e7eb;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.spinner-icon {
+  color: #3b82f6;
+  animation: spin 1s linear infinite;
 }
 
 .asset-search-block {
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.asset-search-block > .form-label {
+  margin-bottom: 10px;
+  margin-top: 0;
+}
+
+.asset-search-block > .search-wrapper {
+  margin-bottom: 0;
+  margin-top: 0;
+}
+
+.asset-search-block > .selected-asset {
+  margin-top: 10px;
+  margin-bottom: 0;
 }
 
 .search-wrapper {
@@ -781,7 +796,6 @@ setAssetTypeChoice('system')
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
-  font-size: 14px;
   color: #9ca3af;
   z-index: 1;
 }
@@ -818,13 +832,19 @@ setAssetTypeChoice('system')
 }
 
 .dropdown li {
-  padding: 10px 14px;
+  padding: 12px 14px;
   cursor: pointer;
   transition: all 0.15s ease;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   border-left: 3px solid transparent;
+}
+
+.asset-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
 
 .dropdown li:hover {
@@ -850,62 +870,54 @@ setAssetTypeChoice('system')
 
 .dropdown .create-new {
   color: #9ca3af;
-  padding: 12px 14px;
+  padding: 16px 14px;
   cursor: default;
   text-align: center;
   font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   flex-direction: column;
 }
 
 .empty-icon {
-  font-size: 20px;
-  opacity: 0.5;
+  color: #d1d5db;
+  opacity: 0.6;
 }
 
 .selected-asset {
-  margin-top: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
   color: #166534;
-  background: #f0fdf4;
-  border: 1px solid #86efac;
-  border-radius: 8px;
+  background: linear-gradient(to right, #f0fdf4, #ecfdf5);
+  border: 1.5px solid #86efac;
+  border-radius: 10px;
   font-weight: 500;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
 }
 
 .check-icon {
-  width: 16px;
-  height: 16px;
-  background: #10b981;
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
+  color: #10b981;
   flex-shrink: 0;
 }
 
 .asset-choice {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   background: #f9fafb;
   padding: 4px;
-  border-radius: 10px;
-  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  border: 1.5px solid #e5e7eb;
 }
 
 .asset-choice button {
   flex: 1;
-  padding: 10px 14px;
+  padding: 12px 16px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -917,18 +929,23 @@ setAssetTypeChoice('system')
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .choice-icon {
-  font-size: 14px;
+  color: inherit;
+  flex-shrink: 0;
 }
 
 .asset-choice button.active {
-  background: white;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
   color: #2563eb;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.08), 0 0 0 1px rgba(59,130,246,0.1);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15), 0 0 0 1.5px rgba(59, 130, 246, 0.2);
   transform: translateY(-1px);
+}
+
+.asset-choice button.active .choice-icon {
+  color: #2563eb;
 }
 
 .asset-choice button:not(.active):hover {
@@ -938,7 +955,7 @@ setAssetTypeChoice('system')
 
 .form-input {
   width: 100%;
-  padding: 9px 12px;
+  padding: 11px 14px;
   border: 1.5px solid #e5e7eb;
   border-radius: 10px;
   font-size: 14px;
@@ -947,6 +964,10 @@ setAssetTypeChoice('system')
   color: #111827;
   box-sizing: border-box;
   font-family: inherit;
+}
+
+.form-input::placeholder {
+  color: #9ca3af;
 }
 
 .form-input:hover {
@@ -961,6 +982,16 @@ setAssetTypeChoice('system')
   background: #fff;
 }
 
+.form-input:disabled {
+  background: #f9fafb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.date-field {
+  margin-top: 4px;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -973,9 +1004,19 @@ setAssetTypeChoice('system')
 }
 
 .custom-asset-fields {
+  gap: 10px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+}
+
+.custom-asset-fields > FormInput {
+  margin-bottom: 12px;
+  margin-top: 0;
+}
+
+.custom-asset-fields > .form-row {
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 .form-actions {
@@ -995,10 +1036,55 @@ setAssetTypeChoice('system')
   gap: 10px;
 }
 
+.toggle-wrapper.deposit-toggle {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: linear-gradient(to right, #eff6ff, #f0f9ff);
+  border: 1.5px solid #bfdbfe;
+  border-radius: 10px;
+}
+
+.toggle-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.toggle-icon {
+  color: #3b82f6;
+  flex-shrink: 0;
+}
+
 .toggle-label-text {
   font-size: 13px;
   color: #374151;
   font-weight: 500;
+  flex: 1;
+}
+
+.toggle-amount {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2563eb;
+  background: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.2);
+}
+
+.form-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.hint-icon {
+  color: #9ca3af;
+  flex-shrink: 0;
 }
 
 .form-hint {

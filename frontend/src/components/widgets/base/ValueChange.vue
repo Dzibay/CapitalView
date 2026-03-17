@@ -68,8 +68,8 @@ const formattedValue = computed(() => {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  font-size: 0.875rem;
-  font-weight: 400;
+  font-size: var(--text-caption-size);
+  font-weight: var(--text-body-secondary-weight);
 }
 
 .value-change.positive {

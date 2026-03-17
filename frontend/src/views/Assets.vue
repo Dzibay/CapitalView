@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
+import { storeToRefs } from 'pinia';
 import { useDashboardStore } from '../stores/dashboard.store';
 import { useUIStore } from '../stores/ui.store';
 import { useAssetsStore } from '../stores/assets.store';
@@ -15,14 +16,13 @@ import ImportPortfolioModal from "../components/modals/ImportPortfolioModal.vue"
 import ImportStatusModal from "../components/modals/ImportStatusModal.vue";
 import AddPortfolioModal from "../components/modals/AddPortfolioModal.vue";
 import PortfolioTree from '../components/PortfolioTree.vue';
-import ContextMenu from '../components/ContextMenu.vue';
-import { useExpandedState } from '../composables/useExpandedState';
+import ContextMenu from '../components/base/ContextMenu.vue';
 import { useModals } from '../composables/useModal';
 import { usePortfolio } from '../composables/usePortfolio';
 import { Button, ToggleSwitch } from '../components/base';
 import LoadingState from '../components/base/LoadingState.vue';
-import PageLayout from '../components/PageLayout.vue';
-import PageHeader from '../components/PageHeader.vue';
+import PageLayout from '../layouts/PageLayout.vue';
+import PageHeader from '../layouts/PageHeader.vue';
 
 const selectedAsset = ref(null);
 
@@ -119,8 +119,9 @@ const reloadDashboard = async () => {
   await dashboardStore.reloadDashboard();
 };
 
-// Используем композабл для управления раскрытыми портфелями
-const { expanded: expandedPortfolios, toggle: togglePortfolio } = useExpandedState('expandedPortfolios');
+// Раскрытые портфели и showSoldAssets хранятся в ui.store (с авто-persistence)
+const { expandedPortfolios, showSoldAssets } = storeToRefs(uiStore)
+const togglePortfolio = (id) => uiStore.togglePortfolio(id)
 
 // Используем композабл для управления модалками
 const { modals, open: openModal, close: closeModal } = useModals([
@@ -136,28 +137,6 @@ const { modals, open: openModal, close: closeModal } = useModals([
 // ID текущей задачи импорта
 const currentImportTaskId = ref(null);
 
-// Фильтр для показа проданных активов (с сохранением в localStorage)
-const SHOW_SOLD_ASSETS_KEY = 'showSoldAssets';
-const showSoldAssets = ref(false);
-
-onMounted(() => {
-  try {
-    const stored = localStorage.getItem(SHOW_SOLD_ASSETS_KEY);
-    if (stored !== null) {
-      showSoldAssets.value = stored === '1' || stored === 'true';
-    }
-  } catch (e) {
-    // localStorage может быть недоступен, просто игнорируем
-  }
-});
-
-watch(showSoldAssets, (value) => {
-  try {
-    localStorage.setItem(SHOW_SOLD_ASSETS_KEY, value ? '1' : '0');
-  } catch (e) {
-    // игнорируем ошибки записи в localStorage
-  }
-});
 
 
 // Используем композабл для работы с портфелями
@@ -212,7 +191,6 @@ const refreshPortfolios = async () => {
   await reloadDashboard();
 };
 
-// togglePortfolio уже определен в useExpandedState
 
 // Обработчики для контекстного меню
 const handleAddTransaction = (asset) => {
@@ -221,6 +199,13 @@ const handleAddTransaction = (asset) => {
 };
 
 const handleAddPrice = (asset) => {
+  // Проверяем, что актив является кастомным (is_custom === true)
+  const assetData = asset?.asset || asset;
+  if (assetData?.is_custom === false || asset?.is_custom === false) {
+    // Системный актив - не позволяем изменять цену
+    console.warn('Попытка изменить цену системного актива:', assetData)
+    return;
+  }
   selectedAsset.value = asset;
   openModal('addPrice');
 };
@@ -294,8 +279,7 @@ const handleMoveAsset = (asset) => {
       <ImportPortfolioModal 
         v-if="modals.import" 
         @close="closeModal('import')" 
-        :onImport="importPortfolio" 
-        :portfolios="parsedDashboard.portfolios"
+        :onImport="importPortfolio"
       />
       <ImportStatusModal 
         v-if="modals.importStatus && currentImportTaskId" 
@@ -379,6 +363,7 @@ const handleMoveAsset = (asset) => {
   background: transparent;
   padding: 0;
   flex-wrap: wrap;
+  max-width: 100%;
 }
 
 .divider-vertical {
@@ -389,7 +374,7 @@ const handleMoveAsset = (asset) => {
   flex-shrink: 0;
 }
 
-/* Button groups */
+/* Группы кнопок */
 .button-group-unified {
   display: flex;
   gap: 0;
@@ -526,7 +511,7 @@ const handleMoveAsset = (asset) => {
 }
 
 
-/* Empty State */
+/* Пустое состояние */
 
 .empty-placeholder {
   text-align: center;
@@ -555,6 +540,88 @@ const handleMoveAsset = (asset) => {
 
 .assets-content {
   margin-top: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
+.assets-content :deep(.portfolio-list) {
+  max-width: 100%;
+}
+
+.assets-content :deep(.table-responsive) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1200px) {
+  .buttons-group {
+    gap: 6px;
+  }
+  .buttons-group :deep(button) {
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .buttons-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .buttons-group :deep(button),
+  .button-group-unified {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .divider-vertical {
+    display: none;
+  }
+
+  /* Вторая строка: Импорт и Обновить в одну строку, без переноса на третий уровень */
+  .button-group-unified {
+    grid-column: span 2;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0;
+  }
+
+  .button-group-unified :deep(button) {
+    flex: 1;
+  }
+
+  .active-tasks-indicator {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    min-width: auto;
+    max-width: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .buttons-group {
+    gap: 4px;
+  }
+  .buttons-group :deep(.btn-text) {
+    display: none;
+  }
+  .buttons-group :deep(button) {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .empty-placeholder {
+    padding: 40px 16px;
+  }
+}
 </style>

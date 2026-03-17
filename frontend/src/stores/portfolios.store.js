@@ -15,7 +15,7 @@ export const usePortfoliosStore = defineStore('portfolios', {
         }
         return res
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка создания портфеля:', err)
         }
         throw err
@@ -23,12 +23,12 @@ export const usePortfoliosStore = defineStore('portfolios', {
     },
 
     async deletePortfolio(portfolioId) {
+      const dashboardStore = useDashboardStore()
+      const uiStore = useUIStore()
+      
       try {
         const res = await portfolioService.deletePortfolio(portfolioId)
         if (!res.success) throw new Error(res.error || 'Ошибка удаления портфеля')
-        
-        const dashboardStore = useDashboardStore()
-        const uiStore = useUIStore()
         
         // Собираем все ID портфелей, которые будут удалены (родитель + дочерние)
         const idsToRemove = new Set([portfolioId])
@@ -59,9 +59,16 @@ export const usePortfoliosStore = defineStore('portfolios', {
           }
         }
         
+        // Обновляем dashboard_data в фоне без показа загрузочного экрана
+        dashboardStore.reloadDashboard(false).catch(err => {
+          if (import.meta.env.VITE_APP_DEV) {
+            console.error('Ошибка обновления dashboard после удаления портфеля:', err)
+          }
+        })
+        
         return res
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка удаления портфеля:', err)
         }
         throw err
@@ -80,7 +87,7 @@ export const usePortfoliosStore = defineStore('portfolios', {
         await dashboardStore.reloadDashboard()
         return res
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка очистки портфеля:', err)
         }
         throw err
@@ -98,7 +105,7 @@ export const usePortfoliosStore = defineStore('portfolios', {
         // Теперь импорт выполняется асинхронно через систему задач
         return res
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка импорта портфеля:', err)
         }
         throw err
@@ -118,13 +125,13 @@ export const usePortfoliosStore = defineStore('portfolios', {
         
         if (!res) throw new Error('Ошибка при обновлении цели')
 
-        const updated = res[0]
+        const updated = res[0] || res
         const dashboardStore = useDashboardStore()
         
         // Оптимистичное обновление
         // Обновляем description с учетом инфляции
         const updatedDescription = {
-          ...updated.description,
+          ...(updated.description || {}),
           use_inflation: updated.use_inflation !== undefined ? updated.use_inflation : (updated.description?.use_inflation || false),
           inflation_rate: updated.inflation_rate !== undefined ? updated.inflation_rate : (updated.description?.inflation_rate || 7.5)
         }

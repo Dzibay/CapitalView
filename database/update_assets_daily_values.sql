@@ -1,9 +1,3 @@
--- ============================================================================
--- Упрощенная функция обновления daily values по активам
--- ============================================================================
--- Обновляет portfolio_daily_values для всех портфелей, где есть указанные активы
--- Использует существующую функцию update_portfolio_values_from_date
-
 CREATE OR REPLACE FUNCTION update_assets_daily_values(
     p_asset_ids bigint[],
     p_from_date date DEFAULT '0001-01-01'
@@ -95,6 +89,4 @@ BEGIN
 END;
 $$;
 
--- Комментарий к функции
-COMMENT ON FUNCTION update_assets_daily_values(bigint[], date) IS 
-'Обновляет portfolio_daily_positions (включая position_value) и portfolio_daily_values для всех портфелей, где есть указанные активы. Сначала обновляет позиции активов, затем значения портфелей, используя инкрементальное обновление.';
+COMMENT ON FUNCTION update_assets_daily_values(bigint[], date) IS 'Обновляет позиции активов и значения портфелей для указанных активов';

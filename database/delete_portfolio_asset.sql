@@ -12,9 +12,6 @@ DECLARE
     v_user_id uuid;
     v_result text;
 BEGIN
-    -- Начинаем транзакцию (автоматически в PostgreSQL)
-    
-    -- 1. Получаем информацию об активе и проверяем существование
     SELECT 
         pa.asset_id,
         pa.portfolio_id,
@@ -38,52 +35,59 @@ BEGIN
         )::text;
     END IF;
     
-    -- 2. Удаляем транзакции (CASCADE должен удалить связанные записи)
+    -- 1. Сначала удаляем cash_operations, связанные с транзакциями через transaction_id
+    DELETE FROM cash_operations
+    WHERE transaction_id IN (
+        SELECT id FROM transactions WHERE portfolio_asset_id = p_portfolio_asset_id
+    );
+    
+    -- 2. Удаляем транзакции
     DELETE FROM transactions 
     WHERE portfolio_asset_id = p_portfolio_asset_id;
     
-    -- 3. Удаляем FIFO лоты
+    -- 3. Удаляем остальные cash_operations, связанные с портфелем и активом (но не с транзакциями)
+    DELETE FROM cash_operations
+    WHERE portfolio_id = v_portfolio_id
+      AND asset_id = v_asset_id;
+    
+    -- 4. Удаляем fifo_lots
     DELETE FROM fifo_lots 
     WHERE portfolio_asset_id = p_portfolio_asset_id;
     
-    -- 4. Удаляем ежедневные позиции
     DELETE FROM portfolio_daily_positions 
     WHERE portfolio_asset_id = p_portfolio_asset_id;
     
-    -- 5. Удаляем запись portfolio_assets
     DELETE FROM portfolio_assets 
     WHERE id = p_portfolio_asset_id;
     
-    -- 6. Если актив кастомный - удаляем его полностью
     IF v_is_custom THEN
-        -- Проверяем, используется ли актив в других портфелях
         IF NOT EXISTS (
             SELECT 1 FROM portfolio_assets 
             WHERE asset_id = v_asset_id
         ) THEN
-            -- Удаляем историю цен актива
+            -- Удаляем все cash_operations, связанные с этим активом (из всех портфелей)
+            -- Это нужно сделать перед удалением актива, чтобы избежать нарушения внешнего ключа
+            DELETE FROM cash_operations
+            WHERE asset_id = v_asset_id;
+            
             DELETE FROM asset_prices 
             WHERE asset_id = v_asset_id;
             
-            -- Удаляем запись из asset_latest_prices_full
-            DELETE FROM asset_latest_prices_full 
+            -- Удаляем запись из asset_latest_prices
+            DELETE FROM asset_latest_prices 
             WHERE asset_id = v_asset_id;
             
-            -- Удаляем сам актив
             DELETE FROM assets 
             WHERE id = v_asset_id;
         END IF;
     END IF;
     
-    -- 7. Обновляем историю портфеля (не критично, если не удастся)
     BEGIN
         PERFORM update_portfolio_values_from_date(v_portfolio_id, '0001-01-01'::date);
     EXCEPTION WHEN OTHERS THEN
-        -- Логируем ошибку, но не прерываем выполнение
         RAISE WARNING 'Ошибка при обновлении истории портфеля: %', SQLERRM;
     END;
     
-    -- Возвращаем успешный результат
     RETURN json_build_object(
         'success', true,
         'message', 'Актив и связанные записи успешно удалены',
@@ -93,7 +97,6 @@ BEGIN
     )::text;
     
 EXCEPTION WHEN OTHERS THEN
-    -- В случае ошибки транзакция автоматически откатывается
     RETURN json_build_object(
         'success', false,
         'error', format('Ошибка при удалении актива: %s', SQLERRM)

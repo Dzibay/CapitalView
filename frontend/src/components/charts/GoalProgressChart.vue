@@ -70,9 +70,9 @@ const chartOptions = computed(() => {
         ticks: {
           color: axisText,
           font: {
-            size: 12,
-            family: 'Inter, system-ui, sans-serif',
-            weight: '500'
+            size: 11,
+            family: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
+            weight: '300'
           },
           padding: 12,
           maxRotation: 45,
@@ -95,9 +95,9 @@ const chartOptions = computed(() => {
         ticks: {
           color: axisTextLight,
           font: {
-            size: 12,
-            family: 'Inter, system-ui, sans-serif',
-            weight: '500'
+            size: 11,
+            family: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
+            weight: '300'
           },
           padding: 12,
           stepSize: null,

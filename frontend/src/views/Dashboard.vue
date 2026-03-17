@@ -1,22 +1,23 @@
 <script setup>
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed } from 'vue'
 import { useAuthStore } from '../stores/auth.store'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import { usePortfoliosStore } from '../stores/portfolios.store'
-import { useTransactionsStore } from '../stores/transactions.store'
+import { usePortfolioAnalytics } from '../composables/usePortfolioAnalytics'
 
 // Компоненты
 import LoadingState from '../components/base/LoadingState.vue'
-import PageLayout from '../components/PageLayout.vue'
-import PageHeader from '../components/PageHeader.vue'
+import PageLayout from '../layouts/PageLayout.vue'
+import PageHeader from '../layouts/PageHeader.vue'
 
 // Виджеты
 import { 
   TotalCapitalWidget, 
   PortfolioProfitWidget, 
   DividendsWidget, 
-  ReturnWidget 
+  ReturnWidget,
+  ConsolidatedStatsWidget
 } from '../components/widgets/stats'
 import { GoalProgressWidget } from '../components/widgets/composite'
 import { 
@@ -35,80 +36,31 @@ const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 const portfoliosStore = usePortfoliosStore()
-const transactionsStore = useTransactionsStore()
 
-const portfolios = computed(() => dashboardStore.portfolios)
-
-// Локальное состояние для аналитики
-const selectedPortfolioAnalytics = ref(null)
-const isLoadingAnalytics = ref(false)
-
-// Автозагрузка аналитики
-watch(
-  () => dashboardStore.portfolios,
-  async (portfolios) => {
-    if (portfolios?.length) {
-      await safeLoadAnalytics()
-    }
-  },
-  { immediate: true }
-)
-
-// Безопасная загрузка аналитики (теперь аналитика приходит вместе с dashboard)
-async function safeLoadAnalytics() {
-  if (isLoadingAnalytics.value) return
-  try {
-    isLoadingAnalytics.value = true
-    // Аналитика уже загружена вместе с dashboard, просто обновляем выбранную
-    await updateSelectedAnalytics()
-  } catch (err) {
-    console.error('❌ Ошибка при обработке аналитики:', err)
-  } finally {
-    isLoadingAnalytics.value = false
-  }
-}
-
-// Перерисовка при смене портфеля
-watch(
-  () => uiStore.selectedPortfolioId,
-  async () => {
-    await updateSelectedAnalytics()
-  }
-)
-
-// Обновление выбранной аналитики
-async function updateSelectedAnalytics() {
-  const allAnalytics = dashboardStore.analytics ?? []
-  selectedPortfolioAnalytics.value =
-    allAnalytics.find(a => a.portfolio_id === uiStore.selectedPortfolioId) || null
-}
-
-const selectedPortfolio = computed(() => {
-  return portfolios.value.find(p => p.id === uiStore.selectedPortfolioId) || null
-})
-
-// Функция для сбора всех id выбранного портфеля и его дочерних
-function collectPortfolioIds(portfolio, allPortfolios) {
-  let ids = [portfolio.id];
-  const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id);
-
-  for (const child of children) {
-    ids = ids.concat(collectPortfolioIds(child, allPortfolios));
-  }
-
-  return ids;
-}
+// Используем composable для аналитики портфеля
+const {
+  portfolios,
+  selectedPortfolio,
+  selectedPortfolioAnalytics,
+  isLoadingAnalytics,
+  totalCapitalWidgetData,
+  profitWidgetData,
+  calculatedAnnualDividends,
+  returnData,
+  portfolioChartData,
+  collectPortfolioIds
+} = usePortfolioAnalytics()
 
 // Функция для сбора всех активов выбранного портфеля и его дочерних
 function collectAssets(portfolio, allPortfolios) {
-  let assets = [...(portfolio.assets || [])];
-  const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id);
+  let assets = [...(portfolio.assets || [])]
+  const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id)
 
   for (const child of children) {
-    assets = assets.concat(collectAssets(child, allPortfolios));
+    assets = assets.concat(collectAssets(child, allPortfolios))
   }
 
-  return assets;
+  return assets
 }
 
 const parsedDashboard = computed(() => {
@@ -122,13 +74,13 @@ const parsedDashboard = computed(() => {
 
   // Фильтруем транзакции по всем id портфелей
   const transactions = (dashboardStore.transactions ?? []).filter(t => portfolioIds.includes(t.portfolio_id))
-
+  
   return {
-    totalAmount: Number(selectedPortfolio.value.total_value || 0),
-    investedAmount: Number(selectedPortfolio.value.total_invested || 0),
+    totalAmount: totalCapitalWidgetData.value.totalAmount,
+    investedAmount: totalCapitalWidgetData.value.investedAmount,
     monthlyChange: selectedPortfolio.value.monthly_change || 0,
     assetAllocation: selectedPortfolio.value.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] },
-    portfolioChart: selectedPortfolio.value.history ?? { labels: [], data: [] },
+    portfolioChart: portfolioChartData.value,
     assets,
     transactions
   }
@@ -137,41 +89,22 @@ const parsedDashboard = computed(() => {
 const goalData = computed(() => {
   if (!selectedPortfolio.value) return null
 
-  const desc = selectedPortfolio.value.description || {} // если пустой, используем пустой объект
-  
-  const result = {
-    portfolioId: selectedPortfolio.value.id,
-    title: desc.capital_target_name || desc.text || 'Цель не задана',
-    targetAmount: desc.capital_target_value || 0,
-    currentAmount: selectedPortfolio.value.total_value || 0,
-    deadline: desc.capital_target_deadline || null,
-    currency: desc.capital_target_currency || 'RUB',
-    monthlyContribution: desc.monthly_contribution || 0,
-    annualReturn: desc.annual_return || 0,
-    useInflation: desc.use_inflation || desc.useInflation || false,
-    use_inflation: desc.use_inflation || desc.useInflation || false,
-    inflationRate: desc.inflation_rate || desc.inflationRate || 7.5,
-    inflation_rate: desc.inflation_rate || desc.inflationRate || 7.5
-  }
+    const desc = selectedPortfolio.value.description || {} // если пустой, используем пустой объект
+    
+    const result = {
+      portfolioId: selectedPortfolio.value.id,
+      title: desc.capital_target_name || desc.text || 'Цель не задана',
+      targetAmount: desc.capital_target_value || 0,
+      currentAmount: selectedPortfolio.value.total_value || 0, // total_value уже включает баланс на бэкенде
+      deadline: desc.capital_target_deadline || null,
+      currency: desc.capital_target_currency || 'RUB',
+      monthlyContribution: desc.monthly_contribution || 0,
+      annualReturn: desc.annual_return || 0,
+      useInflation: desc.use_inflation || false,
+      inflationRate: desc.inflation_rate || 7.5
+    }
   
   return result
-})
-
-// Расчет годовых дивидендов: процент доходности * сумма портфеля
-const calculatedAnnualDividends = computed(() => {
-  // Используем данные из аналитики, если доступны
-  if (selectedPortfolioAnalytics.value?.totals) {
-    const returnPercent = selectedPortfolioAnalytics.value.totals.return_percent || 0
-    const totalValue = selectedPortfolioAnalytics.value.totals.total_value || 0
-    return (returnPercent / 100) * totalValue
-  }
-  // Иначе используем данные из selectedPortfolio.analytics
-  if (selectedPortfolio.value?.analytics) {
-    const returnPercent = selectedPortfolio.value.analytics.return_percent || 0
-    const totalValue = selectedPortfolio.value.analytics.total_value || selectedPortfolio.value.total_value || 0
-    return (returnPercent / 100) * totalValue
-  }
-  return 0
 })
 
 // Данные для AssetAllocationWidget
@@ -180,34 +113,6 @@ const assetAllocationData = computed(() => {
     return { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
   }
   return selectedPortfolio.value.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
-})
-
-// Данные для ReturnWidget
-const returnData = computed(() => {
-  // Используем данные из аналитики, если доступны
-  if (selectedPortfolioAnalytics.value?.totals) {
-    return {
-      returnPercent: selectedPortfolioAnalytics.value.totals.return_percent || 0,
-      returnPercentOnInvested: selectedPortfolioAnalytics.value.totals.return_percent_on_invested || 0,
-      totalValue: selectedPortfolioAnalytics.value.totals.total_value || 0,
-      totalInvested: selectedPortfolioAnalytics.value.totals.total_invested || 0
-    }
-  }
-  // Иначе используем данные из selectedPortfolio.analytics
-  if (selectedPortfolio.value?.analytics) {
-    return {
-      returnPercent: selectedPortfolio.value.analytics.return_percent || 0,
-      returnPercentOnInvested: selectedPortfolio.value.analytics.return_percent_on_invested || 0,
-      totalValue: selectedPortfolio.value.analytics.total_value || selectedPortfolio.value.total_value || 0,
-      totalInvested: selectedPortfolio.value.analytics.total_invested || selectedPortfolio.value.total_invested || 0
-    }
-  }
-  return {
-    returnPercent: 0,
-    returnPercentOnInvested: 0,
-    totalValue: parsedDashboard.value?.totalAmount || 0,
-    totalInvested: parsedDashboard.value?.investedAmount || 0
-  }
 })
 
 // Данные для MonthlyPayoutsChartWidget
@@ -246,75 +151,98 @@ const recentTransactions = computed(() => {
     </PageHeader>
 
     <div class="widgets-grid">
-      <!-- 4 маленьких виджета вверху -->
-      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-        <TotalCapitalWidget 
-          :total-amount="parsedDashboard.totalAmount"
-          :invested-amount="parsedDashboard.investedAmount"
-        />
-      </WidgetContainer>
-      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-        <PortfolioProfitWidget 
-          :total-amount="parsedDashboard.totalAmount" 
-          :total-profit="selectedPortfolioAnalytics?.totals?.total_profit || selectedPortfolio.analytics?.totals?.total_profit || selectedPortfolio.analytics?.total_profit || 0" 
-          :monthly-change="parsedDashboard.monthlyChange"
-          :invested-amount="parsedDashboard.investedAmount"
-          :analytics="selectedPortfolioAnalytics || selectedPortfolio.analytics || {}"
-        />
-      </WidgetContainer>
-      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-        <DividendsWidget 
-          :annual-dividends="calculatedAnnualDividends"
-        />
-      </WidgetContainer>
-      <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-        <ReturnWidget 
-          :return-percent="returnData.returnPercent"
-          :return-percent-on-invested="returnData.returnPercentOnInvested"
-          :total-value="returnData.totalValue"
-          :total-invested="returnData.totalInvested"
-        />
-      </WidgetContainer>
-      
-      <!-- Большой виджет PortfolioChartWidget -->
-      <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-xlarge)">
+      <!-- Статы: на десктопе — 4 виджета, на мобильном — один сводный -->
+      <div class="stats-desktop">
+        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+          <TotalCapitalWidget 
+            :total-amount="totalCapitalWidgetData.totalAmount"
+            :invested-amount="totalCapitalWidgetData.investedAmount"
+          />
+        </WidgetContainer>
+        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+          <PortfolioProfitWidget 
+            :total-amount="profitWidgetData.totalAmount"
+            :total-profit="profitWidgetData.totalProfit"
+            :monthly-change="profitWidgetData.monthlyChange"
+            :invested-amount="profitWidgetData.investedAmount"
+            :analytics="profitWidgetData.analytics"
+          />
+        </WidgetContainer>
+        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+          <DividendsWidget 
+            :annual-dividends="calculatedAnnualDividends"
+          />
+        </WidgetContainer>
+        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
+          <ReturnWidget 
+            :return-percent="returnData.returnPercent"
+            :return-percent-on-invested="returnData.returnPercentOnInvested"
+            :total-value="returnData.totalValue"
+            :total-invested="returnData.totalInvested"
+          />
+        </WidgetContainer>
+      </div>
+      <div class="stats-mobile">
+        <WidgetContainer gridColumn="1" minHeight="var(--widget-height-small)">
+          <ConsolidatedStatsWidget
+            :total-amount="totalCapitalWidgetData.totalAmount"
+            :invested-amount="totalCapitalWidgetData.investedAmount"
+            :total-profit="profitWidgetData.totalProfit"
+            :monthly-change="profitWidgetData.monthlyChange"
+            :analytics="profitWidgetData.analytics"
+            :annual-dividends="calculatedAnnualDividends"
+            :return-percent="returnData.returnPercent"
+            :return-percent-on-invested="returnData.returnPercentOnInvested"
+          />
+        </WidgetContainer>
+      </div>
+
+      <!-- 1. Динамика капитала — на планшете на всю ширину -->
+      <WidgetContainer class="chart-dynamics-widget" :gridColumn="8" minHeight="var(--widget-height-xlarge)">
         <PortfolioChartWidget 
-          :chartData="parsedDashboard.portfolioChart"
+          :chartData="portfolioChartData"
         />
       </WidgetContainer>
-      <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-        <AssetAllocationWidget
-          :assetAllocation="assetAllocationData"
-        />
-      </WidgetContainer>
-      
-      <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+
+      <!-- 2. Рост и падение за день (на планшете в одну строку) -->
+      <WidgetContainer class="top-up-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
         <TopMoversWidget
           title="Топ роста за день"
           :assets="selectedPortfolio.combined_assets || []"
           direction="up"
         />
       </WidgetContainer>
-      <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+      <WidgetContainer class="top-down-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
         <TopMoversWidget
           title="Топ падений за день"
           :assets="selectedPortfolio.combined_assets || []"
           direction="down"
         />
       </WidgetContainer>
-      <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+
+      <!-- 3. Распределение активов и последние операции (на планшете в одну строку) -->
+      <WidgetContainer class="allocation-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
+        <AssetAllocationWidget
+          :assetAllocation="assetAllocationData"
+        />
+      </WidgetContainer>
+      <WidgetContainer class="recent-tx-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
         <RecentTransactionsWidget
           :transactions="recentTransactions"
         />
       </WidgetContainer>
-      <WidgetContainer :gridColumn="6" minHeight="var(--widget-height-medium)">
+
+      <!-- 4. Выплаты по месяцам — на планшете на всю ширину -->
+      <WidgetContainer class="payouts-chart-widget" :gridColumn="6" minHeight="var(--widget-height-medium)">
         <PayoutsChartWidget 
           title="Полученные выплаты по месяцам"
           :payouts="monthlyPayouts"
           mode="past"
         />
       </WidgetContainer>
-      <WidgetContainer :gridColumn="6" minHeight="var(--widget-height-medium)">
+
+      <!-- 5. Достижение цели — на планшете на всю ширину -->
+      <WidgetContainer class="goal-progress-widget" :gridColumn="6" minHeight="var(--widget-height-medium)">
         <GoalProgressWidget 
           :goal-data="goalData"
           :onSaveGoal="portfoliosStore.updatePortfolioGoal"
@@ -333,19 +261,90 @@ const recentTransactions = computed(() => {
   gap: var(--spacing);
   grid-template-columns: repeat(12, 1fr);
   grid-auto-rows: min-content;
+  width: 100%;
+  min-width: 0;
 }
 
-/* Адаптивность для планшетов */
+/* Блок из 4 стат-виджетов (десктоп) */
+.stats-desktop {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--spacing);
+  order: 1;
+}
+/* Сводный стат-виджет (мобильный) */
+.stats-mobile {
+  display: none;
+  grid-column: 1 / -1;
+  order: 1;
+}
+
+/* ПК и мобильная: распределение активов сразу после графика капитала */
+.widgets-grid :deep(.chart-dynamics-widget) { order: 2; }
+.widgets-grid :deep(.allocation-widget) { order: 3; }
+.widgets-grid :deep(.top-up-widget) { order: 4; }
+.widgets-grid :deep(.top-down-widget) { order: 5; }
+.widgets-grid :deep(.recent-tx-widget) { order: 6; }
+.widgets-grid :deep(.payouts-chart-widget) { order: 7; }
+.widgets-grid :deep(.goal-progress-widget) { order: 8; }
+
+/* Планшет: порядок по DOM — динамика (вся ширина), рост/падение (2), распределение и операции (2), выплаты (вся ширина), цель (вся ширина). Распределение активов «переезжает» сюда только на планшете */
 @media (max-width: 1200px) {
   .widgets-grid {
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
   }
+  .stats-desktop {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .stats-desktop :deep(.widget-container) {
+    grid-column: span 1 !important;
+  }
+  .widgets-grid :deep(.widget-container) {
+    grid-column: span 1 !important;
+  }
+  .widgets-grid :deep(.chart-dynamics-widget),
+  .widgets-grid :deep(.payouts-chart-widget),
+  .widgets-grid :deep(.goal-progress-widget) {
+    grid-column: 1 / -1 !important;
+  }
+  /* Статы остаются сверху (order: 0), остальные по разметке: график, топы, распределение, операции, выплаты, цель */
+  .stats-desktop {
+    order: 0;
+  }
+  .widgets-grid :deep(.chart-dynamics-widget) { order: 1; }
+  .widgets-grid :deep(.top-up-widget) { order: 2; }
+  .widgets-grid :deep(.top-down-widget) { order: 3; }
+  .widgets-grid :deep(.allocation-widget) { order: 4; }
+  .widgets-grid :deep(.recent-tx-widget) { order: 5; }
+  .widgets-grid :deep(.payouts-chart-widget) { order: 6; }
+  .widgets-grid :deep(.goal-progress-widget) { order: 7; }
 }
 
-/* Адаптивность для мобильных */
+/* Мобильный: одна колонка, порядок как на ПК (распределение после графика) */
 @media (max-width: 768px) {
   .widgets-grid {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
+  .stats-desktop {
+    display: none;
+  }
+  .stats-mobile {
+    display: block;
+  }
+  .widgets-grid :deep(.widget-container) {
+    grid-column: 1 / -1 !important;
+  }
+  /* Восстанавливаем порядок ПК: график, затем распределение активов */
+  .widgets-grid :deep(.chart-dynamics-widget) { order: 2; }
+  .widgets-grid :deep(.allocation-widget) { order: 3; }
+  .widgets-grid :deep(.top-up-widget) { order: 4; }
+  .widgets-grid :deep(.top-down-widget) { order: 5; }
+  .widgets-grid :deep(.recent-tx-widget) { order: 6; }
+  .widgets-grid :deep(.payouts-chart-widget) { order: 7; }
+  .widgets-grid :deep(.goal-progress-widget) { order: 8; }
 }
 </style>

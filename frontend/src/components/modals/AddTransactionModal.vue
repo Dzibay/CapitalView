@@ -1,13 +1,16 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { Check } from 'lucide-vue-next'
-import { Button, ToggleSwitch } from '../base'
-import CustomSelect from '../base/CustomSelect.vue'
+import { Check, PlusCircle, TrendingUp, RefreshCw, Hash, DollarSign, Calendar } from 'lucide-vue-next'
+import { Button, ToggleSwitch, DateInput, CustomSelect } from '../base'
+import ModalBase from './ModalBase.vue'
 import { useTransactionsStore } from '../../stores/transactions.store'
 import { useDashboardStore } from '../../stores/dashboard.store'
+import { useUIStore } from '../../stores/ui.store'
 import { useAssetsStore } from '../../stores/assets.store'
 import transactionsService from '../../services/transactionsService'
 import assetsService from '../../services/assetsService'
+import { normalizeDateToString } from '../../utils/date'
+import { getCurrencySymbol } from '../../utils/currencySymbols'
 
 const props = defineProps({
   asset: Object,
@@ -18,6 +21,7 @@ const emit = defineEmits(['close'])
 
 const transactionsStore = useTransactionsStore()
 const dashboardStore = useDashboardStore()
+const uiStore = useUIStore()
 const assetsStore = useAssetsStore()
 
 // Типы операций
@@ -30,7 +34,8 @@ const operationTypes = [
   { value: 8, label: 'Налог', category: 'expense' },
   { value: 5, label: 'Пополнение', category: 'cash' },
   { value: 6, label: 'Вывод', category: 'cash' },
-  { value: 9, label: 'Другое', category: 'other' }
+  { value: 9, label: 'Погашение', category: 'transaction' },  // Ammortization/Redemption - обрабатывается как транзакция
+  { value: 10, label: 'Другое', category: 'other' }
 ]
 
 // Режим: 'single' - одна операция, 'recurring' - повторяющиеся операции
@@ -41,16 +46,28 @@ const quantity = ref(0)
 const price = ref(0)
 const amount = ref(0)
 const dividendYield = ref(null)
-const date = ref(new Date().toISOString().slice(0, 10))
+const date = ref(normalizeDateToString(new Date()) || '')
 const error = ref('')
 const saving = ref(false)
 const loadingPrice = ref(false) // Состояние загрузки рыночной цены
 const priceHistoryCache = ref(null) // Кэш истории цен актива
 const isLoadingHistory = ref(false) // Флаг для предотвращения двойной загрузки истории
+const minDate = ref(null) // Минимальная дата (первая цена в истории для покупки или первая покупка для операций)
+const minDateForOperations = ref(null) // Минимальная дата для операций (первая покупка актива)
+const isSystemAsset = computed(() => {
+  // Системный актив - это актив без user_id или с is_custom === false
+  if (!props.asset?.asset_id) return false
+  const refData = dashboardStore.referenceData
+  if (refData?.assets) {
+    const asset = refData.assets.find(a => a.id === props.asset.asset_id)
+    return asset && (asset.user_id === null || asset.is_custom === false)
+  }
+  return false
+})
 
 // Поля для повторяющихся операций
 const startDate = ref('')
-const endDate = ref(new Date().toISOString().slice(0, 10))
+const endDate = ref(normalizeDateToString(new Date()) || '')
 const dayOfMonth = ref(new Date().getDate()) // День месяца по умолчанию - сегодняшний день
 
 // Инициализация начальной даты из данных актива
@@ -58,47 +75,131 @@ const initializeStartDate = () => {
   if (props.asset) {
     // Начальная дата = дата первой покупки (first_purchase_date)
     if (props.asset.first_purchase_date) {
-      const date = new Date(props.asset.first_purchase_date)
-      if (!isNaN(date.getTime())) {
-        startDate.value = date.toISOString().slice(0, 10)
+      const normalizedDate = normalizeDateToString(props.asset.first_purchase_date)
+      if (normalizedDate) {
+        startDate.value = normalizedDate
         // Устанавливаем день месяца по умолчанию на день первой покупки
-        dayOfMonth.value = date.getDate()
+        const dateObj = new Date(normalizedDate + 'T00:00:00')
+        dayOfMonth.value = dateObj.getDate()
         return
       }
     }
     
     // Если first_purchase_date нет, используем сегодняшнюю дату
     if (!startDate.value) {
-      startDate.value = new Date().toISOString().slice(0, 10)
+      startDate.value = normalizeDateToString(new Date()) || ''
     }
   } else {
     // Если asset нет, используем сегодняшнюю дату
-    startDate.value = new Date().toISOString().slice(0, 10)
+    startDate.value = normalizeDateToString(new Date()) || ''
   }
 }
 
+// Функция для получения даты первой покупки актива
+const loadFirstBuyDate = () => {
+  // Используем first_purchase_date из props.asset, если он доступен
+  if (props.asset?.first_purchase_date) {
+    const firstBuyDate = normalizeDateToString(props.asset.first_purchase_date)
+    if (firstBuyDate) {
+      minDateForOperations.value = firstBuyDate
+      
+      // Если текущая дата раньше первой покупки, обновляем её (только для операций, не для покупки)
+      if (operationType.value !== 1 && date.value && new Date(date.value) < new Date(firstBuyDate)) {
+        date.value = firstBuyDate
+      }
+      return
+    }
+  }
+  
+  // Если first_purchase_date нет, сбрасываем ограничение
+  minDateForOperations.value = null
+}
+
 // Инициализируем при монтировании и при изменении asset
-onMounted(() => {
+onMounted(async () => {
   initializeStartDate()
+  // Загружаем историю цен для системного актива при открытии модалки
+  if (isSystemAsset.value && props.asset?.asset_id) {
+    await loadPriceHistoryForDateRestriction()
+  }
+  // Загружаем дату первой покупки для ограничения операций
+  // Покупку можно создавать без проверки, остальные операции нельзя создавать до первой покупки
+  if (operationType.value !== 1 && props.asset?.portfolio_asset_id) {
+    loadFirstBuyDate()
+  }
+  // Загружаем рыночную цену по умолчанию, если тумблер включен
+  if (useMarketPrice.value && isTransaction.value && props.asset?.asset_id && date.value) {
+    await loadMarketPrice(true)
+  }
 })
 
-watch(() => props.asset, () => {
+// Вычисляемые свойства (определяем до watch, которые их используют)
+const isTransaction = computed(() => {
+  return operationType.value === 1 || operationType.value === 2 || operationType.value === 9  // Buy, Sell, Redemption
+})
+
+const isPayout = computed(() => {
+  return operationType.value === 3 || operationType.value === 4
+})
+
+const isExpense = computed(() => {
+  return operationType.value === 7 || operationType.value === 8
+})
+
+watch(() => props.asset, async (newAsset) => {
   initializeStartDate()
+  // Загружаем историю цен для системного актива при изменении актива
+  if (isSystemAsset.value && newAsset?.asset_id) {
+    await loadPriceHistoryForDateRestriction()
+  } else {
+    minDate.value = null
+  }
+  // Загружаем дату первой покупки для ограничения операций
+  // Покупку можно создавать без проверки, остальные операции нельзя создавать до первой покупки
+  if (operationType.value !== 1 && newAsset?.portfolio_asset_id) {
+    loadFirstBuyDate()
+  } else {
+    minDateForOperations.value = null
+  }
 }, { immediate: true, deep: true })
+
+// Отслеживаем изменение типа операции для обновления ограничения даты
+watch(() => operationType.value, (newType) => {
+  // Покупку можно создавать без проверки, остальные операции нельзя создавать до первой покупки
+  if (newType !== 1 && props.asset?.portfolio_asset_id) {
+    loadFirstBuyDate()
+  } else {
+    minDateForOperations.value = null
+  }
+})
 
 // Валюты
 const useCustomCurrency = ref(false)
-const currencyId = ref(47) // RUB по умолчанию
+const currencyId = ref(1) // RUB по умолчанию
 const createAssetFromCurrency = ref(false) // Автоматически создать актив из валюты
 
 // Использование рыночной цены для транзакций
-const useMarketPrice = ref(false) // Переключатель для автоматической загрузки рыночной цены
+const useMarketPrice = ref(true) // Переключатель для автоматической загрузки рыночной цены (включен по умолчанию)
+const lastMarketPrice = ref(null) // Последняя загруженная рыночная цена
+
+// Галочка для создания операции пополнения на сумму операции (по умолчанию включена)
+const createDepositOperation = ref(true)
 
 // Автоматическая загрузка рыночной цены при включении переключателя
 watch(useMarketPrice, async (newValue) => {
   if (newValue && isTransaction.value && props.asset?.asset_id && date.value) {
-    // Загружаем цену один раз при включении переключателя
+    // Загружаем цену при включении переключателя
     await loadMarketPrice(true) // silent = true, чтобы не показывать ошибки при автоматической загрузке
+  }
+})
+
+// Отслеживание ручного изменения цены
+watch(() => price.value, (newPrice, oldPrice) => {
+  // Если цена изменена вручную и отличается от последней рыночной цены, выключаем тумблер
+  if (useMarketPrice.value && lastMarketPrice.value !== null && 
+      Math.abs(newPrice - lastMarketPrice.value) > 0.0001 && 
+      oldPrice !== undefined) {
+    useMarketPrice.value = false
   }
 })
 
@@ -215,8 +316,8 @@ const operationsCount = computed(() => {
 watch([amount, assetPrice, assetQuantity, currencyId, useCustomCurrency, operationType], () => {
   if (isPayout.value && amount.value && assetPrice.value && assetQuantity.value) {
     // Получаем валюту актива
-    const assetCurrencyId = props.asset?.quote_asset_id || 47 // По умолчанию RUB
-    const payoutCurrencyId = useCustomCurrency.value ? currencyId.value : 47
+    const assetCurrencyId = props.asset?.quote_asset_id || 1 // По умолчанию RUB
+    const payoutCurrencyId = useCustomCurrency.value ? currencyId.value : 1
     
     // Получаем тикеры валют из referenceData
     const refData = dashboardStore.referenceData
@@ -269,24 +370,49 @@ const selectedOperation = computed(() => {
   return operationTypes.find(op => op.value === operationType.value)
 })
 
-const isTransaction = computed(() => {
-  return operationType.value === 1 || operationType.value === 2
-})
-
-const isPayout = computed(() => {
-  return operationType.value === 3 || operationType.value === 4
-})
-
-const isExpense = computed(() => {
-  return operationType.value === 7 || operationType.value === 8
-})
-
 const isCashOperation = computed(() => {
   return operationType.value === 5 || operationType.value === 6
 })
 
+// Показывать галочку для создания операции пополнения только для покупки, комиссии и налога
+// Валюта актива для отображения при создании операции пополнения
+const assetCurrencyTicker = computed(() => {
+  if (props.asset?.currency_ticker) return props.asset.currency_ticker
+  const refData = dashboardStore.referenceData
+  if (!refData?.assets || !props.asset?.asset_id) return 'RUB'
+  const a = refData.assets.find(x => x.id === props.asset.asset_id)
+  if (!a) return 'RUB'
+  if (a.currency_ticker) return a.currency_ticker
+  if (a.quote_asset_id) {
+    const q = refData.assets.find(x => x.id === a.quote_asset_id)
+    return q?.ticker || 'RUB'
+  }
+  return 'RUB'
+})
+const assetCurrencySymbol = computed(() => getCurrencySymbol(assetCurrencyTicker.value))
+
+const showDepositCheckbox = computed(() => {
+  return operationType.value === 1 || operationType.value === 7 || operationType.value === 8
+})
+
+// Минимальная дата для транзакций: для покупки - только minDate (системные активы), для продажи - также minDateForOperations
+const minDateForTransactions = computed(() => {
+  // Для покупки используем только minDate (ограничение по первой цене системного актива)
+  if (operationType.value === 1) {
+    return minDate.value
+  }
+  // Для продажи используем максимум из minDate и minDateForOperations
+  if (operationType.value === 2 || operationType.value === 9) {
+    if (minDate.value && minDateForOperations.value) {
+      return new Date(minDate.value) > new Date(minDateForOperations.value) ? minDate.value : minDateForOperations.value
+    }
+    return minDate.value || minDateForOperations.value
+  }
+  return minDate.value
+})
+
 const isOther = computed(() => {
-  return operationType.value === 9
+  return operationType.value === 10  // Other (тип 9 теперь Погашение - транзакция)
 })
 
 const requiresQuantity = computed(() => {
@@ -484,7 +610,7 @@ async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
       // Используем дату на день позже, чтобы включить саму дату операции
       const targetDateObj = new Date(targetDate)
       targetDateObj.setHours(23, 59, 59, 999) // Конец дня, чтобы включить саму дату
-      const endDateStr = targetDateObj.toISOString().slice(0, 10) // YYYY-MM-DD
+      const endDateStr = normalizeDateToString(targetDateObj) || '' // YYYY-MM-DD
       
       const priceHistoryResponse = await assetsService.getAssetPriceHistory(
         assetId,
@@ -620,6 +746,55 @@ async function loadPriceHistory() {
   }
 }
 
+// Функция для загрузки истории цен и установки ограничения даты
+async function loadPriceHistoryForDateRestriction() {
+  if (!props.asset?.asset_id) {
+    return
+  }
+  
+  try {
+    isLoadingHistory.value = true
+    
+    // Загружаем полную историю цен актива
+    const priceHistoryResponse = await assetsService.getAssetPriceHistory(
+      props.asset.asset_id,
+      null, // start_date - не ограничиваем
+      null, // end_date - не ограничиваем, загружаем всю историю
+      10000 // Большой лимит для получения всей истории
+    )
+    
+    if (priceHistoryResponse.success && priceHistoryResponse.prices && priceHistoryResponse.prices.length > 0) {
+      // Сохраняем историю в кэш
+      priceHistoryCache.value = priceHistoryResponse.prices
+      
+      // Находим первую дату с ценой (самую раннюю)
+      const sortedPrices = [...priceHistoryResponse.prices].sort((a, b) => {
+        const dateA = new Date(a.trade_date)
+        const dateB = new Date(b.trade_date)
+        return dateA - dateB
+      })
+      
+      if (sortedPrices.length > 0) {
+        const firstPriceDate = sortedPrices[0].trade_date
+        minDate.value = firstPriceDate
+        
+        // Если текущая дата раньше первой цены, обновляем её
+        if (date.value && new Date(date.value) < new Date(firstPriceDate)) {
+          date.value = firstPriceDate
+        }
+      }
+    } else {
+      // Если истории цен нет, сбрасываем ограничение
+      minDate.value = null
+    }
+  } catch (e) {
+    console.error('Ошибка при загрузке истории цен для ограничения даты:', e)
+    minDate.value = null
+  } finally {
+    isLoadingHistory.value = false
+  }
+}
+
 // Функция для получения рыночной цены на дату транзакции и заполнения поля цены
 async function loadMarketPrice(silent = false) {
   if (!props.asset?.asset_id) {
@@ -651,6 +826,7 @@ async function loadMarketPrice(silent = false) {
     
     if (marketPrice && marketPrice > 0) {
       price.value = marketPrice
+      lastMarketPrice.value = marketPrice
       return true
     } else {
       if (!silent) {
@@ -695,14 +871,19 @@ watch(date, async (newDate, oldDate) => {
 }, { immediate: false })
 
 // Очистка кэша истории цен при изменении актива
-watch(() => props.asset?.asset_id, (newAssetId, oldAssetId) => {
+watch(() => props.asset?.asset_id, async (newAssetId, oldAssetId) => {
   if (newAssetId !== oldAssetId) {
     priceHistoryCache.value = null
+    minDate.value = null
     // Если переключатель включен и актив изменился, загружаем новую историю
     if (useMarketPrice.value && isTransaction.value && newAssetId && date.value) {
       loadPriceHistory().then(() => {
         loadMarketPrice(true)
       })
+    }
+    // Загружаем историю для ограничения даты для системных активов
+    if (isSystemAsset.value && newAssetId) {
+      await loadPriceHistoryForDateRestriction()
     }
   }
 })
@@ -782,9 +963,9 @@ function generateRecurringDates(startDate, endDate, dayOfMonth) {
 const handleSubmit = async () => {
   error.value = ''
   
-  // Валидация для транзакций (Buy/Sell) - не поддерживаются в режиме повторения
+  // Валидация для транзакций (Buy/Sell/Redemption) - не поддерживаются в режиме повторения
   if (isTransaction.value && mode.value === 'recurring') {
-    error.value = 'Повторяющиеся операции не поддерживаются для транзакций (Покупка/Продажа)'
+    error.value = 'Повторяющиеся операции не поддерживаются для транзакций (Покупка/Продажа/Погашение)'
     return
   }
   
@@ -797,12 +978,29 @@ const handleSubmit = async () => {
       error.value = 'Введите цену'
       return
     }
+    // Проверка для системных активов: дата не должна быть раньше первой цены
+    if (isSystemAsset.value && minDate.value && date.value && new Date(date.value) < new Date(minDate.value)) {
+      error.value = `Дата транзакции не может быть раньше первой доступной даты: ${minDate.value}`
+      return
+    }
+    // Проверка для транзакций продажи (кроме покупки): дата не должна быть раньше первой покупки
+    // Покупку можно создавать без проверки даты первой покупки
+    if (operationType.value !== 1 && props.asset?.portfolio_asset_id && minDateForOperations.value && date.value && new Date(date.value) < new Date(minDateForOperations.value)) {
+      error.value = `Дата транзакции не может быть раньше первой покупки актива: ${minDateForOperations.value}`
+      return
+    }
   }
   
   // Валидация для остальных операций
   if (requiresAmount.value) {
     if (!amount.value || amount.value === 0) {
       error.value = 'Введите сумму'
+      return
+    }
+    // Проверка для операций по активу (кроме покупки): дата не должна быть раньше первой покупки
+    // Покупку можно создавать без проверки даты первой покупки
+    if (operationType.value !== 1 && props.asset?.portfolio_asset_id && minDateForOperations.value && date.value && new Date(date.value) < new Date(minDateForOperations.value)) {
+      error.value = `Дата операции не может быть раньше первой покупки актива: ${minDateForOperations.value}`
       return
     }
   }
@@ -831,21 +1029,41 @@ const handleSubmit = async () => {
       error.value = 'День месяца должен быть от 1 до 31'
       return
     }
+    // Проверка для повторяющихся операций по активу (кроме покупки): даты не должны быть раньше первой покупки
+    // Покупку можно создавать без проверки даты первой покупки
+    if (operationType.value !== 1 && props.asset?.portfolio_asset_id && minDateForOperations.value) {
+      if (startDate.value && new Date(startDate.value) < new Date(minDateForOperations.value)) {
+        error.value = `Начальная дата не может быть раньше первой покупки актива: ${minDateForOperations.value}`
+        return
+      }
+      if (endDate.value && new Date(endDate.value) < new Date(minDateForOperations.value)) {
+        error.value = `Конечная дата не может быть раньше первой покупки актива: ${minDateForOperations.value}`
+        return
+      }
+    }
   }
 
   saving.value = true
 
   try {
-    // Для Buy/Sell используем старый метод через onSubmit
+    // Для Buy/Sell/Redemption используем старый метод через onSubmit
     if (isTransaction.value) {
+      // Маппинг типов: Buy=1, Sell=2, Ammortization=9 -> Redemption=3
+      let transactionType = operationType.value
+      if (operationType.value === 9) {
+        transactionType = 3  // Redemption
+      }
+      
+      // Создаем транзакцию с флагом создания операции пополнения (если нужно)
       await props.onSubmit({
         asset_id: props.asset.asset_id,
         portfolio_asset_id: props.asset.portfolio_asset_id,
-        transaction_type: operationType.value,
+        transaction_type: transactionType,
         quantity: quantity.value,
         price: price.value,
         transaction_date: date.value,
-        date: date.value
+        date: date.value,
+        create_deposit_operation: createDepositOperation.value && operationType.value === 1
       })
     } else if (mode.value === 'recurring') {
       // Для повторяющихся операций используем batch API
@@ -859,7 +1077,7 @@ const handleSubmit = async () => {
         start_date: startDate.value,
         end_date: endDate.value,
         day_of_month: dayOfMonth.value,
-        currency_id: useCustomCurrency.value ? currencyId.value : 47
+        currency_id: useCustomCurrency.value ? currencyId.value : 1
       }
       
       // Добавляем asset_id если есть
@@ -877,9 +1095,14 @@ const handleSubmit = async () => {
         batchData.dividend_yield = dividendYield.value
       }
       
-      // Создаем операции дивидендов по первоначальному активу (props.asset.asset_id) через batch API
-      // Это важно: операции дивидендов всегда привязаны к активу, по которому выплачиваются дивиденды
-      await transactionsStore.addOperationsBatch(batchData)
+      // Добавляем флаг создания операций пополнения для комиссий/налогов
+      if (createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)) {
+        batchData.create_deposit_operation = true
+      }
+      
+      // Создаем операции через batch API
+      // Операции пополнения будут созданы автоматически на сервере, если установлен флаг
+      await transactionsStore.addOperationsBatch(batchData, false)
       
       // Если нужно создать актив из валюты для повторяющихся операций
       // Это создает транзакции покупки актива валюты (например, BTC) для каждой даты выплаты дивидендов
@@ -897,7 +1120,7 @@ const handleSubmit = async () => {
         for (let i = 0; i < dates.length; i += batchSize) {
           const batch = dates.slice(i, i + batchSize)
           await Promise.all(batch.map(async (opDate) => {
-            const dateStr = opDate.toISOString().slice(0, 10)
+            const dateStr = normalizeDateToString(opDate) || ''
             await createBuyTransaction(
               currencyAsset.asset_id,
               currencyAsset.portfolio_asset_id,
@@ -920,7 +1143,8 @@ const handleSubmit = async () => {
         operation_type: operationType.value,
         amount: amount.value,
         operation_date: date.value,
-        currency_id: useCustomCurrency.value ? currencyId.value : 47 // Выбранная валюта или RUB по умолчанию
+        currency_id: useCustomCurrency.value ? currencyId.value : 1, // Выбранная валюта или RUB по умолчанию
+        create_deposit_operation: createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)
       }
       
       // Добавляем asset_id если есть
@@ -938,9 +1162,8 @@ const handleSubmit = async () => {
         operationData.dividend_yield = dividendYield.value
       }
       
-      // Создаем операцию дивидендов по первоначальному активу (props.asset.asset_id)
-      // Это важно: операция дивидендов всегда привязана к активу, по которому выплачиваются дивиденды
-      await transactionsStore.addOperation(operationData)
+      // Создаем операцию (она обновит dashboard один раз после всех операций)
+      await transactionsStore.addOperation(operationData, false) // skipReload=false - это последняя операция, обновим dashboard
       
       // Если нужно создать актив из валюты для одиночной операции
       // Это создает транзакцию покупки актива валюты (например, BTC), в которую выплачены дивиденды
@@ -974,22 +1197,11 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Добавление операции</h2>
-        <button class="close-btn" @click="emit('close')" aria-label="Закрыть">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-      
-      <form @submit.prevent="handleSubmit" class="form-content">
+  <ModalBase title="Добавление операции" :icon="PlusCircle" :wide="true" @close="emit('close')">
+    <form @submit.prevent="handleSubmit">
         <div class="form-section">
           <div class="asset-info" v-if="asset">
-            <span class="asset-icon">📈</span>
+            <TrendingUp :size="18" class="asset-icon" />
             <div>
               <strong>{{ asset.name }}</strong>
               <span class="ticker">({{ asset.ticker }})</span>
@@ -1000,7 +1212,7 @@ const handleSubmit = async () => {
         <div class="form-section">
           <div class="section-divider"></div>
           <label class="form-label">
-            <span class="label-icon">🔄</span>
+            <RefreshCw :size="16" class="label-icon" />
             Тип операции
           </label>
           <CustomSelect
@@ -1065,8 +1277,8 @@ const handleSubmit = async () => {
             </div>
             <div class="form-field">
               <label class="form-label">
-                <span class="label-icon">💰</span>
-                Цена (₽)
+                <DollarSign :size="16" class="label-icon" />
+                Цена ({{ assetCurrencySymbol || '₽' }})
                 <span v-if="loadingPrice" style="margin-left: 8px; color: #3b82f6;">⏳ Загрузка...</span>
               </label>
               <input 
@@ -1088,10 +1300,24 @@ const handleSubmit = async () => {
           </div>
           <div class="form-field" style="margin-top: 12px;">
             <label class="form-label">
-              <span class="label-icon">📅</span>
+              <Calendar :size="16" class="label-icon" />
               Дата транзакции
             </label>
-            <input type="date" v-model="date" required class="form-input" />
+            <DateInput v-model="date" :min="minDateForTransactions" required />
+            <small v-if="minDateForTransactions" class="form-hint" style="margin-top: 4px;">
+              <span v-if="operationType === 1 && minDate">Первая доступная дата: {{ minDate }}</span>
+              <span v-else-if="operationType !== 1 && minDateForOperations">Первая покупка актива: {{ minDateForOperations }}</span>
+              <span v-else-if="minDate">Первая доступная дата: {{ minDate }}</span>
+            </small>
+          </div>
+          
+          <!-- Галочка для создания операции пополнения при покупке (только для одиночных операций) -->
+          <div v-if="showDepositCheckbox && mode === 'single'" class="toggle-wrapper" style="margin-top: 16px;">
+            <ToggleSwitch v-model="createDepositOperation" />
+            <span class="toggle-label-text">
+              Добавить операцию пополнения на сумму покупки ({{ (quantity * price).toFixed(2) }} {{ assetCurrencySymbol }})
+            </span>
+            <small class="form-hint block" style="margin-top: 6px;">Будет создана операция пополнения в валюте актива ({{ assetCurrencyTicker }})</small>
           </div>
         </div>
 
@@ -1100,7 +1326,7 @@ const handleSubmit = async () => {
           <div class="section-divider"></div>
           <div class="form-field">
             <label class="form-label">
-              <span class="label-icon">💰</span>
+              <DollarSign :size="16" class="label-icon" />
               {{ amountLabel }}
             </label>
             <input 
@@ -1117,6 +1343,15 @@ const handleSubmit = async () => {
             <small class="form-hint" v-else-if="isPayout">
               Можно вводить до 6 знаков после запятой (например, 0.001234)
             </small>
+          </div>
+          
+          <!-- Галочка для создания операции пополнения при комиссии/налоге (только для одиночных операций) -->
+          <div v-if="showDepositCheckbox && mode === 'single'" class="toggle-wrapper" style="margin-top: 16px;">
+            <ToggleSwitch v-model="createDepositOperation" />
+            <span class="toggle-label-text">
+              Добавить операцию пополнения на сумму операции ({{ Math.abs(amount || 0).toFixed(2) }} {{ assetCurrencySymbol }})
+            </span>
+            <small class="form-hint block" style="margin-top: 6px;">Будет создана операция пополнения в валюте актива ({{ assetCurrencyTicker }})</small>
           </div>
         </div>
 
@@ -1190,10 +1425,19 @@ const handleSubmit = async () => {
           <div class="section-divider"></div>
           <div class="form-field">
             <label class="form-label">
-              <span class="label-icon">📅</span>
+              <Calendar :size="16" class="label-icon" />
               Дата операции
             </label>
-            <input type="date" v-model="date" required class="form-input" />
+            <!-- Используем key для пересоздания компонента после установки minDateForOperations, чтобы даты стали тусклыми -->
+            <DateInput 
+              v-model="date" 
+              :min="minDateForOperations" 
+              :key="`date-input-op-${minDateForOperations || 'no-min'}`"
+              required 
+            />
+            <small v-if="minDateForOperations" class="form-hint" style="margin-top: 4px;">
+              Первая покупка актива: {{ minDateForOperations }}
+            </small>
           </div>
         </div>
 
@@ -1204,17 +1448,29 @@ const handleSubmit = async () => {
             <div class="form-row">
               <div class="form-field">
                 <label class="form-label">
-                  <span class="label-icon">📅</span>
+                  <Calendar :size="16" class="label-icon" />
                   Начальная дата
                 </label>
-                <input type="date" v-model="startDate" required class="form-input" />
+                <!-- Используем key для пересоздания компонента после установки minDateForOperations -->
+                <DateInput 
+                  v-model="startDate" 
+                  :min="minDateForOperations" 
+                  :key="`start-date-input-${minDateForOperations || 'no-min'}`"
+                  required 
+                />
               </div>
               <div class="form-field">
                 <label class="form-label">
-                  <span class="label-icon">📅</span>
+                  <Calendar :size="16" class="label-icon" />
                   Конечная дата
                 </label>
-                <input type="date" v-model="endDate" required class="form-input" />
+                <!-- Используем key для пересоздания компонента после установки minDateForOperations -->
+                <DateInput 
+                  v-model="endDate" 
+                  :min="minDateForOperations" 
+                  :key="`end-date-input-${minDateForOperations || 'no-min'}`"
+                  required 
+                />
               </div>
             </div>
           </div>
@@ -1238,6 +1494,16 @@ const handleSubmit = async () => {
                 Операция будет создаваться каждый месяц в указанный день (1-31)
               </small>
             </div>
+            
+            <!-- Галочка для создания операции пополнения для каждой повторяющейся операции (комиссия/налог) -->
+            <div v-if="showDepositCheckbox && operationsCount > 0" class="toggle-wrapper" style="margin-top: 16px;">
+              <ToggleSwitch v-model="createDepositOperation" />
+              <span class="toggle-label-text">
+                Добавить операцию пополнения для каждой операции ({{ Math.abs(amount || 0).toFixed(2) }} {{ assetCurrencySymbol }} × {{ operationsCount }} операций)
+              </span>
+              <small class="form-hint block" style="margin-top: 6px;">Будет создана операция пополнения в валюте актива ({{ assetCurrencyTicker }})</small>
+            </div>
+            
             <div v-if="operationsCount > 0" class="info-box">
               <span class="info-icon">ℹ️</span>
               <span>Будет создано <strong>{{ operationsCount }}</strong> операций</span>
@@ -1257,119 +1523,10 @@ const handleSubmit = async () => {
           </Button>
         </div>
       </form>
-    </div>
-  </div>
+  </ModalBase>
 </template>
 
 <style scoped>
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(8px);
-  padding: 16px;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.modal {
-  background: white;
-  border-radius: 20px;
-  width: 100%;
-  max-width: 480px;
-  max-height: 90vh;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes slideUp {
-  from {
-    transform: scale(0.95) translateY(10px);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1) translateY(0);
-    opacity: 1;
-  }
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
-  border-bottom: 1px solid #f3f4f6;
-  background: #fff;
-  flex-shrink: 0;
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #111827;
-  letter-spacing: -0.01em;
-}
-
-.close-btn {
-  background: #f3f4f6;
-  border: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #6b7280;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.close-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
-  transform: scale(1.05);
-}
-
-.close-btn:active {
-  transform: scale(0.95);
-}
-
-.close-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.form-content {
-  padding: 20px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.form-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.form-content::-webkit-scrollbar-track {
-  background: #f9fafb;
-}
-
-.form-content::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
-}
 
 .form-section {
   margin-bottom: 20px;
@@ -1397,7 +1554,8 @@ const handleSubmit = async () => {
 }
 
 .asset-icon {
-  font-size: 18px;
+  color: #6b7280;
+  flex-shrink: 0;
   opacity: 0.8;
 }
 

@@ -2,14 +2,15 @@ import apiClient from '../utils/apiClient';
 import { API_ENDPOINTS } from '../config/api';
 
 export default {
-  async addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, transaction_date) {
+  async addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, transaction_date, create_deposit_operation = false) {
     const payload = {
       asset_id,
       portfolio_asset_id,
       transaction_type,
       quantity,
       price,
-      transaction_date
+      transaction_date,
+      create_deposit_operation
     };
 
     const res = await apiClient.post(API_ENDPOINTS.TRANSACTIONS.BASE, payload);

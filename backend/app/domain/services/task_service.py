@@ -1,12 +1,14 @@
 """
 Доменный сервис для работы с задачами импорта портфелей.
 Перенесено из app/services/task_service.py
+
+Примечание: Использует прямые вызовы к БД для работы с таблицей import_tasks,
+так как это служебная таблица для управления задачами, не являющаяся основной доменной сущностью.
 """
 import logging
 from typing import Optional, List, Dict, Any
-from datetime import datetime
-from app.infrastructure.database.supabase_service import table_insert, table_select, rpc
-from app.domain.models.task_models import TaskStatus, TaskType, TaskResponse
+from app.infrastructure.database.database_service import table_insert, table_select, rpc
+from app.domain.models.task_models import TaskStatus, TaskType
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,7 @@ def create_import_task(
         user_id_str = str(user_id) if user_id else None
         
         # Собираем данные задачи, исключая None значения
-        # Это нужно, чтобы Supabase не пытался найти несуществующие колонки в кэше схемы
+        # Это нужно, чтобы PostgreSQL корректно обрабатывал JSONB поля
         task_data = {
             "user_id": user_id_str,
             "task_type": TaskType.IMPORT_BROKER.value,

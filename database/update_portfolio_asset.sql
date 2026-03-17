@@ -1,3 +1,7 @@
+CREATE OR REPLACE FUNCTION update_portfolio_asset(pa_id bigint)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
 DECLARE
     total_quantity numeric := 0;
     total_cost numeric := 0;
@@ -17,18 +21,15 @@ BEGIN
         ORDER BY t.transaction_date, t.id
     LOOP
         IF r.transaction_type = 1 THEN
-            -- 🟢 Покупка
             total_cost := total_cost + r.q * r.p;
             total_quantity := total_quantity + r.q;
 
-        ELSIF r.transaction_type = 2 THEN
-            -- 🔴 Продажа — уменьшаем количество и стоимость
+        ELSIF r.transaction_type IN (2, 3) THEN
             IF total_quantity > 0 THEN
                 avg_price := total_cost / total_quantity;
 
                 total_quantity := total_quantity - r.q;
                 IF total_quantity < 0 THEN
-                    -- защита от перехода в шорт
                     total_quantity := 0;
                     total_cost := 0;
                 ELSE
@@ -48,3 +49,6 @@ BEGIN
         created_at = COALESCE(first_tx_date, pa.created_at)
     WHERE pa.id = pa_id;
 END;
+$$;
+
+COMMENT ON FUNCTION update_portfolio_asset(bigint) IS 'Пересчитывает quantity и average_price для portfolio_asset на основе всех транзакций. Использует FIFO метод для расчета средней цены при продажах';

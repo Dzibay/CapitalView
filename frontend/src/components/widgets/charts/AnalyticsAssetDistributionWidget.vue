@@ -1,7 +1,31 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import DoughnutChart from '../../charts/DoughnutChart.vue'
 import Widget from '../base/Widget.vue'
+import { PieChart } from 'lucide-vue-next'
+
+const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1200)
+const chartHeight = computed(() => {
+  if (windowWidth.value <= 480) return '200px'
+  if (windowWidth.value <= 768) return '240px'
+  if (windowWidth.value <= 1200) return '260px'
+  return '300px'
+})
+
+function updateWidth() {
+  windowWidth.value = window.innerWidth
+}
+
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', updateWidth)
+  }
+})
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', updateWidth)
+  }
+})
 
 const props = defineProps({
   assetDistribution: {
@@ -60,7 +84,7 @@ const rightColumnAssets = computed(() => {
 </script>
 
 <template>
-  <Widget title="Все активы">
+  <Widget title="Все активы" :icon="PieChart">
     <template #header>
       <button class="help-icon" title="Справка">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -87,7 +111,7 @@ const rightColumnAssets = computed(() => {
           :colors="colors"
           layout="horizontal"
           :format-value="formatMoney"
-          height="300px"
+          :height="chartHeight"
           :show-legend="false"
         />
       </div>
@@ -150,14 +174,14 @@ const rightColumnAssets = computed(() => {
   height: 20px;
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: var(--text-tertiary);
   cursor: pointer;
   padding: 0;
   transition: color 0.2s;
 }
 
 .help-icon:hover {
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .filter-button {
@@ -168,9 +192,9 @@ const rightColumnAssets = computed(() => {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #fff;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 500;
+  color: var(--text-primary);
+  font-size: var(--text-body-secondary-size);
+  font-weight: var(--text-label-weight);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -181,7 +205,7 @@ const rightColumnAssets = computed(() => {
 }
 
 .filter-button svg {
-  color: #6b7280;
+  color: var(--text-tertiary);
 }
 
 .allocation-container {
@@ -190,6 +214,7 @@ const rightColumnAssets = computed(() => {
   align-items: center;
   gap: 60px;
   width: 100%;
+  min-width: 0;
 }
 
 .chart-section {
@@ -199,6 +224,7 @@ const rightColumnAssets = computed(() => {
   justify-content: center;
   padding: 20px;
   box-sizing: border-box;
+  max-width: 100%;
 }
 
 .legend-section {
@@ -210,8 +236,8 @@ const rightColumnAssets = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  font-size: 12px;
-  color: #6B7280;
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
 }
 
 .legends.two-columns {
@@ -251,15 +277,15 @@ const rightColumnAssets = computed(() => {
 }
 
 .legend-value {
-  color: #6B7280;
-  font-size: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
   flex-shrink: 0;
 }
 
 .empty-state {
   text-align: center;
-  color: #6b7280;
-  font-size: 14px;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
   padding: 40px 20px;
   min-height: 300px;
   display: flex;
@@ -271,20 +297,67 @@ const rightColumnAssets = computed(() => {
   margin: 0;
 }
 
+@media (max-width: 1200px) {
+  .allocation-container {
+    gap: 32px;
+  }
+  .chart-section {
+    padding: 16px;
+  }
+  .legends.two-columns {
+    gap: 10px 16px;
+    max-height: 320px;
+  }
+}
+
 @media (max-width: 768px) {
   .allocation-container {
     flex-direction: column;
     gap: 20px;
   }
-  
-  .legends.two-columns {
-    grid-template-columns: 1fr;
+  .chart-section {
+    padding: 12px;
+    width: 100%;
   }
-  
-  .widget-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
+  /* На мобильной список активов в два столбца, уменьшенный шрифт */
+  .legends.two-columns {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    max-height: 280px;
+    font-size: 0.75rem;
+  }
+  .legend-item {
+    gap: 0.25rem;
+  }
+  .legend-color {
+    width: 10px;
+    height: 10px;
+    margin-right: 6px;
+  }
+  .legend-value {
+    font-size: 0.6875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .allocation-container {
+    gap: 16px;
+  }
+  .chart-section {
+    padding: 8px;
+  }
+  .legends.two-columns {
+    gap: 6px 10px;
+    max-height: 240px;
+    font-size: 0.6875rem;
+  }
+  .legend-color {
+    width: 8px;
+    height: 8px;
+    margin-right: 4px;
+  }
+  .legend-value {
+    font-size: 0.625rem;
   }
 }
 </style>

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
+import { HandCoins } from 'lucide-vue-next'
 import BarChart from '../../charts/BarChart.vue'
 import CustomSelect from '../../base/CustomSelect.vue'
 import Widget from '../base/Widget.vue'
@@ -267,7 +268,7 @@ const chartDatasets = computed(() => {
 </script>
 
 <template>
-  <Widget :title="title">
+  <Widget :title="title" :icon="HandCoins">
     <template #header>
       <CustomSelect
         v-model="selectedPeriod"
@@ -321,15 +322,15 @@ const chartDatasets = computed(() => {
 }
 
 .total-label {
-  font-size: 0.875rem;
-  color: #6b7280;
-  font-weight: 400;
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
+  font-weight: var(--text-body-secondary-weight);
 }
 
 .total-value {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #111827;
+  font-size: var(--text-value-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
 }
 
 .chart-container {
@@ -347,8 +348,8 @@ const chartDatasets = computed(() => {
   align-items: center;
   justify-content: center;
   text-align: center;
-  color: #6b7280;
-  font-size: 14px;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
   background: white;
   z-index: 10;
 }

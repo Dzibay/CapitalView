@@ -8,6 +8,7 @@ export const API_ENDPOINTS = {
     LOGIN: '/auth/login',
     CHECK_TOKEN: '/auth/check-token',
     UPDATE_PROFILE: '/auth/profile',
+    CHANGE_PASSWORD: '/auth/change-password',
   },
   DASHBOARD: {
     BASE: '/dashboard/',
@@ -22,6 +23,7 @@ export const API_ENDPOINTS = {
     ASSETS: (id) => `/portfolios/${id}/assets`,
     HISTORY: (id) => `/portfolios/${id}/history`,
     IMPORT_BROKER: '/portfolios/import-broker',  // Исправлено: на backend это /portfolios/import-broker
+    BROKERS: '/portfolios/brokers',  // Получение списка брокеров
   },
   ASSETS: {
     BASE: '/assets/',
@@ -41,6 +43,7 @@ export const API_ENDPOINTS = {
   OPERATIONS: {
     BASE: '/operations/',
     BATCH: '/operations/batch',  // Массовое создание операций
+    UPDATE: (id) => `/operations/${id}`,  // PATCH — обновление операции (дата/сумма)
   },
   ANALYTICS: {
     BASE: '/analytics',
@@ -52,6 +55,12 @@ export const API_ENDPOINTS = {
     STATUS: (id) => `/tasks/${id}/status`,
     USER: '/tasks/user/list',  // Исправлено: на backend это GET /tasks/user/list
     CANCEL: (id) => `/tasks/${id}/cancel`,
+  },
+  MISSED_PAYOUTS: {
+    BASE: '/missed-payouts',
+  },
+  SUPPORT: {
+    MESSAGE: '/support/message',
   },
 };
 

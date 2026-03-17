@@ -3,8 +3,13 @@ from datetime import datetime, timedelta
 from time import time
 import copy
 from app.domain.services.reference_service import get_reference_data_cached
-from app.domain.services.user_service import get_user_by_email
-from app.infrastructure.database.supabase_service import rpc
+from app.domain.services.portfolio_aggregation import (
+    create_empty_analytics_maps,
+    merge_analytics_arrays_into_maps,
+    convert_analytics_maps_to_lists,
+)
+from app.infrastructure.database.database_service import rpc
+from app.infrastructure.cache import cache
 from app.core.logging import get_logger
 from app.utils.date import normalize_date_to_day_string
 
@@ -61,7 +66,8 @@ def forward_fill_history(history_list):
         "value": 0.0,
         "invested": 0.0,
         "payouts": 0.0,
-        "pnl": 0.0
+        "pnl": 0.0,
+        "balance": 0.0
     }
     
     current_date = first_date
@@ -75,7 +81,8 @@ def forward_fill_history(history_list):
                 "value": float(h.get("value") or 0),
                 "invested": float(h.get("invested") or 0),
                 "payouts": float(h.get("payouts") or 0),
-                "pnl": float(h.get("pnl") or 0)
+                "pnl": float(h.get("pnl") or 0),
+                "balance": float(h.get("balance") or 0)
             }
         # Иначе используем последние известные значения (forward fill)
         
@@ -84,7 +91,8 @@ def forward_fill_history(history_list):
             "value": current_values["value"],
             "invested": current_values["invested"],
             "payouts": current_values["payouts"],
-            "pnl": current_values["pnl"]
+            "pnl": current_values["pnl"],
+            "balance": current_values["balance"]
         })
         
         current_date += timedelta(days=1)
@@ -94,7 +102,13 @@ def forward_fill_history(history_list):
 
 def aggregate_and_sort_history_list(history_list):
     """Агрегирует историю по датам: стоимость + инвестиции, и сортирует"""
-    combined = defaultdict(lambda: {"value": 0.0, "invested": 0.0, "payouts": 0.0, "pnl": 0.0})
+    combined = defaultdict(lambda: {
+        "value": 0.0, 
+        "invested": 0.0, 
+        "payouts": 0.0, 
+        "pnl": 0.0,
+        "balance": 0.0
+    })
 
     for h in history_list or []:
         date_raw = h.get("date") or h.get("report_date")
@@ -110,10 +124,17 @@ def aggregate_and_sort_history_list(history_list):
         combined[date]["invested"] += float(h.get("invested") or 0)
         combined[date]["payouts"] += float(h.get("payouts") or 0)
         combined[date]["pnl"] += float(h.get("pnl") or 0)
+        combined[date]["balance"] += float(h.get("balance") or 0)
 
     return [
-        {"date": d, "value": round(v["value"], 2), "invested": round(v["invested"], 2), 
-         "payouts": round(v["payouts"], 2), "pnl": round(v["pnl"], 2)}
+        {
+            "date": d, 
+            "value": round(v["value"], 2), 
+            "invested": round(v["invested"], 2), 
+            "payouts": round(v["payouts"], 2), 
+            "pnl": round(v["pnl"], 2),
+            "balance": round(v["balance"], 2)
+        }
         for d, v in sorted(combined.items())
     ]
 
@@ -141,163 +162,11 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
         "taxes": float(totals.get("taxes", analytics.get("taxes", 0))),
         "inflow": float(totals.get("inflow", (analytics.get("cash_flow") or {}).get("inflow", 0))),
         "outflow": float(totals.get("outflow", (analytics.get("cash_flow") or {}).get("outflow", 0))),
+        "balance": float(portfolio.get("balance", totals.get("balance", 0)) or 0),
     }
     
-    # Словари для агрегации массивов аналитики
-    op_map = defaultdict(float)
-    month_map = defaultdict(lambda: {"inflow": 0.0, "outflow": 0.0})
-    monthly_payouts_map = defaultdict(lambda: {"dividends": 0.0, "coupons": 0.0, "amortizations": 0.0, "total_payouts": 0.0})
-    asset_distribution_map = defaultdict(lambda: {
-        "asset_id": None,
-        "asset_name": "",
-        "asset_ticker": "",
-        "total_value": 0.0
-    })
-    payouts_by_asset_map = defaultdict(lambda: {
-        "asset_id": None,
-        "asset_name": "",
-        "asset_ticker": "",
-        "total_dividends": 0.0,
-        "total_coupons": 0.0,
-        "total_payouts": 0.0
-    })
-    future_payouts_map = defaultdict(lambda: {"dividends": 0.0, "coupons": 0.0, "amortizations": 0.0, "total_amount": 0.0, "payout_count": 0})
-    asset_returns_map = defaultdict(lambda: {
-        "asset_id": None,
-        "asset_name": "",
-        "asset_ticker": "",
-        "invested_amount": 0.0,
-        "current_value": 0.0,
-        "price_change": 0.0,
-        "realized_profit": 0.0,
-        "total_payouts": 0.0,
-        "total_return": 0.0,
-        "return_percent": 0.0,
-        "value_year_ago": 0.0,
-        "price_change_year": 0.0,
-        "realized_profit_year": 0.0,
-        "total_payouts_year": 0.0,
-        "total_return_year": 0.0,
-        "return_percent_year": 0.0,
-        "value_month_ago": 0.0,
-        "price_change_month": 0.0,
-        "realized_profit_month": 0.0,
-        "total_payouts_month": 0.0,
-        "total_return_month": 0.0,
-        "return_percent_month": 0.0
-    })
-    
-    # Добавляем данные текущего портфеля
-    for op in analytics.get("operations_breakdown") or []:
-        op_map[op["type"]] += float(op.get("sum", 0) or 0)
-    
-    for m in analytics.get("monthly_flow") or []:
-        month_map[m["month"]]["inflow"] += float(m.get("inflow", 0) or 0)
-        month_map[m["month"]]["outflow"] += float(m.get("outflow", 0) or 0)
-    
-    for mp in analytics.get("monthly_payouts") or []:
-        month_key = mp["month"]
-        monthly_payouts_map[month_key]["dividends"] += float(mp.get("dividends", 0) or 0)
-        monthly_payouts_map[month_key]["coupons"] += float(mp.get("coupons", 0) or 0)
-        monthly_payouts_map[month_key]["amortizations"] += float(mp.get("amortizations", 0) or 0)
-        monthly_payouts_map[month_key]["total_payouts"] += float(mp.get("total_payouts", 0) or 0)
-    
-    for ad in analytics.get("asset_distribution") or []:
-        asset_key = ad.get("asset_id") or ad.get("asset_ticker") or ad.get("asset_name", "")
-        if asset_key:
-            if asset_key not in asset_distribution_map:
-                asset_distribution_map[asset_key] = {
-                    "asset_id": ad.get("asset_id"),
-                    "asset_name": ad.get("asset_name", ""),
-                    "asset_ticker": ad.get("asset_ticker", ""),
-                    "total_value": 0.0
-                }
-            asset_distribution_map[asset_key]["total_value"] += float(ad.get("total_value", 0) or 0)
-    
-    for pba in analytics.get("payouts_by_asset") or []:
-        asset_key = pba.get("asset_id") or pba.get("asset_ticker", "")
-        if asset_key:
-            if asset_key not in payouts_by_asset_map:
-                payouts_by_asset_map[asset_key] = {
-                    "asset_id": pba.get("asset_id"),
-                    "asset_name": pba.get("asset_name", ""),
-                    "asset_ticker": pba.get("asset_ticker", ""),
-                    "total_dividends": 0.0,
-                    "total_coupons": 0.0,
-                    "total_payouts": 0.0
-                }
-            payouts_by_asset_map[asset_key]["total_dividends"] += float(pba.get("total_dividends", 0) or 0)
-            payouts_by_asset_map[asset_key]["total_coupons"] += float(pba.get("total_coupons", 0) or 0)
-            payouts_by_asset_map[asset_key]["total_payouts"] += float(pba.get("total_payouts", 0) or 0)
-    
-    for fp in analytics.get("future_payouts") or []:
-        month_key = fp["month"]
-        future_payouts_map[month_key]["dividends"] += float(fp.get("dividends", 0) or 0)
-        future_payouts_map[month_key]["coupons"] += float(fp.get("coupons", 0) or 0)
-        future_payouts_map[month_key]["amortizations"] += float(fp.get("amortizations", 0) or 0)
-        future_payouts_map[month_key]["total_amount"] += float(fp.get("total_amount", 0) or 0)
-        future_payouts_map[month_key]["payout_count"] += int(fp.get("payout_count", 0) or 0)
-    
-    for ar in analytics.get("asset_returns") or []:
-        asset_key = ar.get("asset_id") or ar.get("asset_ticker") or ar.get("asset_name", "")
-        if asset_key:
-            if asset_key not in asset_returns_map:
-                asset_returns_map[asset_key] = {
-                    "asset_id": ar.get("asset_id"),
-                    "asset_name": ar.get("asset_name", ""),
-                    "asset_ticker": ar.get("asset_ticker", ""),
-                    "invested_amount": 0.0,
-                    "current_value": 0.0,
-                    "price_change": 0.0,
-                    "realized_profit": 0.0,
-                    "total_payouts": 0.0,
-                    "total_return": 0.0,
-                    "return_percent": 0.0,
-                    "value_year_ago": 0.0,
-                    "price_change_year": 0.0,
-                    "realized_profit_year": 0.0,
-                    "total_payouts_year": 0.0,
-                    "total_return_year": 0.0,
-                    "return_percent_year": 0.0,
-                    "value_month_ago": 0.0,
-                    "price_change_month": 0.0,
-                    "realized_profit_month": 0.0,
-                    "total_payouts_month": 0.0,
-                    "total_return_month": 0.0,
-                    "return_percent_month": 0.0
-                }
-            asset_returns_map[asset_key]["invested_amount"] += float(ar.get("invested_amount", 0) or 0)
-            asset_returns_map[asset_key]["current_value"] += float(ar.get("current_value", 0) or 0)
-            asset_returns_map[asset_key]["price_change"] += float(ar.get("price_change", 0) or 0)
-            asset_returns_map[asset_key]["realized_profit"] += float(ar.get("realized_profit", 0) or 0)
-            asset_returns_map[asset_key]["total_payouts"] += float(ar.get("total_payouts", 0) or 0)
-            asset_returns_map[asset_key]["total_return"] += float(ar.get("total_return", 0) or 0)
-            asset_returns_map[asset_key]["value_year_ago"] += float(ar.get("value_year_ago", 0) or 0)
-            asset_returns_map[asset_key]["price_change_year"] += float(ar.get("price_change_year", 0) or 0)
-            asset_returns_map[asset_key]["realized_profit_year"] += float(ar.get("realized_profit_year", 0) or 0)
-            asset_returns_map[asset_key]["total_payouts_year"] += float(ar.get("total_payouts_year", 0) or 0)
-            asset_returns_map[asset_key]["total_return_year"] += float(ar.get("total_return_year", 0) or 0)
-            asset_returns_map[asset_key]["value_month_ago"] += float(ar.get("value_month_ago", 0) or 0)
-            asset_returns_map[asset_key]["price_change_month"] += float(ar.get("price_change_month", 0) or 0)
-            asset_returns_map[asset_key]["realized_profit_month"] += float(ar.get("realized_profit_month", 0) or 0)
-            asset_returns_map[asset_key]["total_payouts_month"] += float(ar.get("total_payouts_month", 0) or 0)
-            asset_returns_map[asset_key]["total_return_month"] += float(ar.get("total_return_month", 0) or 0)
-            # Пересчитываем процент доходности на основе объединенных данных
-            if asset_returns_map[asset_key]["invested_amount"] > 0:
-                asset_returns_map[asset_key]["return_percent"] = (
-                    asset_returns_map[asset_key]["total_return"] / 
-                    asset_returns_map[asset_key]["invested_amount"]
-                ) * 100
-            if asset_returns_map[asset_key]["value_year_ago"] > 0:
-                asset_returns_map[asset_key]["return_percent_year"] = (
-                    asset_returns_map[asset_key]["total_return_year"] / 
-                    asset_returns_map[asset_key]["value_year_ago"]
-                ) * 100
-            if asset_returns_map[asset_key]["value_month_ago"] > 0:
-                asset_returns_map[asset_key]["return_percent_month"] = (
-                    asset_returns_map[asset_key]["total_return_month"] / 
-                    asset_returns_map[asset_key]["value_month_ago"]
-                ) * 100
+    maps = create_empty_analytics_maps()
+    merge_analytics_arrays_into_maps(maps, analytics)
 
     # 3️⃣ Рекурсивно добавляем данные дочерних портфелей
     children = [
@@ -378,7 +247,8 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
                             "value": last_values["value"],
                             "invested": last_values["invested"],
                             "payouts": last_values["payouts"],
-                            "pnl": last_values["pnl"]
+                            "pnl": last_values["pnl"],
+                            "balance": last_values.get("balance", 0)  # ВАЖНО: переносим balance при forward fill
                         })
                         current_date += timedelta(days=1)
             
@@ -426,132 +296,24 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
         combined_analytics["taxes"] += float(child_totals.get("taxes", 0) or 0)
         combined_analytics["inflow"] += float(child_totals.get("inflow", 0) or 0)
         combined_analytics["outflow"] += float(child_totals.get("outflow", 0) or 0)
+        # Агрегируем баланс дочерних портфелей
+        child_balance = float(child.get("balance", child_totals.get("balance", 0)) or 0)
+        combined_analytics["balance"] += child_balance
         
-        # Агрегируем массивы аналитики из дочернего портфеля
-        # Используем аналитику из portfolio_map, которая уже обновлена рекурсивно
         child_id = child["id"]
         child_portfolio = portfolio_map.get(child_id)
         child_analytics_for_arrays = child_portfolio.get("analytics", {}) if child_portfolio else child_analytics
-        
-        for op in child_analytics_for_arrays.get("operations_breakdown") or []:
-            op_map[op["type"]] += float(op.get("sum", 0) or 0)
-        
-        for m in child_analytics_for_arrays.get("monthly_flow") or []:
-            month_map[m["month"]]["inflow"] += float(m.get("inflow", 0) or 0)
-            month_map[m["month"]]["outflow"] += float(m.get("outflow", 0) or 0)
-        
-        for mp in child_analytics_for_arrays.get("monthly_payouts") or []:
-            month_key = mp["month"]
-            monthly_payouts_map[month_key]["dividends"] += float(mp.get("dividends", 0) or 0)
-            monthly_payouts_map[month_key]["coupons"] += float(mp.get("coupons", 0) or 0)
-            monthly_payouts_map[month_key]["amortizations"] += float(mp.get("amortizations", 0) or 0)
-            monthly_payouts_map[month_key]["total_payouts"] += float(mp.get("total_payouts", 0) or 0)
-        
-        for ad in child_analytics_for_arrays.get("asset_distribution") or []:
-            asset_key = ad.get("asset_id") or ad.get("asset_ticker") or ad.get("asset_name", "")
-            if asset_key:
-                if asset_key not in asset_distribution_map:
-                    asset_distribution_map[asset_key] = {
-                        "asset_id": ad.get("asset_id"),
-                        "asset_name": ad.get("asset_name", ""),
-                        "asset_ticker": ad.get("asset_ticker", ""),
-                        "total_value": 0.0
-                    }
-                asset_distribution_map[asset_key]["total_value"] += float(ad.get("total_value", 0) or 0)
-        
-        for pba in child_analytics_for_arrays.get("payouts_by_asset") or []:
-            asset_key = pba.get("asset_id") or pba.get("asset_ticker", "")
-            if asset_key:
-                if asset_key not in payouts_by_asset_map:
-                    payouts_by_asset_map[asset_key] = {
-                        "asset_id": pba.get("asset_id"),
-                        "asset_name": pba.get("asset_name", ""),
-                        "asset_ticker": pba.get("asset_ticker", ""),
-                        "total_dividends": 0.0,
-                        "total_coupons": 0.0,
-                        "total_payouts": 0.0
-                    }
-                payouts_by_asset_map[asset_key]["total_dividends"] += float(pba.get("total_dividends", 0) or 0)
-                payouts_by_asset_map[asset_key]["total_coupons"] += float(pba.get("total_coupons", 0) or 0)
-                payouts_by_asset_map[asset_key]["total_payouts"] += float(pba.get("total_payouts", 0) or 0)
-        
-        for fp in child_analytics_for_arrays.get("future_payouts") or []:
-            month_key = fp["month"]
-            future_payouts_map[month_key]["dividends"] += float(fp.get("dividends", 0) or 0)
-            future_payouts_map[month_key]["coupons"] += float(fp.get("coupons", 0) or 0)
-            future_payouts_map[month_key]["amortizations"] += float(fp.get("amortizations", 0) or 0)
-            future_payouts_map[month_key]["total_amount"] += float(fp.get("total_amount", 0) or 0)
-            future_payouts_map[month_key]["payout_count"] += int(fp.get("payout_count", 0) or 0)
-        
-        for ar in child_analytics_for_arrays.get("asset_returns") or []:
-            asset_key = ar.get("asset_id") or ar.get("asset_ticker") or ar.get("asset_name", "")
-            if asset_key:
-                if asset_key not in asset_returns_map:
-                    asset_returns_map[asset_key] = {
-                        "asset_id": ar.get("asset_id"),
-                        "asset_name": ar.get("asset_name", ""),
-                        "asset_ticker": ar.get("asset_ticker", ""),
-                        "invested_amount": 0.0,
-                        "current_value": 0.0,
-                        "price_change": 0.0,
-                        "realized_profit": 0.0,
-                        "total_payouts": 0.0,
-                        "total_return": 0.0,
-                        "return_percent": 0.0,
-                        "value_year_ago": 0.0,
-                        "price_change_year": 0.0,
-                        "realized_profit_year": 0.0,
-                        "total_payouts_year": 0.0,
-                        "total_return_year": 0.0,
-                        "return_percent_year": 0.0,
-                        "value_month_ago": 0.0,
-                        "price_change_month": 0.0,
-                        "realized_profit_month": 0.0,
-                        "total_payouts_month": 0.0,
-                        "total_return_month": 0.0,
-                        "return_percent_month": 0.0
-                    }
-                asset_returns_map[asset_key]["invested_amount"] += float(ar.get("invested_amount", 0) or 0)
-                asset_returns_map[asset_key]["current_value"] += float(ar.get("current_value", 0) or 0)
-                asset_returns_map[asset_key]["price_change"] += float(ar.get("price_change", 0) or 0)
-                asset_returns_map[asset_key]["realized_profit"] += float(ar.get("realized_profit", 0) or 0)
-                asset_returns_map[asset_key]["total_payouts"] += float(ar.get("total_payouts", 0) or 0)
-                asset_returns_map[asset_key]["total_return"] += float(ar.get("total_return", 0) or 0)
-                asset_returns_map[asset_key]["value_year_ago"] += float(ar.get("value_year_ago", 0) or 0)
-                asset_returns_map[asset_key]["price_change_year"] += float(ar.get("price_change_year", 0) or 0)
-                asset_returns_map[asset_key]["realized_profit_year"] += float(ar.get("realized_profit_year", 0) or 0)
-                asset_returns_map[asset_key]["total_payouts_year"] += float(ar.get("total_payouts_year", 0) or 0)
-                asset_returns_map[asset_key]["total_return_year"] += float(ar.get("total_return_year", 0) or 0)
-                asset_returns_map[asset_key]["value_month_ago"] += float(ar.get("value_month_ago", 0) or 0)
-                asset_returns_map[asset_key]["price_change_month"] += float(ar.get("price_change_month", 0) or 0)
-                asset_returns_map[asset_key]["realized_profit_month"] += float(ar.get("realized_profit_month", 0) or 0)
-                asset_returns_map[asset_key]["total_payouts_month"] += float(ar.get("total_payouts_month", 0) or 0)
-                asset_returns_map[asset_key]["total_return_month"] += float(ar.get("total_return_month", 0) or 0)
-                # Пересчитываем процент доходности на основе объединенных данных
-                if asset_returns_map[asset_key]["invested_amount"] > 0:
-                    asset_returns_map[asset_key]["return_percent"] = (
-                        asset_returns_map[asset_key]["total_return"] / 
-                        asset_returns_map[asset_key]["invested_amount"]
-                    ) * 100
-                if asset_returns_map[asset_key]["value_year_ago"] > 0:
-                    asset_returns_map[asset_key]["return_percent_year"] = (
-                        asset_returns_map[asset_key]["total_return_year"] / 
-                        asset_returns_map[asset_key]["value_year_ago"]
-                    ) * 100
-                if asset_returns_map[asset_key]["value_month_ago"] > 0:
-                    asset_returns_map[asset_key]["return_percent_month"] = (
-                        asset_returns_map[asset_key]["total_return_month"] / 
-                        asset_returns_map[asset_key]["value_month_ago"]
-                    ) * 100
+        merge_analytics_arrays_into_maps(maps, child_analytics_for_arrays)
 
     # 5️⃣ После объединения активов — пересчёт общей стоимости
+    # total_value = стоимость активов + баланс (total_capital)
     total_value = sum(
         float(a.get("quantity") or 0)
         * float(a.get("last_price") or 0)
         * float(a.get("currency_rate_to_rub") or 1)
         / float(a.get("leverage") or 1)
         for a in combined_assets
-    )
+    ) + combined_analytics["balance"]
 
     total_invested = sum(
         float(a.get("quantity") or 0)
@@ -666,8 +428,9 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
             return_percent_on_invested = 0
 
     # 7️⃣ Сохраняем результат в текущем портфеле
-    portfolio["total_value"] = round(total_value, 2)
+    portfolio["total_value"] = round(total_value, 2)  # total_value уже включает баланс
     portfolio["total_invested"] = round(total_invested, 2)
+    portfolio["balance"] = round(combined_analytics["balance"], 2)  # Сохраняем баланс отдельно
     portfolio["combined_assets"] = combined_assets
     
     # Агрегируем историю
@@ -689,83 +452,8 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     portfolio["history"] = aggregated_history
     portfolio["asset_allocation"] = calculate_asset_allocation(combined_assets)
 
-    # Преобразуем словари в списки для массивов аналитики
-    operations_breakdown_list = [
-        {"type": k, "sum": v} for k, v in sorted(op_map.items())
-    ]
-    monthly_flow_list = [
-        {"month": k, "inflow": v["inflow"], "outflow": v["outflow"]}
-        for k, v in sorted(month_map.items())
-    ]
-    monthly_payouts_list = [
-        {
-            "month": k,
-            "dividends": v["dividends"],
-            "coupons": v["coupons"],
-            "amortizations": v["amortizations"],
-            "total_payouts": v["total_payouts"]
-        }
-        for k, v in sorted(monthly_payouts_map.items())
-    ]
-    asset_distribution_list = [
-        {
-            "asset_id": v["asset_id"],
-            "asset_name": v["asset_name"],
-            "asset_ticker": v["asset_ticker"],
-            "total_value": v["total_value"]
-        }
-        for v in sorted(asset_distribution_map.values(), key=lambda x: x["total_value"], reverse=True)
-    ]
-    payouts_by_asset_list = [
-        {
-            "asset_id": v["asset_id"],
-            "asset_name": v["asset_name"],
-            "asset_ticker": v["asset_ticker"],
-            "total_dividends": v["total_dividends"],
-            "total_coupons": v["total_coupons"],
-            "total_payouts": v["total_payouts"]
-        }
-        for v in sorted(payouts_by_asset_map.values(), key=lambda x: x["total_payouts"], reverse=True)
-    ]
-    future_payouts_list = [
-        {
-            "month": k,
-            "dividends": v["dividends"],
-            "coupons": v["coupons"],
-            "amortizations": v["amortizations"],
-            "total_amount": v["total_amount"],
-            "payout_count": v["payout_count"]
-        }
-        for k, v in sorted(future_payouts_map.items())
-    ]
-    asset_returns_list = [
-        {
-            "asset_id": v["asset_id"],
-            "asset_name": v["asset_name"],
-            "asset_ticker": v["asset_ticker"],
-            "invested_amount": v["invested_amount"],
-            "current_value": v["current_value"],
-            "price_change": v["price_change"],
-            "realized_profit": v["realized_profit"],
-            "total_payouts": v["total_payouts"],
-            "total_return": v["total_return"],
-            "return_percent": v["return_percent"],
-            "value_year_ago": v["value_year_ago"],
-            "price_change_year": v["price_change_year"],
-            "realized_profit_year": v["realized_profit_year"],
-            "total_payouts_year": v["total_payouts_year"],
-            "total_return_year": v["total_return_year"],
-            "return_percent_year": v["return_percent_year"],
-            "value_month_ago": v["value_month_ago"],
-            "price_change_month": v["price_change_month"],
-            "realized_profit_month": v["realized_profit_month"],
-            "total_payouts_month": v["total_payouts_month"],
-            "total_return_month": v["total_return_month"],
-            "return_percent_month": v["return_percent_month"]
-        }
-        for v in sorted(asset_returns_map.values(), key=lambda x: x["return_percent"], reverse=True)
-    ]
-    
+    analytics_lists = convert_analytics_maps_to_lists(maps)
+
     # Сохраняем аналитику из SQL (полная структура с totals, monthly_flow, etc.)
     # Если аналитика уже есть в портфеле (из get_user_portfolios_analytics), используем её
     # Иначе создаем базовую структуру
@@ -787,18 +475,17 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
             "return_percent_on_invested": return_percent_on_invested,
             "inflow": combined_analytics["inflow"],
             "outflow": combined_analytics["outflow"],
+            "balance": combined_analytics["balance"],
         })
         
-        # Обновляем массивы аналитики
-        portfolio["analytics"]["operations_breakdown"] = operations_breakdown_list
-        portfolio["analytics"]["monthly_flow"] = monthly_flow_list
-        portfolio["analytics"]["monthly_payouts"] = monthly_payouts_list
-        portfolio["analytics"]["asset_distribution"] = asset_distribution_list
-        portfolio["analytics"]["payouts_by_asset"] = payouts_by_asset_list
-        portfolio["analytics"]["future_payouts"] = future_payouts_list
-        portfolio["analytics"]["asset_returns"] = asset_returns_list
+        portfolio["analytics"]["operations_breakdown"] = analytics_lists["operations_breakdown"]
+        portfolio["analytics"]["monthly_flow"] = analytics_lists["monthly_flow"]
+        portfolio["analytics"]["monthly_payouts"] = analytics_lists["monthly_payouts"]
+        portfolio["analytics"]["asset_distribution"] = analytics_lists["asset_distribution"]
+        portfolio["analytics"]["payouts_by_asset"] = analytics_lists["payouts_by_asset"]
+        portfolio["analytics"]["future_payouts"] = analytics_lists["future_payouts"]
+        portfolio["analytics"]["asset_returns"] = analytics_lists["asset_returns"]
     else:
-        # Создаем базовую структуру, если аналитики нет
         portfolio["analytics"] = {
             "totals": {
                 "total_value": total_value,
@@ -814,14 +501,15 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
                 "return_percent_on_invested": return_percent_on_invested,
                 "inflow": combined_analytics["inflow"],
                 "outflow": combined_analytics["outflow"],
+                "balance": combined_analytics["balance"],
             },
-            "monthly_flow": monthly_flow_list,
-            "monthly_payouts": monthly_payouts_list,
-            "asset_distribution": asset_distribution_list,
-            "payouts_by_asset": payouts_by_asset_list,
-            "future_payouts": future_payouts_list,
-            "asset_returns": asset_returns_list,
-            "operations_breakdown": operations_breakdown_list
+            "monthly_flow": analytics_lists["monthly_flow"],
+            "monthly_payouts": analytics_lists["monthly_payouts"],
+            "asset_distribution": analytics_lists["asset_distribution"],
+            "payouts_by_asset": analytics_lists["payouts_by_asset"],
+            "future_payouts": analytics_lists["future_payouts"],
+            "asset_returns": analytics_lists["asset_returns"],
+            "operations_breakdown": analytics_lists["operations_breakdown"]
         }
 
     # Возвращаем combined_history (неагрегированную) для родительского портфеля
@@ -920,16 +608,13 @@ def _normalize_analytics(analytics):
     return analytics
 
 
-async def get_dashboard_data(user_email: str):
+@cache("dashboard:{user_id}", ttl=300)
+async def get_dashboard_data(user_id: int):
     """
     Оптимизированная функция получения данных дашборда.
     Использует единый SQL запрос для всех данных + правильную агрегацию аналитики.
+    Результат кэшируется в Redis на 5 минут.
     """
-    user = get_user_by_email(user_email)
-    if not user:
-        return None
-
-    user_id = user['id']
     time1 = time()
     
     # Один SQL запрос получает все данные: портфели, активы, историю, аналитику, транзакции, connections
@@ -974,12 +659,16 @@ async def get_dashboard_data(user_email: str):
             key=lambda x: x['date']
         )
 
+        # Формируем данные для графика
+        # Баланс передается отдельно, агрегация value + balance происходит на фронтенде
         p['history'] = {
             'labels': [h['date'] for h in sorted_hist],
             'data_value': [h['value'] for h in sorted_hist],
             'data_invested': [h['invested'] for h in sorted_hist],
             'data_payouts': [h['payouts'] for h in sorted_hist],
-            'data_pnl': [h['pnl'] for h in sorted_hist]
+            'data_pnl': [h['pnl'] for h in sorted_hist],
+            # Баланс передается отдельно для агрегации на фронтенде
+            'data_balance': [h.get('balance', 0) for h in sorted_hist]
         }
         p['monthly_change'] = calculate_monthly_change(sorted_hist)
         p['asset_allocation'] = calculate_asset_allocation(p.get('combined_assets') or p.get('assets', []))
@@ -991,5 +680,6 @@ async def get_dashboard_data(user_email: str):
     return {
         "portfolios": portfolios,
         "transactions": transactions,
-        "referenceData": get_reference_data_cached()  # Из кеша (загружено при старте)
+        "referenceData": get_reference_data_cached(),  # Из кеша (загружено при старте)
+        "missed_payouts_count": data.get("missed_payouts_count", 0) if data else 0
     }

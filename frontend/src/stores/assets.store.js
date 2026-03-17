@@ -16,14 +16,14 @@ export const useAssetsStore = defineStore('assets', {
           
           // Фоновая перезагрузка для синхронизации
           dashboardStore.reloadDashboard().catch(err => {
-            if (import.meta.env.DEV) {
+            if (import.meta.env.VITE_APP_DEV) {
               console.error('Ошибка фоновой перезагрузки:', err)
             }
           })
         }
         return res
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка добавления актива:', err)
         }
         throw err
@@ -42,12 +42,16 @@ export const useAssetsStore = defineStore('assets', {
         // Оптимистичное удаление
         dashboardStore.removeAsset(portfolioAssetId)
         
-        // Фоновая перезагрузка
-        await dashboardStore.reloadDashboard()
+        // Обновляем dashboard_data в фоне без показа загрузочного экрана
+        dashboardStore.reloadDashboard(false).catch(err => {
+          if (import.meta.env.VITE_APP_DEV) {
+            console.error('Ошибка обновления dashboard после удаления актива:', err)
+          }
+        })
         
         return res
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка удаления актива:', err)
         }
         throw err
@@ -68,7 +72,7 @@ export const useAssetsStore = defineStore('assets', {
         
         return res
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка перемещения актива:', err)
         }
         throw err
@@ -86,7 +90,7 @@ export const useAssetsStore = defineStore('assets', {
         uiStore.setLoading(true)
         await dashboardStore.reloadDashboard()
       } catch (err) {
-        if (import.meta.env.DEV) {
+        if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка добавления цены:', err)
         }
         throw err

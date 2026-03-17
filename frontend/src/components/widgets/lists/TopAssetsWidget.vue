@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
-import ValueChange from '../base/ValueChange.vue'
+import ValueChangePill from '../base/ValueChangePill.vue'
 
 const props = defineProps({
   assets: { type: Array, required: true },
@@ -29,7 +29,7 @@ const topAssets = computed(() =>
           <span class="value">
             {{ (asset.last_price * asset.quantity).toFixed(2) }} ₽
           </span>
-          <ValueChange 
+          <ValueChangePill 
             :value="asset.profit_rub" 
             :is-positive="asset.profit_rub >= 0"
             format="currency"
@@ -54,20 +54,20 @@ const topAssets = computed(() =>
 .asset-item:not(:last-child) { 
   border-bottom: 1px solid #e5e7eb; 
 }
-.asset-name { 
-  display: block; 
-  font-weight: 500; 
-  color: #1f2937; 
+.asset-name {
+  display: block;
+  font-weight: var(--text-label-weight);
+  color: var(--text-primary);
 }
-.asset-ticker { 
-  font-size: 0.875rem; 
-  color: #6b7280; 
+.asset-ticker {
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
 }
-.asset-value { 
-  text-align: right; 
+.asset-value {
+  text-align: right;
 }
-.value { 
-  display: block; 
-  font-weight: 400; 
+.value {
+  display: block;
+  font-weight: var(--text-body-secondary-weight);
 }
 </style>

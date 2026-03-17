@@ -12,10 +12,17 @@ from datetime import datetime, timedelta, time, date
 from typing import Optional, Dict, List, Tuple
 from tqdm.asyncio import tqdm_asyncio
 
-from app.infrastructure.database.supabase_async import db_select, db_rpc
+from app.infrastructure.database.postgres_async import db_select, db_rpc
 from app.infrastructure.external.moex.client import create_moex_session
-from app.infrastructure.external.moex.price_service import get_price_moex_history, get_price_moex
-from app.utils.date import parse_date as normalize_date, normalize_date_to_string as format_date
+from app.infrastructure.external.moex.price_service import get_price_moex_history
+from app.workers.common.price_utils import get_last_prices_from_latest_prices
+from app.workers.base_price_worker import (
+    filter_new_prices,
+    batch_upsert_prices,
+    update_latest_and_portfolios,
+    run_worker_loop,
+)
+from app.utils.date import parse_date as normalize_date, normalize_date_to_sql_date
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,72 +42,6 @@ def is_moex_trading_time() -> bool:
     """Проверяет, идет ли сейчас торговая сессия MOEX."""
     now = datetime.now(MSK_TZ).time()
     return time(10, 0) <= now <= time(19, 0)
-
-
-async def get_last_prices_from_latest_prices(asset_ids: List[int]) -> Dict[int, Dict]:
-    """
-    Получает последние цены и даты (curr_price, curr_date) для активов из таблицы asset_latest_prices_full.
-    
-    Если записи для актива нет в asset_latest_prices_full, значит истории цен еще нет в базе.
-    В этом случае asset_id не будет в возвращаемом словаре, что корректно обрабатывается
-    в update_asset_history (запрашивается вся история с 2000 года).
-    
-    Args:
-        asset_ids: Список ID активов
-        
-    Returns:
-        Словарь {asset_id: {"price": float, "date": str, "trade_date": date}}
-        Если записи нет, asset_id отсутствует в словаре.
-    """
-    if not asset_ids:
-        return {}
-    
-    last_prices_map = {}
-    
-    # Разбиваем на батчи по 1000 активов
-    batch_size = 1000
-    total_batches = (len(asset_ids) + batch_size - 1) // batch_size
-    
-    for i in range(0, len(asset_ids), batch_size):
-        batch = asset_ids[i:i + batch_size]
-        batch_num = i // batch_size + 1
-        try:
-            async with db_sem:
-                result = await db_select(
-                    "asset_latest_prices_full",
-                    "asset_id, curr_price, curr_date",
-                    in_filters={"asset_id": batch}
-                )
-            
-            if result:
-                for row in result:
-                    asset_id = row.get("asset_id")
-                    curr_price = row.get("curr_price")
-                    curr_date = row.get("curr_date")
-                    if asset_id and curr_date:
-                        # Преобразуем дату в строку
-                        date_str = None
-                        if isinstance(curr_date, str):
-                            date_str = curr_date[:10]
-                        elif hasattr(curr_date, 'isoformat'):
-                            date_str = curr_date.isoformat()
-                        else:
-                            date_str = str(curr_date)[:10]
-                        
-                        if date_str:
-                            last_prices_map[asset_id] = {
-                                "price": curr_price,
-                                "date": date_str,
-                                "trade_date": curr_date  # Для совместимости с process_today_price
-                            }
-            
-            if batch_num % 10 == 0 or batch_num == total_batches:
-                logger.debug(f"Обработан батч {batch_num}/{total_batches}, получено {len(result or [])} записей")
-        except Exception as e:
-            logger.error(f"Ошибка при получении цен для батча {batch_num}/{total_batches}: {type(e).__name__}: {e}")
-            continue
-    
-    return last_prices_map
 
 
 async def update_asset_history(
@@ -123,7 +64,7 @@ async def update_asset_history(
     ticker = asset["ticker"].upper().strip()
 
     # Получаем последнюю известную дату из предзагруженного словаря
-    # Если записи нет в asset_latest_prices_full, last_date будет None
+    # Если записи нет в asset_latest_prices, last_date будет None
     # и будет запрошена вся история с 2000 года (первое обновление)
     last_date = last_date_map.get(asset_id)
 
@@ -142,13 +83,18 @@ async def update_asset_history(
                 # Запрашиваем цены начиная с последней даты (чтобы заменить последнюю цену и вставить новые)
                 start_date_for_query = parsed_date
 
+    asset_type_id = asset.get("asset_type_id")
+
     async with sem:
-        # Получаем историю цен
         if start_date_for_query:
-            prices = await get_price_moex_history(session, ticker, start_date=start_date_for_query)
+            prices = await get_price_moex_history(
+                session, ticker, start_date=start_date_for_query,
+                asset_type_id=asset_type_id,
+            )
         else:
-            # Для первого обновления запрашиваем всю историю начиная с 2000 года
-            prices = await get_price_moex_history(session, ticker)
+            prices = await get_price_moex_history(
+                session, ticker, asset_type_id=asset_type_id,
+            )
 
     if not prices:
         # Если есть last_date, то отсутствие новых цен - это нормально (все цены уже в базе)
@@ -159,61 +105,34 @@ async def update_asset_history(
             logger.warning(f"⚠️ Не удалось получить цены для {ticker} (asset_id: {asset_id})")
             return False, None, []
 
-    # Фильтруем цены: берем те, что >= последней даты (чтобы заменить последнюю цену и вставить новые)
-    new_prices_data = []
-    if last_date:
-        # Преобразуем last_date в date для сравнения
-        last_dt = normalize_date(last_date)
+    # Для облигаций конвертируем цены из процентов в абсолютные значения
+    # Получаем face_value из properties актива
+    face_value = None
+    asset_type_id = asset.get("asset_type_id")
+    if asset_type_id == 2:  # Облигация
+        props = asset.get("properties") or {}
+        if isinstance(props, str):
+            try:
+                import json
+                props = json.loads(props)
+            except:
+                props = {}
+        face_value = props.get("face_value")
         
-        if last_dt:
-            # Убеждаемся, что это date объект
-            if isinstance(last_dt, datetime):
-                last_dt = last_dt.date()
-            
-            if isinstance(last_dt, date):
-                # Фильтруем цены >= последней даты (заменяем последнюю цену и вставляем новые после нее)
-                for trade_date, close_price in prices:
-                    price_date = normalize_date(trade_date)
-                    if price_date:
-                        if isinstance(price_date, datetime):
-                            price_date = price_date.date()
-                        if isinstance(price_date, date) and price_date >= last_dt:
-                            new_prices_data.append({
-                                "asset_id": asset_id,
-                                "price": close_price,
-                                "trade_date": trade_date
-                            })
-        else:
-            # Если не удалось распарсить last_date, берем все цены
-            new_prices_data = [
-                {
-                    "asset_id": asset_id,
-                    "price": close_price,
-                    "trade_date": trade_date
-                }
+        # Конвертируем цены из процентов в абсолютные значения
+        if face_value and face_value > 0:
+            prices = [
+                (trade_date, (close_price / 100) * float(face_value))
                 for trade_date, close_price in prices
             ]
-    else:
-        # Если нет последней даты, берем все цены (первое обновление - вся история)
-        new_prices_data = [
-            {
-                "asset_id": asset_id,
-                "price": close_price,
-                "trade_date": trade_date
-            }
-            for trade_date, close_price in prices
-        ]
+
+    new_prices_data = filter_new_prices(prices, asset_id, last_date)
 
     if not new_prices_data:
-        # Нет новых цен для обновления
-        if last_date:
-            return True, None, []
-        else:
-            logger.warning(f"⚠️ Получены цены для {ticker}, но после фильтрации новых цен нет")
-            return True, None, []
+        return True, None, []
 
     # Находим минимальную дату обновления
-    min_date = min(price["trade_date"][:10] for price in new_prices_data)
+    min_date = min(normalize_date_to_sql_date(price["trade_date"]) or "" for price in new_prices_data)
 
     return True, min_date, new_prices_data
 
@@ -280,12 +199,14 @@ async def update_history_prices() -> int:
     """
     # Получаем MOEX активы с фильтром по asset_type_id (1=Акция, 2=Облигация, 10=Фонд, 11=Фьючерс)
     # Это эффективнее, чем загружать все активы и фильтровать в Python
+    # Убираем лимит для получения всех активов
     moex_asset_types = [1, 2, 10, 11]  # Акция, Облигация, Фонд, Фьючерс
     async with db_sem:
         all_assets = await db_select(
             "assets",
             "id, ticker, properties, asset_type_id",
-            in_filters={"asset_type_id": moex_asset_types}
+            in_filters={"asset_type_id": moex_asset_types},
+            limit=None
         )
     assets = []
     for a in all_assets:
@@ -307,7 +228,7 @@ async def update_history_prices() -> int:
 
     asset_ids = [a["id"] for a in assets]
     
-    # Получаем последние цены и даты из asset_latest_prices_full
+    # Получаем последние цены и даты из asset_latest_prices
     last_prices = await get_last_prices_from_latest_prices(asset_ids)
     
     # Извлекаем только даты для истории
@@ -351,9 +272,44 @@ async def update_history_prices() -> int:
     
     # Вставляем все новые цены большими батчами (значительно уменьшаем количество запросов)
     if all_new_prices:
+        # Удаляем дубликаты по (asset_id, trade_date), оставляя последнюю запись
+        # Это предотвращает ошибку "ON CONFLICT DO UPDATE command cannot affect row a second time"
+        unique_prices = {}
+        for price in all_new_prices:
+            asset_id = price["asset_id"]
+            trade_date = price["trade_date"]
+            # Нормализуем дату для ключа используя единую функцию
+            date_key = normalize_date_to_sql_date(trade_date) or ""
+            key = (asset_id, date_key)
+            # Оставляем последнюю запись
+            unique_prices[key] = price
+        
+        deduplicated_prices = list(unique_prices.values())
+        
+        # Проверяем существование активов перед вставкой
+        # Получаем уникальные asset_id из цен
+        price_asset_ids = set(p["asset_id"] for p in deduplicated_prices)
+        # Проверяем, какие активы существуют
+        from app.infrastructure.database.postgres_async import table_select_async
+        existing_assets_check = await table_select_async(
+            "assets",
+            "id",
+            in_filters={"id": list(price_asset_ids)},
+            limit=None
+        )
+        existing_asset_ids = set(a["id"] for a in existing_assets_check)
+        
+        # Фильтруем цены только для существующих активов
+        valid_prices = [p for p in deduplicated_prices if p["asset_id"] in existing_asset_ids]
+        
+        if len(valid_prices) < len(deduplicated_prices):
+            skipped_count = len(deduplicated_prices) - len(valid_prices)
+            skipped_asset_ids = price_asset_ids - existing_asset_ids
+            logger.warning(f"⚠️ Пропущено {skipped_count} цен для несуществующих активов: {sorted(skipped_asset_ids)}")
+        
         batch_size = 1000  # Увеличиваем размер батча для уменьшения количества запросов
-        for i in range(0, len(all_new_prices), batch_size):
-            batch = all_new_prices[i:i + batch_size]
+        for i in range(0, len(valid_prices), batch_size):
+            batch = valid_prices[i:i + batch_size]
             try:
                 async with db_sem:
                     await db_rpc("upsert_asset_prices", {"p_prices": batch})
@@ -364,7 +320,7 @@ async def update_history_prices() -> int:
     if not updated_asset_ids:
         return success_count
 
-    # 1. Обновляем таблицу asset_latest_prices_full батчами
+    # 1. Обновляем таблицу asset_latest_prices батчами
     batch_size = 500
     for i in range(0, len(updated_asset_ids), batch_size):
         batch_ids = updated_asset_ids[i:i + batch_size]
@@ -386,13 +342,8 @@ async def update_history_prices() -> int:
     # 3. Обновляем портфели с минимальной датой обновления
     update_tasks = []
     for portfolio_id, min_date in portfolio_dates.items():
-        # Преобразуем дату в строку, если нужно
-        if isinstance(min_date, str):
-            from_date = min_date[:10]
-        elif hasattr(min_date, 'isoformat'):
-            from_date = min_date.isoformat()
-        else:
-            from_date = str(min_date)[:10]
+        # Преобразуем дату в строку используя единую функцию
+        from_date = normalize_date_to_sql_date(min_date)
         
         # Вызываем update_portfolio_values_from_date с датой начала
         async def update_portfolio_with_sem(pid, fdate):
@@ -427,75 +378,144 @@ async def update_history_prices() -> int:
     return success_count
 
 
-async def process_today_price(
+async def process_today_prices_batch(
     session: aiohttp.ClientSession,
-    asset: Dict,
+    assets: List[Dict],
     today: str,
     trading: bool,
     last_map: Dict[int, Dict],
     now_msk: datetime
-) -> Optional[Dict]:
+) -> List[Dict]:
     """
-    Обрабатывает текущую цену актива.
+    Обрабатывает текущие цены активов используя массовые эндпойнты MOEX.
     
     Args:
         session: HTTP сессия
-        asset: Словарь с данными актива
+        assets: Список активов
         today: Сегодняшняя дата в формате YYYY-MM-DD
         trading: Идет ли торговая сессия
         last_map: Словарь последних цен {asset_id: {price, trade_date}}
         now_msk: Текущее время в МСК
         
     Returns:
-        Словарь с данными для обновления или None
+        Список словарей с данными для обновления
     """
-    asset_id = asset["id"]
-    ticker = (asset.get("ticker") or "").upper().strip()
-
-    if not ticker:
-        return None
-
-    # берем предварительно загруженную последнюю цену
-    # Если записи нет в asset_latest_prices_full, last будет None
-    # и prev_price/prev_date будут None (анти-скачок не сработает, что корректно для первого обновления)
-    last = last_map.get(asset_id)
-    prev_price = last.get("price") if last else None
-    # Используем date (строка) или trade_date (для совместимости)
-    prev_date = None
-    if last:
-        prev_date = last.get("date") or (last.get("trade_date")[:10] if last.get("trade_date") else None)
-
-    async with sem:
-        price = await get_price_moex(session, ticker)
-
-    if not price:
-        return None
-
-    # анти-скачок
-    if prev_price and abs(price - prev_price) / prev_price > 0.1:
-        logger.warning(f"⚠️ Скачок цены для {ticker}: {prev_price} -> {price}")
-        return None
-
-    # выбираем дату для вставки
-    insert_date = today if trading else None
-
-    if not trading:
-        prev_dt = normalize_date(prev_date) if prev_date else None
-        yesterday = now_msk.date() - timedelta(days=1)
-
-        if prev_dt and prev_dt < yesterday:
-            insert_date = yesterday.isoformat()
-        elif prev_dt == yesterday:
-            return None  # вчера уже есть
-        else:
-            insert_date = today
-
-    return {
-        "asset_id": asset_id,
-        "price": price,
-        "trade_date": insert_date,
-        "ticker": ticker
-    }
+    from app.infrastructure.external.moex.price_service import get_prices_moex_batch
+    
+    # Группируем активы по типу рынка
+    shares_assets = []  # Акции и фонды
+    bonds_assets = []   # Облигации
+    
+    for asset in assets:
+        asset_type_id = asset.get("asset_type_id")
+        if asset_type_id in [1, 10, 11]:  # Акция, Фонд, Фьючерс
+            shares_assets.append(asset)
+        elif asset_type_id == 2:  # Облигация
+            bonds_assets.append(asset)
+    
+    updates_batch = []
+    
+    # Получаем цены для акций/фондов
+    if shares_assets:
+        async with sem:
+            shares_prices = await get_prices_moex_batch(session, "shares")
+        
+        for asset in shares_assets:
+            asset_id = asset["id"]
+            ticker = (asset.get("ticker") or "").upper().strip()
+            
+            if not ticker or ticker not in shares_prices:
+                continue
+            
+            price = shares_prices[ticker]
+            
+            # Анти-скачок
+            last = last_map.get(asset_id)
+            prev_price = last.get("price") if last else None
+            if prev_price:
+                # Приводим к float для корректного сравнения (prev_price может быть Decimal из БД)
+                prev_price_float = float(prev_price)
+                price_float = float(price)
+                if abs(price_float - prev_price_float) / prev_price_float > 0.1:
+                    logger.warning(f"⚠️ Скачок цены для {ticker}: {prev_price} -> {price}")
+                    continue
+            
+            # Выбираем дату для вставки
+            insert_date = today if trading else None
+            
+            if not trading:
+                prev_date = None
+                if last:
+                    prev_date = last.get("date") or normalize_date_to_sql_date(last.get("trade_date"))
+                
+                prev_dt = normalize_date(prev_date) if prev_date else None
+                yesterday = now_msk.date() - timedelta(days=1)
+                
+                if prev_dt and prev_dt < yesterday:
+                    insert_date = normalize_date_to_sql_date(yesterday)
+                elif prev_dt == yesterday:
+                    continue  # вчера уже есть
+                else:
+                    insert_date = today
+            
+            updates_batch.append({
+                "asset_id": asset_id,
+                "price": price,
+                "trade_date": insert_date,
+                "ticker": ticker
+            })
+    
+    # Получаем цены для облигаций
+    if bonds_assets:
+        async with sem:
+            bonds_prices = await get_prices_moex_batch(session, "bonds")
+        
+        for asset in bonds_assets:
+            asset_id = asset["id"]
+            ticker = (asset.get("ticker") or "").upper().strip()
+            
+            if not ticker or ticker not in bonds_prices:
+                continue
+            
+            price = bonds_prices[ticker]
+            
+            # Анти-скачок
+            last = last_map.get(asset_id)
+            prev_price = last.get("price") if last else None
+            if prev_price:
+                # Приводим к float для корректного сравнения (prev_price может быть Decimal из БД)
+                prev_price_float = float(prev_price)
+                price_float = float(price)
+                if abs(price_float - prev_price_float) / prev_price_float > 0.1:
+                    logger.warning(f"⚠️ Скачок цены для {ticker}: {prev_price} -> {price}")
+                    continue
+            
+            # Выбираем дату для вставки
+            insert_date = today if trading else None
+            
+            if not trading:
+                prev_date = None
+                if last:
+                    prev_date = last.get("date") or normalize_date_to_sql_date(last.get("trade_date"))
+                
+                prev_dt = normalize_date(prev_date) if prev_date else None
+                yesterday = now_msk.date() - timedelta(days=1)
+                
+                if prev_dt and prev_dt < yesterday:
+                    insert_date = normalize_date_to_sql_date(yesterday)
+                elif prev_dt == yesterday:
+                    continue  # вчера уже есть
+                else:
+                    insert_date = today
+            
+            updates_batch.append({
+                "asset_id": asset_id,
+                "price": price,
+                "trade_date": insert_date,
+                "ticker": ticker
+            })
+    
+    return updates_batch
 
 
 async def update_today_prices() -> int:
@@ -506,21 +526,22 @@ async def update_today_prices() -> int:
         Количество обновленных активов
     """
     now = datetime.now(MSK_TZ)
-    today = now.date().isoformat()
+    today = normalize_date_to_sql_date(now.date())
     trading = is_moex_trading_time()
 
-    
-    # Если торговая сессия закрыта, пропускаем обновление
     if not trading:
+        logger.info(f"Торговая сессия MOEX закрыта (МСК: {now.strftime('%H:%M')}), обновление пропущено")
         return 0
 
     # Получаем MOEX активы с фильтром по asset_type_id
+    # Убираем лимит для получения всех активов
     moex_asset_types = [1, 2, 10, 11]  # Акция, Облигация, Фонд, Фьючерс
     async with db_sem:
         all_assets = await db_select(
             "assets",
             "id, ticker, properties, asset_type_id",
-            in_filters={"asset_type_id": moex_asset_types}
+            in_filters={"asset_type_id": moex_asset_types},
+            limit=None
         )
     assets = []
     for a in all_assets:
@@ -543,26 +564,45 @@ async def update_today_prices() -> int:
     asset_ids = [a["id"] for a in assets]
     last_map = await get_last_prices_from_latest_prices(asset_ids)
 
-    updates_batch = []
-
     async with create_moex_session() as session:
-        tasks = [
-            process_today_price(session, a, today, trading, last_map, now)
-            for a in assets
-        ]
-
-        results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Сегодня")
-
-    # фильтруем None и ошибки
-    updates_batch = [r for r in results if isinstance(r, dict)]
+        updates_batch = await process_today_prices_batch(session, assets, today, trading, last_map, now)
     # получаем список изменившихся активов
     updated_ids = list({row["asset_id"] for row in updates_batch})
 
     # пачечная вставка
     if updates_batch:
-        pack = []
-
+        # Удаляем дубликаты по (asset_id, trade_date)
+        unique_updates = {}
         for row in updates_batch:
+            asset_id = row["asset_id"]
+            trade_date = row["trade_date"]
+            # Нормализуем дату для ключа используя единую функцию
+            date_key = normalize_date_to_sql_date(trade_date) or ""
+            key = (asset_id, date_key)
+            # Оставляем последнюю запись
+            unique_updates[key] = row
+        
+        # Проверяем существование активов
+        update_asset_ids = set(row["asset_id"] for row in unique_updates.values())
+        from app.infrastructure.database.postgres_async import table_select_async
+        existing_assets_check = await table_select_async(
+            "assets",
+            "id",
+            in_filters={"id": list(update_asset_ids)},
+            limit=None
+        )
+        existing_asset_ids = set(a["id"] for a in existing_assets_check)
+        
+        # Фильтруем только существующие активы
+        valid_updates = [row for row in unique_updates.values() if row["asset_id"] in existing_asset_ids]
+        
+        if len(valid_updates) < len(unique_updates):
+            skipped_count = len(unique_updates) - len(valid_updates)
+            skipped_asset_ids = update_asset_ids - existing_asset_ids
+            logger.warning(f"⚠️ Пропущено {skipped_count} цен для несуществующих активов: {sorted(skipped_asset_ids)}")
+        
+        pack = []
+        for row in valid_updates:
             pack.append({
                 "asset_id": row["asset_id"],
                 "price": row["price"],
@@ -592,13 +632,8 @@ async def update_today_prices() -> int:
         asset_id = row["asset_id"]
         trade_date = row["trade_date"]
         if trade_date:
-            # Преобразуем дату в формат YYYY-MM-DD
-            if isinstance(trade_date, str):
-                date_str = trade_date[:10]
-            elif hasattr(trade_date, 'isoformat'):
-                date_str = trade_date.isoformat()
-            else:
-                date_str = str(trade_date)[:10]
+            # Преобразуем дату в формат YYYY-MM-DD используя единую функцию
+            date_str = normalize_date_to_sql_date(trade_date)
             
             # Для каждого актива берем минимальную дату (если несколько цен за день)
             if asset_id not in updated_assets_dates:
@@ -608,91 +643,51 @@ async def update_today_prices() -> int:
                 if date_str < updated_assets_dates[asset_id]:
                     updated_assets_dates[asset_id] = date_str
 
-    # Обновляем активы во всех портфелях используя новую оптимальную функцию
     if updated_assets_dates:
-        
-        # Находим минимальную дату для всех активов
         min_date = min(updated_assets_dates.values())
-        # Преобразуем дату в строку
-        if isinstance(min_date, str):
-            from_date = min_date[:10]
-        elif isinstance(min_date, date):
-            from_date = min_date.isoformat()
-        elif hasattr(min_date, 'isoformat'):
-            from_date = min_date.isoformat()
-        else:
-            from_date = str(min_date)[:10]
-        
-        # Собираем список всех активов
+        from_date = normalize_date_to_sql_date(min_date)
         asset_ids = list(updated_assets_dates.keys())
-        
-        # Используем оптимальную функцию update_assets_daily_values
-        # Это обновит portfolio_daily_values для всех портфелей с активом одним вызовом
+
         try:
             async with db_sem:
-                update_results = await db_rpc('update_assets_daily_values', {
+                await db_rpc('update_assets_daily_values', {
                     'p_asset_ids': asset_ids,
                     'p_from_date': from_date
                 })
-                if update_results:
-                    updated_count = len([r for r in update_results if r.get("updated", False)])
-                    if updated_count == 0:
-                        logger.warning("Не удалось обновить портфели")
         except Exception as e:
-            logger.error(f"❌ Ошибка при обновлении портфелей: {e}", exc_info=True)
-        
-        # Получаем количество обновленных портфелей из результатов
-        if update_results:
-            updated_portfolios_count = len([r for r in update_results if r.get("updated", False)])
-        else:
-            updated_portfolios_count = 0
-    else:
-        updated_portfolios_count = 0
+            logger.error(f"Ошибка при обновлении портфелей: {e}", exc_info=True)
 
-    return len(updated_ids)
+    count = len(updated_ids)
+    if count:
+        logger.info(
+            f"Цены MOEX обновлены: {count} активов "
+            f"(из {len(assets)} всего, МСК: {now.strftime('%H:%M')})"
+        )
+    else:
+        logger.info(f"Нет новых цен MOEX (МСК: {now.strftime('%H:%M')})")
+    return count
 
 
 async def worker_loop():
-    """
-    Основной цикл worker'а.
-    При запуске обновляет всю историю, затем каждые 15 минут обновляет сегодняшние цены.
-    """
-    logger.info("🚀 MOEX Price Worker запущен")
-    
-    try:
-        # При запуске обновляем всю историю
-        logger.info("📈 Начальное обновление истории цен...")
-        await update_history_prices()
-        logger.info("✅ Начальное обновление истории завершено")
-    except Exception as e:
-        logger.error(f"❌ Ошибка при начальном обновлении истории: {e}", exc_info=True)
-    
-    # Затем каждые 15 минут обновляем сегодняшние цены
-    while True:
-        try:
-            await update_today_prices()
-        except Exception as e:
-            logger.error(f"❌ Ошибка при обновлении сегодняшних цен: {e}", exc_info=True)
-        
-        logger.info(f"⏳ Ожидание {UPDATE_INTERVAL_SECONDS // 60} минут до следующего обновления...")
-        await asyncio.sleep(UPDATE_INTERVAL_SECONDS)
+    await run_worker_loop(
+        "MOEX Price Worker",
+        update_history_prices,
+        update_today_prices,
+        UPDATE_INTERVAL_SECONDS,
+    )
 
 
 def run_worker():
-    """
-    Запускает worker (точка входа для отдельного процесса).
-    """
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    
     try:
         asyncio.run(worker_loop())
     except KeyboardInterrupt:
-        logger.info("🛑 Worker остановлен пользователем")
+        logger.info("Worker остановлен пользователем")
     except Exception as e:
-        logger.error(f"❌ Критическая ошибка worker'а: {e}", exc_info=True)
+        logger.error(f"Критическая ошибка worker'а: {e}", exc_info=True)
 
 
 if __name__ == "__main__":

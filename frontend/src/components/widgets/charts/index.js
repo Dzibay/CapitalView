@@ -1,7 +1,6 @@
 // Виджеты с графиками
 export { default as PortfolioChartWidget } from './PortfolioChartWidget.vue'
 export { default as PortfolioProfitChartWidget } from './PortfolioProfitChartWidget.vue'
-export { default as PortfolioValueChartWidget } from './PortfolioValueChartWidget.vue'
 export { default as PayoutsChartWidget } from './PayoutsChartWidget.vue'
 export { default as PayoutsByAssetChartWidget } from './PayoutsByAssetChartWidget.vue'
 export { default as AssetReturnsChartWidget } from './AssetReturnsChartWidget.vue'

@@ -10,67 +10,49 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+# Пути, которые не логируем (частые проверки, шум)
+_SKIP_LOG_PATHS = {"/health", "/", "/api/docs", "/api/redoc", "/api/openapi.json"}
+
+
 class LoggingMiddleware(BaseHTTPMiddleware):
-    """Middleware для логирования всех HTTP запросов."""
-    
+    """Middleware для логирования HTTP запросов (кроме health/docs)."""
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        """
-        Логирует информацию о запросе и ответе.
-        
-        Args:
-            request: FastAPI Request
-            call_next: Следующий middleware или route handler
-            
-        Returns:
-            Response
-        """
         start_time = time.time()
-        
-        # Логируем входящий запрос
-        logger.info(
-            f"→ {request.method} {request.url.path}",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "query_params": dict(request.query_params),
-                "client_host": request.client.host if request.client else None
-            }
-        )
-        
-        try:
-            response = await call_next(request)
-            
-            # Вычисляем время обработки
-            process_time = time.time() - start_time
-            
-            # Логируем ответ
+        path = request.url.path
+
+        # Пропускаем логирование для частых/служебных запросов
+        skip_log = path in _SKIP_LOG_PATHS or path.startswith("/api/docs") or path.startswith("/api/redoc")
+
+        if not skip_log:
             logger.info(
-                f"← {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}s)",
+                f"→ {request.method} {path}",
                 extra={
                     "method": request.method,
-                    "path": request.url.path,
-                    "status_code": response.status_code,
-                    "process_time": process_time
+                    "path": path,
+                    "client_host": request.client.host if request.client else None
                 }
             )
-            
-            # Добавляем заголовок с временем обработки
+
+        try:
+            response = await call_next(request)
+            process_time = time.time() - start_time
             response.headers["X-Process-Time"] = str(process_time)
-            
+
+            if not skip_log:
+                logger.info(
+                    f"← {request.method} {path} - {response.status_code} ({process_time:.3f}s)",
+                    extra={"method": request.method, "path": path, "status_code": response.status_code, "process_time": process_time}
+                )
+
             return response
-            
+
         except Exception as e:
-            # Логируем ошибку
             process_time = time.time() - start_time
             logger.error(
-                f"✗ {request.method} {request.url.path} - Error after {process_time:.3f}s: {type(e).__name__}",
+                f"✗ {request.method} {path} - {type(e).__name__} after {process_time:.3f}s",
                 exc_info=True,
-                extra={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "process_time": process_time,
-                    "exception_type": type(e).__name__
-                }
+                extra={"method": request.method, "path": path, "process_time": process_time, "exception_type": type(e).__name__}
             )
             raise
 

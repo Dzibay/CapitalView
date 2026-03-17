@@ -90,7 +90,7 @@ export function usePortfolio(dashboardData, selectedPortfolioId) {
         } else {
           // Родитель не существует - это "сирота", не добавляем в дерево
           // (портфель останется в массиве, но не будет отображаться)
-          if (import.meta.env.DEV) {
+          if (import.meta.env.VITE_APP_DEV) {
             console.warn(`Портфель ${p.id} (${p.name}) имеет несуществующего родителя ${p.parent_portfolio_id} - скрыт из дерева`)
           }
         }
@@ -125,13 +125,15 @@ export function usePortfolio(dashboardData, selectedPortfolioId) {
       t => portfolioIdSet.has(t.portfolio_id)
     );
 
+    const balance = Number(selectedPortfolio.value.balance || selectedPortfolio.value.analytics?.totals?.balance || 0)
+    
     return {
       portfolio: selectedPortfolio.value,
       portfolioIds,
       assets,
       transactions,
-      totalAmount: Number(selectedPortfolio.value.total_value || 0),
-      investedAmount: Number(selectedPortfolio.value.total_invested || 0),
+      totalAmount: Number(selectedPortfolio.value.total_value || 0), // total_value уже включает баланс на бэкенде
+      investedAmount: Number(selectedPortfolio.value.total_invested || 0) + balance, // investedAmount + баланс
       monthlyChange: selectedPortfolio.value.monthly_change || 0,
       assetAllocation: selectedPortfolio.value.asset_allocation ?? {
         labels: [],

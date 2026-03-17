@@ -46,7 +46,7 @@ register_error_handlers(app)
 
 
 # Импортируем и регистрируем роутеры
-# API v1
+# Маршруты API v1
 from app.api.v1 import (
     auth,
     portfolios,
@@ -55,7 +55,9 @@ from app.api.v1 import (
     operations,
     analytics,
     dashboard,
-    tasks
+    tasks,
+    missed_payouts,
+    support
 )
 
 # Регистрация API v1 роутеров
@@ -67,24 +69,35 @@ app.include_router(operations.router, prefix="/api/v1", tags=["operations"])
 app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
+app.include_router(missed_payouts.router, prefix="/api/v1", tags=["missed-payouts"])
+app.include_router(support.router, prefix="/api/v1", tags=["support"])
 
 
 @app.on_event("startup")
 async def startup_event():
     """События при запуске приложения."""
+    Config.validate()
     logger.info("🚀 CapitalView API starting up...")
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     logger.info(f"Log level: {Config.LOG_LEVEL}")
     
+    # Подключение Redis
+    from app.infrastructure.cache import init_redis
+    await init_redis(Config.REDIS_URL)
+    
     # Инициализация справочных данных при старте (асинхронно с таймаутом)
-    from app.domain.services.reference_service import init_reference_data_async
+    from app.domain.services.reference_service import init_reference_data_async, init_brokers_async
     await init_reference_data_async()
+    await init_brokers_async()
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """События при остановке приложения."""
     logger.info("🛑 CapitalView API shutting down...")
+    
+    from app.infrastructure.cache import close_redis
+    await close_redis()
 
 
 @app.get("/")
@@ -101,9 +114,11 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+    is_production = os.getenv("ENVIRONMENT", "development") == "production"
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=5000,
-        reload=True
+        port=int(os.getenv("PORT", "5000")),
+        reload=not is_production,
+        workers=4 if is_production else 1,
     )

@@ -1,9 +1,3 @@
--- ============================================================================
--- Получение истории стоимости актива для графика
--- ============================================================================
--- Возвращает историю позиций и стоимости актива на каждую дату
--- Используется для отображения графиков на странице детальной информации об активе
-
 CREATE OR REPLACE FUNCTION get_portfolio_asset_daily_values(
     p_portfolio_asset_id bigint,
     p_from_date date DEFAULT NULL,
@@ -41,6 +35,4 @@ BEGIN
 END;
 $$;
 
--- Комментарий к функции
-COMMENT ON FUNCTION get_portfolio_asset_daily_values(bigint, date, date) IS 
-'Возвращает историю позиций и стоимости актива на каждую дату. Используется для отображения графиков на странице детальной информации об активе. Возвращает position_value, quantity, average_price, cumulative_invested и вычисляет unrealized_pnl.';
+COMMENT ON FUNCTION get_portfolio_asset_daily_values(bigint, date, date) IS 'Возвращает историю позиций актива за период';

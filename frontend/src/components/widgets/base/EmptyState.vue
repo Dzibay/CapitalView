@@ -19,8 +19,8 @@ defineProps({
   align-items: center;
   justify-content: center;
   text-align: center;
-  color: #6b7280;
-  font-size: 14px;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
   padding: 40px 20px;
   min-height: 200px;
 }
