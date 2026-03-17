@@ -528,11 +528,7 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
             pbar.update(1)
             continue
 
-        quote_asset_id = None
-        if currency in ("RUB", "SUR"):
-            quote_asset_id = 1
-        elif currency and currency_map:
-            quote_asset_id = currency_map.get(currency.upper())
+        quote_asset_id = currency_map.get(currency.upper()) if currency and currency_map else None
 
         asset = {
             "asset_type_id": asset_type_id,
@@ -540,7 +536,7 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
             "name": name,
             "ticker": ticker,
             "properties": props,
-            "quote_asset_id": quote_asset_id or (1 if currency in ("RUB", "SUR") else None),
+            "quote_asset_id": quote_asset_id,
         }
 
         status, diffs = await upsert_asset(asset, existing_assets)
@@ -805,11 +801,13 @@ async def import_moex_assets_async():
     currency_assets = await table_select_async(
         "assets", "id, ticker", filters={"asset_type_id": 7}, limit=None,
     )
-    currency_map: Dict = {"RUB": 1, "SUR": 1}
+    currency_map: Dict[str, int] = {}
     for c in currency_assets:
         t = c.get("ticker")
         if t:
             currency_map[t.upper()] = c["id"]
+    if "RUB" in currency_map:
+        currency_map["SUR"] = currency_map["RUB"]
 
     async with create_moex_session() as session:
         # 3.1. Акции — быстрый запрос, обрабатываем первыми
@@ -861,10 +859,7 @@ async def import_moex_assets_async():
 
         results = [shares_result, bonds_result]
 
-    # 5. Очистка (только среди активов, которые были в БД до импорта)
-    pre_existing_ids = {a["id"] for a in existing_assets.values()}
-    logger.info("--- Этап 5: Очистка активов без цен ---")
-    await cleanup_priceless_assets(pre_existing_ids)
+    # Активы без цен не удаляются — цены добавляются отдельно price worker'ом
 
     # Итоги
     total_inserted = sum(r[0] for r in results)

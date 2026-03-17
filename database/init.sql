@@ -294,9 +294,9 @@ SELECT setval('asset_types_id_seq', (SELECT COALESCE(MAX(id), 1) FROM asset_type
 SELECT setval('assets_id_seq', (SELECT COALESCE(MAX(id), 1) FROM assets));
 
 INSERT INTO brokers (id, name) OVERRIDING SYSTEM VALUE VALUES
-  (1, 'Тинькофф'),
+  (1, 'Т-Инвестиции'),
   (2, 'БКС')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 INSERT INTO operations_type (id, name) OVERRIDING SYSTEM VALUE VALUES
   (1, 'Buy'),
