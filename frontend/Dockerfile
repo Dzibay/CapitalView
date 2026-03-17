@@ -16,8 +16,8 @@ COPY . .
 ARG VITE_API_BASE_URL=/api/v1
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
-# Сборка
-RUN npm run build
+# Сборка с увеличенным лимитом памяти (2 ГБ)
+RUN NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
 # Stage 2: nginx для раздачи статики
 FROM nginx:alpine
