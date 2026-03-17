@@ -420,6 +420,12 @@ const getDividendYield5Y = (asset) => {
   overflow: hidden;
 }
 
+/* --- Обёртка дочерних портфелей (базовые стили, переопределяются в @media) --- */
+.child-portfolios {
+  padding: 0 16px 16px 16px;
+  background: #ffffff;
+}
+
 /* --- Баланс портфеля --- */
 .portfolio-balance-section {
   padding: 12px 20px;
@@ -465,20 +471,62 @@ const getDividendYield5Y = (asset) => {
   position: relative;
 }
 
-/* Мобильные: ещё меньше отступов иерархии и карточек */
+/* Планшет: компактная таблица (если показывается) и меньшие отступы иерархии */
+@media (max-width: 1200px) {
+  .portfolio-header {
+    padding: 12px 14px;
+  }
+  .portfolio-card.is-child {
+    margin-top: 10px;
+  }
+  .child-portfolios {
+    padding: 0 10px 10px 10px;
+  }
+  .portfolio-balance-section {
+    padding: 10px 14px;
+  }
+  .asset-table {
+    font-size: 12px;
+    min-width: 620px;
+  }
+  .asset-table th,
+  .asset-table td {
+    padding: 8px 10px;
+  }
+  .col-name {
+    min-width: 120px;
+  }
+  .num-font {
+    font-size: 11px;
+  }
+  .asset-name {
+    font-size: 13px;
+  }
+  .asset-ticker {
+    font-size: 10px;
+  }
+}
+
+/* Мобильные: компактные отступы для вложенных портфелей */
 @media (max-width: 768px) {
   .portfolio-header {
     padding: 10px 12px;
+  }
+  .portfolio-card.is-child > .portfolio-header {
+    padding: 8px 10px;
   }
   .portfolio-card.is-child {
     margin-top: 8px;
   }
   .child-portfolios {
-    padding: 0 0 8px 10px;
+    padding: 0 4px 8px 4px;
   }
   .portfolio-balance-section {
     padding: 8px 12px;
     font-size: 12px;
+  }
+  .portfolio-card.is-child .portfolio-balance-section {
+    padding: 6px 10px;
   }
   .empty-state {
     padding: 16px;
@@ -488,8 +536,14 @@ const getDividendYield5Y = (asset) => {
     padding: 10px;
     gap: 8px;
   }
+  .portfolio-card.is-child .asset-cards {
+    padding: 6px 8px;
+  }
   .asset-card {
     padding: 10px;
+  }
+  .portfolio-card.is-child .asset-card {
+    padding: 8px;
   }
 }
 
@@ -497,11 +551,14 @@ const getDividendYield5Y = (asset) => {
   .portfolio-header {
     padding: 8px 10px;
   }
+  .portfolio-card.is-child > .portfolio-header {
+    padding: 6px 8px;
+  }
   .portfolio-card.is-child {
     margin-top: 6px;
   }
   .child-portfolios {
-    padding: 0 0 6px 8px;
+    padding: 0 2px 6px 2px;
   }
   .portfolio-name {
     font-size: 14px;
@@ -513,8 +570,14 @@ const getDividendYield5Y = (asset) => {
     padding: 8px;
     gap: 6px;
   }
+  .portfolio-card.is-child .asset-cards {
+    padding: 4px 6px;
+  }
   .asset-card {
     padding: 8px;
+  }
+  .portfolio-card.is-child .asset-card {
+    padding: 6px;
   }
   .asset-card-body {
     font-size: 11px;
@@ -543,42 +606,6 @@ const getDividendYield5Y = (asset) => {
   padding: 12px 16px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
-}
-
-/* Планшет: компактная таблица (если показывается) и меньшие отступы иерархии */
-@media (max-width: 1200px) {
-  .portfolio-header {
-    padding: 12px 14px;
-  }
-  .portfolio-card.is-child {
-    margin-top: 10px;
-  }
-  .child-portfolios {
-    padding: 0 0 10px 14px;
-  }
-  .portfolio-balance-section {
-    padding: 10px 14px;
-  }
-  .asset-table {
-    font-size: 12px;
-    min-width: 620px;
-  }
-  .asset-table th,
-  .asset-table td {
-    padding: 8px 10px;
-  }
-  .col-name {
-    min-width: 120px;
-  }
-  .num-font {
-    font-size: 11px;
-  }
-  .asset-name {
-    font-size: 13px;
-  }
-  .asset-ticker {
-    font-size: 10px;
-  }
 }
 
 .asset-table tr:last-child td {
@@ -811,12 +838,6 @@ const getDividendYield5Y = (asset) => {
   grid-row: 1;
   align-self: start;
   justify-self: end;
-}
-
-/* --- Обёртка дочерних портфелей --- */
-.child-portfolios {
-  padding: 0 16px 16px 24px; /* Отступ дочерних портфелей */
-  background: #ffffff;
 }
 
 /* --- Переходы --- */
