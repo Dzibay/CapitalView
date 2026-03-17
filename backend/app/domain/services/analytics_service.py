@@ -20,7 +20,7 @@ async def get_user_portfolios_analytics(user_id: str):
     Асинхронно вызывает RPC get_user_portfolios_analytics(p_user_id)
     и агрегирует аналитику дочерних портфелей в родительские.
     """
-    logger.info(f"Получаем аналитику для пользователя {user_id}")
+    logger.debug(f"Получаем аналитику для пользователя {user_id}")
 
     try:
         # === 1️⃣ Берём аналитику по всем портфелям ===

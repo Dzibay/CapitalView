@@ -104,7 +104,11 @@ class AppLogger:
 def init_logging():
     """Инициализирует логирование при старте приложения."""
     log_file = os.getenv("LOG_FILE", "app.log")
-    AppLogger.setup(log_file=log_file if log_file != "none" else None)
+    # В production по умолчанию WARNING, если LOG_LEVEL не задан
+    log_level = os.getenv("LOG_LEVEL")
+    if not log_level and os.getenv("ENVIRONMENT") == "production":
+        log_level = "WARNING"
+    AppLogger.setup(log_file=log_file if log_file != "none" else None, log_level=log_level)
 
 
 def get_logger(name: str) -> logging.Logger:

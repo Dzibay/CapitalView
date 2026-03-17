@@ -53,10 +53,9 @@ export const useDashboardStore = defineStore('dashboard', {
       try {
         const data = await fetchDashboardData()
         
-        // Выводим dashboard data в консоль для отладки
-        if (import.meta.env.VITE_DEBUG_DASHBOARD_DATA) {
+        // Отладочный вывод только в dev при явном включении
+        if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_DASHBOARD_DATA) {
           console.log('📊 Dashboard Data:', JSON.parse(JSON.stringify(data)))
-          
         }
         
         if (data?.data) {

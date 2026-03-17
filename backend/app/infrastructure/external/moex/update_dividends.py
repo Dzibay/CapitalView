@@ -8,6 +8,9 @@ import random
 from bs4 import BeautifulSoup
 from datetime import datetime, date
 from app.infrastructure.database.postgres_async import table_select_async, table_insert_async
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 # URL страниц
 SMARTLAB_INDEX_URL = "https://smart-lab.ru/dividends/index/order_by_yield/desc/"
@@ -26,12 +29,12 @@ async def fetch_html(session, url):
             if resp.status == 200:
                 return await resp.text()
             elif resp.status == 404:
-                print(f"⚠️ Страница не найдена (404): {url}")
+                logger.warning(f"Страница не найдена (404): {url}")
                 return None
             else:
-                print(f"⚠️ SmartLab ({url}) вернул статус {resp.status}")
+                logger.warning(f"SmartLab ({url}) вернул статус {resp.status}")
     except Exception as e:
-        print(f"❌ Ошибка сети при запросе {url}: {e}")
+        logger.error(f"Ошибка сети при запросе {url}: {e}")
     return None
 
 
@@ -149,19 +152,18 @@ async def update_forecasts():
     all_items = []
 
     async with aiohttp.ClientSession() as session:
-        print("📥 Обработка будущих дивидендов...")
+        logger.info("Обработка будущих дивидендов...")
         future_items = await process_page(session, SMARTLAB_INDEX_URL, "index", ticker_map)
         if future_items:
             all_items.extend(future_items)
 
-        print("📥 Обработка истории дивидендов...")
+        logger.info("Обработка истории дивидендов...")
         page_num = 1
         max_errors = 3
         error_count = 0
 
         while True:
             url = SMARTLAB_HISTORY_BASE_URL.format(page_num)
-            print(f"   Страница {page_num}...", end="\r")
             
             history_items = await process_page(session, url, "history", ticker_map)
             
@@ -176,10 +178,10 @@ async def update_forecasts():
                 error_count = 0
             
             page_num += 1
-            if page_num > 60: 
+            if page_num > 60:
                 break
 
-    print(f"\n📊 Всего найдено записей для обработки: {len(all_items)}")
+    logger.info(f"Всего найдено записей для обработки: {len(all_items)}")
 
     payouts_to_insert = []
     
@@ -215,20 +217,18 @@ async def update_forecasts():
     BATCH_SIZE = 1000
 
     if payouts_to_insert:
-        print(f"📦 Начинаем пакетную вставку {len(payouts_to_insert)} записей...")
-        
+        logger.info(f"Пакетная вставка {len(payouts_to_insert)} записей...")
         for i in range(0, len(payouts_to_insert), BATCH_SIZE):
             batch = payouts_to_insert[i : i + BATCH_SIZE]
             batch_num = i // BATCH_SIZE + 1
-            
             try:
                 await table_insert_async("asset_payouts", batch)
-                print(f"   ✅ Вставлен пакет {batch_num} ({len(batch)} записей)")
+                logger.debug(f"Вставлен пакет {batch_num} ({len(batch)} записей)")
                 added_count += len(batch)
             except Exception as e:
                 error_str = str(e)
                 if "23505" in error_str or "duplicate" in error_str.lower():
-                    print(f"   ⚠️ Обнаружены дубликаты в пакете {batch_num}, вставляем по одной...")
+                    logger.warning(f"Дубликаты в пакете {batch_num}, вставляем по одной...")
                     for record in batch:
                         try:
                             await table_insert_async("asset_payouts", record)
@@ -236,19 +236,21 @@ async def update_forecasts():
                         except Exception as inner_e:
                             inner_error_str = str(inner_e)
                             if "23505" not in inner_error_str and "duplicate" not in inner_error_str.lower():
-                                print(f"      ⚠️ Ошибка вставки записи: {inner_e}")
+                                logger.warning(f"Ошибка вставки записи: {inner_e}")
                             else:
                                 skipped_count += 1
                 else:
-                    print(f"   ❌ Ошибка вставки пакета {batch_num}: {e}")
+                    logger.error(f"Ошибка вставки пакета {batch_num}: {e}")
     else:
-        print("📭 Новых записей для вставки не найдено.")
+        logger.info("Новых записей для вставки не найдено.")
 
     if skipped_count > 0:
-        print(f"⏭️ Пропущено дубликатов: {skipped_count}")
-    print(f"🏁 Готово. Всего добавлено новых записей: {added_count}")
+        logger.info(f"Пропущено дубликатов: {skipped_count}")
+    logger.info(f"Готово. Добавлено новых записей: {added_count}")
 
 
 if __name__ == "__main__":
+    from app.core.logging import init_logging
     from app.utils.async_runner import run_async
+    init_logging()
     run_async(update_forecasts())

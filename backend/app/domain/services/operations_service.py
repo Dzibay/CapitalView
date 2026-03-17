@@ -8,11 +8,11 @@ from app.utils.date import normalize_date_to_string, normalize_date
 from typing import Optional, Union, List
 from datetime import datetime, timedelta, date
 from calendar import monthrange
-import logging
+from app.core.logging import get_logger
 from app.infrastructure.database.repositories.operation_repository import OperationRepository
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Создаем экземпляры репозиториев для использования во всех функциях
 _operation_repository = OperationRepository()

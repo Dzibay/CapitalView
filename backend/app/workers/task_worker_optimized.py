@@ -9,7 +9,6 @@
 5. Внешние API вызовы выполняются в отдельном потоке
 """
 import asyncio
-import logging
 from typing import Optional
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -24,8 +23,9 @@ from app.domain.services.user_service import get_user_by_id
 from app.domain.services.broker_connections_service import upsert_broker_connection
 from app.constants import BrokerID
 from app.infrastructure.database.postgres_async import table_insert_async, table_update_async, table_select_async
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Настройки воркера
 POLL_INTERVAL = 10  # Интервал опроса очереди когда нет задач (секунды)
@@ -343,10 +343,8 @@ def run_worker():
     """
     Запускает воркер (точка входа для отдельного процесса).
     """
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    from app.core.logging import init_logging
+    init_logging()
     
     try:
         asyncio.run(worker_loop())
