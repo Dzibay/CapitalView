@@ -226,7 +226,7 @@ const overrideOptions = computed(() => ({
             `  Нереализованная прибыль: ${formatMoney(pd.price_change || 0)}`,
             `  Реализованная прибыль: ${formatMoney(pd.realized_profit || 0)}`,
             `  Выплаты: ${formatMoney(pd.total_payouts || 0)}`,
-            ...(totalCommissions !== 0 ? [`  Комиссии: ${formatMoney(-Math.abs(totalCommissions))} (уменьшают прибыль)`] : [])
+            ...(totalCommissions !== 0 ? [`  Комиссии: ${formatMoney(-Math.abs(totalCommissions))}`] : [])
           ]
         }
       }

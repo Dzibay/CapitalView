@@ -58,8 +58,8 @@ const profitBreakdownTooltip = computed(() => {
   if (b.unrealized !== 0) parts.push(`Нереализованная прибыль: ${formatForTooltip(b.unrealized)}`)
   if (b.dividends !== 0) parts.push(`Дивиденды: ${formatForTooltip(b.dividends)}`)
   if (b.coupons !== 0) parts.push(`Купоны: ${formatForTooltip(b.coupons)}`)
-  if (b.commissions !== 0) parts.push(`Комиссии: ${formatForTooltip(-b.commissions)} (уменьшают прибыль)`)
-  if (b.taxes !== 0) parts.push(`Налоги: ${formatForTooltip(-b.taxes)} (уменьшают прибыль)`)
+  if (b.commissions !== 0) parts.push(`Комиссии: ${formatForTooltip(-b.commissions)}`)
+  if (b.taxes !== 0) parts.push(`Налоги: ${formatForTooltip(-b.taxes)}`)
   if (parts.length === 0) return 'Прибыль: 0 ₽'
   return `Состав прибыли:\n${parts.join('\n')}\n\nИтого: ${formatForTooltip(b.total)}`
 })

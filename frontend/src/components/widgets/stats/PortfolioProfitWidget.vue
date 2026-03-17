@@ -74,15 +74,15 @@ const profitBreakdownTooltip = computed(() => {
   if (b.unrealized !== 0) parts.push(`Нереализованная прибыль: ${formatCurrency(b.unrealized)}`)
   if (b.dividends !== 0) parts.push(`Дивиденды: ${formatCurrency(b.dividends)}`)
   if (b.coupons !== 0) parts.push(`Купоны: ${formatCurrency(b.coupons)}`)
-  // Комиссии показываем как отрицательные (расходы уменьшают прибыль)
+  // Комиссии показываем как отрицательные
   if (b.commissions !== 0) {
     const commissionsAbs = Math.abs(b.commissions)
-    parts.push(`Комиссии: ${formatCurrency(-commissionsAbs)} (уменьшают прибыль)`)
+    parts.push(`Комиссии: ${formatCurrency(-commissionsAbs)}`)
   }
-  // Налоги показываем как отрицательные (расходы уменьшают прибыль)
+  // Налоги показываем как отрицательные
   if (b.taxes !== 0) {
     const taxesAbs = Math.abs(b.taxes)
-    parts.push(`Налоги: ${formatCurrency(-taxesAbs)} (уменьшают прибыль)`)
+    parts.push(`Налоги: ${formatCurrency(-taxesAbs)}`)
   }
   
   if (parts.length === 0) return 'Прибыль: 0 ₽'
