@@ -5,6 +5,8 @@ import { Button, DateInput } from '../base'
 import assetsService from '../../services/assetsService'
 import { normalizeDateToString } from '../../utils/date'
 import ModalBase from './ModalBase.vue'
+import { useDashboardStore } from '../../stores/dashboard.store'
+import { useUIStore } from '../../stores/ui.store'
 
 const props = defineProps({
   asset: Object,
@@ -12,6 +14,9 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close'])
+
+const dashboardStore = useDashboardStore()
+const uiStore = useUIStore()
 
 // Режим: 'single' - одна цена, 'dynamic' - динамика цены
 const mode = ref('single')
@@ -30,6 +35,7 @@ const interval = ref('month') // 'day', 'week', 'month'
 
 const error = ref('')
 const saving = ref(false)
+const startPriceLoading = ref(false)
 
 // Парсинг YYYY-MM-DD без таймзонного сдвига (не используем new Date('YYYY-MM-DD'))
 const parseYMD = (ymd) => {
@@ -77,6 +83,39 @@ onMounted(() => {
 watch(() => props.asset, () => {
   initializeDefaults()
 }, { immediate: true, deep: true })
+
+// Для динамики: при смене начальной даты подтягиваем стартовую цену из истории,
+// чтобы стартовая цена соответствовала выбранной дате (и без таймзонных смещений).
+let startPriceFetchToken = 0
+watch(
+  startDate,
+  async (newStartDate) => {
+    if (mode.value !== 'dynamic') return
+    if (!newStartDate) return
+    const assetId = props.asset?.asset_id
+    if (!assetId) return
+
+    // При смене даты подгружаем ближайшую цену <= выбранной датой
+    const token = ++startPriceFetchToken
+    startPriceLoading.value = true
+    try {
+      const res = await assetsService.getAssetPriceHistory(assetId, null, newStartDate, 50)
+      if (token !== startPriceFetchToken) return
+      const first = res?.prices?.[0]
+      const p = first?.price != null ? parseFloat(first.price) : NaN
+      if (!Number.isNaN(p) && p > 0) {
+        startPrice.value = p
+      }
+    } catch (e) {
+      // Если история не найдена/ошибка - не ломаем форму: оставляем текущую startPrice
+    } finally {
+      if (token === startPriceFetchToken) {
+        startPriceLoading.value = false
+      }
+    }
+  },
+  { immediate: false }
+)
 
 // Вычисляем количество точек для динамики
 const pricePointsCount = computed(() => {
@@ -237,6 +276,9 @@ const handleSubmit = async () => {
       const response = await assetsService.addPricesBatch(props.asset.asset_id, pricePoints)
       
       if (response.success) {
+        // Как и в single-режиме через assetsStore.addPrice: обновляем дашборд
+        uiStore.setLoading(true)
+        await dashboardStore.reloadDashboard()
         emit('close')
       } else {
         error.value = response.error || 'Ошибка при добавлении цен'
@@ -244,6 +286,7 @@ const handleSubmit = async () => {
     } catch (e) {
       error.value = 'Ошибка при добавлении цен: ' + (e.message || e)
     } finally {
+      uiStore.setLoading(false)
       saving.value = false
     }
   }
