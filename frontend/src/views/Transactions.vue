@@ -1765,6 +1765,29 @@ const showSumsSummary = ref(false)
 /* =========================================
    8. АДАПТИВ (MEDIA QUERIES)
    ========================================= */
+/* Десктоп: при сужении оставляем Поиск актива и блок фильтров на верхнем уровне.
+   Остальные селекты пусть переносятся внутри select-group (2-й уровень). */
+@media (min-width: 1025px) and (max-width: 1525px) {
+  .filters-top {
+    flex-wrap: nowrap;
+  }
+
+  .asset-search-wrapper {
+    flex: 0 1 320px;
+    min-width: 200px;
+  }
+
+  .select-group {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Кнопка сброса не должна “уезжать” из верхнего уровня вместе с остальными селектами */
+  .reset-btn {
+    margin-left: auto;
+  }
+}
+
 @media (max-width: 1024px) {
   .transactions-content {
     flex-direction: column;
