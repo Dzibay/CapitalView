@@ -31,6 +31,26 @@ const interval = ref('month') // 'day', 'week', 'month'
 const error = ref('')
 const saving = ref(false)
 
+// Парсинг YYYY-MM-DD без таймзонного сдвига (не используем new Date('YYYY-MM-DD'))
+const parseYMD = (ymd) => {
+  if (typeof ymd !== 'string') return null
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return null
+  const year = Number(m[1])
+  const monthIndex = Number(m[2]) - 1
+  const day = Number(m[3])
+  return new Date(year, monthIndex, day) // локальная полночь
+}
+
+// Форматирование даты в YYYY-MM-DD по локальному времени пользователя
+const toLocalYMD = (dateObj) => {
+  if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) return ''
+  const year = dateObj.getFullYear()
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+  const day = String(dateObj.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 // Инициализация значений по умолчанию из данных актива
 const initializeDefaults = () => {
   if (props.asset) {
@@ -43,10 +63,8 @@ const initializeDefaults = () => {
     
     // Начальная дата = дата первой покупки (first_purchase_date)
     if (props.asset.first_purchase_date) {
-      const date = new Date(props.asset.first_purchase_date)
-      if (!isNaN(date.getTime())) {
-        startDate.value = normalizeDateToString(date) || ''
-      }
+      // Не создаём Date из строки YYYY-MM-DD, чтобы не получить сдвиг на день из-за таймзоны
+      startDate.value = normalizeDateToString(props.asset.first_purchase_date) || ''
     }
   }
 }
@@ -64,8 +82,9 @@ watch(() => props.asset, () => {
 const pricePointsCount = computed(() => {
   if (mode.value !== 'dynamic' || !startDate.value || !endDate.value) return 0
   
-  const start = new Date(startDate.value)
-  const end = new Date(endDate.value)
+  const start = parseYMD(startDate.value)
+  const end = parseYMD(endDate.value)
+  if (!start || !end) return 0
   if (end < start) return 0
   
   const diffTime = Math.abs(end - start)
@@ -91,8 +110,9 @@ const generatePricePoints = () => {
     return []
   }
   
-  const start = new Date(startDate.value)
-  const end = new Date(endDate.value)
+  const start = parseYMD(startDate.value)
+  const end = parseYMD(endDate.value)
+  if (!start || !end) return []
   if (end < start) return []
   
   const points = []
@@ -124,7 +144,7 @@ const generatePricePoints = () => {
     const interpolatedPrice = startPrice.value + (priceDiff * progress)
     
     points.push({
-      date: normalizeDateToString(currentDate) || '',
+      date: toLocalYMD(currentDate),
       price: Math.max(0.01, parseFloat(interpolatedPrice.toFixed(2))) // Минимум 0.01
     })
     
@@ -193,7 +213,13 @@ const handleSubmit = async () => {
       error.value = 'Выберите конечную дату'
       return
     }
-    if (new Date(endDate.value) < new Date(startDate.value)) {
+    const start = parseYMD(startDate.value)
+    const end = parseYMD(endDate.value)
+    if (!start || !end) {
+      error.value = 'Некорректные даты'
+      return
+    }
+    if (end < start) {
       error.value = 'Конечная дата должна быть позже начальной'
       return
     }
