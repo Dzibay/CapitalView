@@ -10,7 +10,8 @@ from app.api.v1 import (
     operations,
     analytics,
     dashboard,
-    tasks
+    tasks,
+    test_errors
 )
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "operations",
     "analytics",
     "dashboard",
-    "tasks"
+    "tasks",
+    "test_errors"
 ]

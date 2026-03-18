@@ -56,6 +56,7 @@ from app.api.v1 import (
     analytics,
     dashboard,
     tasks,
+    test_errors,
     missed_payouts,
     support
 )
@@ -69,6 +70,7 @@ app.include_router(operations.router, prefix="/api/v1", tags=["operations"])
 app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
+app.include_router(test_errors.router, prefix="/api/v1", tags=["test-errors"])
 app.include_router(missed_payouts.router, prefix="/api/v1", tags=["missed-payouts"])
 app.include_router(support.router, prefix="/api/v1", tags=["support"])
 
