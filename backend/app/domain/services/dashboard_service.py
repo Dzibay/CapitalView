@@ -659,17 +659,55 @@ async def get_dashboard_data(user_id: int):
             key=lambda x: x['date']
         )
 
+        # Для графиков капитала/прибыли (всё кроме истории цены актива) нужно,
+        # чтобы "Все время" начиналось с нулевой отметки в общей истории.
+        # Добавляем синтетическую точку перед первой реальной датой.
+        zero_point = None
+        if sorted_hist:
+            first_date_raw = sorted_hist[0].get('date') or ''
+            first_date_str = str(first_date_raw).split('T')[0]
+            try:
+                first_date = datetime.strptime(first_date_str, "%Y-%m-%d").date()
+                zero_point = {
+                    "date": (first_date - timedelta(days=1)).isoformat(),
+                    "value": 0.0,
+                    "invested": 0.0,
+                    "payouts": 0.0,
+                    "pnl": 0.0,
+                    "balance": 0.0,
+                }
+            except Exception:
+                # Если дату распарсить не удалось, не вставляем синтетическую точку.
+                zero_point = None
+
         # Формируем данные для графика
         # Баланс передается отдельно, агрегация value + balance происходит на фронтенде
+        labels = [h['date'] for h in sorted_hist]
+        data_value = [h['value'] for h in sorted_hist]
+        data_invested = [h['invested'] for h in sorted_hist]
+        data_payouts = [h['payouts'] for h in sorted_hist]
+        data_pnl = [h['pnl'] for h in sorted_hist]
+        data_balance = [h.get('balance', 0) for h in sorted_hist]
+
+        if zero_point:
+            labels.insert(0, zero_point['date'])
+            data_value.insert(0, zero_point['value'])
+            data_invested.insert(0, zero_point['invested'])
+            data_payouts.insert(0, zero_point['payouts'])
+            data_pnl.insert(0, zero_point['pnl'])
+            data_balance.insert(0, zero_point['balance'])
+
         p['history'] = {
-            'labels': [h['date'] for h in sorted_hist],
-            'data_value': [h['value'] for h in sorted_hist],
-            'data_invested': [h['invested'] for h in sorted_hist],
-            'data_payouts': [h['payouts'] for h in sorted_hist],
-            'data_pnl': [h['pnl'] for h in sorted_hist],
+            'labels': labels,
+            'data_value': data_value,
+            'data_invested': data_invested,
+            'data_payouts': data_payouts,
+            'data_pnl': data_pnl,
             # Баланс передается отдельно для агрегации на фронтенде
-            'data_balance': [h.get('balance', 0) for h in sorted_hist]
+            'data_balance': data_balance,
         }
+
+        # monthly_change считаем только по реальным точкам (без синтетического "0")
         p['monthly_change'] = calculate_monthly_change(sorted_hist)
         p['asset_allocation'] = calculate_asset_allocation(p.get('combined_assets') or p.get('assets', []))
     logger.debug(f'Форматирование: {time() - time1:.2f} сек')
