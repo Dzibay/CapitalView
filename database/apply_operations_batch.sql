@@ -41,6 +41,8 @@ DECLARE
     v_tx_item RECORD;
     v_tx_date timestamp without time zone;
     v_currency_id bigint;  -- эффективная валюта: из данных или из актива (quote_asset_id)
+    v_currency_ticker text;
+    v_quote_ticker text;
 BEGIN
     IF p_operations IS NULL OR jsonb_array_length(p_operations) = 0 THEN
         RETURN jsonb_build_object(
@@ -77,7 +79,7 @@ BEGIN
         (op->>'user_id')::uuid as user_id,
         (op->>'portfolio_id')::bigint as portfolio_id,
         (op->>'operation_type')::int as operation_type,
-        (op->>'amount')::numeric(20,2) as amount,
+        (op->>'amount')::numeric(20,6) as amount,
         (op->>'currency_id')::bigint as currency_id,
         CASE 
             WHEN (op->>'operation_date')::text ~ 'T' OR (op->>'operation_date')::text ~ ' ' THEN
@@ -90,7 +92,7 @@ BEGIN
         (op->>'dividend_yield')::numeric as dividend_yield,
         (op->>'quantity')::numeric as quantity,
         (op->>'price')::numeric(20,2) as price,
-        COALESCE((op->>'payment')::numeric(20,2), (op->>'amount')::numeric(20,2)) as payment,
+        COALESCE((op->>'payment')::numeric(20,6), (op->>'amount')::numeric(20,6)) as payment,
         op as original_json
     FROM jsonb_array_elements(p_operations) op
     ORDER BY 
@@ -525,6 +527,7 @@ BEGIN
                    AND v_currency_quote_asset_id != v_rub_currency_id 
                    AND v_currency_quote_asset_id != 1 
                    AND v_currency_quote_asset_id > 0 THEN
+                    -- Курс валюты к quote (напр. BTC -> USD)
                     SELECT price INTO v_currency_to_quote_rate
                     FROM asset_prices
                     WHERE asset_id = v_currency_id
@@ -539,11 +542,13 @@ BEGIN
                     END IF;
                     
                     IF v_currency_to_quote_rate IS NULL OR v_currency_to_quote_rate <= 0 THEN
-                        v_currency_to_quote_rate := 1;
+                        SELECT ticker INTO v_currency_ticker FROM assets WHERE id = v_currency_id LIMIT 1;
+                        RAISE EXCEPTION 'Курс валюты % не найден на дату %. Добавьте цену в asset_prices или выберите другую валюту.', COALESCE(v_currency_ticker, 'ID=' || v_currency_id), v_operation_date::date;
                     END IF;
                     
                     v_amount_in_quote := v_op_record.amount * v_currency_to_quote_rate;
                     
+                    -- Курс quote к RUB (напр. USD -> RUB)
                     SELECT price INTO v_quote_to_rub_rate
                     FROM asset_prices
                     WHERE asset_id = v_currency_quote_asset_id
@@ -558,11 +563,13 @@ BEGIN
                     END IF;
                     
                     IF v_quote_to_rub_rate IS NULL OR v_quote_to_rub_rate <= 0 THEN
-                        v_quote_to_rub_rate := 1;
+                        SELECT ticker INTO v_quote_ticker FROM assets WHERE id = v_currency_quote_asset_id LIMIT 1;
+                        RAISE EXCEPTION 'Курс валюты % к рублю не найден на дату %. Добавьте цену в asset_prices.', COALESCE(v_quote_ticker, 'ID=' || v_currency_quote_asset_id), v_operation_date::date;
                     END IF;
                     
                     v_amount_rub := v_amount_in_quote * v_quote_to_rub_rate;
                 ELSE
+                    -- Прямой курс валюты к рублю (для валют с quote_asset_id=RUB)
                     SELECT price INTO v_currency_rate
                     FROM asset_prices
                     WHERE asset_id = v_currency_id
@@ -576,8 +583,9 @@ BEGIN
                         WHERE asset_id = v_currency_id;
                     END IF;
                     
-                    IF v_currency_rate IS NULL THEN
-                        v_currency_rate := 1;
+                    IF v_currency_rate IS NULL OR v_currency_rate <= 0 THEN
+                        SELECT ticker INTO v_currency_ticker FROM assets WHERE id = v_currency_id LIMIT 1;
+                        RAISE EXCEPTION 'Курс валюты % к рублю не найден на дату %. Добавьте цену в asset_prices.', COALESCE(v_currency_ticker, 'ID=' || v_currency_id), v_operation_date::date;
                     END IF;
                     
                     v_amount_rub := v_op_record.amount * v_currency_rate;

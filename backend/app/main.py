@@ -91,8 +91,11 @@ async def startup_event():
         from scripts.run_reference_updates import run_all_updates
         logger.info("Запуск обновления справочных данных (RUN_REFERENCE_UPDATES=1)...")
         await run_all_updates()
+        from app.domain.services.reference_service import invalidate_reference_cache
+        invalidate_reference_cache()  # Сброс кеша для загрузки свежих валют и криптовалют
     
     # Инициализация справочных данных при старте (асинхронно с таймаутом)
+    # Включает валюты (asset_type_id=7) и криптовалюты (asset_type_id=6) для операций
     from app.domain.services.reference_service import init_reference_data_async, init_brokers_async
     await init_reference_data_async()
     await init_brokers_async()
