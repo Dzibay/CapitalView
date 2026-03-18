@@ -81,8 +81,10 @@ defineProps({
   display: flex;
   align-items: center;
   gap: 1rem;
-  flex-shrink: 0;
+  flex-shrink: 1;
   margin-left: auto;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 768px) {

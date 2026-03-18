@@ -72,6 +72,7 @@ const handleChange = (event) => {
   user-select: none;
   font-size: 14px;
   color: #374151;
+  max-width: 100%;
 }
 
 .toggle-switch--disabled {
@@ -130,6 +131,10 @@ const handleChange = (event) => {
   color: #374151;
   line-height: 1.2;
   min-width: 0;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  flex: 1 1 auto; /* позволяет лейблу сжиматься и переносить слова */
 }
 
 @media (max-width: 768px) {
