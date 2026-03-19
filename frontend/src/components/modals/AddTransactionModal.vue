@@ -9,6 +9,7 @@ import { useUIStore } from '../../stores/ui.store'
 import { useAssetsStore } from '../../stores/assets.store'
 import transactionsService from '../../services/transactionsService'
 import assetsService from '../../services/assetsService'
+import operationsService from '../../services/operationsService'
 import { normalizeDateToString } from '../../utils/date'
 import { getCurrencySymbol } from '../../utils/currencySymbols'
 
@@ -50,6 +51,7 @@ const error = ref('')
 const saving = ref(false)
 const loadingPrice = ref(false) // Состояние загрузки рыночной цены
 const priceHistoryCache = ref(null) // Кэш истории цен актива
+const priceHistoryCacheAssetId = ref(null) // Для какого asset_id был загружен кэш
 const isLoadingHistory = ref(false) // Флаг для предотвращения двойной загрузки истории
 const minDate = ref(null) // Минимальная дата (первая цена в истории для покупки или первая покупка для операций)
 const minDateForOperations = ref(null) // Минимальная дата для операций (первая покупка актива)
@@ -452,7 +454,7 @@ function findAssetInPortfolio(portfolioId, assetId) {
 // Если актив уже существует в портфеле, просто возвращает его ID (без создания дубликата)
 // Если актив есть в системе, но не в портфеле - создает portfolio_asset с quantity=0
 // Если актив не найден - создает новый кастомный актив
-async function findOrCreateCurrencyAsset(currencyTicker, currencyId) {
+async function findOrCreateCurrencyAsset(currencyTicker, currencyId, skipReload = false) {
   const refData = dashboardStore.referenceData
   if (!refData?.assets) {
     throw new Error('Не удалось загрузить справочные данные')
@@ -488,7 +490,7 @@ async function findOrCreateCurrencyAsset(currencyTicker, currencyId) {
       date: date.value
     }
     
-    const result = await assetsStore.addAsset(assetData)
+    const result = await assetsStore.addAsset(assetData, skipReload)
     if (result.success && result.asset) {
       return {
         asset_id: existingAsset.id,
@@ -515,7 +517,7 @@ async function findOrCreateCurrencyAsset(currencyTicker, currencyId) {
     date: date.value
   }
   
-  const result = await assetsStore.addAsset(assetData)
+  const result = await assetsStore.addAsset(assetData, skipReload)
   if (result.success && result.asset) {
     return {
       asset_id: result.asset.asset_id,
@@ -545,7 +547,14 @@ async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
     let priceHistory = cachedHistory
     
     // Если история не передана, но есть в глобальном кэше, используем её
-    if (!priceHistory && priceHistoryCache.value && priceHistoryCache.value.length > 0) {
+    // только если кэш относится к тому же asset_id.
+    // Иначе можно случайно взять историю Лукойла и применить её для BTC.
+    if (
+      !priceHistory &&
+      priceHistoryCache.value &&
+      priceHistoryCache.value.length > 0 &&
+      priceHistoryCacheAssetId.value === assetId
+    ) {
       priceHistory = priceHistoryCache.value
     }
     
@@ -679,6 +688,7 @@ async function loadPriceHistory() {
     if (priceHistoryResponse.success && priceHistoryResponse.prices) {
       // Сохраняем историю в кэш
       priceHistoryCache.value = priceHistoryResponse.prices
+      priceHistoryCacheAssetId.value = props.asset.asset_id
       return true
     }
     
@@ -712,6 +722,7 @@ async function loadPriceHistoryForDateRestriction() {
     if (priceHistoryResponse.success && priceHistoryResponse.prices && priceHistoryResponse.prices.length > 0) {
       // Сохраняем историю в кэш
       priceHistoryCache.value = priceHistoryResponse.prices
+      priceHistoryCacheAssetId.value = props.asset.asset_id
       
       // Находим первую дату с ценой (самую раннюю)
       const sortedPrices = [...priceHistoryResponse.prices].sort((a, b) => {
@@ -820,6 +831,7 @@ watch(date, async (newDate, oldDate) => {
 watch(() => props.asset?.asset_id, async (newAssetId, oldAssetId) => {
   if (newAssetId !== oldAssetId) {
     priceHistoryCache.value = null
+    priceHistoryCacheAssetId.value = null
     minDate.value = null
     // Если переключатель включен и актив изменился, загружаем новую историю
     if (useMarketPrice.value && isTransaction.value && newAssetId && date.value) {
@@ -835,7 +847,7 @@ watch(() => props.asset?.asset_id, async (newAssetId, oldAssetId) => {
 })
 
 // Функция для создания транзакции покупки
-async function createBuyTransaction(assetId, portfolioAssetId, quantity, transactionDate) {
+async function createBuyTransaction(assetId, portfolioAssetId, quantity, transactionDate, skipReload = false) {
   // Получаем рыночную цену актива на дату операции
   let price = await getAssetPriceOnDate(assetId, transactionDate)
   
@@ -871,7 +883,8 @@ async function createBuyTransaction(assetId, portfolioAssetId, quantity, transac
     transaction_type: 1, // buy
     quantity,
     price,
-    transaction_date: transactionDate
+    transaction_date: transactionDate,
+    skipReload
   })
 }
 
@@ -1023,40 +1036,35 @@ const handleSubmit = async () => {
         create_deposit_operation: createDepositOperation.value && operationType.value === 1
       })
     } else if (mode.value === 'recurring') {
-      // Для повторяющихся операций используем batch API
-      // Получаем portfolio_id из актива или портфелей
+      // Для повторяющихся операций создаем все элементы в одном apply-запросе
       const portfolioId = props.asset?.portfolio_id || getPortfolioId()
-      
-      const batchData = {
-        portfolio_id: portfolioId,
-        operation_type: operationType.value,
-        amount: amount.value,
-        start_date: startDate.value,
-        end_date: endDate.value,
-        day_of_month: dayOfMonth.value,
-        currency_id: isPayout.value ? currencyId.value : 1
+      const dates = generateRecurringDates(startDate.value, endDate.value, dayOfMonth.value)
+
+      const operations = dates.map((opDate) => {
+        const dateStr = normalizeDateToString(opDate) || ''
+
+        const opItem = {
+          portfolio_id: portfolioId,
+          operation_type: operationType.value,
+          amount: amount.value,
+          operation_date: dateStr,
+          currency_id: isPayout.value ? currencyId.value : 1,
+          create_deposit_operation: createDepositOperation.value && (operationType.value === 7 || operationType.value === 8),
+        }
+
+        if (props.asset?.asset_id) opItem.asset_id = props.asset.asset_id
+        if (props.asset?.portfolio_asset_id) opItem.portfolio_asset_id = props.asset.portfolio_asset_id
+
+        return opItem
+      })
+
+      await operationsService.applyOperations(operations)
+
+      // Если не создаем buy-операции для нового валютного актива,
+      // обновляем dashboard прямо сейчас.
+      if (!(isPayout.value && createAssetFromCurrency.value && selectedCurrency.value.ticker !== 'RUB')) {
+        await dashboardStore.reloadDashboard()
       }
-      
-      // Добавляем asset_id если есть
-      if (props.asset?.asset_id) {
-        batchData.asset_id = props.asset.asset_id
-      }
-      
-      // Для Buy/Sell также нужны portfolio_asset_id
-      if (props.asset?.portfolio_asset_id) {
-        batchData.portfolio_asset_id = props.asset.portfolio_asset_id
-      }
-      
-      // Доходность не сохраняется (дивиденд_yield не используется)
-      
-      // Добавляем флаг создания операций пополнения для комиссий/налогов
-      if (createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)) {
-        batchData.create_deposit_operation = true
-      }
-      
-      // Создаем операции через batch API
-      // Операции пополнения будут созданы автоматически на сервере, если установлен флаг
-      await transactionsStore.addOperationsBatch(batchData, false)
       
       // Если нужно создать актив из валюты для повторяющихся операций
       // Это создает транзакции покупки актива валюты (например, BTC) для каждой даты выплаты дивидендов
@@ -1064,7 +1072,7 @@ const handleSubmit = async () => {
         // findOrCreateCurrencyAsset проверяет, есть ли актив уже в портфеле
         // Если есть - возвращает существующий portfolio_asset_id (без создания дубликата)
         // Если нет - создает новый portfolio_asset с quantity=0
-        const currencyAsset = await findOrCreateCurrencyAsset(selectedCurrency.value.ticker, currencyId.value)
+        const currencyAsset = await findOrCreateCurrencyAsset(selectedCurrency.value.ticker, currencyId.value, true)
         const dates = generateRecurringDates(startDate.value, endDate.value, dayOfMonth.value)
         
         // Создаем транзакции покупки для каждой даты
@@ -1079,7 +1087,8 @@ const handleSubmit = async () => {
               currencyAsset.asset_id,
               currencyAsset.portfolio_asset_id,
               Math.abs(amount.value),
-              dateStr
+              dateStr,
+              true
             )
           }))
         }
@@ -1088,53 +1097,90 @@ const handleSubmit = async () => {
         await dashboardStore.reloadDashboard()
       }
     } else {
-      // Для остальных операций используем обычный API
-      // Получаем portfolio_id из актива или портфелей
+      // Для остальных операций используем один запрос для payout+buy (если включено создание актива из валюты)
       const portfolioId = props.asset?.portfolio_id || getPortfolioId()
-      
-      const operationData = {
-        portfolio_id: portfolioId,
-        operation_type: operationType.value,
-        amount: amount.value,
-        operation_date: date.value,
-        currency_id: isPayout.value ? currencyId.value : 1,
-        create_deposit_operation: createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)
-      }
-      
-      // Добавляем asset_id если есть
-      if (props.asset?.asset_id) {
-        operationData.asset_id = props.asset.asset_id
-      }
-      
-      // Для Buy/Sell также нужны portfolio_asset_id
-      if (props.asset?.portfolio_asset_id) {
-        operationData.portfolio_asset_id = props.asset.portfolio_asset_id
-      }
-      
-      // Доходность не сохраняется (dividend_yield не используется)
-      
-      // Создаем операцию (она обновит dashboard один раз после всех операций)
-      await transactionsStore.addOperation(operationData, false) // skipReload=false - это последняя операция, обновим dashboard
-      
-      // Если нужно создать актив из валюты для одиночной операции
-      // Это создает транзакцию покупки актива валюты (например, BTC), в которую выплачены дивиденды
+
       if (isPayout.value && createAssetFromCurrency.value && selectedCurrency.value.ticker !== 'RUB') {
-        // findOrCreateCurrencyAsset проверяет, есть ли актив уже в портфеле
-        // Если есть - возвращает существующий portfolio_asset_id (без создания дубликата)
-        // Если нет - создает новый portfolio_asset с quantity=0
-        const currencyAsset = await findOrCreateCurrencyAsset(selectedCurrency.value.ticker, currencyId.value)
-        
-        // Создаем транзакцию покупки актива валюты
-        // Цена получается автоматически из истории цен на дату операции
-        // Количество = сумма дивидендов в валюте выплаты
-        // createBuyTransaction использует store, который автоматически обновит dashboard
-        // Если актив уже был в портфеле, транзакция просто добавится к существующему активу
-        await createBuyTransaction(
-          currencyAsset.asset_id,
-          currencyAsset.portfolio_asset_id,
-          Math.abs(amount.value),
-          date.value
+        // 1) Гарантируем существование portfolio_asset валюты выплаты,
+        //    но без лишнего reload (reload сделаем один раз после apply на бэкенде).
+        const currencyAsset = await findOrCreateCurrencyAsset(
+          selectedCurrency.value.ticker,
+          currencyId.value,
+          true
         )
+
+        // 2) Считаем цену buy-транзакции на дату (логика как в createBuyTransaction, но без создания tx)
+        let buyPrice = await getAssetPriceOnDate(currencyAsset.asset_id, date.value)
+
+        if (!buyPrice || buyPrice <= 0) {
+          const refData = dashboardStore.referenceData
+          if (refData?.assets) {
+            const asset = refData.assets.find(a => a.id === currencyAsset.asset_id)
+            if (asset?.ticker && refData.currencies) {
+              const currency = refData.currencies.find(c => c.ticker === asset.ticker)
+              if (currency?.rate_to_rub) {
+                buyPrice = parseFloat(currency.rate_to_rub)
+              }
+            }
+            if ((!buyPrice || buyPrice <= 0) && asset?.last_price) {
+              buyPrice = parseFloat(asset.last_price)
+            }
+          }
+        }
+
+        if (!buyPrice || buyPrice <= 0) {
+          console.warn(
+            `Не удалось получить цену актива ${currencyAsset.asset_id} на дату ${date.value}. Используется fallback цена = 1.`
+          )
+          buyPrice = 1
+        }
+
+        // 3) Один POST: payout + buy через /operations/apply
+        await operationsService.applyOperations([
+          // Cash payout
+          {
+            operation_type: operationType.value, // 3=Dividend, 4=Coupon
+            operation_date: date.value,
+            amount: amount.value,
+            currency_id: currencyId.value,
+            asset_id: props.asset.asset_id,
+            portfolio_asset_id: props.asset.portfolio_asset_id,
+          },
+          // Buy валютного актива на сумму выплаты
+          {
+            operation_type: 1, // Buy
+            operation_date: date.value,
+            asset_id: currencyAsset.asset_id,
+            portfolio_asset_id: currencyAsset.portfolio_asset_id,
+            quantity: Math.abs(amount.value),
+            price: buyPrice,
+            create_deposit_operation: false,
+            // portfolio_id не обязательно, сервер выведет из portfolio_asset_id
+          }
+        ])
+
+        // 4) Один reload после успешного apply
+        await dashboardStore.reloadDashboard()
+      } else {
+        // Для остальных операций: старый режим (single payout без создания актива, комиссии/налоги и т.п.)
+        const operationData = {
+          portfolio_id: portfolioId,
+          operation_type: operationType.value,
+          amount: amount.value,
+          operation_date: date.value,
+          currency_id: isPayout.value ? currencyId.value : 1,
+          create_deposit_operation: createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)
+        }
+
+        if (props.asset?.asset_id) {
+          operationData.asset_id = props.asset.asset_id
+        }
+
+        if (props.asset?.portfolio_asset_id) {
+          operationData.portfolio_asset_id = props.asset.portfolio_asset_id
+        }
+
+        await transactionsStore.addOperation(operationData, false)
       }
     }
     

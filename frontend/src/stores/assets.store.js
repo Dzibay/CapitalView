@@ -5,7 +5,7 @@ import { useUIStore } from './ui.store'
 
 export const useAssetsStore = defineStore('assets', {
   actions: {
-    async addAsset(assetData) {
+    async addAsset(assetData, skipReload = false) {
       try {
         const res = await assetsService.addAsset(assetData)
         if (res.success && res.asset) {
@@ -14,12 +14,14 @@ export const useAssetsStore = defineStore('assets', {
           // Оптимистичное обновление
           dashboardStore.addAssetOptimistic(res.asset, assetData.portfolio_id)
           
-          // Фоновая перезагрузка для синхронизации
-          dashboardStore.reloadDashboard().catch(err => {
-            if (import.meta.env.VITE_APP_DEV) {
-              console.error('Ошибка фоновой перезагрузки:', err)
-            }
-          })
+          // Фоновая перезагрузка для синхронизации (если не подавлен)
+          if (!skipReload) {
+            dashboardStore.reloadDashboard().catch(err => {
+              if (import.meta.env.VITE_APP_DEV) {
+                console.error('Ошибка фоновой перезагрузки:', err)
+              }
+            })
+          }
         }
         return res
       } catch (err) {

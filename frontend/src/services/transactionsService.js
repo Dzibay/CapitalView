@@ -1,20 +1,33 @@
 import apiClient from '../utils/apiClient';
 import { API_ENDPOINTS } from '../config/api';
+import operationsService from './operationsService';
 
 export default {
   async addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, transaction_date, create_deposit_operation = false) {
-    const payload = {
-      asset_id,
-      portfolio_asset_id,
-      transaction_type,
-      quantity,
-      price,
-      transaction_date,
-      create_deposit_operation
+    // transaction_type: 1=Buy, 2=Sell, 3=Redemption (UI-level)
+    // SQL operations_type ids: 1=Buy, 2=Sell, 9=Redemption
+    const operation_type_map = {
+      1: 1,
+      2: 2,
+      3: 9,
     };
 
-    const res = await apiClient.post(API_ENDPOINTS.TRANSACTIONS.BASE, payload);
-    return res.data;
+    const mappedOperationType = operation_type_map[transaction_type];
+    if (!mappedOperationType) {
+      throw new Error(`Некорректный transaction_type=${transaction_type}`);
+    }
+
+    return operationsService.applyOperations([
+      {
+        operation_type: mappedOperationType,
+        operation_date: transaction_date,
+        asset_id,
+        portfolio_asset_id,
+        quantity,
+        price,
+        create_deposit_operation: !!create_deposit_operation,
+      },
+    ]);
   },
 
   async getTransactions({ asset_name, portfolio_id, start_date, end_date, limit } = {}) {
@@ -27,11 +40,6 @@ export default {
     if (limit) params.limit = limit;
 
     const res = await apiClient.get(API_ENDPOINTS.TRANSACTIONS.BASE, { params });
-    return res.data;
-  },
-
-  async editTransaction(updated_transaction) {
-    const res = await apiClient.put(API_ENDPOINTS.TRANSACTIONS.BASE, updated_transaction);
     return res.data;
   },
 

@@ -16,12 +16,13 @@ export default {
   },
 
   async addOperation(operationData) {
-    const res = await apiClient.post(API_ENDPOINTS.OPERATIONS.BASE, operationData);
+    // Унифицированно: все создание операций делаем через /operations/apply
+    const res = await apiClient.post(API_ENDPOINTS.OPERATIONS.APPLY, { operations: [operationData] });
     return res.data;
   },
-
-  async addOperationsBatch(batchData) {
-    const res = await apiClient.post(API_ENDPOINTS.OPERATIONS.BATCH, batchData);
+  
+  async applyOperations(operations) {
+    const res = await apiClient.post(API_ENDPOINTS.OPERATIONS.APPLY, { operations });
     return res.data;
   },
 
@@ -32,11 +33,15 @@ export default {
     return res.data;
   },
 
-  async updateOperation(operation_id, { operation_date, amount }) {
-    const payload = {};
-    if (operation_date != null) payload.operation_date = operation_date;
-    if (amount != null) payload.amount = amount;
-    const res = await apiClient.patch(API_ENDPOINTS.OPERATIONS.UPDATE(operation_id), payload);
+  async updateOperation(operation_id, { operation_date, amount, quantity, price }) {
+    return this.updateOperationsBatch([
+      { operation_id, operation_date, amount, quantity, price },
+    ])
+  },
+  async updateOperationsBatch(updates) {
+    const res = await apiClient.patch(API_ENDPOINTS.OPERATIONS.APPLY_UPDATES, {
+      updates,
+    });
     return res.data;
-  }
+  },
 };

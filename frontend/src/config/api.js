@@ -42,7 +42,8 @@ export const API_ENDPOINTS = {
   },
   OPERATIONS: {
     BASE: '/operations/',
-    BATCH: '/operations/batch',  // Массовое создание операций
+    APPLY: '/operations/apply',
+    APPLY_UPDATES: '/operations/apply-updates',
     UPDATE: (id) => `/operations/${id}`,  // PATCH — обновление операции (дата/сумма)
   },
   ANALYTICS: {

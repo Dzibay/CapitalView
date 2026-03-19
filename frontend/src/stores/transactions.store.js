@@ -28,18 +28,20 @@ export const useTransactionsStore = defineStore('transactions', {
       this.startDate = ''
       this.endDate = ''
     },
-    async addTransaction({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date, transaction_date, create_deposit_operation = false }) {
+    async addTransaction({ asset_id, portfolio_asset_id, transaction_type, quantity, price, date, transaction_date, create_deposit_operation = false, skipReload = false }) {
       const dashboardStore = useDashboardStore()
       
       try {
         // Используем transaction_date если есть, иначе date
         const txDate = transaction_date || date
         await transactionsService.addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, txDate, create_deposit_operation)
-        dashboardStore.reloadDashboard(false).catch(err => {
-          if (import.meta.env.VITE_APP_DEV) {
-            console.error('Ошибка обновления dashboard после добавления транзакции:', err)
-          }
-        })
+        if (!skipReload) {
+          dashboardStore.reloadDashboard(false).catch(err => {
+            if (import.meta.env.VITE_APP_DEV) {
+              console.error('Ошибка обновления dashboard после добавления транзакции:', err)
+            }
+          })
+        }
       } catch (err) {
         if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка добавления транзакции:', err)
@@ -64,38 +66,6 @@ export const useTransactionsStore = defineStore('transactions', {
       } catch (err) {
         if (import.meta.env.VITE_APP_DEV) {
           console.error('Ошибка добавления операции:', err)
-        }
-        throw err
-      }
-    },
-
-    async addOperationsBatch(batchData, skipReload = false) {
-      const dashboardStore = useDashboardStore()
-      
-      try {
-        const result = await operationsService.addOperationsBatch(batchData)
-        if (!skipReload) {
-          dashboardStore.reloadDashboard(false).catch(err => {
-            if (import.meta.env.VITE_APP_DEV) {
-              console.error('Ошибка обновления dashboard после добавления операций:', err)
-            }
-          })
-        }
-        return result
-      } catch (err) {
-        if (import.meta.env.VITE_APP_DEV) {
-          console.error('Ошибка массового добавления операций:', err)
-        }
-        throw err
-      }
-    },
-
-    async editTransaction(updated_transaction) {
-      try {
-        await transactionsService.editTransaction(updated_transaction)
-      } catch (err) {
-        if (import.meta.env.VITE_APP_DEV) {
-          console.error('Ошибка редактирования транзакции:', err)
         }
         throw err
       }

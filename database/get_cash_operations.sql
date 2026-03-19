@@ -19,7 +19,8 @@ RETURNS TABLE (
     asset_id bigint,
     asset_name text,
     operation_date timestamp,
-    transaction_id bigint
+    transaction_id bigint,
+    portfolio_asset_id bigint
 )
 LANGUAGE plpgsql
 AS $$
@@ -53,7 +54,21 @@ BEGIN
         a.id AS asset_id,
         a.name AS asset_name,
         co.date::timestamp AS operation_date,
-        co.transaction_id AS transaction_id
+        co.transaction_id AS transaction_id,
+        -- Для cash_operations, которые привязаны к транзакциям (Buy/Sell/Redemption),
+        -- portfolio_asset_id берём из transactions. Для cash_operations без transaction_id
+        -- (например, Deposit/Commission/Tax) резолвим portfolio_asset_id через (portfolio_id, asset_id).
+        COALESCE(
+            t.portfolio_asset_id,
+            (
+                SELECT pa.id
+                FROM portfolio_assets pa
+                WHERE pa.portfolio_id = p.id
+                  AND pa.asset_id = a.id
+                ORDER BY pa.id
+                LIMIT 1
+            )
+        ) AS portfolio_asset_id
     FROM cash_operations co
     JOIN portfolios p
         ON p.id = co.portfolio_id
@@ -65,6 +80,8 @@ BEGIN
         ON curr.asset_id = co.currency
     LEFT JOIN assets a
         ON a.id = co.asset_id
+    LEFT JOIN transactions t
+        ON t.id = co.transaction_id
     WHERE co.user_id = p_user_id
         AND (p_portfolio_id IS NULL OR co.portfolio_id = p_portfolio_id)
         AND (p_start_date IS NULL OR co.date >= p_start_date)
