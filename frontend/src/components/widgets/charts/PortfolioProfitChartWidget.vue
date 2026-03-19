@@ -191,6 +191,7 @@ watch(() => props.chartData, () => {
       <MultiLineChart
         :chartData="formattedChartData"
         :period="selectedPeriod"
+        :zeroAtStart="false"
         :formatCurrency="formatCurrency"
       />
     </div>

@@ -6,7 +6,9 @@ export default {
     const params = {};
     if (portfolio_id) params.portfolio_id = portfolio_id;
     
-    const res = await apiClient.get(API_ENDPOINTS.MISSED_PAYOUTS.BASE, { params });
+    // FastAPI-маршрут объявлен как GET "/" внутри prefix "/missed-payouts",
+    // поэтому необходим trailing slash, иначе будет 307 redirect.
+    const res = await apiClient.get(`${API_ENDPOINTS.MISSED_PAYOUTS.BASE}/`, { params });
     return res.data?.data?.missed_payouts || res.data?.missed_payouts || [];
   },
 

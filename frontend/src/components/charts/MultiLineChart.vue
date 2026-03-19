@@ -27,6 +27,11 @@ const props = defineProps({
     type: String,
     default: null
   },
+  // Явное управление добавлением "нулевой" точки в начало истории.
+  // Если не задано — поведение как раньше: не добавляем для `chartType === 'price'`.
+  zeroAtStart: {
+    type: Boolean
+  },
   formatCurrency: {
     type: Function,
     default: (x) => x
@@ -169,7 +174,7 @@ const shortMonth = (date) => {
 /* --------------------------------------------------------------------------
    Adaptive data aggregation with interval-based sampling
 -------------------------------------------------------------------------- */
-function aggregateData(dataObj, period, chartType) {
+function aggregateData(dataObj, period, chartType, zeroAtStart) {
   if (!dataObj?.labels?.length) return { labels: [], datasets: [] }
 
   const today = new Date()
@@ -183,7 +188,7 @@ function aggregateData(dataObj, period, chartType) {
   if (!points.length) return { labels: [], datasets: Array.from({ length: numDS }, () => []) }
 
   const firstPt = points[0].date
-  const needsZero = chartType !== 'price'
+  const needsZero = (zeroAtStart !== undefined) ? zeroAtStart : (chartType !== 'price')
 
   let start
   if (period === '1M') {
@@ -524,7 +529,7 @@ const renderChart = (aggr) => {
 
 /* -------------------------------------------------------------------------- */
 const update = () => {
-  const aggr = aggregateData(props.chartData, props.period, props.chartType)
+  const aggr = aggregateData(props.chartData, props.period, props.chartType, props.zeroAtStart)
   renderChart(aggr)
 }
 

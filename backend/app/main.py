@@ -56,6 +56,7 @@ from app.api.v1 import (
     analytics,
     dashboard,
     tasks,
+    test_errors,
     missed_payouts,
     support
 )
@@ -69,6 +70,7 @@ app.include_router(operations.router, prefix="/api/v1", tags=["operations"])
 app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
+app.include_router(test_errors.router, prefix="/api/v1", tags=["test-errors"])
 app.include_router(missed_payouts.router, prefix="/api/v1", tags=["missed-payouts"])
 app.include_router(support.router, prefix="/api/v1", tags=["support"])
 
@@ -91,8 +93,11 @@ async def startup_event():
         from scripts.run_reference_updates import run_all_updates
         logger.info("Запуск обновления справочных данных (RUN_REFERENCE_UPDATES=1)...")
         await run_all_updates()
+        from app.domain.services.reference_service import invalidate_reference_cache
+        invalidate_reference_cache()  # Сброс кеша для загрузки свежих валют и криптовалют
     
     # Инициализация справочных данных при старте (асинхронно с таймаутом)
+    # Включает валюты (asset_type_id=7) и криптовалюты (asset_type_id=6) для операций
     from app.domain.services.reference_service import init_reference_data_async, init_brokers_async
     await init_reference_data_async()
     await init_brokers_async()

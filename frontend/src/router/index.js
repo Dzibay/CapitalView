@@ -17,6 +17,8 @@ const AssetDetail = () => import('../views/AssetDetail.vue');
 const Transactions = () => import('../views/Transactions.vue');
 const Dividends = () => import('../views/Dividends.vue');
 const Settings = () => import('../views/Settings.vue');
+const ErrorStatus = () => import('../views/errors/ErrorStatus.vue');
+const NotFound404 = () => import('../views/errors/NotFound404.vue');
 
 const routes = [
   { path: '/', component: Home },
@@ -41,7 +43,11 @@ const routes = [
       { path: '/dividends', component: Dividends },
       { path: '/settings', component: Settings }
     ]
-  }
+  },
+  // Ошибки
+  { path: '/error/:code', component: ErrorStatus },
+  // Catch-all: всё остальное считаем 404
+  { path: '/:pathMatch(.*)*', component: NotFound404 }
 ]
 
 const router = createRouter({

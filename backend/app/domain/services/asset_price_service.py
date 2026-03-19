@@ -1,4 +1,5 @@
 from app.infrastructure.database.database_service import rpc
+from app.infrastructure.database.postgres_service import get_db_connection
 from app.utils.date import normalize_date_to_string
 from app.domain.services.portfolio_service import update_portfolios_with_asset
 from app.core.logging import get_logger
@@ -81,6 +82,7 @@ def add_asset_prices_batch(asset_id: int, prices: list):
         return {"success": False, "error": "Ошибка при проверке актива"}
 
     price_data_list = []
+    normalized_dates = []
     for price_item in prices:
         price = price_item.get('price', 0)
         date = price_item.get('date')
@@ -91,23 +93,38 @@ def add_asset_prices_batch(asset_id: int, prices: list):
         if not date:
             continue
 
-        if hasattr(date, 'isoformat'):
-            date_str = date.isoformat()
-        elif isinstance(date, str):
-            date_str = date
-        else:
-            date_str = str(date)
+        # Приводим дату к YYYY-MM-DD (trade_date = date)
+        date_str = normalize_date_to_string(date, include_time=False)
+        if not date_str:
+            continue
 
         price_data_list.append({
             "asset_id": asset_id,
             "price": float(price),
             "trade_date": date_str
         })
+        normalized_dates.append(date_str)
 
     if not price_data_list:
         return {"success": False, "error": "Нет валидных цен для добавления"}
 
     try:
+        # Удаляем все предыдущие цены в интервале динамики,
+        # чтобы убрать “старые” точки (например, daily -> month).
+        min_date = min(normalized_dates)
+        max_date = max(normalized_dates)
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM asset_prices
+                    WHERE asset_id = %s
+                      AND trade_date BETWEEN %s AND %s
+                    """,
+                    (asset_id, min_date, max_date),
+                )
+            conn.commit()
+
         result = rpc("upsert_asset_prices", {"p_prices": price_data_list})
 
         if result is False:

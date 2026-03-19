@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { Check, PlusCircle, TrendingUp, RefreshCw, Hash, DollarSign, Calendar } from 'lucide-vue-next'
+import { Check, PlusCircle, TrendingUp, RefreshCw, Hash, DollarSign, Calendar, Settings, CircleDollarSign, CalendarDays, Info } from 'lucide-vue-next'
 import { Button, ToggleSwitch, DateInput, CustomSelect } from '../base'
 import ModalBase from './ModalBase.vue'
 import { useTransactionsStore } from '../../stores/transactions.store'
@@ -45,7 +45,6 @@ const operationType = ref(1) // По умолчанию Покупка
 const quantity = ref(0)
 const price = ref(0)
 const amount = ref(0)
-const dividendYield = ref(null)
 const date = ref(normalizeDateToString(new Date()) || '')
 const error = ref('')
 const saving = ref(false)
@@ -173,8 +172,7 @@ watch(() => operationType.value, (newType) => {
   }
 })
 
-// Валюты
-const useCustomCurrency = ref(false)
+// Валюта выплаты (для Dividend/Coupon и cash операций)
 const currencyId = ref(1) // RUB по умолчанию
 const createAssetFromCurrency = ref(false) // Автоматически создать актив из валюты
 
@@ -246,23 +244,25 @@ const currencies = computed(() => {
   }))
 })
 
-// Текущая цена актива и количество для расчета доходности
-const assetPrice = computed(() => {
-  if (!props.asset?.last_price) return null
-  return props.asset.last_price
-})
-
-const assetQuantity = computed(() => {
-  if (!props.asset?.quantity) return null
-  return props.asset.quantity
-})
-
 // Вычисляем количество операций для повторяющегося режима
 const operationsCount = computed(() => {
   if (mode.value !== 'recurring' || !startDate.value || !endDate.value || !dayOfMonth.value) return 0
   
-  const start = new Date(startDate.value)
-  const end = new Date(endDate.value)
+  // Важно: new Date('YYYY-MM-DD') интерпретируется как UTC, а дальнейшие getFullYear/getMonth/getDate
+  // зависят от локального таймзона => возможен off-by-one. Парсим в локальную дату вручную.
+  const parseYMD = (ymd) => {
+    if (typeof ymd !== 'string') return null
+    const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (!m) return null
+    const year = Number(m[1])
+    const monthIndex = Number(m[2]) - 1
+    const day = Number(m[3])
+    return new Date(year, monthIndex, day)
+  }
+  
+  const start = parseYMD(startDate.value)
+  const end = parseYMD(endDate.value)
+  if (!start || !end) return 0
   if (end < start) return 0
   
   // Функция для получения валидного дня месяца
@@ -311,59 +311,6 @@ const operationsCount = computed(() => {
   
   return count
 })
-
-// Автоматический расчет доходности для выплат с учетом валют
-watch([amount, assetPrice, assetQuantity, currencyId, useCustomCurrency, operationType], () => {
-  if (isPayout.value && amount.value && assetPrice.value && assetQuantity.value) {
-    // Получаем валюту актива
-    const assetCurrencyId = props.asset?.quote_asset_id || 1 // По умолчанию RUB
-    const payoutCurrencyId = useCustomCurrency.value ? currencyId.value : 1
-    
-    // Получаем тикеры валют из referenceData
-    const refData = dashboardStore.referenceData
-    let assetCurrencyTicker = 'RUB'
-    let payoutCurrencyTicker = 'RUB'
-    
-    if (refData && refData.currencies) {
-      const assetCurrency = refData.currencies.find(c => c.id === assetCurrencyId)
-      if (assetCurrency && assetCurrency.ticker) {
-        assetCurrencyTicker = assetCurrency.ticker
-      }
-      
-      const payoutCurrency = refData.currencies.find(c => c.id === payoutCurrencyId)
-      if (payoutCurrency && payoutCurrency.ticker) {
-        payoutCurrencyTicker = payoutCurrency.ticker
-      }
-    }
-    
-    // Рассчитываем доходность: (сумма выплаты / (цена актива * количество)) * 100
-    const totalValue = assetPrice.value * assetQuantity.value
-    if (totalValue > 0) {
-      let payoutAmountInAssetCurrency = Math.abs(amount.value)
-      
-      // Если валюта выплаты отличается от валюты актива, конвертируем сумму выплаты
-      if (payoutCurrencyTicker !== assetCurrencyTicker) {
-        // Получаем курсы валют (если доступны)
-        // Для упрощения используем прямую конвертацию через курсы, если они есть
-        // Если курсов нет, используем упрощенный расчет (предполагаем 1:1 для одинаковых валют)
-        // В реальности нужно получать курсы из referenceData или из данных актива
-        const assetCurrencyRate = props.asset?.currency_rate_to_rub || 1
-        const payoutCurrencyRate = 1 // TODO: получить курс валюты выплаты из referenceData
-        
-        // Конвертируем: сумма выплаты в валюте выплаты -> RUB -> валюта актива
-        const amountInRub = payoutAmountInAssetCurrency * payoutCurrencyRate
-        payoutAmountInAssetCurrency = assetCurrencyRate > 0 ? amountInRub / assetCurrencyRate : payoutAmountInAssetCurrency
-      }
-      
-      dividendYield.value = parseFloat(((payoutAmountInAssetCurrency / totalValue) * 100).toFixed(4))
-    } else {
-      dividendYield.value = null
-    }
-  } else if (!isPayout.value) {
-    // Сбрасываем доходность для не-выплат
-    dividendYield.value = null
-  }
-}, { immediate: false })
 
 // Вычисляемые свойства
 const selectedOperation = computed(() => {
@@ -424,7 +371,6 @@ const requiresAmount = computed(() => {
 })
 
 const selectedCurrency = computed(() => {
-  if (!useCustomCurrency.value) return { ticker: 'RUB', symbol: '₽' }
   const currency = currencies.value.find(c => c.value === currencyId.value)
   if (!currency) return { ticker: 'RUB', symbol: '₽' }
   // Используем ticker из объекта валюты
@@ -932,8 +878,19 @@ async function createBuyTransaction(assetId, portfolioAssetId, quantity, transac
 // Функция для генерации дат для повторяющихся операций
 function generateRecurringDates(startDate, endDate, dayOfMonth) {
   const dates = []
-  const start = new Date(startDate)
-  const end = new Date(endDate)
+  const parseYMD = (ymd) => {
+    if (typeof ymd !== 'string') return null
+    const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (!m) return null
+    const year = Number(m[1])
+    const monthIndex = Number(m[2]) - 1
+    const day = Number(m[3])
+    return new Date(year, monthIndex, day)
+  }
+  
+  const start = parseYMD(startDate)
+  const end = parseYMD(endDate)
+  if (!start || !end) return dates
   
   let current = new Date(start.getFullYear(), start.getMonth(), dayOfMonth)
   
@@ -1077,7 +1034,7 @@ const handleSubmit = async () => {
         start_date: startDate.value,
         end_date: endDate.value,
         day_of_month: dayOfMonth.value,
-        currency_id: useCustomCurrency.value ? currencyId.value : 1
+        currency_id: isPayout.value ? currencyId.value : 1
       }
       
       // Добавляем asset_id если есть
@@ -1090,10 +1047,7 @@ const handleSubmit = async () => {
         batchData.portfolio_asset_id = props.asset.portfolio_asset_id
       }
       
-      // Для выплат добавляем доходность (если указана)
-      if (isPayout.value && dividendYield.value) {
-        batchData.dividend_yield = dividendYield.value
-      }
+      // Доходность не сохраняется (дивиденд_yield не используется)
       
       // Добавляем флаг создания операций пополнения для комиссий/налогов
       if (createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)) {
@@ -1106,7 +1060,7 @@ const handleSubmit = async () => {
       
       // Если нужно создать актив из валюты для повторяющихся операций
       // Это создает транзакции покупки актива валюты (например, BTC) для каждой даты выплаты дивидендов
-      if (isPayout.value && createAssetFromCurrency.value && useCustomCurrency.value && selectedCurrency.value.ticker !== 'RUB') {
+      if (isPayout.value && createAssetFromCurrency.value && selectedCurrency.value.ticker !== 'RUB') {
         // findOrCreateCurrencyAsset проверяет, есть ли актив уже в портфеле
         // Если есть - возвращает существующий portfolio_asset_id (без создания дубликата)
         // Если нет - создает новый portfolio_asset с quantity=0
@@ -1143,7 +1097,7 @@ const handleSubmit = async () => {
         operation_type: operationType.value,
         amount: amount.value,
         operation_date: date.value,
-        currency_id: useCustomCurrency.value ? currencyId.value : 1, // Выбранная валюта или RUB по умолчанию
+        currency_id: isPayout.value ? currencyId.value : 1,
         create_deposit_operation: createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)
       }
       
@@ -1157,17 +1111,14 @@ const handleSubmit = async () => {
         operationData.portfolio_asset_id = props.asset.portfolio_asset_id
       }
       
-      // Для выплат добавляем доходность (если указана)
-      if (isPayout.value && dividendYield.value) {
-        operationData.dividend_yield = dividendYield.value
-      }
+      // Доходность не сохраняется (dividend_yield не используется)
       
       // Создаем операцию (она обновит dashboard один раз после всех операций)
       await transactionsStore.addOperation(operationData, false) // skipReload=false - это последняя операция, обновим dashboard
       
       // Если нужно создать актив из валюты для одиночной операции
       // Это создает транзакцию покупки актива валюты (например, BTC), в которую выплачены дивиденды
-      if (isPayout.value && createAssetFromCurrency.value && useCustomCurrency.value && selectedCurrency.value.ticker !== 'RUB') {
+      if (isPayout.value && createAssetFromCurrency.value && selectedCurrency.value.ticker !== 'RUB') {
         // findOrCreateCurrencyAsset проверяет, есть ли актив уже в портфеле
         // Если есть - возвращает существующий portfolio_asset_id (без создания дубликата)
         // Если нет - создает новый portfolio_asset с quantity=0
@@ -1231,7 +1182,7 @@ const handleSubmit = async () => {
         <div v-if="!isTransaction" class="form-section">
           <div class="section-divider"></div>
           <label class="form-label">
-            <span class="label-icon">⚙️</span>
+            <Settings :size="16" class="label-icon" />
             Режим добавления
           </label>
           <div class="mode-switch">
@@ -1267,7 +1218,7 @@ const handleSubmit = async () => {
           <div class="form-row">
             <div class="form-field">
               <label class="form-label">
-                <span class="label-icon">🔢</span>
+                <Hash :size="16" class="label-icon" />
                 Количество
               </label>
               <input type="number" v-model.number="quantity" min="0" step="0.000001" class="form-input" required />
@@ -1324,24 +1275,63 @@ const handleSubmit = async () => {
         <!-- Поля для остальных операций -->
         <div v-if="requiresAmount" class="form-section">
           <div class="section-divider"></div>
-          <div class="form-field">
+
+          <!-- Купон/Дивиденды: валюта выплаты + сумма в одном ряду -->
+          <div v-if="isPayout" class="form-row">
+            <div class="form-field">
+              <label class="form-label">
+                <DollarSign :size="16" class="label-icon" />
+                {{ amountLabel }}
+              </label>
+              <input
+                type="number"
+                v-model.number="amount"
+                :step="0.000001"
+                class="form-input"
+                required
+                :placeholder="isExpense ? 'Отрицательное значение' : 'Положительное значение'"
+              />
+              <small class="form-hint">
+                Можно вводить до 6 знаков после запятой (например, 0.001234)
+              </small>
+            </div>
+            
+            <div class="form-field">
+              <label class="form-label">
+                <CircleDollarSign :size="16" class="label-icon" />
+                Валюта выплаты
+              </label>
+              <CustomSelect
+                v-model="currencyId"
+                :options="currencies"
+                placeholder="Выберите валюту"
+                :show-empty-option="false"
+                option-label="label"
+                option-value="value"
+                :min-width="'100%'"
+                :flex="'none'"
+              />
+            </div>
+
+            
+          </div>
+
+          <!-- Прочие операции с суммой -->
+          <div v-else class="form-field">
             <label class="form-label">
               <DollarSign :size="16" class="label-icon" />
               {{ amountLabel }}
             </label>
-            <input 
-              type="number" 
-              v-model.number="amount" 
-              :step="isPayout ? 0.000001 : 0.01" 
-              class="form-input" 
+            <input
+              type="number"
+              v-model.number="amount"
+              :step="0.01"
+              class="form-input"
               required
               :placeholder="isExpense ? 'Отрицательное значение' : 'Положительное значение'"
             />
             <small class="form-hint" v-if="isExpense">
               Введите отрицательное значение (например, -50)
-            </small>
-            <small class="form-hint" v-else-if="isPayout">
-              Можно вводить до 6 знаков после запятой (например, 0.001234)
             </small>
           </div>
           
@@ -1358,54 +1348,9 @@ const handleSubmit = async () => {
         <!-- Дополнительные поля для выплат (Dividend/Coupon) -->
         <div v-if="isPayout" class="form-section">
           <div class="section-divider"></div>
-          
-          <!-- Выбор валюты выплаты -->
-          <div class="form-field">
-            <label class="form-label">
-              <span class="label-icon">💱</span>
-              Валюта выплаты
-            </label>
-            <div class="toggle-wrapper">
-              <ToggleSwitch 
-                v-model="useCustomCurrency" 
-              />
-              <span class="toggle-label-text">{{ useCustomCurrency ? 'Выплата в другой валюте' : 'Выплата в рублях (RUB)' }}</span>
-            </div>
-            <CustomSelect
-              v-if="useCustomCurrency"
-              v-model="currencyId"
-              :options="currencies"
-              placeholder="Выберите валюту"
-              :show-empty-option="false"
-              option-label="label"
-              option-value="value"
-              :min-width="'100%'"
-              :flex="'none'"
-              class="currency-select"
-            />
-          </div>
-          
-          <div class="form-row">
-            <div class="form-field">
-              <label class="form-label">
-                <span class="label-icon">📊</span>
-                Доходность (%)
-                <span class="label-hint" v-if="dividendYield && assetPrice && assetQuantity">(рассчитано автоматически)</span>
-              </label>
-              <input 
-                type="number" 
-                v-model.number="dividendYield" 
-                min="0" 
-                step="0.0001" 
-                class="form-input" 
-                :readonly="!!(assetPrice && assetQuantity && amount)"
-                :placeholder="assetPrice && assetQuantity ? 'Рассчитывается автоматически' : 'Введите вручную (опционально)'"
-              />
-            </div>
-          </div>
-          
+
           <!-- Переключатель для автоматического создания актива из валюты -->
-          <div v-if="useCustomCurrency && selectedCurrency.ticker !== 'RUB'" class="form-field">
+          <div v-if="selectedCurrency.ticker !== 'RUB'" class="form-field">
             <div class="toggle-wrapper">
               <ToggleSwitch 
                 v-model="createAssetFromCurrency" 
@@ -1479,7 +1424,7 @@ const handleSubmit = async () => {
             <div class="section-divider"></div>
             <div class="form-field">
               <label class="form-label">
-                <span class="label-icon">📆</span>
+                <CalendarDays :size="16" class="label-icon" />
                 День месяца
               </label>
               <input 
@@ -1505,7 +1450,7 @@ const handleSubmit = async () => {
             </div>
             
             <div v-if="operationsCount > 0" class="info-box">
-              <span class="info-icon">ℹ️</span>
+              <Info :size="18" class="info-icon" />
               <span>Будет создано <strong>{{ operationsCount }}</strong> операций</span>
             </div>
           </div>
@@ -1582,8 +1527,8 @@ const handleSubmit = async () => {
 }
 
 .label-icon {
-  font-size: 14px;
-  opacity: 0.8;
+  color: #6b7280;
+  flex-shrink: 0;
 }
 
 .form-input {
@@ -1637,10 +1582,6 @@ const handleSubmit = async () => {
   font-size: 13px;
   color: #374151;
   font-weight: 500;
-}
-
-.currency-select {
-  margin-top: 8px;
 }
 
 .form-row {
@@ -1710,7 +1651,8 @@ const handleSubmit = async () => {
 }
 
 .info-icon {
-  font-size: 16px;
+  color: #3b82f6;
+  flex-shrink: 0;
 }
 
 .info-box strong {

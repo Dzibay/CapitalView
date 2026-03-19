@@ -12,6 +12,12 @@ logger = get_logger(__name__)
 _cache = {"reference": None, "brokers": None}
 
 
+def invalidate_reference_cache():
+    """Сбрасывает кеш справочных данных. Следующий запрос загрузит актуальные данные из БД (включая валюты и криптовалюты)."""
+    _cache["reference"] = None
+    logger.info("Reference data cache invalidated")
+
+
 def get_reference_data():
     """Получает справочные данные."""
     return rpc("get_reference_data", {})

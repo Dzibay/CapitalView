@@ -12,7 +12,7 @@ export const useTransactionsStore = defineStore('transactions', {
     selectedPortfolio: '',
     selectedType: '',
     selectedCurrency: 'RUB',
-    periodPreset: 'month',
+    periodPreset: 'all',
     startDate: '',
     endDate: '',
     globalSearch: '',

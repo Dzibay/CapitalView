@@ -5,6 +5,8 @@ import { Button, DateInput } from '../base'
 import assetsService from '../../services/assetsService'
 import { normalizeDateToString } from '../../utils/date'
 import ModalBase from './ModalBase.vue'
+import { useDashboardStore } from '../../stores/dashboard.store'
+import { useUIStore } from '../../stores/ui.store'
 
 const props = defineProps({
   asset: Object,
@@ -12,6 +14,9 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close'])
+
+const dashboardStore = useDashboardStore()
+const uiStore = useUIStore()
 
 // Режим: 'single' - одна цена, 'dynamic' - динамика цены
 const mode = ref('single')
@@ -30,6 +35,27 @@ const interval = ref('month') // 'day', 'week', 'month'
 
 const error = ref('')
 const saving = ref(false)
+const startPriceLoading = ref(false)
+
+// Парсинг YYYY-MM-DD без таймзонного сдвига (не используем new Date('YYYY-MM-DD'))
+const parseYMD = (ymd) => {
+  if (typeof ymd !== 'string') return null
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return null
+  const year = Number(m[1])
+  const monthIndex = Number(m[2]) - 1
+  const day = Number(m[3])
+  return new Date(year, monthIndex, day) // локальная полночь
+}
+
+// Форматирование даты в YYYY-MM-DD по локальному времени пользователя
+const toLocalYMD = (dateObj) => {
+  if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) return ''
+  const year = dateObj.getFullYear()
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+  const day = String(dateObj.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 // Инициализация значений по умолчанию из данных актива
 const initializeDefaults = () => {
@@ -43,10 +69,8 @@ const initializeDefaults = () => {
     
     // Начальная дата = дата первой покупки (first_purchase_date)
     if (props.asset.first_purchase_date) {
-      const date = new Date(props.asset.first_purchase_date)
-      if (!isNaN(date.getTime())) {
-        startDate.value = normalizeDateToString(date) || ''
-      }
+      // Не создаём Date из строки YYYY-MM-DD, чтобы не получить сдвиг на день из-за таймзоны
+      startDate.value = normalizeDateToString(props.asset.first_purchase_date) || ''
     }
   }
 }
@@ -60,12 +84,46 @@ watch(() => props.asset, () => {
   initializeDefaults()
 }, { immediate: true, deep: true })
 
+// Для динамики: при смене начальной даты подтягиваем стартовую цену из истории,
+// чтобы стартовая цена соответствовала выбранной дате (и без таймзонных смещений).
+let startPriceFetchToken = 0
+watch(
+  startDate,
+  async (newStartDate) => {
+    if (mode.value !== 'dynamic') return
+    if (!newStartDate) return
+    const assetId = props.asset?.asset_id
+    if (!assetId) return
+
+    // При смене даты подгружаем ближайшую цену <= выбранной датой
+    const token = ++startPriceFetchToken
+    startPriceLoading.value = true
+    try {
+      const res = await assetsService.getAssetPriceHistory(assetId, null, newStartDate, 50)
+      if (token !== startPriceFetchToken) return
+      const first = res?.prices?.[0]
+      const p = first?.price != null ? parseFloat(first.price) : NaN
+      if (!Number.isNaN(p) && p > 0) {
+        startPrice.value = p
+      }
+    } catch (e) {
+      // Если история не найдена/ошибка - не ломаем форму: оставляем текущую startPrice
+    } finally {
+      if (token === startPriceFetchToken) {
+        startPriceLoading.value = false
+      }
+    }
+  },
+  { immediate: false }
+)
+
 // Вычисляем количество точек для динамики
 const pricePointsCount = computed(() => {
   if (mode.value !== 'dynamic' || !startDate.value || !endDate.value) return 0
   
-  const start = new Date(startDate.value)
-  const end = new Date(endDate.value)
+  const start = parseYMD(startDate.value)
+  const end = parseYMD(endDate.value)
+  if (!start || !end) return 0
   if (end < start) return 0
   
   const diffTime = Math.abs(end - start)
@@ -91,8 +149,9 @@ const generatePricePoints = () => {
     return []
   }
   
-  const start = new Date(startDate.value)
-  const end = new Date(endDate.value)
+  const start = parseYMD(startDate.value)
+  const end = parseYMD(endDate.value)
+  if (!start || !end) return []
   if (end < start) return []
   
   const points = []
@@ -124,7 +183,7 @@ const generatePricePoints = () => {
     const interpolatedPrice = startPrice.value + (priceDiff * progress)
     
     points.push({
-      date: normalizeDateToString(currentDate) || '',
+      date: toLocalYMD(currentDate),
       price: Math.max(0.01, parseFloat(interpolatedPrice.toFixed(2))) // Минимум 0.01
     })
     
@@ -193,7 +252,13 @@ const handleSubmit = async () => {
       error.value = 'Выберите конечную дату'
       return
     }
-    if (new Date(endDate.value) < new Date(startDate.value)) {
+    const start = parseYMD(startDate.value)
+    const end = parseYMD(endDate.value)
+    if (!start || !end) {
+      error.value = 'Некорректные даты'
+      return
+    }
+    if (end < start) {
       error.value = 'Конечная дата должна быть позже начальной'
       return
     }
@@ -211,6 +276,9 @@ const handleSubmit = async () => {
       const response = await assetsService.addPricesBatch(props.asset.asset_id, pricePoints)
       
       if (response.success) {
+        // Как и в single-режиме через assetsStore.addPrice: обновляем дашборд
+        uiStore.setLoading(true)
+        await dashboardStore.reloadDashboard()
         emit('close')
       } else {
         error.value = response.error || 'Ошибка при добавлении цен'
@@ -218,6 +286,7 @@ const handleSubmit = async () => {
     } catch (e) {
       error.value = 'Ошибка при добавлении цен: ' + (e.message || e)
     } finally {
+      uiStore.setLoading(false)
       saving.value = false
     }
   }

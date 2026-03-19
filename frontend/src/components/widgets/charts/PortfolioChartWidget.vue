@@ -235,6 +235,7 @@ onMounted(() => {
         :chartData="formattedChartData"
         :period="selectedPeriod"
         :formatCurrency="formatCurrency"
+        :zeroAtStart="false"
       />
     </div>
   </Widget>
