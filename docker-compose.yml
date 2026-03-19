@@ -109,6 +109,7 @@ services:
       args:
         - VITE_API_BASE_URL=/api/v1
         - VITE_YM_COUNTER_ID=${VITE_YM_COUNTER_ID}
+        - VITE_YANDEX_VERIFICATION_ID=${VITE_YANDEX_VERIFICATION_ID}
     container_name: capitalview-frontend
     restart: unless-stopped
     # Порт 80 не пробрасываем — Caddy проксирует на frontend:80
