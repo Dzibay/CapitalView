@@ -66,41 +66,98 @@ totals AS (
   GROUP BY o.portfolio_id
 ),
 
--- ОПТИМИЗАЦИЯ: одно сканирование portfolio_daily_positions → все метрики за один проход
-latest_position_dates AS (
-    SELECT pdp.portfolio_asset_id, MAX(pdp.report_date) AS latest_date
+-- Метрики по активу: последняя строка portfolio_daily_positions на каждый лот, затем SUM по asset_id (как на странице актива)
+latest_pdp_by_lot AS (
+    SELECT DISTINCT ON (pdp.portfolio_asset_id)
+        pa.portfolio_id,
+        pa.asset_id,
+        COALESCE(pdp.quantity, 0) AS quantity,
+        COALESCE(pdp.cumulative_invested, 0) AS cumulative_invested,
+        COALESCE(pdp.position_value, 0) AS position_value,
+        COALESCE(pdp.realized_pnl, 0) AS realized_pnl,
+        COALESCE(pdp.payouts, 0) AS payouts,
+        COALESCE(pdp.commissions, 0) AS commissions,
+        COALESCE(pdp.taxes, 0) AS taxes,
+        COALESCE(pdp.total_pnl, 0) AS total_pnl
     FROM portfolio_daily_positions pdp
-    JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
-    JOIN p ON p.id = pa.portfolio_id
-    GROUP BY pdp.portfolio_asset_id
+    INNER JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
+    INNER JOIN p ON p.id = pa.portfolio_id
+    ORDER BY pdp.portfolio_asset_id, pdp.report_date DESC
 ),
 asset_daily_aggregates AS (
     SELECT
-        pdp.portfolio_id,
-        pa.asset_id,
-        -- Выплаты
-        MAX(CASE WHEN pdp.report_date = lpd.latest_date THEN pdp.payouts END) AS payouts_latest,
-        MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 year' THEN pdp.payouts END) AS payouts_year_ago,
-        MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 month' THEN pdp.payouts END) AS payouts_month_ago,
-        -- Комиссии
-        MAX(CASE WHEN pdp.report_date = lpd.latest_date THEN pdp.commissions END) AS commissions_latest,
-        MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 year' THEN pdp.commissions END) AS commissions_year_ago,
-        MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 month' THEN pdp.commissions END) AS commissions_month_ago,
-        -- Реализованная прибыль
-        MAX(CASE WHEN pdp.report_date = lpd.latest_date THEN pdp.realized_pnl END) AS realized_pnl_latest,
-        MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 year' THEN pdp.realized_pnl END) AS realized_pnl_year_ago,
-        MAX(CASE WHEN pdp.report_date <= CURRENT_DATE - INTERVAL '1 month' THEN pdp.realized_pnl END) AS realized_pnl_month_ago,
-        -- Стоимость позиции
-        MAX(CASE WHEN pdp.report_date = lpd.latest_date AND COALESCE(pdp.position_value, 0) > 0 THEN pdp.position_value END) AS latest_position_value
-    FROM portfolio_daily_positions pdp
-    JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
-    JOIN p ON p.id = pdp.portfolio_id
-    JOIN latest_position_dates lpd ON lpd.portfolio_asset_id = pdp.portfolio_asset_id
-    WHERE pdp.report_date >= CURRENT_DATE - INTERVAL '1 year'
-       OR pdp.report_date = lpd.latest_date
-    GROUP BY pdp.portfolio_id, pa.asset_id
+        portfolio_id,
+        asset_id,
+        SUM(position_value) AS latest_position_value,
+        SUM(payouts) AS payouts_latest,
+        SUM(commissions) AS commissions_latest,
+        SUM(realized_pnl) AS realized_pnl_latest,
+        SUM(taxes) AS taxes_latest,
+        SUM(total_pnl) AS total_pnl_latest,
+        SUM(cumulative_invested) AS sum_cumulative_invested,
+        SUM(position_value - cumulative_invested) AS unrealized_pnl_latest,
+        SUM(quantity) AS quantity_sum
+    FROM latest_pdp_by_lot
+    GROUP BY portfolio_id, asset_id
 ),
-
+year_snap_by_lot AS (
+    SELECT DISTINCT ON (pdp.portfolio_asset_id)
+        pa.portfolio_id,
+        pa.asset_id,
+        COALESCE(pdp.position_value, 0) AS position_value,
+        COALESCE(pdp.realized_pnl, 0) AS realized_pnl,
+        COALESCE(pdp.payouts, 0) AS payouts,
+        COALESCE(pdp.commissions, 0) AS commissions,
+        COALESCE(pdp.taxes, 0) AS taxes,
+        COALESCE(pdp.total_pnl, 0) AS total_pnl
+    FROM portfolio_daily_positions pdp
+    INNER JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
+    INNER JOIN p ON p.id = pa.portfolio_id
+    WHERE pdp.report_date <= CURRENT_DATE - INTERVAL '1 year'
+    ORDER BY pdp.portfolio_asset_id, pdp.report_date DESC
+),
+pdp_roll_year AS (
+    SELECT
+        portfolio_id,
+        asset_id,
+        SUM(position_value) AS sum_position_value,
+        SUM(total_pnl) AS total_pnl_y,
+        SUM(realized_pnl) AS realized_y,
+        SUM(payouts) AS payouts_y,
+        SUM(commissions) AS commissions_y,
+        SUM(taxes) AS taxes_y
+    FROM year_snap_by_lot
+    GROUP BY portfolio_id, asset_id
+),
+month_snap_by_lot AS (
+    SELECT DISTINCT ON (pdp.portfolio_asset_id)
+        pa.portfolio_id,
+        pa.asset_id,
+        COALESCE(pdp.position_value, 0) AS position_value,
+        COALESCE(pdp.realized_pnl, 0) AS realized_pnl,
+        COALESCE(pdp.payouts, 0) AS payouts,
+        COALESCE(pdp.commissions, 0) AS commissions,
+        COALESCE(pdp.taxes, 0) AS taxes,
+        COALESCE(pdp.total_pnl, 0) AS total_pnl
+    FROM portfolio_daily_positions pdp
+    INNER JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
+    INNER JOIN p ON p.id = pa.portfolio_id
+    WHERE pdp.report_date <= CURRENT_DATE - INTERVAL '1 month'
+    ORDER BY pdp.portfolio_asset_id, pdp.report_date DESC
+),
+pdp_roll_month AS (
+    SELECT
+        portfolio_id,
+        asset_id,
+        SUM(position_value) AS sum_position_value,
+        SUM(total_pnl) AS total_pnl_m,
+        SUM(realized_pnl) AS realized_m,
+        SUM(payouts) AS payouts_m,
+        SUM(commissions) AS commissions_m,
+        SUM(taxes) AS taxes_m
+    FROM month_snap_by_lot
+    GROUP BY portfolio_id, asset_id
+),
 portfolio_assets_distribution AS (
   SELECT
     ada.portfolio_id,
@@ -269,75 +326,75 @@ all_portfolio_assets AS (
     AND COALESCE(pa_check.quantity, 0) > 0
   WHERE pa_check.id IS NULL
 ),
+transaction_quantities AS (
+  SELECT
+    pa.portfolio_id,
+    pa.asset_id,
+    SUM(
+      CASE 
+        WHEN t.transaction_type = 1 THEN t.quantity
+        WHEN t.transaction_type IN (2, 3) THEN -t.quantity
+        ELSE 0
+      END
+    ) AS current_quantity,
+    SUM(
+      CASE 
+        WHEN t.transaction_date::date <= CURRENT_DATE - INTERVAL '1 month' THEN
+          CASE 
+            WHEN t.transaction_type = 1 THEN t.quantity
+            WHEN t.transaction_type IN (2, 3) THEN -t.quantity
+            ELSE 0
+          END
+        ELSE 0
+      END
+    ) AS quantity_month_ago,
+    SUM(
+      CASE 
+        WHEN t.transaction_date::date <= CURRENT_DATE - INTERVAL '1 year' THEN
+          CASE 
+            WHEN t.transaction_type = 1 THEN t.quantity
+            WHEN t.transaction_type IN (2, 3) THEN -t.quantity
+            ELSE 0
+          END
+        ELSE 0
+      END
+    ) AS quantity_year_ago,
+    SUM(
+      CASE 
+        WHEN t.transaction_type = 1 THEN t.quantity * t.price
+        ELSE 0
+      END
+    ) AS total_bought_amount,
+    SUM(
+      CASE 
+        WHEN t.transaction_type = 1 AND t.transaction_date < CURRENT_DATE - INTERVAL '1 year' THEN t.quantity * t.price
+        ELSE 0
+      END
+    ) AS total_bought_before_year,
+    SUM(
+      CASE 
+        WHEN t.transaction_type = 1 AND t.transaction_date >= CURRENT_DATE - INTERVAL '1 year' THEN t.quantity * t.price
+        ELSE 0
+      END
+    ) AS total_bought_in_year,
+    SUM(
+      CASE 
+        WHEN t.transaction_type = 1 AND t.transaction_date >= CURRENT_DATE - INTERVAL '1 year' THEN t.quantity
+        ELSE 0
+      END
+    ) AS quantity_bought_in_year,
+    SUM(
+      CASE 
+        WHEN t.transaction_type = 1 AND t.transaction_date < CURRENT_DATE - INTERVAL '1 month' THEN t.quantity * t.price
+        ELSE 0
+      END
+    ) AS total_bought_before_month
+  FROM transactions t
+  JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
+  JOIN p ON p.id = pa.portfolio_id
+  GROUP BY pa.portfolio_id, pa.asset_id
+),
 asset_quantities_periods AS (
-  WITH transaction_quantities AS (
-    SELECT
-      pa.portfolio_id,
-      pa.asset_id,
-      SUM(
-        CASE 
-          WHEN t.transaction_type = 1 THEN t.quantity
-          WHEN t.transaction_type IN (2, 3) THEN -t.quantity
-          ELSE 0
-        END
-      ) AS current_quantity,
-      SUM(
-        CASE 
-          WHEN t.transaction_date::date <= CURRENT_DATE - INTERVAL '1 month' THEN
-            CASE 
-              WHEN t.transaction_type = 1 THEN t.quantity
-              WHEN t.transaction_type IN (2, 3) THEN -t.quantity
-              ELSE 0
-            END
-          ELSE 0
-        END
-      ) AS quantity_month_ago,
-      SUM(
-        CASE 
-          WHEN t.transaction_date::date <= CURRENT_DATE - INTERVAL '1 year' THEN
-            CASE 
-              WHEN t.transaction_type = 1 THEN t.quantity
-              WHEN t.transaction_type IN (2, 3) THEN -t.quantity
-              ELSE 0
-            END
-          ELSE 0
-        END
-      ) AS quantity_year_ago,
-      SUM(
-        CASE 
-          WHEN t.transaction_type = 1 THEN t.quantity * t.price
-          ELSE 0
-        END
-      ) AS total_bought_amount,
-      SUM(
-        CASE 
-          WHEN t.transaction_type = 1 AND t.transaction_date < CURRENT_DATE - INTERVAL '1 year' THEN t.quantity * t.price
-          ELSE 0
-        END
-      ) AS total_bought_before_year,
-      SUM(
-        CASE 
-          WHEN t.transaction_type = 1 AND t.transaction_date >= CURRENT_DATE - INTERVAL '1 year' THEN t.quantity * t.price
-          ELSE 0
-        END
-      ) AS total_bought_in_year,
-      SUM(
-        CASE 
-          WHEN t.transaction_type = 1 AND t.transaction_date >= CURRENT_DATE - INTERVAL '1 year' THEN t.quantity
-          ELSE 0
-        END
-      ) AS quantity_bought_in_year,
-      SUM(
-        CASE 
-          WHEN t.transaction_type = 1 AND t.transaction_date < CURRENT_DATE - INTERVAL '1 month' THEN t.quantity * t.price
-          ELSE 0
-        END
-      ) AS total_bought_before_month
-    FROM transactions t
-    JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
-    JOIN p ON p.id = pa.portfolio_id
-    GROUP BY pa.portfolio_id, pa.asset_id
-  )
   SELECT
     apa.portfolio_id,
     apa.asset_id,
@@ -378,140 +435,87 @@ asset_prices_periods AS (
 ),
 asset_returns AS (
   SELECT
-    app.portfolio_id,
-    app.asset_id,
+    b.portfolio_id,
+    b.asset_id,
     COALESCE(a.name, 'Unknown') AS asset_name,
     COALESCE(a.ticker, '') AS asset_ticker,
-    
-    -- Все время
     CASE
-      WHEN app.current_quantity > 0 THEN (app.average_price * app.current_quantity * app.currency_rate / app.leverage)
-      ELSE (app.total_bought_amount * app.currency_rate / app.leverage)
+      WHEN COALESCE(ada.quantity_sum, 0) > 0 THEN ada.sum_cumulative_invested
+      ELSE COALESCE(tq.total_bought_amount, 0) * COALESCE(aps.currency_rate, 1) / NULLIF(lav.lev, 0)
     END AS invested_amount,
-    (app.current_price * app.current_quantity * app.currency_rate / app.leverage) AS current_value,
-    ((app.current_price - app.average_price) * app.current_quantity * app.currency_rate / app.leverage) AS price_change,
-    COALESCE(ada.realized_pnl_latest, 0) - COALESCE(0) AS realized_profit,
+    COALESCE(ada.latest_position_value, 0) AS current_value,
+    COALESCE(ada.unrealized_pnl_latest, 0) AS price_change,
+    COALESCE(ada.realized_pnl_latest, 0) AS realized_profit,
     COALESCE(ada.payouts_latest, 0) AS total_payouts,
     COALESCE(ada.commissions_latest, 0) AS total_commissions,
-    ((app.current_price - app.average_price) * app.current_quantity * app.currency_rate / app.leverage) 
-      + COALESCE(ada.realized_pnl_latest, 0) 
-      + COALESCE(ada.payouts_latest, 0)
-      - COALESCE(ada.commissions_latest, 0) AS total_return,
+    COALESCE(ada.taxes_latest, 0) AS total_taxes,
+    COALESCE(ada.total_pnl_latest, 0) AS total_return,
     CASE
-      WHEN app.current_quantity > 0 AND (app.average_price * app.current_quantity * app.currency_rate / app.leverage) > 0 THEN (
-        (((app.current_price - app.average_price) * app.current_quantity * app.currency_rate / app.leverage) 
-          + COALESCE(ada.realized_pnl_latest, 0) 
-          + COALESCE(ada.payouts_latest, 0)
-          - COALESCE(ada.commissions_latest, 0)) /
-        (app.average_price * app.current_quantity * app.currency_rate / app.leverage)
-      ) * 100
-      WHEN app.current_quantity = 0 AND (app.total_bought_amount * app.currency_rate / app.leverage) > 0 THEN (
-        (COALESCE(ada.realized_pnl_latest, 0) + COALESCE(ada.payouts_latest, 0) - COALESCE(ada.commissions_latest, 0)) /
-        (app.total_bought_amount * app.currency_rate / app.leverage)
-      ) * 100
+      WHEN COALESCE(ada.quantity_sum, 0) > 0 AND COALESCE(ada.sum_cumulative_invested, 0) > 0 THEN
+        (COALESCE(ada.total_pnl_latest, 0) / ada.sum_cumulative_invested) * 100
+      WHEN COALESCE(ada.quantity_sum, 0) = 0
+        AND COALESCE(tq.total_bought_amount, 0) * COALESCE(aps.currency_rate, 1) / NULLIF(lav.lev, 0) > 0 THEN
+        (COALESCE(ada.total_pnl_latest, 0) / (tq.total_bought_amount * COALESCE(aps.currency_rate, 1) / NULLIF(lav.lev, 0))) * 100
       ELSE 0
     END AS return_percent,
-    
-    -- За год
-    CASE
-      WHEN app.quantity_year_ago > 0 THEN (app.price_year_ago * app.quantity_year_ago * app.currency_rate / app.leverage)
-      WHEN app.quantity_year_ago = 0 AND app.current_quantity = 0 THEN (app.total_bought_before_year * app.currency_rate / app.leverage)
-      ELSE (app.total_bought_in_year * app.currency_rate / app.leverage)
-    END AS value_year_ago,
-    CASE
-      WHEN app.quantity_year_ago > 0 THEN 
-        ((app.current_price - app.price_year_ago) * LEAST(app.quantity_year_ago, app.current_quantity) * app.currency_rate / app.leverage)
-      WHEN app.quantity_year_ago = 0 AND app.current_quantity = 0 THEN 0
-      WHEN app.quantity_year_ago = 0 AND app.quantity_bought_in_year > 0 THEN
-        CASE
-          WHEN app.current_quantity < app.quantity_bought_in_year THEN
-            ((app.current_price - (app.total_bought_in_year / NULLIF(app.quantity_bought_in_year, 0))) * app.current_quantity * app.currency_rate / app.leverage)
-          ELSE
-            ((app.current_price * app.current_quantity * app.currency_rate / app.leverage) - (app.total_bought_in_year * app.currency_rate / app.leverage))
-        END
-      ELSE 0
-    END AS price_change_year,
-    COALESCE(ada.realized_pnl_latest, 0) - COALESCE(ada.realized_pnl_year_ago, 0) AS realized_profit_year,
-    COALESCE(ada.payouts_latest, 0) - COALESCE(ada.payouts_year_ago, 0) AS total_payouts_year,
-    COALESCE(ada.commissions_latest, 0) - COALESCE(ada.commissions_year_ago, 0) AS total_commissions_year,
+    COALESCE(ry.sum_position_value, 0) AS value_year_ago,
     (
-      CASE
-        WHEN app.quantity_year_ago > 0 THEN 
-          ((app.current_price - app.price_year_ago) * LEAST(app.quantity_year_ago, app.current_quantity) * app.currency_rate / app.leverage)
-        WHEN app.quantity_year_ago = 0 AND app.current_quantity = 0 THEN 0
-        WHEN app.quantity_year_ago = 0 AND app.quantity_bought_in_year > 0 THEN
-          CASE
-            WHEN app.current_quantity < app.quantity_bought_in_year THEN
-              ((app.current_price - (app.total_bought_in_year / NULLIF(app.quantity_bought_in_year, 0))) * app.current_quantity * app.currency_rate / app.leverage)
-            ELSE
-              ((app.current_price * app.current_quantity * app.currency_rate / app.leverage) - (app.total_bought_in_year * app.currency_rate / app.leverage))
-          END
-        ELSE 0
-      END
-      + (COALESCE(ada.realized_pnl_latest, 0) - COALESCE(ada.realized_pnl_year_ago, 0))
-      + (COALESCE(ada.payouts_latest, 0) - COALESCE(ada.payouts_year_ago, 0))
-      - (COALESCE(ada.commissions_latest, 0) - COALESCE(ada.commissions_year_ago, 0))
-    ) AS total_return_year,
+      (COALESCE(ada.total_pnl_latest, 0) - COALESCE(ry.total_pnl_y, 0))
+      - (COALESCE(ada.realized_pnl_latest, 0) - COALESCE(ry.realized_y, 0))
+      - (COALESCE(ada.payouts_latest, 0) - COALESCE(ry.payouts_y, 0))
+      + (COALESCE(ada.commissions_latest, 0) - COALESCE(ry.commissions_y, 0))
+      + (COALESCE(ada.taxes_latest, 0) - COALESCE(ry.taxes_y, 0))
+    ) AS price_change_year,
+    COALESCE(ada.realized_pnl_latest, 0) - COALESCE(ry.realized_y, 0) AS realized_profit_year,
+    COALESCE(ada.payouts_latest, 0) - COALESCE(ry.payouts_y, 0) AS total_payouts_year,
+    COALESCE(ada.commissions_latest, 0) - COALESCE(ry.commissions_y, 0) AS total_commissions_year,
+    COALESCE(ada.taxes_latest, 0) - COALESCE(ry.taxes_y, 0) AS total_taxes_year,
+    (COALESCE(ada.total_pnl_latest, 0) - COALESCE(ry.total_pnl_y, 0)) AS total_return_year,
     CASE
-      WHEN app.quantity_year_ago > 0 AND (app.price_year_ago * app.quantity_year_ago * app.currency_rate / app.leverage) > 0 THEN (
-        (((app.current_price - app.price_year_ago) * LEAST(app.quantity_year_ago, app.current_quantity) * app.currency_rate / app.leverage) 
-          + (COALESCE(ada.realized_pnl_latest, 0) - COALESCE(ada.realized_pnl_year_ago, 0))
-          + (COALESCE(ada.payouts_latest, 0) - COALESCE(ada.payouts_year_ago, 0))
-          - (COALESCE(ada.commissions_latest, 0) - COALESCE(ada.commissions_year_ago, 0))) /
-        (app.price_year_ago * app.quantity_year_ago * app.currency_rate / app.leverage)
-      ) * 100
-      WHEN app.quantity_year_ago = 0 AND app.current_quantity = 0 AND (app.total_bought_before_year * app.currency_rate / app.leverage) > 0 THEN (
-        ((COALESCE(ada.realized_pnl_latest, 0) - COALESCE(ada.realized_pnl_year_ago, 0)) + (COALESCE(ada.payouts_latest, 0) - COALESCE(ada.payouts_year_ago, 0)) - (COALESCE(ada.commissions_latest, 0) - COALESCE(ada.commissions_year_ago, 0))) /
-        (app.total_bought_before_year * app.currency_rate / app.leverage)
-      ) * 100
-      WHEN app.quantity_year_ago = 0 AND app.quantity_bought_in_year > 0 AND (app.total_bought_in_year * app.currency_rate / app.leverage) > 0 THEN (
-        (
-          CASE
-            WHEN app.current_quantity < app.quantity_bought_in_year THEN
-              ((app.current_price - (app.total_bought_in_year / NULLIF(app.quantity_bought_in_year, 0))) * app.current_quantity * app.currency_rate / app.leverage)
-            ELSE
-              ((app.current_price * app.current_quantity * app.currency_rate / app.leverage) - (app.total_bought_in_year * app.currency_rate / app.leverage))
-          END
-          + (COALESCE(ada.realized_pnl_latest, 0) - COALESCE(ada.realized_pnl_year_ago, 0))
-          + (COALESCE(ada.payouts_latest, 0) - COALESCE(ada.payouts_year_ago, 0))
-          - (COALESCE(ada.commissions_latest, 0) - COALESCE(ada.commissions_year_ago, 0))
-        ) /
-        (app.total_bought_in_year * app.currency_rate / app.leverage)
-      ) * 100
+      WHEN COALESCE(ry.sum_position_value, 0) > 0 THEN
+        ((COALESCE(ada.total_pnl_latest, 0) - COALESCE(ry.total_pnl_y, 0)) / ry.sum_position_value) * 100
+      WHEN COALESCE(tq.total_bought_before_year, 0) * COALESCE(aps.currency_rate, 1) / NULLIF(lav.lev, 0) > 0 THEN
+        ((COALESCE(ada.total_pnl_latest, 0) - COALESCE(ry.total_pnl_y, 0))
+          / (tq.total_bought_before_year * COALESCE(aps.currency_rate, 1) / NULLIF(lav.lev, 0))) * 100
       ELSE 0
     END AS return_percent_year,
-    
-    -- За месяц
+    COALESCE(rm.sum_position_value, 0) AS value_month_ago,
+    (
+      (COALESCE(ada.total_pnl_latest, 0) - COALESCE(rm.total_pnl_m, 0))
+      - (COALESCE(ada.realized_pnl_latest, 0) - COALESCE(rm.realized_m, 0))
+      - (COALESCE(ada.payouts_latest, 0) - COALESCE(rm.payouts_m, 0))
+      + (COALESCE(ada.commissions_latest, 0) - COALESCE(rm.commissions_m, 0))
+      + (COALESCE(ada.taxes_latest, 0) - COALESCE(rm.taxes_m, 0))
+    ) AS price_change_month,
+    COALESCE(ada.realized_pnl_latest, 0) - COALESCE(rm.realized_m, 0) AS realized_profit_month,
+    COALESCE(ada.payouts_latest, 0) - COALESCE(rm.payouts_m, 0) AS total_payouts_month,
+    COALESCE(ada.commissions_latest, 0) - COALESCE(rm.commissions_m, 0) AS total_commissions_month,
+    COALESCE(ada.taxes_latest, 0) - COALESCE(rm.taxes_m, 0) AS total_taxes_month,
+    (COALESCE(ada.total_pnl_latest, 0) - COALESCE(rm.total_pnl_m, 0)) AS total_return_month,
     CASE
-      WHEN app.quantity_month_ago > 0 THEN (app.price_month_ago * app.quantity_month_ago * app.currency_rate / app.leverage)
-      ELSE (app.total_bought_before_month * app.currency_rate / app.leverage)
-    END AS value_month_ago,
-    ((app.current_price - app.price_month_ago) * app.quantity_month_ago * app.currency_rate / app.leverage) AS price_change_month,
-    COALESCE(ada.realized_pnl_latest, 0) - COALESCE(ada.realized_pnl_month_ago, 0) AS realized_profit_month,
-    COALESCE(ada.payouts_latest, 0) - COALESCE(ada.payouts_month_ago, 0) AS total_payouts_month,
-    COALESCE(ada.commissions_latest, 0) - COALESCE(ada.commissions_month_ago, 0) AS total_commissions_month,
-    ((app.current_price - app.price_month_ago) * app.quantity_month_ago * app.currency_rate / app.leverage) 
-      + (COALESCE(ada.realized_pnl_latest, 0) - COALESCE(ada.realized_pnl_month_ago, 0))
-      + (COALESCE(ada.payouts_latest, 0) - COALESCE(ada.payouts_month_ago, 0))
-      - (COALESCE(ada.commissions_latest, 0) - COALESCE(ada.commissions_month_ago, 0)) AS total_return_month,
-    CASE
-      WHEN app.quantity_month_ago > 0 AND (app.price_month_ago * app.quantity_month_ago * app.currency_rate / app.leverage) > 0 THEN (
-        (((app.current_price - app.price_month_ago) * app.quantity_month_ago * app.currency_rate / app.leverage) 
-          + (COALESCE(ada.realized_pnl_latest, 0) - COALESCE(ada.realized_pnl_month_ago, 0))
-          + (COALESCE(ada.payouts_latest, 0) - COALESCE(ada.payouts_month_ago, 0))
-          - (COALESCE(ada.commissions_latest, 0) - COALESCE(ada.commissions_month_ago, 0))) /
-        (app.price_month_ago * app.quantity_month_ago * app.currency_rate / app.leverage)
-      ) * 100
-      WHEN app.quantity_month_ago = 0 AND (app.total_bought_before_month * app.currency_rate / app.leverage) > 0 THEN (
-        ((COALESCE(ada.realized_pnl_latest, 0) - COALESCE(ada.realized_pnl_month_ago, 0)) + (COALESCE(ada.payouts_latest, 0) - COALESCE(ada.payouts_month_ago, 0)) - (COALESCE(ada.commissions_latest, 0) - COALESCE(ada.commissions_month_ago, 0))) /
-        (app.total_bought_before_month * app.currency_rate / app.leverage)
-      ) * 100
+      WHEN COALESCE(rm.sum_position_value, 0) > 0 THEN
+        ((COALESCE(ada.total_pnl_latest, 0) - COALESCE(rm.total_pnl_m, 0)) / rm.sum_position_value) * 100
+      WHEN COALESCE(tq.total_bought_before_month, 0) * COALESCE(aps.currency_rate, 1) / NULLIF(lav.lev, 0) > 0 THEN
+        ((COALESCE(ada.total_pnl_latest, 0) - COALESCE(rm.total_pnl_m, 0))
+          / (tq.total_bought_before_month * COALESCE(aps.currency_rate, 1) / NULLIF(lav.lev, 0))) * 100
       ELSE 0
     END AS return_percent_month
-    
-  FROM asset_prices_periods app
-  JOIN assets a ON a.id = app.asset_id
-  LEFT JOIN asset_daily_aggregates ada ON ada.portfolio_id = app.portfolio_id AND ada.asset_id = app.asset_id
+  FROM (
+    SELECT DISTINCT pa.portfolio_id, pa.asset_id
+    FROM portfolio_assets pa
+    JOIN p ON p.id = pa.portfolio_id
+  ) b
+  JOIN assets a ON a.id = b.asset_id
+  LEFT JOIN asset_daily_aggregates ada ON ada.portfolio_id = b.portfolio_id AND ada.asset_id = b.asset_id
+  LEFT JOIN pdp_roll_year ry ON ry.portfolio_id = b.portfolio_id AND ry.asset_id = b.asset_id
+  LEFT JOIN pdp_roll_month rm ON rm.portfolio_id = b.portfolio_id AND rm.asset_id = b.asset_id
+  LEFT JOIN transaction_quantities tq ON tq.portfolio_id = b.portfolio_id AND tq.asset_id = b.asset_id
+  LEFT JOIN asset_price_snapshots aps ON aps.asset_id = b.asset_id
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(NULLIF(AVG(COALESCE(pa2.leverage, 1)), 0), 1) AS lev
+    FROM portfolio_assets pa2
+    WHERE pa2.portfolio_id = b.portfolio_id AND pa2.asset_id = b.asset_id
+  ) lav ON TRUE
 ),
 portfolio_latest_values AS (
   SELECT DISTINCT ON (pv.portfolio_id)
@@ -683,18 +687,24 @@ SELECT
         'price_change', ar.price_change,
         'realized_profit', ar.realized_profit,
         'total_payouts', ar.total_payouts,
+        'total_commissions', ar.total_commissions,
+        'total_taxes', ar.total_taxes,
         'total_return', ar.total_return,
         'return_percent', ar.return_percent,
         'value_year_ago', ar.value_year_ago,
         'price_change_year', ar.price_change_year,
         'realized_profit_year', ar.realized_profit_year,
         'total_payouts_year', ar.total_payouts_year,
+        'total_commissions_year', ar.total_commissions_year,
+        'total_taxes_year', ar.total_taxes_year,
         'total_return_year', ar.total_return_year,
         'return_percent_year', ar.return_percent_year,
         'value_month_ago', ar.value_month_ago,
         'price_change_month', ar.price_change_month,
         'realized_profit_month', ar.realized_profit_month,
         'total_payouts_month', ar.total_payouts_month,
+        'total_commissions_month', ar.total_commissions_month,
+        'total_taxes_month', ar.total_taxes_month,
         'total_return_month', ar.total_return_month,
         'return_percent_month', ar.return_percent_month
       ) ORDER BY ar.return_percent DESC)

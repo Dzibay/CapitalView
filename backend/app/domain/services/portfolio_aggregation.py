@@ -37,18 +37,24 @@ def create_empty_analytics_maps():
             "price_change": 0.0,
             "realized_profit": 0.0,
             "total_payouts": 0.0,
+            "total_commissions": 0.0,
+            "total_taxes": 0.0,
             "total_return": 0.0,
             "return_percent": 0.0,
             "value_year_ago": 0.0,
             "price_change_year": 0.0,
             "realized_profit_year": 0.0,
             "total_payouts_year": 0.0,
+            "total_commissions_year": 0.0,
+            "total_taxes_year": 0.0,
             "total_return_year": 0.0,
             "return_percent_year": 0.0,
             "value_month_ago": 0.0,
             "price_change_month": 0.0,
             "realized_profit_month": 0.0,
             "total_payouts_month": 0.0,
+            "total_commissions_month": 0.0,
+            "total_taxes_month": 0.0,
             "total_return_month": 0.0,
             "return_percent_month": 0.0
         })
@@ -130,18 +136,24 @@ def merge_analytics_arrays_into_maps(maps, analytics):
                     "price_change": 0.0,
                     "realized_profit": 0.0,
                     "total_payouts": 0.0,
+                    "total_commissions": 0.0,
+                    "total_taxes": 0.0,
                     "total_return": 0.0,
                     "return_percent": 0.0,
                     "value_year_ago": 0.0,
                     "price_change_year": 0.0,
                     "realized_profit_year": 0.0,
                     "total_payouts_year": 0.0,
+                    "total_commissions_year": 0.0,
+                    "total_taxes_year": 0.0,
                     "total_return_year": 0.0,
                     "return_percent_year": 0.0,
                     "value_month_ago": 0.0,
                     "price_change_month": 0.0,
                     "realized_profit_month": 0.0,
                     "total_payouts_month": 0.0,
+                    "total_commissions_month": 0.0,
+                    "total_taxes_month": 0.0,
                     "total_return_month": 0.0,
                     "return_percent_month": 0.0
                 }
@@ -150,16 +162,22 @@ def merge_analytics_arrays_into_maps(maps, analytics):
             asset_returns_map[asset_key]["price_change"] += float(ar.get("price_change", 0) or 0)
             asset_returns_map[asset_key]["realized_profit"] += float(ar.get("realized_profit", 0) or 0)
             asset_returns_map[asset_key]["total_payouts"] += float(ar.get("total_payouts", 0) or 0)
+            asset_returns_map[asset_key]["total_commissions"] += float(ar.get("total_commissions", 0) or 0)
+            asset_returns_map[asset_key]["total_taxes"] += float(ar.get("total_taxes", 0) or 0)
             asset_returns_map[asset_key]["total_return"] += float(ar.get("total_return", 0) or 0)
             asset_returns_map[asset_key]["value_year_ago"] += float(ar.get("value_year_ago", 0) or 0)
             asset_returns_map[asset_key]["price_change_year"] += float(ar.get("price_change_year", 0) or 0)
             asset_returns_map[asset_key]["realized_profit_year"] += float(ar.get("realized_profit_year", 0) or 0)
             asset_returns_map[asset_key]["total_payouts_year"] += float(ar.get("total_payouts_year", 0) or 0)
+            asset_returns_map[asset_key]["total_commissions_year"] += float(ar.get("total_commissions_year", 0) or 0)
+            asset_returns_map[asset_key]["total_taxes_year"] += float(ar.get("total_taxes_year", 0) or 0)
             asset_returns_map[asset_key]["total_return_year"] += float(ar.get("total_return_year", 0) or 0)
             asset_returns_map[asset_key]["value_month_ago"] += float(ar.get("value_month_ago", 0) or 0)
             asset_returns_map[asset_key]["price_change_month"] += float(ar.get("price_change_month", 0) or 0)
             asset_returns_map[asset_key]["realized_profit_month"] += float(ar.get("realized_profit_month", 0) or 0)
             asset_returns_map[asset_key]["total_payouts_month"] += float(ar.get("total_payouts_month", 0) or 0)
+            asset_returns_map[asset_key]["total_commissions_month"] += float(ar.get("total_commissions_month", 0) or 0)
+            asset_returns_map[asset_key]["total_taxes_month"] += float(ar.get("total_taxes_month", 0) or 0)
             asset_returns_map[asset_key]["total_return_month"] += float(ar.get("total_return_month", 0) or 0)
             if asset_returns_map[asset_key]["invested_amount"] > 0:
                 asset_returns_map[asset_key]["return_percent"] = (
@@ -247,18 +265,24 @@ def convert_analytics_maps_to_lists(maps):
                 "price_change": v["price_change"],
                 "realized_profit": v["realized_profit"],
                 "total_payouts": v["total_payouts"],
+                "total_commissions": v["total_commissions"],
+                "total_taxes": v["total_taxes"],
                 "total_return": v["total_return"],
                 "return_percent": v["return_percent"],
                 "value_year_ago": v["value_year_ago"],
                 "price_change_year": v["price_change_year"],
                 "realized_profit_year": v["realized_profit_year"],
                 "total_payouts_year": v["total_payouts_year"],
+                "total_commissions_year": v["total_commissions_year"],
+                "total_taxes_year": v["total_taxes_year"],
                 "total_return_year": v["total_return_year"],
                 "return_percent_year": v["return_percent_year"],
                 "value_month_ago": v["value_month_ago"],
                 "price_change_month": v["price_change_month"],
                 "realized_profit_month": v["realized_profit_month"],
                 "total_payouts_month": v["total_payouts_month"],
+                "total_commissions_month": v["total_commissions_month"],
+                "total_taxes_month": v["total_taxes_month"],
                 "total_return_month": v["total_return_month"],
                 "return_percent_month": v["return_percent_month"]
             }
