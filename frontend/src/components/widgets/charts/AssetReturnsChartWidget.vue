@@ -59,6 +59,49 @@ const formatMoney = (value) => {
   }).format(value || 0)
 }
 
+/** Сумма со знаком (+ / −) для доходов и убытков по позиции */
+const formatSignedRub = (value) => {
+  const n = Number(value) || 0
+  const abs = new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    maximumFractionDigits: 0
+  }).format(Math.abs(n))
+  if (Math.abs(n) < 0.005) return abs
+  return n > 0 ? `+ ${abs}` : `− ${abs}`
+}
+
+/** Расходы в БД хранятся положительным числом — в подсказке показываем как отрицательную сумму */
+const formatExpenseRub = (positiveAmount) => {
+  const n = Math.abs(Number(positiveAmount) || 0)
+  if (n < 0.005) return formatMoney(0)
+  return formatMoney(-n)
+}
+
+/** Моноширинный шрифт для табличного tooltip (Chart.js рисует на canvas) */
+const TOOLTIP_MONO =
+  'ui-monospace, SFMono-Regular, "Cascadia Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace'
+
+const TT_LW = 28
+const TT_VW = 22
+const TT_SEP_LEN = TT_LW + 2 + TT_VW
+
+const ttLabelCol = (s) => {
+  const str = String(s)
+  if (str.length > TT_LW) return `${str.slice(0, TT_LW - 1)}…`
+  return str + ' '.repeat(TT_LW - str.length)
+}
+
+const ttValueCol = (s) => {
+  const str = String(s)
+  if (str.length >= TT_VW) return str
+  return ' '.repeat(TT_VW - str.length) + str
+}
+
+const ttRow = (label, value) => `${ttLabelCol(label)}  ${ttValueCol(value)}`
+
+const ttRule = () => '─'.repeat(TT_SEP_LEN)
+
 // Получаем данные за выбранный период
 const getPeriodData = (asset) => {
   if (selectedPeriod.value === '1Y') {
@@ -68,6 +111,8 @@ const getPeriodData = (asset) => {
       price_change: Number(asset?.price_change_year) || 0,
       realized_profit: Number(asset?.realized_profit_year) || 0,
       total_payouts: Number(asset?.total_payouts_year) || 0,
+      total_commissions: Number(asset?.total_commissions_year) || 0,
+      total_taxes: Number(asset?.total_taxes_year) || 0,
       invested_amount: Number(asset?.value_year_ago) || 0,
       current_value: Number(asset?.current_value) || 0
     }
@@ -78,6 +123,8 @@ const getPeriodData = (asset) => {
       price_change: Number(asset?.price_change_month) || 0,
       realized_profit: Number(asset?.realized_profit_month) || 0,
       total_payouts: Number(asset?.total_payouts_month) || 0,
+      total_commissions: Number(asset?.total_commissions_month) || 0,
+      total_taxes: Number(asset?.total_taxes_month) || 0,
       invested_amount: Number(asset?.value_month_ago) || 0,
       current_value: Number(asset?.current_value) || 0
     }
@@ -89,6 +136,8 @@ const getPeriodData = (asset) => {
       price_change: Number(asset?.price_change) || 0,
       realized_profit: Number(asset?.realized_profit) || 0,
       total_payouts: Number(asset?.total_payouts) || 0,
+      total_commissions: Number(asset?.total_commissions) || 0,
+      total_taxes: Number(asset?.total_taxes) || 0,
       invested_amount: Number(asset?.invested_amount) || 0,
       current_value: Number(asset?.current_value) || 0
     }
@@ -206,28 +255,71 @@ const overrideOptions = computed(() => ({
   plugins: {
     tooltip: {
       z: 1000,
+      displayColors: false,
+      padding: 16,
+      titleFont: { size: 13, weight: '600', family: 'Inter, system-ui, sans-serif' },
+      bodyFont: { size: 11, weight: '500', family: TOOLTIP_MONO },
+      footerFont: { size: 11, weight: '700', family: TOOLTIP_MONO },
+      footerColor: '#fef3c7',
+      titleMarginBottom: 8,
+      bodySpacing: 5,
+      footerSpacing: 6,
       callbacks: {
-        title: (context) => context[0].label || '',
+        title: (context) => {
+          const originalData = context[0].chart.data.datasets[0]._originalData || []
+          const asset = originalData[context[0].dataIndex]
+          const ticker = context[0].label || ''
+          const name = asset?.asset_name ? String(asset.asset_name) : ''
+          return name && name !== ticker ? `${ticker} · ${name}` : ticker
+        },
+        beforeBody: (context) => {
+          const originalData = context[0].chart.data.datasets[0]._originalData || []
+          const asset = originalData[context[0].dataIndex]
+          if (!asset?.periodData) return []
+          const pd = asset.periodData
+          const periodLabel =
+            selectedPeriod.value === '1Y'
+              ? 'за год'
+              : selectedPeriod.value === '1M'
+                ? 'за месяц'
+                : 'за всё время'
+          return [
+            ttRow(`Доходность (${periodLabel})`, formatPercent(pd.return_percent || 0)),
+            '',
+            ttRow('Показатель', 'Сумма'),
+            ttRule()
+          ]
+        },
         label: (context) => {
           const originalData = context.chart.data.datasets[0]._originalData || []
           const asset = originalData[context.dataIndex]
           if (!asset || !asset.periodData) return []
 
           const pd = asset.periodData
-          const periodLabel = selectedPeriod.value === '1Y' ? ' (за год)' :
-                             selectedPeriod.value === '1M' ? ' (за месяц)' : ' (все время)'
-          const totalCommissions = Number(asset?.total_commissions || asset?.total_commissions_all || asset?.total_commissions_year || asset?.total_commissions_month || 0)
+          const comm = Number(pd.total_commissions) || 0
+          const tax = Number(pd.total_taxes) || 0
 
           return [
-            `Доходность${periodLabel}: ${formatPercent(pd.return_percent || 0)}`,
-            '',
-            'Состав прибыли:',
-            `  Общая прибыль: ${formatMoney(pd.total_return || 0)}`,
-            `  Нереализованная прибыль: ${formatMoney(pd.price_change || 0)}`,
-            `  Реализованная прибыль: ${formatMoney(pd.realized_profit || 0)}`,
-            `  Выплаты: ${formatMoney(pd.total_payouts || 0)}`,
-            ...(totalCommissions !== 0 ? [`  Комиссии: ${formatMoney(-Math.abs(totalCommissions))}`] : [])
+            ttRow('Нереализованная прибыль', formatSignedRub(pd.price_change)),
+            ttRow('Реализованная прибыль', formatSignedRub(pd.realized_profit)),
+            ttRow('Выплаты', formatSignedRub(pd.total_payouts)),
+            ttRow('Комиссии', formatExpenseRub(comm)),
+            ttRow('Налоги', formatExpenseRub(tax))
           ]
+        },
+        afterBody: (context) => {
+          const originalData = context[0].chart.data.datasets[0]._originalData || []
+          const asset = originalData[context[0].dataIndex]
+          if (!asset?.periodData) return []
+          return ['', ttRule()]
+        },
+        footer: (tooltipItems) => {
+          if (!tooltipItems?.length) return ''
+          const originalData = tooltipItems[0].chart.data.datasets[0]._originalData || []
+          const asset = originalData[tooltipItems[0].dataIndex]
+          if (!asset?.periodData) return ''
+          const total = Number(asset.periodData.total_return) || 0
+          return ttRow('▸ Итого — общая прибыль', formatMoney(total))
         }
       }
     }
