@@ -999,6 +999,7 @@ async function createBuyTransaction(assetId, portfolioAssetId, quantity, transac
 }
 
 // Функция для генерации дат для повторяющихся операций
+// Та же логика, что и в operationsCount: без setMonth/setDate-оверфлоу (29–31 число).
 function generateRecurringDates(startDate, endDate, dayOfMonth) {
   const dates = []
   const parseYMD = (ymd) => {
@@ -1010,33 +1011,47 @@ function generateRecurringDates(startDate, endDate, dayOfMonth) {
     const day = Number(m[3])
     return new Date(year, monthIndex, day)
   }
-  
+
+  const getValidDay = (year, month1to12, day) => {
+    const lastDay = new Date(year, month1to12, 0).getDate()
+    return Math.min(day, lastDay)
+  }
+
   const start = parseYMD(startDate)
   const end = parseYMD(endDate)
-  if (!start || !end) return dates
-  
-  let current = new Date(start.getFullYear(), start.getMonth(), dayOfMonth)
-  
-  // Если первая дата раньше startDate, переходим к следующему месяцу
-  if (current < start) {
-    current.setMonth(current.getMonth() + 1)
-  }
-  
-  while (current <= end) {
-    // Проверяем, что день месяца валиден для этого месяца
-    const lastDay = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate()
-    const validDay = Math.min(dayOfMonth, lastDay)
-    current.setDate(validDay)
-    
-    if (current >= start && current <= end) {
-      dates.push(new Date(current))
+  if (!start || !end || end < start) return dates
+
+  let currentYear = start.getFullYear()
+  let currentMonth = start.getMonth() + 1
+
+  let opDay = getValidDay(currentYear, currentMonth, dayOfMonth)
+  let opDate = new Date(currentYear, currentMonth - 1, opDay)
+
+  if (opDate < start) {
+    if (currentMonth === 12) {
+      currentYear++
+      currentMonth = 1
+    } else {
+      currentMonth++
     }
-    
-    // Переходим к следующему месяцу
-    current.setMonth(current.getMonth() + 1)
-    current.setDate(dayOfMonth)
+    opDay = getValidDay(currentYear, currentMonth, dayOfMonth)
+    opDate = new Date(currentYear, currentMonth - 1, opDay)
   }
-  
+
+  while (opDate <= end) {
+    if (opDate >= start) {
+      dates.push(new Date(opDate.getFullYear(), opDate.getMonth(), opDate.getDate()))
+    }
+    if (currentMonth === 12) {
+      currentYear++
+      currentMonth = 1
+    } else {
+      currentMonth++
+    }
+    opDay = getValidDay(currentYear, currentMonth, dayOfMonth)
+    opDate = new Date(currentYear, currentMonth - 1, opDay)
+  }
+
   return dates
 }
 
