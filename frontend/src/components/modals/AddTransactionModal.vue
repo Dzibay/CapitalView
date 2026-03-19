@@ -1058,42 +1058,75 @@ const handleSubmit = async () => {
         return opItem
       })
 
-      await operationsService.applyOperations(operations)
+      const needsCurrencyBuy = isPayout.value && createAssetFromCurrency.value && selectedCurrency.value.ticker !== 'RUB'
 
-      // Если не создаем buy-операции для нового валютного актива,
-      // обновляем dashboard прямо сейчас.
-      if (!(isPayout.value && createAssetFromCurrency.value && selectedCurrency.value.ticker !== 'RUB')) {
+      if (!needsCurrencyBuy) {
+        await operationsService.applyOperations(operations)
         await dashboardStore.reloadDashboard()
-      }
-      
-      // Если нужно создать актив из валюты для повторяющихся операций
-      // Это создает транзакции покупки актива валюты (например, BTC) для каждой даты выплаты дивидендов
-      if (isPayout.value && createAssetFromCurrency.value && selectedCurrency.value.ticker !== 'RUB') {
-        // findOrCreateCurrencyAsset проверяет, есть ли актив уже в портфеле
-        // Если есть - возвращает существующий portfolio_asset_id (без создания дубликата)
-        // Если нет - создает новый portfolio_asset с quantity=0
+      } else {
+        // Вместо отдельного запроса на каждую дату:
+        // собираем buy-операции для всех дат и отправляем одним apply.
         const currencyAsset = await findOrCreateCurrencyAsset(selectedCurrency.value.ticker, currencyId.value, true)
-        const dates = generateRecurringDates(startDate.value, endDate.value, dayOfMonth.value)
-        
-        // Создаем транзакции покупки для каждой даты
-        // Используем Promise.all для параллельного выполнения, но с ограничением
-        // Если актив уже был в портфеле, транзакции просто добавятся к существующему активу
-        const batchSize = 5 // Обрабатываем по 5 транзакций за раз
-        for (let i = 0; i < dates.length; i += batchSize) {
-          const batch = dates.slice(i, i + batchSize)
-          await Promise.all(batch.map(async (opDate) => {
-            const dateStr = normalizeDateToString(opDate) || ''
-            await createBuyTransaction(
-              currencyAsset.asset_id,
-              currencyAsset.portfolio_asset_id,
-              Math.abs(amount.value),
-              dateStr,
-              true
+
+        // Загружаем историю цены валютного актива один раз, чтобы не делать запрос на каждую дату.
+        const priceHistoryResponse = await assetsService.getAssetPriceHistory(
+          currencyAsset.asset_id,
+          null,
+          null,
+          10000
+        )
+        const currencyPriceHistory = priceHistoryResponse?.success ? priceHistoryResponse.prices : null
+
+        const buyOperations = []
+        for (const opDate of dates) {
+          const dateStr = normalizeDateToString(opDate) || ''
+
+          let buyPrice = await getAssetPriceOnDate(
+            currencyAsset.asset_id,
+            dateStr,
+            currencyPriceHistory
+          )
+
+          // fallback как в createBuyTransaction
+          if (!buyPrice || buyPrice <= 0) {
+            const refData = dashboardStore.referenceData
+            if (refData?.assets) {
+              const asset = refData.assets.find(a => a.id === currencyAsset.asset_id)
+              if (asset?.ticker && refData.currencies) {
+                const currency = refData.currencies.find(c => c.ticker === asset.ticker)
+                if (currency?.rate_to_rub) {
+                  buyPrice = parseFloat(currency.rate_to_rub)
+                }
+              }
+              if ((!buyPrice || buyPrice <= 0) && asset?.last_price) {
+                buyPrice = parseFloat(asset.last_price)
+              }
+            }
+          }
+
+          if (!buyPrice || buyPrice <= 0) {
+            console.warn(
+              `Не удалось получить цену актива ${currencyAsset.asset_id} на дату ${dateStr}. Используется fallback цена = 1.`
             )
-          }))
+            buyPrice = 1
+          }
+
+          buyOperations.push({
+            operation_type: 1, // Buy
+            operation_date: dateStr,
+            asset_id: currencyAsset.asset_id,
+            portfolio_asset_id: currencyAsset.portfolio_asset_id,
+            quantity: Math.abs(amount.value),
+            price: buyPrice,
+            create_deposit_operation: false,
+          })
         }
-        
-        // Обновляем dashboard после создания всех транзакций
+
+        await operationsService.applyOperations([
+          ...operations,
+          ...buyOperations
+        ])
+
         await dashboardStore.reloadDashboard()
       }
     } else {
