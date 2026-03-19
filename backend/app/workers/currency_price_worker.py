@@ -38,6 +38,9 @@ UPDATE_INTERVAL_SECONDS = 60 * 60
 # Основные валюты для обновления
 CURRENCY_TICKERS = ["USD", "EUR", "GBP", "CNY", "JPY"]
 
+# Для первоначального заполнения истории тянем с 2000 года
+INITIAL_HISTORY_START_DATE = date(2000, 1, 1)
+
 
 async def get_currency_assets() -> List[Dict]:
     """
@@ -109,10 +112,14 @@ async def update_currency_history(
             end_date = date.today()
             rates = await get_currency_rate_history(session, ticker, start_date=start_date_for_query, end_date=end_date)
         else:
-            # Для первого обновления запрашиваем историю за последний год
+            # Для первого обновления запрашиваем историю с 2000 года
             end_date = date.today()
-            start_date = end_date - timedelta(days=365)
-            rates = await get_currency_rate_history(session, ticker, start_date=start_date, end_date=end_date)
+            rates = await get_currency_rate_history(
+                session,
+                ticker,
+                start_date=INITIAL_HISTORY_START_DATE,
+                end_date=end_date,
+            )
     
     if not rates:
         if last_date:
