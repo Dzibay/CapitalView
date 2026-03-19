@@ -3,7 +3,7 @@
  * Аналогично backend/app/utils/date.py
  * 
  * Основные функции:
- * - normalizeDateToString: нормализует дату в формат YYYY-MM-DD
+ * - normalizeDateToString: нормализует дату в формат YYYY-MM-DD (для Date — календарный день в локальной TZ)
  * - formatDateForDisplay: форматирует дату для отображения (DD.MM.YYYY)
  * - extractDateFromString: извлекает дату из строки в формате YYYY-MM-DD
  */
@@ -48,14 +48,17 @@ export function normalizeDateToString(date) {
     }
   }
   
-  // Если это объект Date, используем UTC методы для избежания проблем с часовыми поясами
+  // Календарная дата в локальной таймзоне браузера.
+  // Важно: new Date(y, m, d) даёт полночь по локальному времени; getUTC* сдвинет день
+  // (например, 1-е число в Москве → «вчера» в UTC), из‑за чего повторяющиеся операции
+  // уходили на 30/31 предыдущего месяца.
   if (date instanceof Date) {
     if (isNaN(date.getTime())) {
       return null
     }
-    const year = date.getUTCFullYear()
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0')
-    const day = String(date.getUTCDate()).padStart(2, '0')
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
     return `${year}-${month}-${day}`
   }
   
@@ -65,10 +68,9 @@ export function normalizeDateToString(date) {
     if (isNaN(dateObj.getTime())) {
       return null
     }
-    // Используем UTC методы
-    const year = dateObj.getUTCFullYear()
-    const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0')
-    const day = String(dateObj.getUTCDate()).padStart(2, '0')
+    const year = dateObj.getFullYear()
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+    const day = String(dateObj.getDate()).padStart(2, '0')
     return `${year}-${month}-${day}`
   } catch (e) {
     return null

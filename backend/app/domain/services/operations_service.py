@@ -11,6 +11,28 @@ from app.infrastructure.database.repositories.asset_repository import AssetRepos
 
 logger = get_logger(__name__)
 
+
+def normalize_cash_operation_amount(operation_type: int, amount: float) -> float:
+    """
+    Приводит сумму cash-операции к каноническому знаку.
+
+    Расходы (вывод, комиссия, налог) хранятся отрицательными; доходы (дивиденд,
+    купон, пополнение) — положительными. Пользователь может ввести комиссию 10000 —
+    будет сохранено -10000.
+
+    Тип 10 (Other) не меняем — знак остаётся как ввёл пользователь.
+    """
+    t = int(operation_type)
+    x = float(amount)
+    if x == 0:
+        return x
+    if t in (6, 7, 8):
+        return -abs(x)
+    if t in (3, 4, 5):
+        return abs(x)
+    return x
+
+
 # Создаем экземпляры репозиториев для использования во всех функциях
 _portfolio_asset_repository = PortfolioAssetRepository()
 _asset_repository = AssetRepository()
@@ -147,6 +169,7 @@ def apply_operations(
             amount = float(amount)
             if amount == 0:
                 raise ValueError(f"operations[{idx}]: amount не может быть равен 0")
+            amount = normalize_cash_operation_amount(operation_type, amount)
 
             currency_id = op.get("currency_id") or 1
             dividend_yield = op.get("dividend_yield")
