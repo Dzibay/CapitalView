@@ -142,7 +142,8 @@ router.beforeEach(async (to, from, next) => {
 // SPA-страницы: отправляем "виртуальный просмотр" при смене маршрута.
 // Ожидаем, что в index.html уже подключена Яндекс.Метрика и глобально доступна функция `ym`.
 // ID счётчика задавайте через Vite переменную окружения: `VITE_YM_COUNTER_ID`.
-const YM_COUNTER_ID = import.meta.env.VITE_YM_COUNTER_ID
+// Если переменная не задана — используем ID из `frontend/index.html`, чтобы не терять pageview в SPA.
+const YM_COUNTER_ID = import.meta.env.VITE_YM_COUNTER_ID || 108158122
 
 router.afterEach((to) => {
   if (!YM_COUNTER_ID) return
