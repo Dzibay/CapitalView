@@ -55,6 +55,7 @@ const priceHistoryCacheAssetId = ref(null) // Для какого asset_id бы�
 const isLoadingHistory = ref(false) // Флаг для предотвращения двойной загрузки истории
 const minDate = ref(null) // Минимальная дата (первая цена в истории для покупки или первая покупка для операций)
 const minDateForOperations = ref(null) // Минимальная дата для операций (первая покупка актива)
+const minDateForCurrencyOperations = ref(null) // Минимальная дата для дат выплат, когда создаём актив из валюты выплаты
 const isSystemAsset = computed(() => {
   // Системный актив - это актив без user_id или с is_custom === false
   if (!props.asset?.asset_id) return false
@@ -246,6 +247,10 @@ const currencies = computed(() => {
   }))
 })
 
+// Кэш истории цен выбранной валюты для ограничения дат выплат
+const currencyPriceHistoryCache = ref(null)
+const currencyPriceHistoryCacheAssetId = ref(null)
+
 // Вычисляем количество операций для повторяющегося режима
 const operationsCount = computed(() => {
   if (mode.value !== 'recurring' || !startDate.value || !endDate.value || !dayOfMonth.value) return 0
@@ -383,6 +388,42 @@ const selectedCurrency = computed(() => {
   }
   return { ticker, symbol: symbols[ticker] || ticker }
 })
+
+// Когда создаём актив из валюты выплаты — требуется наличие истории цен этой валюты.
+const needsCurrencyBuy = computed(() => {
+  return isPayout.value && createAssetFromCurrency.value && selectedCurrency.value.ticker !== 'RUB'
+})
+
+// Для любых payout (дивиденды/купон) в валюте != RUB нужно,
+// чтобы на выбранные даты существовала история цен валюты выплаты,
+// иначе сервер не сможет посчитать amount_rub/конвертацию.
+const needsPayoutCurrencyHistory = computed(() => {
+  return isPayout.value && selectedCurrency.value.ticker !== 'RUB'
+})
+
+// Эффективный min для дат выплат (ограничиваем началом истории цен валюты).
+const minDateForPayoutInputs = computed(() => {
+  const base = minDateForOperations.value
+  if (!needsPayoutCurrencyHistory.value) return base
+
+  // Если нет истории цен — UI лучше не создавать (submit запретим), а ввод даты отключить.
+  if (!minDateForCurrencyOperations.value) return base
+
+  if (!base) return minDateForCurrencyOperations.value
+  return new Date(base) > new Date(minDateForCurrencyOperations.value) ? base : minDateForCurrencyOperations.value
+})
+
+const disablePayoutDateInputs = computed(() => {
+  return needsPayoutCurrencyHistory.value && !minDateForCurrencyOperations.value
+})
+
+watch(
+  () => [isPayout.value, selectedCurrency.value.ticker],
+  async () => {
+    await loadCurrencyPriceHistoryForDateRestriction()
+  },
+  { immediate: true }
+)
 
 const amountLabel = computed(() => {
   const symbol = selectedCurrency.value.symbol
@@ -650,6 +691,75 @@ async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
     console.error('Ошибка при получении цены актива:', error)
     return null
   }
+}
+
+// Функция для загрузки истории цен актива (вызывается один раз при включении переключателя)
+async function loadCurrencyPriceHistoryForDateRestriction() {
+  if (!needsPayoutCurrencyHistory.value) {
+    minDateForCurrencyOperations.value = null
+    currencyPriceHistoryCache.value = null
+    currencyPriceHistoryCacheAssetId.value = null
+    return
+  }
+
+  // RUB не требует ограничения
+  if (selectedCurrency.value.ticker === 'RUB') {
+    minDateForCurrencyOperations.value = null
+    currencyPriceHistoryCache.value = null
+    currencyPriceHistoryCacheAssetId.value = null
+    return
+  }
+
+  const refData = dashboardStore.referenceData
+  const refAssets = refData?.assets || []
+
+  // Берём системный asset по тикеру валюты (портфелный/кастомный не нужен для ограничений).
+  const currencySystemAsset = refAssets.find(a => a.ticker === selectedCurrency.value.ticker && (!a.user_id || a.user_id === null))
+  const currencyAssetId = currencySystemAsset?.id
+
+  if (!currencyAssetId) {
+    minDateForCurrencyOperations.value = null
+    currencyPriceHistoryCache.value = null
+    currencyPriceHistoryCacheAssetId.value = null
+    return
+  }
+
+  // Используем кэш, если уже загружали
+  if (
+    currencyPriceHistoryCacheAssetId.value === currencyAssetId &&
+    Array.isArray(currencyPriceHistoryCache.value)
+  ) {
+    // Мин дату можно вычислить по кэшу
+    if (currencyPriceHistoryCache.value.length > 0) {
+      const sorted = [...currencyPriceHistoryCache.value].sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date))
+      const first = sorted[0]?.trade_date
+      minDateForCurrencyOperations.value = normalizeDateToString(first)
+    } else {
+      minDateForCurrencyOperations.value = null
+    }
+    return
+  }
+
+  const resp = await assetsService.getAssetPriceHistory(
+    currencyAssetId,
+    null,
+    null,
+    10000
+  )
+
+  if (!resp?.success || !Array.isArray(resp.prices) || resp.prices.length === 0) {
+    minDateForCurrencyOperations.value = null
+    currencyPriceHistoryCache.value = null
+    currencyPriceHistoryCacheAssetId.value = null
+    return
+  }
+
+  currencyPriceHistoryCache.value = resp.prices
+  currencyPriceHistoryCacheAssetId.value = currencyAssetId
+
+  const sorted = [...resp.prices].sort((a, b) => new Date(a.trade_date) - new Date(b.trade_date))
+  const first = sorted[0]?.trade_date
+  minDateForCurrencyOperations.value = normalizeDateToString(first)
 }
 
 // Функция для загрузки истории цен актива (вызывается один раз при включении переключателя)
@@ -980,6 +1090,31 @@ const handleSubmit = async () => {
     error.value = 'Не указан актив'
     return
   }
+
+  // Если это выплата в валюте != RUB,
+  // но нет истории цен валюты (или выбранные даты раньше доступной) — не создаём операцию.
+  if (isPayout.value && selectedCurrency.value.ticker !== 'RUB') {
+    if (!minDateForCurrencyOperations.value) {
+      error.value = `Нет истории цен для валюты ${selectedCurrency.value.ticker}. Создание выплаты недоступно.`
+      return
+    }
+    const effectiveMin = minDateForPayoutInputs.value || minDateForCurrencyOperations.value
+
+    if (mode.value === 'single' && date.value && new Date(date.value) < new Date(effectiveMin)) {
+      error.value = `Дата выплаты не может быть раньше доступной даты для валюты: ${effectiveMin}`
+      return
+    }
+    if (mode.value === 'recurring') {
+      if (startDate.value && new Date(startDate.value) < new Date(effectiveMin)) {
+        error.value = `Начальная дата выплат не может быть раньше доступной даты для валюты: ${effectiveMin}`
+        return
+      }
+      if (endDate.value && new Date(endDate.value) < new Date(effectiveMin)) {
+        error.value = `Конечная дата выплат не может быть раньше доступной даты для валюты: ${effectiveMin}`
+        return
+      }
+    }
+  }
   
   // Валидация для повторяющихся операций
   if (mode.value === 'recurring') {
@@ -1068,14 +1203,33 @@ const handleSubmit = async () => {
         // собираем buy-операции для всех дат и отправляем одним apply.
         const currencyAsset = await findOrCreateCurrencyAsset(selectedCurrency.value.ticker, currencyId.value, true)
 
-        // Загружаем историю цены валютного актива один раз, чтобы не делать запрос на каждую дату.
-        const priceHistoryResponse = await assetsService.getAssetPriceHistory(
-          currencyAsset.asset_id,
-          null,
-          null,
-          10000
-        )
-        const currencyPriceHistory = priceHistoryResponse?.success ? priceHistoryResponse.prices : null
+        // Берём историю цены валюты из кэша (для ограничения дат),
+        // чтобы не делать повторный запрос.
+        let currencyPriceHistory =
+          currencyPriceHistoryCacheAssetId.value === currencyAsset.asset_id &&
+          Array.isArray(currencyPriceHistoryCache.value)
+            ? currencyPriceHistoryCache.value
+            : null
+
+        if (!currencyPriceHistory) {
+          const priceHistoryResponse = await assetsService.getAssetPriceHistory(
+            currencyAsset.asset_id,
+            null,
+            null,
+            10000
+          )
+
+          // Если история не загрузилась (success=false или prices пустые),
+          // передаем пустой массив вместо null.
+          currencyPriceHistory =
+            priceHistoryResponse?.success && Array.isArray(priceHistoryResponse.prices)
+              ? priceHistoryResponse.prices
+              : []
+
+          // Обновляем кэш, чтобы следующая логика использовала данные.
+          currencyPriceHistoryCacheAssetId.value = currencyAsset.asset_id
+          currencyPriceHistoryCache.value = currencyPriceHistory
+        }
 
         const buyOperations = []
         for (const opDate of dates) {
@@ -1143,7 +1297,10 @@ const handleSubmit = async () => {
         )
 
         // 2) Считаем цену buy-транзакции на дату (логика как в createBuyTransaction, но без создания tx)
-        let buyPrice = await getAssetPriceOnDate(currencyAsset.asset_id, date.value)
+        // Используем кэш истории цен валюты, если он уже загружен для ограничений.
+        const cachedCurrencyHistory =
+          currencyPriceHistoryCacheAssetId.value === currencyAsset.asset_id ? currencyPriceHistoryCache.value : null
+        let buyPrice = await getAssetPriceOnDate(currencyAsset.asset_id, date.value, cachedCurrencyHistory)
 
         if (!buyPrice || buyPrice <= 0) {
           const refData = dashboardStore.referenceData
@@ -1441,6 +1598,20 @@ const handleSubmit = async () => {
             <small class="form-hint">
               Будет создан актив с валютой {{ selectedCurrency.ticker }} и транзакция покупки на сумму дивидендов
             </small>
+            <small
+              v-if="needsPayoutCurrencyHistory && minDateForCurrencyOperations"
+              class="form-hint block"
+              style="margin-top: 8px;"
+            >
+              История цен для {{ selectedCurrency.ticker }} доступна начиная с {{ minDateForCurrencyOperations }}
+            </small>
+            <small
+              v-else-if="needsPayoutCurrencyHistory && !minDateForCurrencyOperations"
+              class="form-hint block"
+              style="margin-top: 8px; color: #ef4444;"
+            >
+              Нет доступной истории цен для валюты {{ selectedCurrency.ticker }} — операции выплат недоступны
+            </small>
           </div>
         </div>
 
@@ -1455,12 +1626,13 @@ const handleSubmit = async () => {
             <!-- Используем key для пересоздания компонента после установки minDateForOperations, чтобы даты стали тусклыми -->
             <DateInput 
               v-model="date" 
-              :min="minDateForOperations" 
-              :key="`date-input-op-${minDateForOperations || 'no-min'}`"
+              :min="minDateForPayoutInputs"
+              :disabled="disablePayoutDateInputs"
+              :key="`date-input-op-payout-${minDateForPayoutInputs || 'no-min'}`"
               required 
             />
-            <small v-if="minDateForOperations" class="form-hint" style="margin-top: 4px;">
-              Первая покупка актива: {{ minDateForOperations }}
+            <small v-if="minDateForPayoutInputs" class="form-hint" style="margin-top: 4px;">
+              Первая доступная дата для выплат: {{ minDateForPayoutInputs }}
             </small>
           </div>
         </div>
@@ -1478,8 +1650,9 @@ const handleSubmit = async () => {
                 <!-- Используем key для пересоздания компонента после установки minDateForOperations -->
                 <DateInput 
                   v-model="startDate" 
-                  :min="minDateForOperations" 
-                  :key="`start-date-input-${minDateForOperations || 'no-min'}`"
+                  :min="minDateForPayoutInputs"
+                  :disabled="disablePayoutDateInputs"
+                  :key="`start-date-input-payout-${minDateForPayoutInputs || 'no-min'}`"
                   required 
                 />
               </div>
@@ -1491,8 +1664,9 @@ const handleSubmit = async () => {
                 <!-- Используем key для пересоздания компонента после установки minDateForOperations -->
                 <DateInput 
                   v-model="endDate" 
-                  :min="minDateForOperations" 
-                  :key="`end-date-input-${minDateForOperations || 'no-min'}`"
+                  :min="minDateForPayoutInputs"
+                  :disabled="disablePayoutDateInputs"
+                  :key="`end-date-input-payout-${minDateForPayoutInputs || 'no-min'}`"
                   required 
                 />
               </div>
