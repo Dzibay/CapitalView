@@ -1735,6 +1735,10 @@ onUnmounted(() => {
     background: rgba(255, 255, 255, 0.96);
   }
 
+  .hero-device {
+    display: none;
+  }
+
   .orb {
     display: none;
   }
