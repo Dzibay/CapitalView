@@ -730,20 +730,6 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.mobile-only-actions {
-  display: none;
-}
-
-.mobile-menu-btn {
-  display: none !important;
-  background: none;
-  border: none;
-  color: var(--color-text);
-  cursor: pointer;
-  padding: 4px;
-  z-index: 102;
-}
-
 .btn-ghost {
   font-size: 14px;
   font-weight: 500;
@@ -775,12 +761,31 @@ onUnmounted(() => {
 
 /* --- Мобильная шапка без бургер-меню --- */
 @media (max-width: 767px) {
+  .container,
+  .container-narrow {
+    padding: 0 16px;
+  }
+
+  .header-inner {
+    height: 60px;
+  }
+
+  .logo {
+    font-size: 20px;
+  }
+
   .nav {
     display: none;
   }
 
   .desktop-actions .btn-ghost {
     display: none;
+  }
+
+  .desktop-actions .btn-primary-sm {
+    font-size: 13px;
+    padding: 8px 14px;
+    border-radius: 12px;
   }
 }
 
@@ -1760,11 +1765,32 @@ onUnmounted(() => {
   }
 
   .section-heading {
-    font-size: 32px;
+    font-size: 30px;
   }
 
   .section-subheading {
-    font-size: 17px;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  .section-intro {
+    font-size: 16px;
+    line-height: 1.6;
+    margin: -4px auto 36px;
+  }
+
+  .pain-card,
+  .feature-card {
+    padding: 24px 20px;
+  }
+
+  .step-card {
+    padding: 36px 20px;
+  }
+
+  .pricing-card,
+  .testimonial-card {
+    padding: 28px 20px;
   }
 
   .hero-metrics {
