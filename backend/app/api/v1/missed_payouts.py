@@ -39,7 +39,6 @@ async def get_missed_payouts_route(
         
         return success_response(data={"missed_payouts": payouts})
     except Exception as e:
-        from fastapi import HTTPException
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при получении неполученных выплат: {str(e)}"
@@ -47,6 +46,7 @@ async def get_missed_payouts_route(
 
 
 @router.delete("/batch")
+@invalidate("dashboard:{user.id}")
 async def delete_missed_payouts_batch_route(
     missed_payout_ids: List[int] = Body(...),
     user: dict = Depends(get_current_user)
@@ -89,51 +89,6 @@ async def delete_missed_payouts_batch_route(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при удалении неполученных выплат: {str(e)}"
         )
-
-
-@router.delete("/{missed_payout_id}")
-async def delete_missed_payout_route(
-    missed_payout_id: int,
-    user: dict = Depends(get_current_user)
-):
-    """
-    Удаляет неполученную выплату (игнорирует её).
-    
-    Args:
-        missed_payout_id: ID записи в missed_payouts
-        user: Текущий пользователь из токена
-    """
-    try:
-        # Проверяем, что выплата принадлежит пользователю
-        payouts = await _missed_payout_repository.get_user_missed_payouts_async(user_id=user["id"])
-        payout_ids = [p["id"] for p in payouts]
-        
-        if missed_payout_id not in payout_ids:
-            from fastapi import HTTPException
-            raise HTTPException(
-                status_code=HTTPStatus.NOT_FOUND,
-                detail="Неполученная выплата не найдена или не принадлежит пользователю"
-            )
-        
-        deleted = await _missed_payout_repository.delete_missed_payout(missed_payout_id)
-        
-        if not deleted:
-            from fastapi import HTTPException
-            raise HTTPException(
-                status_code=HTTPStatus.NOT_FOUND,
-                detail="Не удалось удалить неполученную выплату"
-            )
-        
-        return success_response(message="Неполученная выплата успешно удалена")
-    except HTTPException:
-        raise
-    except Exception as e:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка при удалении неполученной выплаты: {str(e)}"
-        )
-
 
 @router.post("/check/{portfolio_asset_id}")
 async def check_missed_payouts_route(
