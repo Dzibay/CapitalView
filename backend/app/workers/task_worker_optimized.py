@@ -25,6 +25,9 @@ from app.constants import BrokerID
 from app.infrastructure.database.postgres_async import table_insert_async, table_update_async, table_select_async
 from app.core.logging import get_logger
 
+from app.config import Config
+from app.infrastructure.cache import invalidate_cache
+
 logger = get_logger(__name__)
 
 # Настройки воркера
@@ -214,6 +217,10 @@ async def process_import_task(task: dict) -> bool:
         
         result = await import_broker_portfolio(user_email, portfolio_id, broker_data, broker_id_int, api_key=broker_token)
         
+        # Данные портфеля меняются в фоновой задаче, поэтому инвалидируем кэш ДАШБОРДА
+        # после фактического обновления БД.
+        await invalidate_cache("dashboard:{user_id}", user_id=user_id)
+        
         # upsert_broker_connection уже вызывается внутри import_broker_portfolio
         
         # Завершаем задачу
@@ -347,7 +354,16 @@ def run_worker():
     init_logging()
     
     try:
-        asyncio.run(worker_loop())
+        async def _runner():
+            # Инициализируем Redis в воркере, чтобы invalidate_cache работал.
+            from app.infrastructure.cache import init_redis, close_redis
+            await init_redis(Config.REDIS_URL)
+            try:
+                await worker_loop()
+            finally:
+                await close_redis()
+
+        asyncio.run(_runner())
     except KeyboardInterrupt:
         logger.info("Воркер остановлен пользователем")
     except Exception as e:
