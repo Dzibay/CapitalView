@@ -250,22 +250,16 @@ onUnmounted(() => {
             <a href="#how-it-works" class="btn-secondary">Как это работает</a>
           </div>
         </div>
-
+        <!-- 1200 × 750 px - рекомендуемый размер -->
         <div class="hero-device reveal">
           <div class="laptop-mockup">
             <div class="laptop-screen">
               <img
-                src="/screenshots/hero-laptop-dashboard.webp"
+                src="/screenshots/hero-laptop-dashboard.webp" 
                 alt="Дашборд CapitalView на экране ноутбука — учёт и аналитика инвестиционного портфеля"
                 class="laptop-image"
                 @error="(e) => { e.target.style.display = 'none'; e.target.nextElementSibling?.classList.add('show') }"
               />
-              <div class="laptop-placeholder">
-                <ImageIcon :size="40" :stroke-width="1" />
-                <p>Ноутбук с дашбордом</p>
-                <span>Добавьте изображение: <code>public/screenshots/hero-laptop-dashboard.webp</code></span>
-                <span class="hint">Рекомендуемый размер: 1200 × 750 px</span>
-              </div>
             </div>
             <div class="laptop-base"></div>
           </div>
@@ -1050,7 +1044,7 @@ onUnmounted(() => {
   border: 3px solid #1a1a1a;
   border-bottom: none;
   overflow: hidden;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 2 / 1;
 }
 
 .laptop-image {
