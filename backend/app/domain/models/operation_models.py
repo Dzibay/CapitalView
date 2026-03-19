@@ -13,7 +13,10 @@ class CreateOperationRequest(BaseModel):
     asset_id: Optional[int] = Field(None, ge=1, description="ID актива (обязателен для Buy/Sell/Dividend/Coupon, опционален для Commission/Tax)")
     portfolio_id: Optional[int] = Field(None, ge=1, description="ID портфеля (опционален, если передан portfolio_asset_id)")
     operation_type: Union[int, str] = Field(..., description="Тип операции: 1=Buy, 2=Sell, 3=Dividend, 4=Coupon, 5=Deposit, 6=Withdraw, 7=Commission, 8=Tax, 9=Redemption, 10=Other")
-    amount: float = Field(..., description="Сумма операции (положительная для доходов, отрицательная для расходов)")
+    amount: float = Field(
+        ...,
+        description="Сумма операции; при apply нормализуется: дивиденд/купон/пополнение — положительно, вывод/комиссия/налог — отрицательно (можно передать комиссию без минуса)",
+    )
     currency_id: Optional[int] = Field(1, description="ID валюты (по умолчанию RUB=1)")
     operation_date: Union[datetime, str] = Field(..., description="Дата операции")
     
@@ -118,7 +121,10 @@ class BatchCreateOperationRequest(BaseModel):
     asset_id: Optional[int] = Field(None, ge=1, description="ID актива (обязателен для Buy/Sell/Dividend/Coupon, опционален для Commission/Tax)")
     portfolio_id: Optional[int] = Field(None, ge=1, description="ID портфеля (опционален, если передан portfolio_asset_id)")
     operation_type: Union[int, str] = Field(..., description="Тип операции: 1=Buy, 2=Sell, 3=Dividend, 4=Coupon, 5=Deposit, 6=Withdraw, 7=Commission, 8=Tax, 9=Redemption, 10=Other")
-    amount: float = Field(..., description="Сумма операции (положительная для доходов, отрицательная для расходов)")
+    amount: float = Field(
+        ...,
+        description="Сумма операции; при apply нормализуется: дивиденд/купон/пополнение — положительно, вывод/комиссия/налог — отрицательно (можно передать комиссию без минуса)",
+    )
     currency_id: Optional[int] = Field(1, description="ID валюты (по умолчанию RUB=1)")
     start_date: Union[datetime, str] = Field(..., description="Дата начала повторения")
     end_date: Union[datetime, str] = Field(..., description="Дата окончания повторения")

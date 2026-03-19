@@ -12,6 +12,7 @@ import assetsService from '../../services/assetsService'
 import operationsService from '../../services/operationsService'
 import { normalizeDateToString } from '../../utils/date'
 import { getCurrencySymbol } from '../../utils/currencySymbols'
+import { normalizeCashOperationAmount } from '../../utils/operationAmount'
 
 const props = defineProps({
   asset: Object,
@@ -147,6 +148,9 @@ const isPayout = computed(() => {
 const isExpense = computed(() => {
   return operationType.value === 7 || operationType.value === 8
 })
+
+/** Вывод / комиссия / налог: сумму можно ввести без минуса — на сервер уйдёт отрицательная */
+const isOutflowCashType = computed(() => [6, 7, 8].includes(operationType.value))
 
 watch(() => props.asset, async (newAsset) => {
   initializeStartDate()
@@ -428,7 +432,7 @@ watch(
 const amountLabel = computed(() => {
   const symbol = selectedCurrency.value.symbol
   if (isPayout.value) return `Сумма выплаты (${symbol})`
-  if (isExpense.value) return `Сумма расхода (${symbol})`
+  if (isOutflowCashType.value) return `Сумма расхода (${symbol})`
   if (isCashOperation.value) {
     return operationType.value === 5 ? `Сумма пополнения (${symbol})` : `Сумма вывода (${symbol})`
   }
@@ -1189,6 +1193,7 @@ const handleSubmit = async () => {
       // Для повторяющихся операций создаем все элементы в одном apply-запросе
       const portfolioId = props.asset?.portfolio_id || getPortfolioId()
       const dates = generateRecurringDates(startDate.value, endDate.value, dayOfMonth.value)
+      const cashAmt = normalizeCashOperationAmount(operationType.value, amount.value)
 
       const operations = dates.map((opDate) => {
         const dateStr = normalizeDateToString(opDate) || ''
@@ -1196,7 +1201,7 @@ const handleSubmit = async () => {
         const opItem = {
           portfolio_id: portfolioId,
           operation_type: operationType.value,
-          amount: amount.value,
+          amount: cashAmt,
           operation_date: dateStr,
           currency_id: isPayout.value ? currencyId.value : 1,
           create_deposit_operation: createDepositOperation.value && (operationType.value === 7 || operationType.value === 8),
@@ -1285,7 +1290,7 @@ const handleSubmit = async () => {
             operation_date: dateStr,
             asset_id: currencyAsset.asset_id,
             portfolio_asset_id: currencyAsset.portfolio_asset_id,
-            quantity: Math.abs(amount.value),
+            quantity: Math.abs(cashAmt),
             price: buyPrice,
             create_deposit_operation: false,
           })
@@ -1303,6 +1308,7 @@ const handleSubmit = async () => {
       const portfolioId = props.asset?.portfolio_id || getPortfolioId()
 
       if (isPayout.value && createAssetFromCurrency.value && selectedCurrency.value.ticker !== 'RUB') {
+        const cashAmt = normalizeCashOperationAmount(operationType.value, amount.value)
         // 1) Гарантируем существование portfolio_asset валюты выплаты,
         //    но без лишнего reload (reload сделаем один раз после apply на бэкенде).
         const currencyAsset = await findOrCreateCurrencyAsset(
@@ -1346,7 +1352,7 @@ const handleSubmit = async () => {
           {
             operation_type: operationType.value, // 3=Dividend, 4=Coupon
             operation_date: date.value,
-            amount: amount.value,
+            amount: cashAmt,
             currency_id: currencyId.value,
             asset_id: props.asset.asset_id,
             portfolio_asset_id: props.asset.portfolio_asset_id,
@@ -1357,7 +1363,7 @@ const handleSubmit = async () => {
             operation_date: date.value,
             asset_id: currencyAsset.asset_id,
             portfolio_asset_id: currencyAsset.portfolio_asset_id,
-            quantity: Math.abs(amount.value),
+            quantity: Math.abs(cashAmt),
             price: buyPrice,
             create_deposit_operation: false,
             // portfolio_id не обязательно, сервер выведет из portfolio_asset_id
@@ -1371,7 +1377,7 @@ const handleSubmit = async () => {
         const operationData = {
           portfolio_id: portfolioId,
           operation_type: operationType.value,
-          amount: amount.value,
+          amount: normalizeCashOperationAmount(operationType.value, amount.value),
           operation_date: date.value,
           currency_id: isPayout.value ? currencyId.value : 1,
           create_deposit_operation: createDepositOperation.value && (operationType.value === 7 || operationType.value === 8)
@@ -1540,7 +1546,7 @@ const handleSubmit = async () => {
                 :step="0.000001"
                 class="form-input"
                 required
-                :placeholder="isExpense ? 'Отрицательное значение' : 'Положительное значение'"
+                :placeholder="isOutflowCashType ? 'Например, 1000 (без минуса)' : 'Положительное значение'"
               />
               <small class="form-hint">
                 Можно вводить до 6 знаков после запятой (например, 0.001234)
@@ -1579,10 +1585,10 @@ const handleSubmit = async () => {
               :step="0.01"
               class="form-input"
               required
-              :placeholder="isExpense ? 'Отрицательное значение' : 'Положительное значение'"
+              :placeholder="isOutflowCashType ? 'Например, 1000 (без минуса)' : 'Положительное значение'"
             />
-            <small class="form-hint" v-if="isExpense">
-              Введите отрицательное значение (например, -50)
+            <small class="form-hint" v-if="isOutflowCashType">
+              Можно ввести сумму без минуса — в учёте сохранится как расход (отрицательное значение)
             </small>
           </div>
           
