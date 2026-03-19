@@ -144,7 +144,7 @@ class BatchCreateOperationRequest(BaseModel):
             'withdraw': 6, 'вывод': 6, 'снятие': 6, '6': 6,
             'commission': 7, 'комиссия': 7, '7': 7,
             'tax': 8, 'налог': 8, 'налоги': 8, '8': 8,
-            'redemption': 9, 'ammortization': 9, 'амортизация': 9, 'погашение': 9, '9': 9,
+            'redemption': 9, 'погашение': 9, '9': 9,
             'other': 10, 'другое': 10, 'прочее': 10, '10': 10
         }
         
@@ -225,6 +225,8 @@ class UpdateOperationItem(BaseModel):
     operation_id: int = Field(..., description="ID операции")
     operation_date: Optional[str] = Field(None, description="Новая дата операции")
     amount: Optional[float] = Field(None, description="Новая сумма операции")
+    quantity: Optional[float] = Field(None, description="Новое количество (для buy/sell/redemption, если нужно)")
+    price: Optional[float] = Field(None, description="Новая цена за единицу (для buy/sell/redemption, если нужно)")
 
 
 class UpdateOperationsBatchRequest(BaseModel):
@@ -235,3 +237,69 @@ class UpdateOperationsBatchRequest(BaseModel):
 class DeleteOperationsRequest(BaseModel):
     """Модель запроса удаления операций (batch)."""
     ids: List[int] = Field(..., min_length=1, description="Список ID операций для удаления")
+
+
+class ApplyOperationItem(BaseModel):
+    """
+    Единый формат элемента для apply-эндпоинта.
+    Сервер преобразует элементы в формат, который понимает SQL `apply_operations_batch`.
+    """
+
+    operation_type: int = Field(..., ge=1, le=10, description="ID типа операции (1..10 как в operations_type)")
+    operation_date: Union[datetime, str] = Field(..., description="Дата операции")
+
+    # Общие поля
+    portfolio_id: Optional[int] = Field(None, ge=1, description="ID портфеля (может быть выведен из portfolio_asset_id)")
+    portfolio_asset_id: Optional[int] = Field(None, ge=1, description="ID portfolio_asset (для buy/sell/redemption и для привязки cash-операций)")
+    asset_id: Optional[int] = Field(None, ge=1, description="ID актива (для buy/sell/redemption и для dividend/coupon)")
+
+    # Cash-поля
+    amount: Optional[float] = Field(None, description="Сумма cash-операции (для buy/sell/redemption будет вычислена)")
+    currency_id: Optional[int] = Field(1, ge=1, description="ID валюты для cash-операций")
+    dividend_yield: Optional[float] = Field(None, description="Не используется в расчетах прямо сейчас, но передается для совместимости")
+
+    # Transaction-поля
+    quantity: Optional[float] = Field(None, gt=0, description="Количество для buy/sell/redemption")
+    price: Optional[float] = Field(None, gt=0, description="Цена за единицу для buy/sell/redemption")
+
+    # Автоматически создает Deposit-операцию в этом же apply-запросе
+    create_deposit_operation: bool = Field(
+        False,
+        description="Создать операцию пополнения в этом же запросе (для Buy и для Commission/Tax).",
+    )
+
+    @field_validator("operation_date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        """Парсит дату из строки или datetime."""
+        if isinstance(v, str):
+            try:
+                if "T" in v:
+                    return datetime.fromisoformat(v.replace("Z", "+00:00"))
+                return datetime.fromisoformat(v)
+            except:
+                return v
+        return v
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount_not_zero(cls, v):
+        if v is None:
+            return v
+        if float(v) == 0:
+            raise ValueError("amount не может быть равен нулю")
+        return v
+
+    def operation_category(self) -> str:
+        """Упрощенная классификация для преобразования payload."""
+        if self.operation_type in (1, 2, 9):
+            return "transaction"
+        return "cash"
+
+
+class ApplyOperationsRequest(BaseModel):
+    """
+    Запрос на создание произвольного набора операций одним SQL-вызовом.
+    """
+
+    operations: List[ApplyOperationItem] = Field(..., min_length=1)

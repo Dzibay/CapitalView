@@ -10,8 +10,9 @@ from app.utils.response import success_response
 from app.infrastructure.database.repositories.missed_payout_repository import MissedPayoutRepository
 from app.domain.services.access_control_service import check_portfolio_asset_access
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
-from app.domain.services.operations_service import create_operations_from_missed_payouts
+from app.domain.services.operations_service import apply_operations
 from app.infrastructure.cache import invalidate
+from app.utils.date import normalize_date_to_string
 
 router = APIRouter(prefix="/missed-payouts", tags=["missed-payouts"])
 
@@ -284,10 +285,51 @@ async def add_operations_from_missed_payouts_batch_route(
         # Формируем список выплат для создания операций
         selected_payouts = [payout_dict[pid] for pid in missed_payout_ids]
         
-        # Создаем операции батчем через apply_operations_batch
-        result = create_operations_from_missed_payouts(
+        # Создаем операции через универсальный apply_operations/apply_operations_batch
+        operations_list = []
+        for payout in selected_payouts:
+            payout_type = (payout.get("payout_type") or "").lower()
+            operation_type = 4 if payout_type == "coupon" else 3  # Dividend=3, Coupon=4
+
+            payment_date = payout.get("payment_date") or payout.get("payout_payment_date")
+            if not payment_date:
+                continue
+
+            operation_date = normalize_date_to_string(payment_date, include_time=True)
+            if not operation_date:
+                continue
+
+            expected_amount = payout.get("expected_amount") or payout.get("payout_value") or 0
+            if expected_amount <= 0:
+                continue
+
+            operations_list.append(
+                {
+                    "operation_type": operation_type,
+                    "operation_date": operation_date,
+                    "amount": float(expected_amount),
+                    "currency_id": payout.get("currency_id", 1),
+                    "asset_id": payout.get("asset_id"),
+                    "portfolio_asset_id": payout.get("portfolio_asset_id"),
+                    "portfolio_id": payout.get("portfolio_id"),
+                }
+            )
+
+        if not operations_list:
+            return success_response(
+                data={
+                    "inserted_count": 0,
+                    "failed_count": 0,
+                    "operation_ids": [],
+                    "failed_operations": [],
+                    "checked_assets_count": 0,
+                },
+                message=f"Платежи для создания операций не найдены"
+            )
+
+        result = apply_operations(
             user_id=user["id"],
-            missed_payouts=selected_payouts
+            operations=operations_list,
         )
         
         # Получаем уникальные portfolio_asset_id для проверки неполученных выплат

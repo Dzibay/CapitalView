@@ -14,6 +14,7 @@ import PageHeader from '../layouts/PageHeader.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
 import { getCurrencySymbol } from '../utils/currencySymbols'
+import operationsService from '../services/operationsService'
 
 const dashboardStore = useDashboardStore()
 const transactionsStore = useTransactionsStore()
@@ -54,10 +55,6 @@ const deleteTransactions = async (transaction_ids) => {
 
 const deleteOperations = async (operation_ids) => {
   await transactionsStore.deleteOperations(operation_ids)
-}
-
-const editTransaction = async (updated_transaction) => {
-  await transactionsStore.editTransaction(updated_transaction)
 }
 
 // --- списки для фильтров ---
@@ -566,45 +563,56 @@ const openEditModal = (tx) => {
 }
 
 const handleSaveEdit = async (newTx) => {
-  // Получаем оригинальную транзакцию для получения недостающих полей
-  const originalTx = transactions.value.find(t => 
+  const originalTx = transactions.value.find(t =>
     (t.transaction_id || t.id) === (newTx.transaction_id || newTx.id)
   )
-  
+
   if (!originalTx) {
     console.error('Оригинальная транзакция не найдена')
     return
   }
-  
-  const txData = {
-    transaction_id: newTx.transaction_id || newTx.id || originalTx.transaction_id || originalTx.id,
-    portfolio_asset_id: newTx.portfolio_asset_id || originalTx.portfolio_asset_id,
-    asset_id: newTx.asset_id || originalTx.asset_id,
-    transaction_type: typeof newTx.transaction_type === 'string' 
-      ? (newTx.transaction_type === 'Покупка' || newTx.transaction_type.toLowerCase().includes('buy') ? 1 
-        : (newTx.transaction_type === 'Погашение' || newTx.transaction_type.toLowerCase().includes('redemption') || newTx.transaction_type.toLowerCase().includes('погаш') || newTx.transaction_type.toLowerCase().includes('амортиз') ? 3 : 2))
-      : (newTx.transaction_type || 1),
-    quantity: parseFloat(newTx.quantity) || 0,
-    price: parseFloat(newTx.price) || 0,
-    transaction_date: newTx.transaction_date || originalTx.transaction_date,
-    update_related_deposit: !!(newTx.updateRelatedDeposit && newTx.relatedDepositOperation?.id),
-    related_deposit_operation_id: newTx.updateRelatedDeposit ? (newTx.relatedDepositOperation?.id ?? null) : null,
-    related_deposit_amount: newTx.updateRelatedDeposit ? (newTx.relatedDepositOperation?.amount ?? null) : null,
-    related_deposit_date: newTx.updateRelatedDeposit
-      ? (newTx.relatedDepositOperation?.operation_date
-          ? normalizeDateToString(newTx.relatedDepositOperation.operation_date)
-          : null)
-      : null,
-  }
-  
-  if (txData.transaction_date) {
-    const normalizedDate = normalizeDateToString(txData.transaction_date)
-    if (normalizedDate) {
-      txData.transaction_date = normalizedDate
-    }
+
+  // Для обновления через operations/apply-updates нужен operation_id cash_operations,
+  // который уже возвращается в get_transactions как cash_operation_id.
+  const txOperationId = originalTx.cash_operation_id || originalTx.operation_id
+  if (!txOperationId) {
+    console.error('Не найден cash_operation_id у транзакции для update через operations')
+    return
   }
 
-  await editTransaction(txData)
+  const newDate = normalizeDateToString(newTx.transaction_date || originalTx.transaction_date)
+  if (!newDate) {
+    console.error('Некорректная новая дата транзакции')
+    return
+  }
+
+  // Для update_operations_batch.sql используется поле amount как "payment" (abs),
+  // а знак cash_operation выставит apply_operations_batch.
+  const newQuantity = parseFloat(newTx.quantity) || 0
+  const newPrice = parseFloat(newTx.price) || 0
+  const payment = Math.abs(newQuantity * newPrice)
+
+  const updates = [
+    {
+      operation_id: txOperationId,
+      operation_date: newDate,
+      amount: payment,
+      quantity: newQuantity,
+      price: newPrice,
+    }
+  ]
+
+  // Если в модалке пользователь включил обновление пополнения — обновляем deposit cash_operation в том же apply.
+  if (newTx.updateRelatedDeposit && newTx.relatedDepositOperation?.id) {
+    const dep = newTx.relatedDepositOperation
+    updates.push({
+      operation_id: dep.id,
+      operation_date: normalizeDateToString(dep.operation_date) || newDate,
+      amount: parseFloat(dep.amount) || 0,
+    })
+  }
+
+  await operationsService.updateOperationsBatch(updates)
 
   await dashboardStore.reloadDashboard(false)
   await dashboardStore.fetchTransactionsAndOperationsInBackground()

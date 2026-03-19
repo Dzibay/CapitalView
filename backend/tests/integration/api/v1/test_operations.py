@@ -66,40 +66,40 @@ class TestOperationsCreate:
         }
         
         with patch('app.api.v1.operations.check_portfolio_access', return_value=None):
-            with patch('app.api.v1.operations.create_operation', return_value={"operation_id": 1}):
+            with patch('app.api.v1.operations.apply_operations', return_value={"inserted_count": 1}):
                 response = authenticated_client.post(
-                    "/api/v1/operations/",
-                    json=operation_data
+                    "/api/v1/operations/apply",
+                    json={"operations": [operation_data]}
                 )
                 assert_success_response(response)
     
     def test_create_operation_batch_success(self, authenticated_client, mock_user):
         """Тест успешного создания операций батчем."""
-        operations_data = {
+        operation_1 = {
             "portfolio_id": 1,
             "operation_type": 5,  # Deposit
             "amount": 1000.0,
-            "start_date": "2023-01-01",
-            "end_date": "2023-01-31",
-            "day_of_month": 1,  # Обязательное поле
             "currency_id": 1
         }
+        operation_1["operation_date"] = "2023-01-01"
         
+        operation_2 = dict(operation_1)
+        operation_2["operation_date"] = "2023-01-02"
+        operation_2["amount"] = 2000.0
+
         with patch('app.api.v1.operations.check_portfolio_access', return_value=None):
-            with patch('app.api.v1.operations.create_operations_batch', return_value={"operation_ids": [1, 2]}):
+            with patch('app.api.v1.operations.apply_operations', return_value={"inserted_count": 2}):
                 response = authenticated_client.post(
-                    "/api/v1/operations/batch",
-                    json=operations_data
+                    "/api/v1/operations/apply",
+                    json={"operations": [operation_1, operation_2]}
                 )
                 assert_success_response(response)
     
     def test_create_operation_invalid_data(self, authenticated_client):
         """Тест создания операции с невалидными данными."""
         response = authenticated_client.post(
-            "/api/v1/operations/",
-            json={
-                # Обязательные поля отсутствуют
-            }
+            "/api/v1/operations/apply",
+            json={}
         )
         assert response.status_code in [400, 422]
 

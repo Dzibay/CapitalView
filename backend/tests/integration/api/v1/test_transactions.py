@@ -62,32 +62,28 @@ class TestTransactionsCreate:
         """Тест успешного создания транзакции."""
         from unittest.mock import patch
         
-        transaction_data = {
+        operation = {
+            "operation_type": 1,  # Buy
+            "operation_date": "2023-01-01",
             "portfolio_asset_id": 1,
             "asset_id": 1,
-            "transaction_type": "Buy",
             "quantity": 10.0,
             "price": 100.0,
-            "transaction_date": "2023-01-01",
-            "fee": 0.0
+            "create_deposit_operation": False,
         }
         
-        with patch('app.api.v1.transactions.check_portfolio_asset_access', return_value=None):
-            with patch('app.api.v1.transactions.create_transaction', return_value=1):
-                response = authenticated_client.post(
-                    "/api/v1/transactions/",
-                    json=transaction_data
-                )
-                assert_success_response(response)
+        with patch('app.api.v1.operations.check_portfolio_asset_access', return_value=None):
+            with patch('app.api.v1.operations.check_asset_access', return_value=None):
+                with patch('app.api.v1.operations.apply_operations', return_value={"inserted_count": 1}):
+                    response = authenticated_client.post(
+                        "/api/v1/operations/apply",
+                        json={"operations": [operation]}
+                    )
+                    assert_success_response(response)
     
     def test_create_transaction_invalid_data(self, authenticated_client):
         """Тест создания транзакции с невалидными данными."""
-        response = authenticated_client.post(
-            "/api/v1/transactions/",
-            json={
-                # Обязательные поля отсутствуют
-            }
-        )
+        response = authenticated_client.post("/api/v1/operations/apply", json={})
         assert response.status_code in [400, 422]
 
 
