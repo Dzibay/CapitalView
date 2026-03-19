@@ -11,6 +11,7 @@ export default defineConfig({
         entryFileNames: 'static/[name]-[hash].js',
         manualChunks: {
           'vue-vendor': ['vue', 'vue-router', 'pinia'],
+          'icons': ['lucide-vue-next'],
           'chart': ['chart.js'],
           'axios': ['axios']
         }

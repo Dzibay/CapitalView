@@ -13,9 +13,7 @@ import {
   ChevronDown,
   ArrowRight,
   Check,
-  ImageIcon,
-  Menu,
-  X
+  ImageIcon
 } from 'lucide-vue-next'
 
 const SPLINE_SCENE_URL = ''
@@ -26,18 +24,6 @@ const Spline3DBackground = defineAsyncComponent(() =>
 
 const openFaq = ref(null)
 const observer = ref(null)
-const isMobileMenuOpen = ref(false)
-
-const toggleMobileMenu = () => {
-  isMobileMenuOpen.value = !isMobileMenuOpen.value
-  // Блокируем скролл фона, когда меню открыто
-  document.body.style.overflow = isMobileMenuOpen.value ? 'hidden' : ''
-}
-
-const closeMobileMenu = () => {
-  isMobileMenuOpen.value = false
-  document.body.style.overflow = ''
-}
 
 const painPoints = [
   {
@@ -180,7 +166,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (observer.value) observer.value.disconnect()
-  document.body.style.overflow = ''
 })
 </script>
 
@@ -200,18 +185,14 @@ onUnmounted(() => {
 
     <header class="header">
       <div class="container header-inner">
-        <router-link to="/" class="logo" @click="closeMobileMenu">Capital<span>View</span></router-link>
+        <router-link to="/" class="logo">Capital<span>View</span></router-link>
         
-        <nav class="nav" :class="{ 'nav-open': isMobileMenuOpen }">
+        <nav class="nav">
           <div class="nav-links">
-            <a href="#features" @click="closeMobileMenu" style="--i:1">Возможности</a>
-            <a href="#how-it-works" @click="closeMobileMenu" style="--i:2">Как это работает</a>
-            <a href="#pricing" @click="closeMobileMenu" style="--i:3">Бесплатно</a>
-            <a href="#faq" @click="closeMobileMenu" style="--i:4">FAQ</a>
-          </div>
-          <div class="mobile-only-actions" style="--i:5">
-            <router-link to="/login" class="btn-ghost" @click="closeMobileMenu">Войти</router-link>
-            <router-link to="/login" class="btn-primary-sm" @click="closeMobileMenu">Начать бесплатно</router-link>
+            <a href="#features">Возможности</a>
+            <a href="#how-it-works">Как это работает</a>
+            <a href="#pricing">Бесплатно</a>
+            <a href="#faq">FAQ</a>
           </div>
         </nav>
 
@@ -220,18 +201,13 @@ onUnmounted(() => {
             <router-link to="/login" class="btn-ghost">Войти</router-link>
             <router-link to="/login" class="btn-primary-sm">Начать бесплатно</router-link>
           </div>
-          
-          <button class="mobile-menu-btn" @click="toggleMobileMenu" :class="{ 'is-active': isMobileMenuOpen }">
-            <Menu v-if="!isMobileMenuOpen" :size="28" />
-            <X v-else :size="28" />
-          </button>
         </div>
       </div>
     </header>
 
     <section class="hero">
       <div class="container hero-layout">
-        <div class="hero-content reveal">
+        <div class="hero-content">
           <div class="hero-badge">
             <Check :size="14" :stroke-width="2.5" />
             Сервис временно бесплатный
@@ -251,13 +227,18 @@ onUnmounted(() => {
           </div>
         </div>
         <!-- 1200 × 750 px - рекомендуемый размер -->
-        <div class="hero-device reveal">
+        <div class="hero-device">
           <div class="laptop-mockup">
             <div class="laptop-screen">
               <img
                 src="/screenshots/hero-laptop-dashboard.webp" 
                 alt="Дашборд CapitalView на экране ноутбука — учёт и аналитика инвестиционного портфеля"
                 class="laptop-image"
+                loading="eager"
+                fetchpriority="high"
+                decoding="async"
+                width="1200"
+                height="750"
                 @error="(e) => { e.target.style.display = 'none'; e.target.nextElementSibling?.classList.add('show') }"
               />
             </div>
@@ -267,7 +248,7 @@ onUnmounted(() => {
       </div>
 
       <div class="container">
-        <div class="hero-metrics reveal">
+        <div class="hero-metrics">
           <div class="metric">
             <strong>500+</strong>
             <span>Инвесторов</span>
@@ -754,7 +735,7 @@ onUnmounted(() => {
 }
 
 .mobile-menu-btn {
-  display: none;
+  display: none !important;
   background: none;
   border: none;
   color: var(--color-text);
@@ -792,88 +773,14 @@ onUnmounted(() => {
   background: var(--color-primary-hover);
 }
 
-/* --- Красивое Мобильное Меню --- */
+/* --- Мобильная шапка без бургер-меню --- */
 @media (max-width: 767px) {
   .nav {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100vh;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 40px;
-    z-index: 101;
-    
-    /* Скрытие */
-    opacity: 0;
-    visibility: hidden;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    display: none;
   }
 
-  .nav.nav-open {
-    opacity: 1;
-    visibility: visible;
-  }
-
-  .nav-links {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .nav a {
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--color-text);
-    text-decoration: none;
-    opacity: 0;
-    transform: translateY(20px);
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    transition-delay: calc(0.1s * var(--i));
-  }
-
-  .nav.nav-open a,
-  .nav.nav-open .mobile-only-actions {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  .mobile-only-actions {
-    margin-top: 40px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    width: 100%;
-    max-width: 280px;
-    opacity: 0;
-    transform: translateY(20px);
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    transition-delay: 0.5s;
-  }
-
-  .mobile-menu-btn {
-    display: block;
-    position: relative;
-    z-index: 102;
-    background: var(--color-bg-alt);
-    border: 1px solid var(--color-border);
-    border-radius: 12px;
-    padding: 8px;
-    color: var(--color-text);
-    transition: all 0.2s;
-  }
-  
-  .mobile-menu-btn.is-active {
-    background: var(--color-text);
-    color: #fff;
-    border-color: var(--color-text);
+  .desktop-actions .btn-ghost {
+    display: none;
   }
 }
 
@@ -1821,6 +1728,17 @@ onUnmounted(() => {
    Responsive (Mobile overrides)
    ======================================== */
 @media (max-width: 767px) {
+  /* Упрощаем тяжёлые эффекты на мобильных ради FCP/LCP */
+  .header {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.96);
+  }
+
+  .orb {
+    display: none;
+  }
+
   .section {
     padding: 64px 0; /* Уменьшили отступы на мобильных */
   }
