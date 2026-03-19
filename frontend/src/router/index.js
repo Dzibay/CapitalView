@@ -1,6 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import { authService } from '../services/authService';
-import { useAuthStore } from '../stores/auth.store';
 
 // Lazy loading: главная и логин — eager (быстрая первая загрузка)
 const Home = () => import('../views/Home.vue');
@@ -64,6 +62,21 @@ const router = createRouter({
   }
 });
 
+let authDepsPromise = null
+
+async function getAuthDeps() {
+  if (!authDepsPromise) {
+    authDepsPromise = Promise.all([
+      import('../stores/auth.store'),
+      import('../services/authService')
+    ]).then(([authStoreModule, authServiceModule]) => ({
+      useAuthStore: authStoreModule.useAuthStore,
+      authService: authServiceModule.authService
+    }))
+  }
+  return authDepsPromise
+}
+
 // Навигационный guard для защиты маршрутов
 router.beforeEach(async (to, from, next) => {
   // Пропускаем проверку для маршрута логина при переходе с него (избегаем бесконечного цикла)
@@ -84,6 +97,7 @@ router.beforeEach(async (to, from, next) => {
     
     // Проверяем валидность токена
     try {
+      const { useAuthStore } = await getAuthDeps()
       // ОПТИМИЗИРОВАНО: используем authStore для проверки токена, чтобы обновить store
       const authStore = useAuthStore()
       const user = await authStore.checkToken()
@@ -95,6 +109,7 @@ router.beforeEach(async (to, from, next) => {
       // Токен валиден, разрешаем доступ
       next()
     } catch (error) {
+      const { useAuthStore } = await getAuthDeps()
       // Ошибка при проверке токена (кроме сетевых ошибок)
       if (error.code !== 'ERR_NETWORK' && error.code !== 'ECONNREFUSED') {
         console.error('Token check failed:', error)
@@ -112,6 +127,7 @@ router.beforeEach(async (to, from, next) => {
     if (token) {
       // Есть токен - проверяем его валидность (но не блокируем доступ при ошибках)
       try {
+        const { useAuthStore } = await getAuthDeps()
         // ОПТИМИЗИРОВАНО: используем authStore для проверки токена
         const authStore = useAuthStore()
         const user = await authStore.checkToken()
@@ -124,6 +140,7 @@ router.beforeEach(async (to, from, next) => {
       } catch (error) {
         // Токен недействителен или ошибка сети - очищаем и разрешаем доступ к логину
         if (error.code !== 'ERR_NETWORK' && error.code !== 'ECONNREFUSED') {
+          const { authService } = await getAuthDeps()
           authService.logout();
         }
         next();
