@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { Hash } from 'lucide-vue-next'
 import EditGoalModal from '../../modals/EditGoalModal.vue'
-import GoalProgressChart from '../../charts/GoalProgressChart.vue'
+import MultiLineChart from '../../charts/MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
 
 const props = defineProps({
@@ -302,6 +302,52 @@ const formatCurrency = (value) => {
   }).format(value)
 }
 
+const goalChartTooltipCallbacks = computed(() => {
+  const infl = useInflation.value
+  return {
+    title: (items) => {
+      if (!items?.length) return ''
+      const lab = items[0].label || ''
+      const y = /^(\d{4})-\d{2}-\d{2}$/.exec(lab)
+      if (y) return y[1]
+      return lab
+    },
+    label: (context) => {
+      if (!context?.parsed || context.parsed.y === null || context.parsed.y === undefined) return null
+      if (context.dataset.label === 'Достижение цели') return null
+
+      const value = formatCurrency(context.parsed.y)
+
+      if (infl && context.dataset.label === 'Прогноз капитала') {
+        const goalDataset = context.chart.data.datasets.find((ds) => ds.label === 'Целевой капитал')
+        if (goalDataset?.data && context.dataIndex >= 0) {
+          const goalDataValue = goalDataset.data[context.dataIndex]
+          if (
+            goalDataValue !== undefined &&
+            goalDataValue !== null &&
+            !isNaN(Number(goalDataValue)) &&
+            Number(goalDataValue) > 0
+          ) {
+            return [`Капитал: ${value}`, `Цель: ${formatCurrency(Number(goalDataValue))}`]
+          }
+        }
+        return `Капитал: ${value}`
+      }
+
+      if (context.dataset.label === 'Целевой капитал') return null
+      return `Капитал: ${value}`
+    },
+    filter: (tooltipItem) => {
+      if (!tooltipItem) return false
+      if (tooltipItem.dataset.label === 'Достижение цели') return false
+      if (infl) {
+        return tooltipItem.parsed.y !== null && tooltipItem.dataset.label === 'Прогноз капитала'
+      }
+      return tooltipItem.parsed.y !== null && tooltipItem.dataset.label === 'Прогноз капитала'
+    }
+  }
+})
+
 // Расчет времени до достижения цели
 const timeToGoal = computed(() => {
   if (!hasGoal.value || !props.goalData.targetAmount) return null
@@ -427,11 +473,13 @@ const formatAmountShort = (value) => {
       
       <!-- График прогноза -->
       <div v-if="goalProjection.labels.length > 0" class="projection-chart">
-        <GoalProgressChart 
-          :labels="goalProjection.labels"
-          :datasets="goalProjection.datasets"
-          :formatValue="formatCurrency"
-          :useInflation="useInflation.value"
+        <MultiLineChart
+          :chartData="goalProjection"
+          period="All"
+          skip-aggregation
+          :zeroAtStart="false"
+          :formatCurrency="formatCurrency"
+          :tooltipCallbacks="goalChartTooltipCallbacks"
         />
       </div>
     </template>

@@ -35,6 +35,27 @@ const props = defineProps({
   formatCurrency: {
     type: Function,
     default: (x) => x
+  },
+  /** 'today' — как раньше; 'lastPoint' — ось до последней точки (прогнозы в будущее) */
+  aggregationEnd: {
+    type: String,
+    default: 'today',
+    validator: (v) => ['today', 'lastPoint'].includes(v)
+  },
+  /** Сливаются в plugins.tooltip.callbacks (Chart.js), внешний тултип берёт body отсюда */
+  tooltipCallbacks: {
+    type: Object,
+    default: () => ({})
+  },
+  /** true — без дневной/недельной агрегации (нет «ступенек» между редкими точками) */
+  skipAggregation: {
+    type: Boolean,
+    default: false
+  },
+  /** Мин. расстояние между подписями дат по X (px); от него и ширины графика считается число меток */
+  minPxPerXTick: {
+    type: Number,
+    default: 52
   }
 })
 
@@ -121,25 +142,6 @@ function externalTooltipHandler(context) {
   el.style.pointerEvents = 'none'
 }
 
-function isBoundaryTick(labels, index) {
-  if (!labels || index <= 0 || index >= labels.length) return false
-  try {
-    const d = new Date(labels[index])
-    const p = new Date(labels[index - 1])
-    const f = new Date(labels[0])
-    const l = new Date(labels[labels.length - 1])
-    if ([d, p, f, l].some(x => isNaN(x.getTime()))) return false
-    const totalDays = (l - f) / 86400000
-    if (totalDays <= 45 && index >= 2) {
-      const pp = new Date(labels[index - 2])
-      if (!isNaN(pp.getTime()) && d.getMonth() !== pp.getMonth()) return true
-    }
-    if (totalDays <= 100) return d.getMonth() !== p.getMonth()
-    if (totalDays <= 1825) return d.getFullYear() !== p.getFullYear()
-    return false
-  } catch { return false }
-}
-
 /* --------------------------------------------------------------------------
    Helpers
 -------------------------------------------------------------------------- */
@@ -152,7 +154,10 @@ const norm = (date) => {
 
 const parseDate = (d) => {
   if (typeof d === 'string') {
-    const parts = d.split('T')[0].split('-')
+    const trimmed = d.trim()
+    const yearOnly = /^(\d{4})$/.exec(trimmed)
+    if (yearOnly) return norm(new Date(+yearOnly[1], 11, 31))
+    const parts = trimmed.split('T')[0].split('-')
     if (parts.length === 3)
       return norm(new Date(+parts[0], +parts[1] - 1, +parts[2]))
   }
@@ -171,10 +176,51 @@ const shortMonth = (date) => {
   return m.charAt(0).toUpperCase() + m.slice(1)
 }
 
+/** Равномерно по оси индексов, всегда края; не больше cap меток */
+function pickTickIndices(length, cap) {
+  const set = new Set()
+  if (length <= 0) return set
+  const maxLabels = Math.max(2, Math.min(length, Math.max(2, cap)))
+  if (maxLabels >= length) {
+    for (let i = 0; i < length; i++) set.add(i)
+    return set
+  }
+  for (let k = 0; k < maxLabels; k++) {
+    set.add(Math.round((k * (length - 1)) / (maxLabels - 1)))
+  }
+  return set
+}
+
+function xAxisChartWidth(chart) {
+  const a = chart?.chartArea
+  if (a && a.right > a.left) return a.right - a.left
+  const w = chart?.width
+  return typeof w === 'number' && w > 0 ? w * 0.72 : 280
+}
+
+function getXTickIndexSet(chart, labelsLength, minPx) {
+  const w = xAxisChartWidth(chart)
+  const cap = Math.max(2, Math.floor(w / Math.max(24, minPx)))
+  return pickTickIndices(labelsLength, cap)
+}
+
+/** Формат подписи только от длины интервала (дней между первой и последней точкой) */
+function formatXAxisDateLabel(d, spanDays) {
+  const sm = shortMonth(d)
+  const y = d.getFullYear()
+  const day = d.getDate()
+  if (spanDays <= 21) return `${day} ${sm}`
+  if (spanDays <= 120) return `${day} ${sm}`
+  if (spanDays <= 540) return `${day} ${sm}`
+  if (spanDays <= 1000) return `${sm} '${String(y).slice(2)}`
+  if (spanDays <= 3600) return `${sm} ${y}`
+  return String(y)
+}
+
 /* --------------------------------------------------------------------------
    Adaptive data aggregation with interval-based sampling
 -------------------------------------------------------------------------- */
-function aggregateData(dataObj, period, chartType, zeroAtStart) {
+function aggregateData(dataObj, period, chartType, zeroAtStart, aggregationEnd = 'today') {
   if (!dataObj?.labels?.length) return { labels: [], datasets: [] }
 
   const today = new Date()
@@ -188,6 +234,7 @@ function aggregateData(dataObj, period, chartType, zeroAtStart) {
   if (!points.length) return { labels: [], datasets: Array.from({ length: numDS }, () => []) }
 
   const firstPt = points[0].date
+  const lastDataDate = points[points.length - 1].date
   const needsZero = (zeroAtStart !== undefined) ? zeroAtStart : (chartType !== 'price')
 
   let start
@@ -201,7 +248,8 @@ function aggregateData(dataObj, period, chartType, zeroAtStart) {
     start = norm(start)
   }
 
-  const end = norm(today)
+  const end =
+    aggregationEnd === 'lastPoint' ? norm(lastDataDate) : norm(today)
   const totalDays = Math.round((end - start) / 86400000)
 
   const samples = []
@@ -251,18 +299,40 @@ function aggregateData(dataObj, period, chartType, zeroAtStart) {
   for (const s of samples) {
     const ts = s.date.getTime()
     while (pi < points.length && points[pi].date.getTime() <= ts) {
-      cur = points[pi].values.map(v => v ?? 0)
+      cur = points[pi].values.map((v) => {
+        if (v === null || v === undefined) return null
+        const n = Number(v)
+        return Number.isFinite(n) ? n : 0
+      })
       pi++
     }
     if (s.zero) {
       bufs.forEach(arr => arr.push(0))
     } else {
-      bufs.forEach((arr, i) => arr.push(cur[i]))
+      bufs.forEach((arr, i) => {
+        const val = cur[i]
+        arr.push(val === null ? null : val)
+      })
     }
     labels.push(fmtDate(s.date))
   }
 
   return { labels, datasets: bufs }
+}
+
+function prepareRawSeries(dataObj) {
+  if (!dataObj?.labels?.length) return { labels: [], datasets: [] }
+  const numDS = dataObj.datasets?.length ?? 0
+  if (!numDS) return { labels: [], datasets: [] }
+  const labels = dataObj.labels.map((lbl) => fmtDate(parseDate(lbl)))
+  const datasets = dataObj.datasets.map((ds) =>
+    (ds.data || []).map((v) => {
+      if (v === null || v === undefined) return null
+      const n = Number(v)
+      return Number.isFinite(n) ? n : 0
+    })
+  )
+  return { labels, datasets }
 }
 
 /* --------------------------------------------------------------------------
@@ -305,7 +375,9 @@ const renderChart = (aggr) => {
   const ctx = chartCanvas.value?.getContext('2d')
   if (!ctx) return
 
-  const allValues = aggr.datasets.flat()
+  const allValues = aggr.datasets
+    .flat()
+    .filter((v) => typeof v === 'number' && Number.isFinite(v))
   const minValue = allValues.length ? Math.min(...allValues) : 0
   const maxValue = allValues.length ? Math.max(...allValues) : 100
   const range = maxValue - minValue
@@ -332,28 +404,33 @@ const renderChart = (aggr) => {
   }
 
   const datasets = props.chartData.datasets.map((ds, i) => {
+    const lineColor = ds.color || ds.borderColor || '#5478EA'
     const base = {
       label: ds.label,
       data: aggr.datasets[i],
-      borderColor: ds.color,
-      borderWidth: i === 0 ? 3 : 2,
-      tension: i === 0 ? 0.4 : 0.35,
-      pointRadius: 0,
-      pointHoverRadius: i === 0 ? 5 : 3,
-      pointHitRadius: 8,
-      pointBackgroundColor: ds.color,
-      pointBorderColor: '#fff',
-      pointHoverBorderWidth: 2,
-      pointBorderWidth: 0
+      borderColor: lineColor,
+      borderWidth: ds.borderWidth ?? (i === 0 ? 3 : 2),
+      tension: ds.tension ?? (i === 0 ? 0.4 : 0.35),
+      pointRadius: ds.pointRadius ?? 0,
+      pointHoverRadius: ds.pointHoverRadius ?? (i === 0 ? 5 : 3),
+      pointHitRadius: ds.pointHitRadius ?? 8,
+      pointBackgroundColor: ds.pointBackgroundColor ?? ds.backgroundColor ?? lineColor,
+      pointBorderColor: ds.pointBorderColor ?? '#fff',
+      pointHoverBorderWidth: ds.pointHoverBorderWidth ?? 2,
+      pointBorderWidth: ds.pointBorderWidth ?? 0,
+      spanGaps: ds.spanGaps ?? false
     }
+    if (ds.order != null) base.order = ds.order
+    if (ds.borderDash) base.borderDash = ds.borderDash
+    if (ds.showLine === false) base.showLine = false
     if (ds.fill) {
       base.fill = true
       base.backgroundColor = (context) => {
         const { ctx: c, chartArea } = context.chart
         if (!chartArea) return null
         const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
-        g.addColorStop(0, ds.color + '33')
-        g.addColorStop(1, ds.color + '00')
+        g.addColorStop(0, lineColor + '33')
+        g.addColorStop(1, lineColor + '00')
         return g
       }
     } else {
@@ -363,10 +440,12 @@ const renderChart = (aggr) => {
   })
 
   if (chartInstance) {
+    chartInstance.$mlXTickSig = null
     chartInstance.data.labels = aggr.labels
     chartInstance.data.datasets = datasets
     chartInstance.options.scales.y.min = yMin
     chartInstance.options.scales.y.max = yMax
+    chartInstance.options.plugins.tooltip.callbacks = { ...props.tooltipCallbacks }
     chartInstance.update()
     return
   }
@@ -520,6 +599,7 @@ const renderChart = (aggr) => {
           enabled: false,
           mode: 'index',
           intersect: false,
+          callbacks: { ...props.tooltipCallbacks },
           external: externalTooltipHandler
         }
       }
@@ -529,12 +609,23 @@ const renderChart = (aggr) => {
 
 /* -------------------------------------------------------------------------- */
 const update = () => {
-  const aggr = aggregateData(props.chartData, props.period, props.chartType, props.zeroAtStart)
+  const aggr = props.skipAggregation
+    ? prepareRawSeries(props.chartData)
+    : aggregateData(
+        props.chartData,
+        props.period,
+        props.chartType,
+        props.zeroAtStart,
+        props.aggregationEnd
+      )
   renderChart(aggr)
 }
 
 watch(() => props.chartData, update, { deep: true })
 watch(() => props.period, update)
+watch(() => props.aggregationEnd, update)
+watch(() => props.skipAggregation, update)
+watch(() => props.tooltipCallbacks, update, { deep: true })
 
 onMounted(update)
 
