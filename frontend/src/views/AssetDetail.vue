@@ -38,7 +38,7 @@ const isLoading = ref(false)
 const assetInfo = ref(null)
 const priceHistory = ref([])
 const priceHistoryCurrency = ref(null) // Валюта истории цен (из API getAssetPriceHistory)
-const assetDailyValues = ref([]) // История стоимости позиции из portfolio_daily_positions
+const assetDailyValues = ref([]) // История стоимости позиции из portfolio_asset_daily_values
 const assetInAllPortfolios = ref([])
 const selectedPortfolioId = ref(null)
 const selectedPeriod = ref('All')
@@ -217,7 +217,7 @@ async function loadPriceHistory(assetId) {
   }
 }
 
-// Загрузка истории стоимости позиции из portfolio_daily_positions
+// Загрузка истории стоимости позиции из portfolio_asset_daily_values
 async function loadAssetDailyValues() {
   // Используем portfolio_asset_id из выбранного портфеля или текущего актива
   const targetPortfolioAssetId = selectedPortfolioAsset.value?.portfolio_asset_id || portfolioAssetId.value
@@ -364,7 +364,7 @@ const chartData = computed(() => {
   let datasets = []
   
   if (selectedChartType.value === 'position') {
-    // График стоимости позиции - используем данные из portfolio_daily_positions
+    // График стоимости позиции - используем данные из portfolio_asset_daily_values
     if (assetDailyValues.value && assetDailyValues.value.length > 0) {
       // Фильтруем данные по выбранному периоду
       let filteredValues = [...assetDailyValues.value]
@@ -432,7 +432,7 @@ const chartData = computed(() => {
       fill: true
     }]
   } else if (selectedChartType.value === 'quantity') {
-    // График количества актива - используем данные из portfolio_daily_positions
+    // График количества актива - используем данные из portfolio_asset_daily_values
     if (assetDailyValues.value && assetDailyValues.value.length > 0) {
       // Фильтруем данные по выбранному периоду
       let filteredValues = [...assetDailyValues.value]
@@ -626,11 +626,11 @@ const commissionsTotal = computed(() => {
 })
 
 // Расчет общей прибыли для выбранного портфеля
-// ИСПРАВЛЕНО: используем total_pnl из portfolio_daily_positions вместо пересчета
+// ИСПРАВЛЕНО: используем total_pnl из portfolio_asset_daily_values вместо пересчета
 const selectedTotalProfit = computed(() => {
   if (!selectedPortfolioAsset.value) return null
   
-  // Используем total_pnl из portfolio_daily_positions (уже рассчитан в БД)
+  // Используем total_pnl из portfolio_asset_daily_values (уже рассчитан в БД)
   const totalPnl = selectedPortfolioAsset.value.total_pnl || 0
   
   // Для совместимости разбиваем на компоненты (если нужно для отображения)
@@ -854,7 +854,7 @@ const profitLossItems = computed(() => {
     },
     { 
       label: 'Получено выплат', 
-      // ОПТИМИЗИРОВАНО: используем payouts из portfolio_daily_positions (уже в RUB)
+      // ОПТИМИЗИРОВАНО: используем payouts из portfolio_asset_daily_values (уже в RUB)
       value: selectedPortfolioAsset.value?.payouts || 0, 
       format: 'currency',
       colorClass: 'profit',
@@ -862,7 +862,7 @@ const profitLossItems = computed(() => {
     },
     { 
       label: 'Комиссии', 
-      // ОПТИМИЗИРОВАНО: используем commissions из portfolio_daily_positions (уже в RUB)
+      // ОПТИМИЗИРОВАНО: используем commissions из portfolio_asset_daily_values (уже в RUB)
       value: Math.abs(selectedPortfolioAsset.value?.commissions || 0), 
       format: 'currency',
       // Если комиссии равны 0, показываем зеленым (как выплаты), иначе красным (расход)
@@ -928,17 +928,17 @@ const investedFromOperations = computed(() => {
 })
 
 // Расчет прибыли/убытка для выбранного портфеля
-// ОПТИМИЗИРОВАНО: используем данные из portfolio_daily_positions
+// ОПТИМИЗИРОВАНО: используем данные из portfolio_asset_daily_values
 const selectedProfitLoss = computed(() => {
   if (!selectedPortfolioAsset.value) return null
   
   const asset = selectedPortfolioAsset.value
   
-  // ОПТИМИЗИРОВАНО: используем invested_value из portfolio_daily_positions (уже в RUB)
+  // ОПТИМИЗИРОВАНО: используем invested_value из portfolio_asset_daily_values (уже в RUB)
   // Это значение корректно пересчитывается после продаж и учитывает только текущее количество
   const invested = asset.invested_value || 0
   
-  // ОПТИМИЗИРОВАНО: используем asset_value из portfolio_daily_positions (уже в RUB)
+  // ОПТИМИЗИРОВАНО: используем asset_value из portfolio_asset_daily_values (уже в RUB)
   // Это значение корректно рассчитывается с учетом текущей цены и количества
   const currentValue = asset.asset_value || 0
   
@@ -1000,9 +1000,9 @@ const payouts = computed(() => {
 })
 
 // Расчет прибыли от продаж (realized P&L) для выбранного портфеля
-// ОПТИМИЗИРОВАНО: используем realized_pnl из portfolio_daily_positions (уже в RUB)
+// ОПТИМИЗИРОВАНО: используем realized_pnl из portfolio_asset_daily_values (уже в RUB)
 const realizedProfit = computed(() => {
-  // ОПТИМИЗИРОВАНО: используем realized_pnl из portfolio_daily_positions
+  // ОПТИМИЗИРОВАНО: используем realized_pnl из portfolio_asset_daily_values
   // Это значение уже рассчитано и переведено в рубли с учетом курса валюты на дату транзакции
   const realizedPnl = selectedPortfolioAsset.value?.realized_pnl || 0
   
@@ -1027,11 +1027,11 @@ const priceGrowth = computed(() => {
 })
 
 // Общая прибыль (unrealized + realized + выплаты - комиссии)
-// ИСПРАВЛЕНО: используем total_pnl из portfolio_daily_positions вместо пересчета
+// ИСПРАВЛЕНО: используем total_pnl из portfolio_asset_daily_values вместо пересчета
 const totalProfit = computed(() => {
   if (!selectedPortfolioAsset.value) return null
   
-  // Используем total_pnl из portfolio_daily_positions (уже рассчитан в БД)
+  // Используем total_pnl из portfolio_asset_daily_values (уже рассчитан в БД)
   const totalPnl = selectedPortfolioAsset.value.total_pnl || 0
   
   // Для совместимости разбиваем на компоненты (если нужно для отображения)

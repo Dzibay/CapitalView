@@ -109,7 +109,7 @@ BEGIN
         -- Проверяем, был ли актив в портфеле на дату проверки (record_date/last_buy_date)
         -- Ищем ближайшую дату до или равную дате проверки
         SELECT quantity INTO v_quantity_on_date
-        FROM portfolio_daily_positions
+        FROM portfolio_asset_daily_values
         WHERE portfolio_asset_id = p_portfolio_asset_id
           AND report_date <= v_check_date
         ORDER BY report_date DESC
@@ -123,7 +123,7 @@ BEGIN
         -- Дополнительно проверяем количество на дату выплаты (payment_date)
         -- Если на дату выплаты актива не было или количество было 0, не учитываем выплату
         SELECT quantity INTO v_quantity_on_payment_date
-        FROM portfolio_daily_positions
+        FROM portfolio_asset_daily_values
         WHERE portfolio_asset_id = p_portfolio_asset_id
           AND report_date <= v_payout.payment_date
         ORDER BY report_date DESC

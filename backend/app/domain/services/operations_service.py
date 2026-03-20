@@ -233,7 +233,7 @@ def apply_operations(
 def update_operations_batch(updates: List[dict]) -> dict:
     """
     Батчевое обновление операций (дата/сумма/quantity/price). В SQL пересчитываются
-    fifo_lots, portfolio_assets, portfolio_daily_positions, portfolio_daily_values
+    fifo_lots, portfolio_assets, portfolio_asset_daily_values, portfolio_daily_values
     и синхронизируются связанные транзакции.
     updates: список dict с ключами operation_id (обязательно),
              date, amount, quantity, price (опционально).

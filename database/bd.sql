@@ -124,7 +124,7 @@ CREATE TABLE public.portfolio_assets (
   CONSTRAINT portfolio_assets_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id),
   CONSTRAINT portfolio_assets_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id)
 );
-CREATE TABLE public.portfolio_daily_positions (
+CREATE TABLE public.portfolio_asset_daily_values (
   portfolio_id bigint NOT NULL,
   portfolio_asset_id bigint NOT NULL,
   report_date date NOT NULL,
@@ -137,9 +137,9 @@ CREATE TABLE public.portfolio_daily_positions (
   commissions numeric DEFAULT 0,
   taxes numeric DEFAULT 0,
   total_pnl numeric,
-  CONSTRAINT portfolio_daily_positions_pkey PRIMARY KEY (portfolio_asset_id, report_date),
-  CONSTRAINT portfolio_daily_positions_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES public.portfolio_assets(id) ON DELETE CASCADE,
-  CONSTRAINT portfolio_daily_positions_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id) ON DELETE CASCADE
+  CONSTRAINT portfolio_asset_daily_values_pkey PRIMARY KEY (portfolio_asset_id, report_date),
+  CONSTRAINT portfolio_asset_daily_values_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES public.portfolio_assets(id) ON DELETE CASCADE,
+  CONSTRAINT portfolio_asset_daily_values_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id) ON DELETE CASCADE
 );
 CREATE TABLE public.portfolio_daily_values (
   portfolio_id bigint NOT NULL,

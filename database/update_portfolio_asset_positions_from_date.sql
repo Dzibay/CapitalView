@@ -52,7 +52,7 @@ BEGIN
         v_base_payouts,
         v_base_commissions,
         v_base_taxes
-    FROM portfolio_daily_positions pdp
+    FROM portfolio_asset_daily_values pdp
     WHERE pdp.portfolio_asset_id = p_portfolio_asset_id
       AND pdp.report_date < p_from_date
     ORDER BY pdp.report_date DESC
@@ -66,7 +66,7 @@ BEGIN
     v_base_taxes := COALESCE(v_base_taxes, 0);
     
     -- 1) Удаляем хвост
-    DELETE FROM portfolio_daily_positions
+    DELETE FROM portfolio_asset_daily_values
     WHERE portfolio_asset_id = p_portfolio_asset_id
       AND report_date >= p_from_date;
     
@@ -295,7 +295,7 @@ BEGIN
         FROM daily_positions dp
     )
     -- Вставляем данные на каждую дату
-    INSERT INTO portfolio_daily_positions (
+    INSERT INTO portfolio_asset_daily_values (
         portfolio_id,
         portfolio_asset_id,
         report_date,

@@ -66,7 +66,7 @@ totals AS (
   GROUP BY o.portfolio_id
 ),
 
--- Метрики по активу: последняя строка portfolio_daily_positions на каждый лот, затем SUM по asset_id (как на странице актива)
+-- Метрики по активу: последняя строка portfolio_asset_daily_values на каждый лот, затем SUM по asset_id (как на странице актива)
 latest_pdp_by_lot AS (
     SELECT DISTINCT ON (pdp.portfolio_asset_id)
         pa.portfolio_id,
@@ -79,7 +79,7 @@ latest_pdp_by_lot AS (
         COALESCE(pdp.commissions, 0) AS commissions,
         COALESCE(pdp.taxes, 0) AS taxes,
         COALESCE(pdp.total_pnl, 0) AS total_pnl
-    FROM portfolio_daily_positions pdp
+    FROM portfolio_asset_daily_values pdp
     INNER JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
     INNER JOIN p ON p.id = pa.portfolio_id
     ORDER BY pdp.portfolio_asset_id, pdp.report_date DESC
@@ -110,7 +110,7 @@ year_snap_by_lot AS (
         COALESCE(pdp.commissions, 0) AS commissions,
         COALESCE(pdp.taxes, 0) AS taxes,
         COALESCE(pdp.total_pnl, 0) AS total_pnl
-    FROM portfolio_daily_positions pdp
+    FROM portfolio_asset_daily_values pdp
     INNER JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
     INNER JOIN p ON p.id = pa.portfolio_id
     WHERE pdp.report_date <= CURRENT_DATE - INTERVAL '1 year'
@@ -139,7 +139,7 @@ month_snap_by_lot AS (
         COALESCE(pdp.commissions, 0) AS commissions,
         COALESCE(pdp.taxes, 0) AS taxes,
         COALESCE(pdp.total_pnl, 0) AS total_pnl
-    FROM portfolio_daily_positions pdp
+    FROM portfolio_asset_daily_values pdp
     INNER JOIN portfolio_assets pa ON pa.id = pdp.portfolio_asset_id
     INNER JOIN p ON p.id = pa.portfolio_id
     WHERE pdp.report_date <= CURRENT_DATE - INTERVAL '1 month'

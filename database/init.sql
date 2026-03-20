@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS asset_latest_prices (
   CONSTRAINT asset_latest_prices_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id)
 );
 
-CREATE TABLE IF NOT EXISTS portfolio_daily_positions (
+CREATE TABLE IF NOT EXISTS portfolio_asset_daily_values (
   portfolio_id bigint NOT NULL,
   portfolio_asset_id bigint NOT NULL,
   report_date date NOT NULL,
@@ -172,9 +172,9 @@ CREATE TABLE IF NOT EXISTS portfolio_daily_positions (
   commissions numeric DEFAULT 0,
   taxes numeric DEFAULT 0,
   total_pnl numeric,
-  CONSTRAINT portfolio_daily_positions_pkey PRIMARY KEY (portfolio_asset_id, report_date),
-  CONSTRAINT portfolio_daily_positions_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES portfolio_assets(id) ON DELETE CASCADE,
-  CONSTRAINT portfolio_daily_positions_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
+  CONSTRAINT portfolio_asset_daily_values_pkey PRIMARY KEY (portfolio_asset_id, report_date),
+  CONSTRAINT portfolio_asset_daily_values_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES portfolio_assets(id) ON DELETE CASCADE,
+  CONSTRAINT portfolio_asset_daily_values_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS portfolio_daily_values (

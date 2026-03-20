@@ -190,7 +190,7 @@ def get_asset_info(asset_id: int):
 def get_asset_daily_values(portfolio_asset_id: int, from_date: str = None, to_date: str = None):
     """
     Получает историю стоимости актива для графика.
-    Использует предрассчитанные данные из portfolio_daily_positions.
+    Использует предрассчитанные данные из portfolio_asset_daily_values.
     
     Args:
         portfolio_asset_id: ID актива в портфеле
@@ -294,11 +294,11 @@ def get_portfolio_asset_info(portfolio_asset_id: int, user_id: str):
             "daily_values": result.get("daily_values", []),
             "cash_operations": result.get("cash_operations", []),
             "price_history": result.get("price_history", []),  # История цен из того же запроса
-            # ИСПРАВЛЕНО: добавляем поля из portfolio_daily_positions для использования на фронтенде
+            # ИСПРАВЛЕНО: добавляем поля из portfolio_asset_daily_values для использования на фронтенде
             "asset_value": portfolio_asset_data.get("asset_value"),
             "invested_value": portfolio_asset_data.get("invested_value"),
             "realized_pnl": portfolio_asset_data.get("realized_pnl"),
-            "payouts": portfolio_asset_data.get("payouts"),  # Накопленные выплаты из portfolio_daily_positions
+            "payouts": portfolio_asset_data.get("payouts"),  # Накопленные выплаты из portfolio_asset_daily_values
             "commissions": portfolio_asset_data.get("commissions"),
             "taxes": portfolio_asset_data.get("taxes"),
             "total_pnl": portfolio_asset_data.get("total_pnl")  # Общая прибыль из таблицы

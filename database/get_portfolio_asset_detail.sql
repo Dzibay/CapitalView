@@ -63,7 +63,7 @@ BEGIN
                     commissions,
                     taxes,
                     total_pnl
-                FROM portfolio_daily_positions
+                FROM portfolio_asset_daily_values
                 WHERE portfolio_asset_id = pa.id
                 ORDER BY portfolio_asset_id, report_date DESC
             ) pdp ON TRUE
@@ -148,7 +148,7 @@ BEGIN
                     commissions,
                     taxes,
                     total_pnl
-                FROM portfolio_daily_positions
+                FROM portfolio_asset_daily_values
                 WHERE portfolio_asset_id = pa2.id
                 ORDER BY portfolio_asset_id, report_date DESC
             ) pdp2 ON TRUE
@@ -197,7 +197,7 @@ BEGIN
                 )
                 ORDER BY pdp.report_date
             ), '[]'::jsonb)
-            FROM portfolio_daily_positions pdp
+            FROM portfolio_asset_daily_values pdp
             WHERE pdp.portfolio_asset_id = p_portfolio_asset_id
         ),
         'cash_operations', (

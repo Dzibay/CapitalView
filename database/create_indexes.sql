@@ -146,18 +146,18 @@ ON asset_payouts(asset_id, payment_date, type)
 WHERE type = 'coupon' AND payment_date IS NOT NULL;
 
 -- ============================================================================
--- ТАБЛИЦА: portfolio_daily_positions
+-- ТАБЛИЦА: portfolio_asset_daily_values
 -- ============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_portfolio_daily_positions_portfolio_id 
-ON portfolio_daily_positions(portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_asset_daily_values_portfolio_id 
+ON portfolio_asset_daily_values(portfolio_id);
 
-CREATE INDEX IF NOT EXISTS idx_portfolio_daily_positions_asset_date_desc 
-ON portfolio_daily_positions(portfolio_asset_id, report_date DESC);
+CREATE INDEX IF NOT EXISTS idx_portfolio_asset_daily_values_asset_date_desc 
+ON portfolio_asset_daily_values(portfolio_asset_id, report_date DESC);
 
 -- НОВЫЙ: covering index для аналитических CTE
-CREATE INDEX IF NOT EXISTS idx_pdp_covering
-ON portfolio_daily_positions(portfolio_asset_id, report_date DESC)
+CREATE INDEX IF NOT EXISTS idx_portfolio_asset_daily_values_covering
+ON portfolio_asset_daily_values(portfolio_asset_id, report_date DESC)
 INCLUDE (payouts, commissions, realized_pnl, position_value, quantity, portfolio_id);
 
 -- ============================================================================

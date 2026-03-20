@@ -42,7 +42,7 @@ BEGIN
         CASE 
             WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'coupon' AND ap.record_date IS NOT NULL THEN
                 ap.value * COALESCE((
-                    SELECT pdp.quantity FROM portfolio_daily_positions pdp
+                    SELECT pdp.quantity FROM portfolio_asset_daily_values pdp
                     WHERE pdp.portfolio_asset_id = mp.portfolio_asset_id
                       AND pdp.report_date <= ap.record_date
                     ORDER BY pdp.report_date DESC
@@ -50,7 +50,7 @@ BEGIN
                 ), 0)
             WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'dividend' AND ap.last_buy_date IS NOT NULL THEN
                 ap.value * COALESCE((
-                    SELECT pdp.quantity FROM portfolio_daily_positions pdp
+                    SELECT pdp.quantity FROM portfolio_asset_daily_values pdp
                     WHERE pdp.portfolio_asset_id = mp.portfolio_asset_id
                       AND pdp.report_date <= ap.last_buy_date
                     ORDER BY pdp.report_date DESC
@@ -58,7 +58,7 @@ BEGIN
                 ), 0)
             ELSE
                 ap.value * COALESCE((
-                    SELECT pdp.quantity FROM portfolio_daily_positions pdp
+                    SELECT pdp.quantity FROM portfolio_asset_daily_values pdp
                     WHERE pdp.portfolio_asset_id = mp.portfolio_asset_id
                       AND pdp.report_date <= COALESCE(ap.record_date, ap.last_buy_date)
                     ORDER BY pdp.report_date DESC

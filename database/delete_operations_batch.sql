@@ -233,7 +233,7 @@ BEGIN
     END IF;
     
     -- Проверяем неполученные выплаты для всех затронутых активов
-    -- Делаем это после обновления позиций, чтобы portfolio_daily_positions был актуален
+    -- Делаем это после обновления позиций, чтобы portfolio_asset_daily_values был актуален
     
     -- 1. Проверяем активы, связанные с транзакциями (уже есть в v_portfolio_asset_ids)
     IF array_length(v_portfolio_asset_ids, 1) > 0 THEN
