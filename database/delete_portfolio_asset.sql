@@ -9,19 +9,15 @@ DECLARE
     v_asset_id bigint;
     v_portfolio_id bigint;
     v_is_custom boolean;
-    v_user_id uuid;
-    v_result text;
 BEGIN
     SELECT 
         pa.asset_id,
         pa.portfolio_id,
-        COALESCE(at.is_custom, false),
-        p.user_id
+        COALESCE(at.is_custom, false)
     INTO 
         v_asset_id,
         v_portfolio_id,
-        v_is_custom,
-        v_user_id
+        v_is_custom
     FROM portfolio_assets pa
     JOIN portfolios p ON p.id = pa.portfolio_id
     JOIN assets a ON a.id = pa.asset_id
@@ -35,29 +31,13 @@ BEGIN
         )::text;
     END IF;
     
-    -- 1. Сначала удаляем cash_operations, связанные с транзакциями через transaction_id
-    DELETE FROM cash_operations
-    WHERE transaction_id IN (
-        SELECT id FROM transactions WHERE portfolio_asset_id = p_portfolio_asset_id
-    );
-    
-    -- 2. Удаляем транзакции
-    DELETE FROM transactions 
-    WHERE portfolio_asset_id = p_portfolio_asset_id;
-    
-    -- 3. Удаляем остальные cash_operations, связанные с портфелем и активом (но не с транзакциями)
+    -- Операции по паре портфель+актив (в т.ч. с transaction_id; FK не ведёт на portfolio_assets)
     DELETE FROM cash_operations
     WHERE portfolio_id = v_portfolio_id
       AND asset_id = v_asset_id;
-    
-    -- 4. Удаляем fifo_lots
-    DELETE FROM fifo_lots 
-    WHERE portfolio_asset_id = p_portfolio_asset_id;
-    
-    DELETE FROM portfolio_asset_daily_values 
-    WHERE portfolio_asset_id = p_portfolio_asset_id;
-    
-    DELETE FROM portfolio_assets 
+
+    -- Каскад: transactions (+ cash по transaction_id), fifo_lots, portfolio_asset_daily_values, missed_payouts
+    DELETE FROM portfolio_assets
     WHERE id = p_portfolio_asset_id;
     
     IF v_is_custom THEN
@@ -65,15 +45,12 @@ BEGIN
             SELECT 1 FROM portfolio_assets 
             WHERE asset_id = v_asset_id
         ) THEN
-            -- Удаляем все cash_operations, связанные с этим активом (из всех портфелей)
-            -- Это нужно сделать перед удалением актива, чтобы избежать нарушения внешнего ключа
             DELETE FROM cash_operations
             WHERE asset_id = v_asset_id;
             
             DELETE FROM asset_prices 
             WHERE asset_id = v_asset_id;
             
-            -- Удаляем запись из asset_latest_prices
             DELETE FROM asset_latest_prices 
             WHERE asset_id = v_asset_id;
             

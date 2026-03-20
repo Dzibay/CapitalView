@@ -14,6 +14,7 @@ DECLARE
     v_deleted_count int := 0;
     v_deleted_transactions_count int := 0;
     v_tx_portfolio_ids bigint[];
+    v_operations_targeted int := 0;
 BEGIN
     IF array_length(p_operation_ids, 1) IS NULL THEN
         RETURN jsonb_build_object(
@@ -33,6 +34,8 @@ BEGIN
         co.type as operation_type
     FROM cash_operations co
     WHERE co.id = ANY(p_operation_ids);
+
+    SELECT COUNT(*)::int INTO v_operations_targeted FROM temp_deleted_ops_info;
     
     SELECT 
         array_agg(DISTINCT portfolio_id) FILTER (WHERE portfolio_id IS NOT NULL),
@@ -113,13 +116,8 @@ BEGIN
         v_portfolio_asset_ids := ARRAY[]::bigint[];
     END IF;
     
-    -- 3. Удаляем операции, связанные с транзакциями (если есть)
-    -- Сначала удаляем эти операции, чтобы избежать проблем с внешними ключами
-    IF array_length(v_transaction_ids, 1) > 0 THEN
-        DELETE FROM cash_operations WHERE transaction_id = ANY(v_transaction_ids);
-    END IF;
-    
-    -- 4. Удаляем транзакции напрямую (если есть)
+    -- Сначала транзакции: операции с transaction_id уходят каскадом (1:1 с Buy/Sell/Redemption).
+    -- Затем — только операции без транзакции (дивиденды, комиссии и т.д.).
     IF array_length(v_transaction_ids, 1) > 0 THEN
         DELETE FROM transactions WHERE id = ANY(v_transaction_ids);
         GET DIAGNOSTICS v_deleted_transactions_count = ROW_COUNT;
@@ -294,7 +292,7 @@ BEGIN
     
     RETURN jsonb_build_object(
         'success', true,
-        'deleted_count', v_deleted_count,
+        'deleted_count', v_operations_targeted,
         'deleted_transactions_count', v_deleted_transactions_count,
         'portfolio_ids', v_portfolio_ids,
         'portfolio_asset_ids', v_portfolio_asset_ids

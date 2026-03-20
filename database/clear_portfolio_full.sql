@@ -43,39 +43,15 @@ begin
     where portfolio_id = any(v_portfolio_ids);
 
     ------------------------------------------------------------------
-    -- 3. Удаляем денежные операции, связанные с транзакциями
-    -- Сначала удаляем cash_operations, которые ссылаются на транзакции,
-    -- чтобы избежать нарушения внешнего ключа
-    ------------------------------------------------------------------
-    if v_pa_ids is not null then
-        -- Удаляем cash_operations, которые ссылаются на транзакции через transaction_id
-        delete from cash_operations 
-        where transaction_id in (
-            select id from transactions where portfolio_asset_id = any(v_pa_ids)
-        );
-    end if;
-
-    ------------------------------------------------------------------
-    -- 4. Удаляем транзакции и fifo_lots
-    ------------------------------------------------------------------
-    if v_pa_ids is not null then
-        delete from transactions where portfolio_asset_id = any(v_pa_ids);
-        delete from fifo_lots where portfolio_asset_id = any(v_pa_ids);
-    end if;
-
-    ------------------------------------------------------------------
-    -- 5. Остальные денежные операции и брокеры
+    -- 3–4. Все операции по портфелям дерева, затем позиции.
+    -- Каскад с portfolio_assets: transactions, fifo_lots, portfolio_asset_daily_values, missed_payouts;
+    -- с transactions: cash_operations по transaction_id (ON DELETE CASCADE).
     ------------------------------------------------------------------
     delete from cash_operations where portfolio_id = any(v_portfolio_ids);
-    delete from user_broker_connections where portfolio_id = any(v_portfolio_ids);
-
-    ------------------------------------------------------------------
-    -- 6. Удаляем portfolio_assets
-    ------------------------------------------------------------------
     delete from portfolio_assets where portfolio_id = any(v_portfolio_ids);
 
     ------------------------------------------------------------------
-    -- 7. Кастомные активы (если больше нигде не используются)
+    -- 5. Кастомные активы (если больше нигде не используются)
     ------------------------------------------------------------------
     select array_agg(a.id)
     into v_custom_asset_ids
@@ -97,20 +73,19 @@ begin
     end if;
 
     ------------------------------------------------------------------
-    -- 8. Daily tables
+    -- 6. portfolio_asset_daily_values удалены каскадом с portfolio_assets;
+    -- portfolio_daily_values, user_broker_connections, оставшиеся import_tasks — каскадом при удалении портфелей.
     ------------------------------------------------------------------
-    delete from portfolio_asset_daily_values where portfolio_id = any(v_portfolio_ids);
-    delete from portfolio_daily_values where portfolio_id = any(v_portfolio_ids);
 
     ------------------------------------------------------------------
-    -- 9. Удаляем завершённые задачи импорта (не трогаем активные)
+    -- 7. Удаляем завершённые задачи импорта (не трогаем активные)
     ------------------------------------------------------------------
     delete from import_tasks
     where portfolio_id = any(v_portfolio_ids)
       and status not in ('pending', 'processing');
 
     ------------------------------------------------------------------
-    -- 10. Удаляем портфели
+    -- 8. Удаляем портфели
     ------------------------------------------------------------------
     
     -- всегда удаляем дочерние

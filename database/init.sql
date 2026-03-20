@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS cash_operations (
   CONSTRAINT cash_operations_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,
   CONSTRAINT cash_operations_currency_fkey FOREIGN KEY (currency) REFERENCES assets(id),
   CONSTRAINT cash_operations_type_fkey FOREIGN KEY (type) REFERENCES operations_type(id),
-  CONSTRAINT cash_operations_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL,
+  CONSTRAINT cash_operations_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
   CONSTRAINT cash_operations_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id)
 );
 

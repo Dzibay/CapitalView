@@ -154,7 +154,6 @@ BEGIN
 
     -- Только удаление: без пересчёта (пересчёт сделает apply_operations_batch)
     IF v_transaction_ids IS NOT NULL AND array_length(v_transaction_ids, 1) > 0 THEN
-        DELETE FROM cash_operations WHERE transaction_id = ANY(v_transaction_ids);
         DELETE FROM transactions WHERE id = ANY(v_transaction_ids);
     END IF;
     DELETE FROM cash_operations WHERE id = ANY(v_op_ids) AND transaction_id IS NULL;
