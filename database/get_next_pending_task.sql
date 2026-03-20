@@ -4,7 +4,7 @@ RETURNS TABLE (
     user_id UUID,
     portfolio_id BIGINT,
     task_type VARCHAR,
-    broker_id VARCHAR,
+    broker_id BIGINT,
     broker_token TEXT,
     portfolio_name VARCHAR,
     priority INTEGER
