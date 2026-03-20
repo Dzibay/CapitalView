@@ -112,16 +112,19 @@ def check_broker_token_exists(user_id: str, broker_id: int, broker_token: str) -
         }
 
     # Также проверяем в import_tasks (задачи, которые еще не выполнены)
-    pending_tasks = table_select(
-        "import_tasks",
-        select="portfolio_id, portfolio_name, status",
-        filters={
-            "user_id": user_id_str,
-            "broker_id": str(broker_id),
-            "broker_token": broker_token
-        },
-        limit=1
-    )
+    if pids:
+        pending_tasks = table_select(
+            "import_tasks",
+            select="portfolio_id, portfolio_name, status",
+            filters={
+                "broker_id": str(broker_id),
+                "broker_token": broker_token
+            },
+            in_filters={"portfolio_id": pids},
+            limit=10
+        )
+    else:
+        pending_tasks = None
 
     # Фильтруем только активные задачи (pending или processing)
     active_tasks = [

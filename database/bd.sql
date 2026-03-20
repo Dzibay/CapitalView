@@ -88,8 +88,7 @@ CREATE TABLE public.fifo_lots (
 );
 CREATE TABLE public.import_tasks (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  user_id uuid NOT NULL,
-  portfolio_id bigint,
+  portfolio_id bigint NOT NULL,
   task_type character varying NOT NULL,
   status character varying NOT NULL DEFAULT 'pending'::character varying CHECK (status::text = ANY (ARRAY['pending'::character varying, 'processing'::character varying, 'completed'::character varying, 'failed'::character varying, 'cancelled'::character varying]::text[])),
   broker_id character varying,
@@ -106,8 +105,7 @@ CREATE TABLE public.import_tasks (
   progress_message text,
   portfolio_name character varying,
   CONSTRAINT import_tasks_pkey PRIMARY KEY (id),
-  CONSTRAINT import_tasks_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
-  CONSTRAINT import_tasks_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id)
+  CONSTRAINT import_tasks_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id) ON DELETE CASCADE
 );
 CREATE TABLE public.operations_type (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,

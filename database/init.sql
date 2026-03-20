@@ -191,8 +191,7 @@ CREATE TABLE IF NOT EXISTS portfolio_daily_values (
 
 CREATE TABLE IF NOT EXISTS import_tasks (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  user_id uuid NOT NULL,
-  portfolio_id bigint,
+  portfolio_id bigint NOT NULL,
   task_type character varying NOT NULL,
   status character varying NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
   broker_id character varying,
@@ -209,8 +208,7 @@ CREATE TABLE IF NOT EXISTS import_tasks (
   progress_message text,
   portfolio_name character varying,
   CONSTRAINT import_tasks_pkey PRIMARY KEY (id),
-  CONSTRAINT import_tasks_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id),
-  CONSTRAINT import_tasks_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id)
+  CONSTRAINT import_tasks_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS user_broker_connections (

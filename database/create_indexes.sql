@@ -181,22 +181,22 @@ ON fifo_lots(portfolio_asset_id, created_at);
 -- ТАБЛИЦА: import_tasks
 -- ============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_import_tasks_user_id 
-ON import_tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_import_tasks_portfolio_id
+ON import_tasks(portfolio_id);
 
-CREATE INDEX IF NOT EXISTS idx_import_tasks_status 
-ON import_tasks(status) 
+CREATE INDEX IF NOT EXISTS idx_import_tasks_status
+ON import_tasks(status)
 WHERE status = 'pending';
 
-CREATE INDEX IF NOT EXISTS idx_import_tasks_user_status 
-ON import_tasks(user_id, status) 
+CREATE INDEX IF NOT EXISTS idx_import_tasks_portfolio_status
+ON import_tasks(portfolio_id, status)
 WHERE status = 'pending';
 
-CREATE INDEX IF NOT EXISTS idx_import_tasks_created_at_desc 
+CREATE INDEX IF NOT EXISTS idx_import_tasks_created_at_desc
 ON import_tasks(created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_import_tasks_user_broker_token 
-ON import_tasks(user_id, broker_id, broker_token) 
+CREATE INDEX IF NOT EXISTS idx_import_tasks_broker_token
+ON import_tasks(broker_id, broker_token)
 WHERE broker_id IS NOT NULL AND broker_token IS NOT NULL;
 
 -- ============================================================================
