@@ -41,6 +41,10 @@ const logout = () => {
 // Для hover эффектов иконок
 const hoveredItem = ref(null);
 
+// Картинка логотипа для сайдбара.
+// Ожидается в `frontend/public`
+const logoSrc = ref('/site-logo.webp');
+
 // Структура меню с сегментацией
 const menuSections = ref([
   {
@@ -93,9 +97,13 @@ watch(route, () => {
     <div class="sidebar__header">
       <div class="sidebar__logo-icon">
         <!-- Иконка логотипа с градиентом -->
-        <div class="logo-wrapper">
-          <Sparkles :size="20" class="logo-icon" />
-        </div>
+        <img
+            :src="logoSrc"
+            class="logo-img"
+            alt="CapitalView logo"
+            @error="handleLogoError"
+          />
+        
       </div>
       <!-- Название сайта (скрыто при свёрнутом сайдбаре; на мобильном показываем при открытом меню) -->
       <Transition name="fade-slide">
@@ -231,7 +239,7 @@ watch(route, () => {
 .sidebar__header {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0rem;
   height: var(--headerHeight);
   padding: 0 1.5rem; /* 24px */
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -241,30 +249,18 @@ watch(route, () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 52px;
+  min-width: 40px;
 }
 
-.logo-wrapper {
-  width: 40px;
-  height: 40px;
-  border-radius: 1rem;
-  background: var(--sidebar-primary-gradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 6px 20px -4px rgba(82, 125, 229, 0.4);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
 
-.logo-wrapper:hover {
-  transform: rotate(180deg) scale(1.1);
-  box-shadow: 0 8px 24px -4px rgba(82, 125, 229, 0.5);
-}
 
-.logo-icon {
-  color: white;
-  width: 20px;
-  height: 20px;
+.logo-img {
+  width: 48px;
+  height: 48px;
+  /* Чтобы логотип занимал больше площади, даже если в исходном файле есть поля */
+  object-fit: cover;
+  object-position: center;
+  display: block;
 }
 
 .sidebar__title {
