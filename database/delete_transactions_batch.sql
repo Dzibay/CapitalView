@@ -51,4 +51,4 @@ EXCEPTION
 END;
 $$;
 
-COMMENT ON FUNCTION delete_transactions_batch(bigint[]) IS 'Удаляет транзакции через удаление связанных операций';
+COMMENT ON FUNCTION delete_transactions_batch(bigint[]) IS 'Находит cash_operations по transaction_id и вызывает delete_operations_batch; транзакции без операции отклоняются';
