@@ -52,7 +52,7 @@ BEGIN
     LEFT JOIN asset_latest_prices lp ON lp.asset_id = pa.asset_id
     LEFT JOIN asset_latest_prices lqp ON lqp.asset_id = a.quote_asset_id
     LEFT JOIN user_broker_connections ubc 
-        ON ubc.portfolio_id = p.id AND ubc.user_id = u_id
+        ON ubc.portfolio_id = p.id
     WHERE p.user_id = u_id
     GROUP BY p.id, ubc.broker_id, ubc.api_key, ubc.last_sync_at;
 END;

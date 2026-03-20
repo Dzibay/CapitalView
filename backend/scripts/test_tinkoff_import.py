@@ -28,7 +28,7 @@ async def get_portfolio_info(broker_token: str):
     """Получает информацию о портфелях из БД по токену брокера."""
     connections = await table_select_async(
         "user_broker_connections",
-        select="portfolio_id, user_id, broker_id",
+        select="portfolio_id, broker_id",
         filters={"api_key": broker_token},
         limit=1
     )
@@ -38,7 +38,16 @@ async def get_portfolio_info(broker_token: str):
     
     connection = connections[0]
     parent_portfolio_id = connection["portfolio_id"]
-    user_id = connection["user_id"]
+
+    owner_rows = await table_select_async(
+        "portfolios",
+        select="user_id",
+        filters={"id": parent_portfolio_id},
+        limit=1
+    )
+    if not owner_rows:
+        return None
+    user_id = owner_rows[0]["user_id"]
     
     # Получаем название родительского портфеля
     parent_portfolios = await table_select_async(

@@ -20,7 +20,7 @@ connections_data AS (
             'last_sync_at', ubc.last_sync_at
         ) AS connection
     FROM user_broker_connections ubc
-    WHERE ubc.user_id = p_user_id
+    INNER JOIN portfolios_base pb ON pb.id = ubc.portfolio_id
     ORDER BY ubc.portfolio_id, ubc.last_sync_at DESC
 ),
 

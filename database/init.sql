@@ -215,15 +215,13 @@ CREATE TABLE IF NOT EXISTS import_tasks (
 
 CREATE TABLE IF NOT EXISTS user_broker_connections (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  user_id uuid,
   broker_id bigint,
-  portfolio_id bigint,
+  portfolio_id bigint NOT NULL,
   api_key text,
   last_sync_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP(0),
   CONSTRAINT user_broker_connections_pkey PRIMARY KEY (id),
-  CONSTRAINT user_broker_connections_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id),
   CONSTRAINT user_broker_connections_broker_id_fkey FOREIGN KEY (broker_id) REFERENCES brokers(id),
-  CONSTRAINT user_broker_connections_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id)
+  CONSTRAINT user_broker_connections_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS missed_payouts (

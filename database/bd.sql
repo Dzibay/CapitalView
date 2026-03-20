@@ -184,16 +184,14 @@ CREATE TABLE public.transactions_type (
   CONSTRAINT transactions_type_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.user_broker_connections (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  user_id uuid,
-  broker_id bigint,
-  portfolio_id bigint,
-  api_key text,
-  last_sync_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP(0),
-  CONSTRAINT user_broker_connections_pkey PRIMARY KEY (id),
-  CONSTRAINT user_broker_connections_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
-  CONSTRAINT user_broker_connections_broker_id_fkey FOREIGN KEY (broker_id) REFERENCES public.brokers(id),
-  CONSTRAINT user_broker_connections_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id)
+    id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+    broker_id bigint,
+    portfolio_id bigint NOT NULL,
+    api_key text,
+    last_sync_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP(0),
+    CONSTRAINT user_broker_connections_pkey PRIMARY KEY (id),
+    CONSTRAINT user_broker_connections_broker_id_fkey FOREIGN KEY (broker_id) REFERENCES public.brokers(id),
+    CONSTRAINT user_broker_connections_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id) ON DELETE CASCADE
 );
 CREATE TABLE public.users (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

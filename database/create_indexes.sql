@@ -200,23 +200,20 @@ ON import_tasks(user_id, broker_id, broker_token)
 WHERE broker_id IS NOT NULL AND broker_token IS NOT NULL;
 
 -- ============================================================================
--- ТАБЛИЦА: user_broker_connections
+-- ТАБЛИЦА: user_broker_connections (владелец — через portfolios.user_id)
 -- ============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_user_broker_connections_user_id 
-ON user_broker_connections(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_user_broker_connections_portfolio_id 
+CREATE INDEX IF NOT EXISTS idx_user_broker_connections_portfolio_id
 ON user_broker_connections(portfolio_id);
 
-CREATE INDEX IF NOT EXISTS idx_user_broker_connections_user_portfolio_broker 
-ON user_broker_connections(user_id, portfolio_id, broker_id);
+CREATE INDEX IF NOT EXISTS idx_user_broker_connections_portfolio_broker
+ON user_broker_connections(portfolio_id, broker_id);
 
-CREATE INDEX IF NOT EXISTS idx_user_broker_connections_last_sync_desc 
-ON user_broker_connections(user_id, last_sync_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_broker_connections_portfolio_last_sync_desc
+ON user_broker_connections(portfolio_id, last_sync_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_user_broker_connections_user_broker_token 
-ON user_broker_connections(user_id, broker_id, api_key) 
+CREATE INDEX IF NOT EXISTS idx_user_broker_connections_broker_api_key
+ON user_broker_connections(broker_id, api_key)
 WHERE api_key IS NOT NULL;
 
 -- ============================================================================
