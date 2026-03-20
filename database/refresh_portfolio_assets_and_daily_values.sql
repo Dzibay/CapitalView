@@ -68,7 +68,8 @@ BEGIN
         '[]'::jsonb
     )
     INTO v_daily_results
-    FROM update_assets_daily_values(v_asset_ids, v_from_date) AS u(portfolio_id bigint, updated boolean);
+    -- update_assets_daily_values RETURNS TABLE(...) (OUT-параметры) -> не указываем типы в алиасе
+    FROM update_assets_daily_values(v_asset_ids, v_from_date) AS u(portfolio_id, updated);
 
     RETURN jsonb_build_object(
         'success', true,
@@ -80,7 +81,4 @@ BEGIN
     );
 END;
 $$;
-
-COMMENT ON FUNCTION refresh_portfolio_assets_and_daily_values(bigint) IS
-'Пересчитывает portfolio_assets для портфеля и затем обновляет portfolio_daily_* одним вызовом update_assets_daily_values. from_date = минимальная transaction_date::date среди активов портфеля.';
 
