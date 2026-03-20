@@ -44,13 +44,10 @@ ON transactions(portfolio_asset_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date_desc 
 ON transactions(transaction_date DESC);
 
-CREATE INDEX IF NOT EXISTS idx_transactions_portfolio_asset_date 
+CREATE INDEX IF NOT EXISTS idx_transactions_portfolio_asset_date
 ON transactions(portfolio_asset_id, transaction_date DESC);
 
-CREATE INDEX IF NOT EXISTS idx_transactions_user_id 
-ON transactions(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_transactions_type 
+CREATE INDEX IF NOT EXISTS idx_transactions_type
 ON transactions(transaction_type) 
 WHERE transaction_type IN (2, 3);
 
@@ -146,18 +143,18 @@ ON asset_payouts(asset_id, payment_date, type)
 WHERE type = 'coupon' AND payment_date IS NOT NULL;
 
 -- ============================================================================
--- ТАБЛИЦА: portfolio_daily_positions
+-- ТАБЛИЦА: portfolio_asset_daily_values
 -- ============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_portfolio_daily_positions_portfolio_id 
-ON portfolio_daily_positions(portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_asset_daily_values_portfolio_id 
+ON portfolio_asset_daily_values(portfolio_id);
 
-CREATE INDEX IF NOT EXISTS idx_portfolio_daily_positions_asset_date_desc 
-ON portfolio_daily_positions(portfolio_asset_id, report_date DESC);
+CREATE INDEX IF NOT EXISTS idx_portfolio_asset_daily_values_asset_date_desc 
+ON portfolio_asset_daily_values(portfolio_asset_id, report_date DESC);
 
 -- НОВЫЙ: covering index для аналитических CTE
-CREATE INDEX IF NOT EXISTS idx_pdp_covering
-ON portfolio_daily_positions(portfolio_asset_id, report_date DESC)
+CREATE INDEX IF NOT EXISTS idx_portfolio_asset_daily_values_covering
+ON portfolio_asset_daily_values(portfolio_asset_id, report_date DESC)
 INCLUDE (payouts, commissions, realized_pnl, position_value, quantity, portfolio_id);
 
 -- ============================================================================
@@ -181,52 +178,44 @@ ON fifo_lots(portfolio_asset_id, created_at);
 -- ТАБЛИЦА: import_tasks
 -- ============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_import_tasks_user_id 
-ON import_tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_import_tasks_portfolio_id
+ON import_tasks(portfolio_id);
 
-CREATE INDEX IF NOT EXISTS idx_import_tasks_status 
-ON import_tasks(status) 
+CREATE INDEX IF NOT EXISTS idx_import_tasks_status
+ON import_tasks(status)
 WHERE status = 'pending';
 
-CREATE INDEX IF NOT EXISTS idx_import_tasks_user_status 
-ON import_tasks(user_id, status) 
+CREATE INDEX IF NOT EXISTS idx_import_tasks_portfolio_status
+ON import_tasks(portfolio_id, status)
 WHERE status = 'pending';
 
-CREATE INDEX IF NOT EXISTS idx_import_tasks_created_at_desc 
+CREATE INDEX IF NOT EXISTS idx_import_tasks_created_at_desc
 ON import_tasks(created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_import_tasks_user_broker_token 
-ON import_tasks(user_id, broker_id, broker_token) 
+CREATE INDEX IF NOT EXISTS idx_import_tasks_broker_token
+ON import_tasks(broker_id, broker_token)
 WHERE broker_id IS NOT NULL AND broker_token IS NOT NULL;
 
 -- ============================================================================
--- ТАБЛИЦА: user_broker_connections
+-- ТАБЛИЦА: user_broker_connections (владелец — через portfolios.user_id)
 -- ============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_user_broker_connections_user_id 
-ON user_broker_connections(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_user_broker_connections_portfolio_id 
+CREATE INDEX IF NOT EXISTS idx_user_broker_connections_portfolio_id
 ON user_broker_connections(portfolio_id);
 
-CREATE INDEX IF NOT EXISTS idx_user_broker_connections_user_portfolio_broker 
-ON user_broker_connections(user_id, portfolio_id, broker_id);
+CREATE INDEX IF NOT EXISTS idx_user_broker_connections_portfolio_broker
+ON user_broker_connections(portfolio_id, broker_id);
 
-CREATE INDEX IF NOT EXISTS idx_user_broker_connections_last_sync_desc 
-ON user_broker_connections(user_id, last_sync_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_broker_connections_portfolio_last_sync_desc
+ON user_broker_connections(portfolio_id, last_sync_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_user_broker_connections_user_broker_token 
-ON user_broker_connections(user_id, broker_id, api_key) 
+CREATE INDEX IF NOT EXISTS idx_user_broker_connections_broker_api_key
+ON user_broker_connections(broker_id, api_key)
 WHERE api_key IS NOT NULL;
 
 -- ============================================================================
--- ТАБЛИЦА: missed_payouts
+-- ТАБЛИЦА: missed_payouts (PK portfolio_asset_id + payout_id; payout_id — для выборок по выплате)
 -- ============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_missed_payouts_user_id ON missed_payouts(user_id);
-CREATE INDEX IF NOT EXISTS idx_missed_payouts_portfolio_id ON missed_payouts(portfolio_id);
-CREATE INDEX IF NOT EXISTS idx_missed_payouts_portfolio_asset_id ON missed_payouts(portfolio_asset_id);
-CREATE INDEX IF NOT EXISTS idx_missed_payouts_asset_id ON missed_payouts(asset_id);
 CREATE INDEX IF NOT EXISTS idx_missed_payouts_payout_id ON missed_payouts(payout_id);
-CREATE INDEX IF NOT EXISTS idx_missed_payouts_created_at ON missed_payouts(created_at DESC);
 

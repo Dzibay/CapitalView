@@ -14,12 +14,20 @@ DECLARE
     v_quantity_on_payment_date numeric;
     v_expected_amount numeric;
     v_received_amount numeric;
+    v_received_amount_in_payout_ccy numeric;
+    v_payout_currency_id bigint;
+    v_payout_currency_to_rub_rate numeric(20,6);
+    v_quote_currency_id bigint;
+    v_currency_to_quote_rate numeric(20,6);
+    v_quote_to_rub_rate numeric(20,6);
+    v_expected_tolerance numeric;
     v_missed_count integer := 0;
     v_operation_type_id bigint;
     v_payout_type text;
     v_user_id uuid;
     v_portfolio_id bigint;
     v_asset_id bigint;
+    v_rub_currency_id bigint;
 BEGIN
     -- Получаем необходимую информацию из portfolio_assets и portfolios
     SELECT 
@@ -37,6 +45,25 @@ BEGIN
     -- Проверяем, что актив найден
     IF v_user_id IS NULL OR v_portfolio_id IS NULL OR v_asset_id IS NULL THEN
         RAISE EXCEPTION 'Портфельный актив с ID % не найден', p_portfolio_asset_id;
+    END IF;
+
+    -- Получаем ID рубля (для сравнения операций, импортированных в RUB)
+    SELECT id INTO v_rub_currency_id
+    FROM assets
+    WHERE UPPER(ticker) = 'RUB'
+    LIMIT 1;
+    IF v_rub_currency_id IS NULL THEN
+        v_rub_currency_id := 1;
+    END IF;
+
+    -- Валюта выплаты = валюта котировки актива (в asset_payouts value хранится в этой валюте)
+    SELECT COALESCE(a.quote_asset_id, v_rub_currency_id)
+    INTO v_payout_currency_id
+    FROM assets a
+    WHERE a.id = v_asset_id;
+
+    IF v_payout_currency_id IS NULL THEN
+        v_payout_currency_id := v_rub_currency_id;
     END IF;
     
     -- Сначала удаляем все существующие записи о неполученных выплатах для данного актива в портфеле
@@ -82,7 +109,7 @@ BEGIN
         -- Проверяем, был ли актив в портфеле на дату проверки (record_date/last_buy_date)
         -- Ищем ближайшую дату до или равную дате проверки
         SELECT quantity INTO v_quantity_on_date
-        FROM portfolio_daily_positions
+        FROM portfolio_asset_daily_values
         WHERE portfolio_asset_id = p_portfolio_asset_id
           AND report_date <= v_check_date
         ORDER BY report_date DESC
@@ -96,7 +123,7 @@ BEGIN
         -- Дополнительно проверяем количество на дату выплаты (payment_date)
         -- Если на дату выплаты актива не было или количество было 0, не учитываем выплату
         SELECT quantity INTO v_quantity_on_payment_date
-        FROM portfolio_daily_positions
+        FROM portfolio_asset_daily_values
         WHERE portfolio_asset_id = p_portfolio_asset_id
           AND report_date <= v_payout.payment_date
         ORDER BY report_date DESC
@@ -109,6 +136,7 @@ BEGIN
         
         -- Рассчитываем ожидаемую сумму выплаты на основе количества на дату проверки
         v_expected_amount := v_payout.value * v_quantity_on_date;
+        v_expected_tolerance := GREATEST(0.01, ABS(v_expected_amount) * 0.03);
         
         -- Определяем тип операции для проверки в cash_operations
         IF v_payout_type = 'coupon' THEN
@@ -120,35 +148,83 @@ BEGIN
             SELECT id INTO v_operation_type_id FROM operations_type WHERE name = 'Dividend' LIMIT 1;
         END IF;
         
-        -- Проверяем, получал ли пользователь эту выплату
-        -- Для всех типов выплат (купонов и дивидендов) допускаем погрешность ±7 дней
-        -- Дата операции может отклоняться от даты выплаты на неделю
-        SELECT COALESCE(SUM(COALESCE(amount_rub, amount)), 0) INTO v_received_amount
-        FROM cash_operations
-        WHERE user_id = v_user_id
-          AND portfolio_id = v_portfolio_id
-          AND asset_id = v_asset_id
-          AND type = v_operation_type_id
-          AND date::date BETWEEN v_payout.payment_date - INTERVAL '14 days' AND v_payout.payment_date + INTERVAL '14 days'
-          AND ABS(COALESCE(amount_rub, amount) - v_expected_amount) < 0.01; -- Допускаем небольшую погрешность в сумме
+        -- Получаем курс валюты выплаты к RUB на дату выплаты (нужен для операций, пришедших в RUB)
+        IF v_payout_currency_id = v_rub_currency_id THEN
+            v_payout_currency_to_rub_rate := 1;
+        ELSE
+            SELECT quote_asset_id INTO v_quote_currency_id
+            FROM assets
+            WHERE id = v_payout_currency_id;
+
+            IF v_quote_currency_id IS NULL OR v_quote_currency_id = v_rub_currency_id OR v_quote_currency_id = 1 THEN
+                -- Прямой курс валюты выплаты к рублю
+                SELECT price INTO v_payout_currency_to_rub_rate
+                FROM asset_prices
+                WHERE asset_id = v_payout_currency_id
+                  AND trade_date <= v_payout.payment_date
+                ORDER BY trade_date DESC
+                LIMIT 1;
+            ELSE
+                -- Кросс-курс: валюта -> quote, затем quote -> RUB
+                SELECT price INTO v_currency_to_quote_rate
+                FROM asset_prices
+                WHERE asset_id = v_payout_currency_id
+                  AND trade_date <= v_payout.payment_date
+                ORDER BY trade_date DESC
+                LIMIT 1;
+
+                SELECT price INTO v_quote_to_rub_rate
+                FROM asset_prices
+                WHERE asset_id = v_quote_currency_id
+                  AND trade_date <= v_payout.payment_date
+                ORDER BY trade_date DESC
+                LIMIT 1;
+
+                IF v_currency_to_quote_rate IS NOT NULL AND v_quote_to_rub_rate IS NOT NULL THEN
+                    v_payout_currency_to_rub_rate := v_currency_to_quote_rate * v_quote_to_rub_rate;
+                ELSE
+                    v_payout_currency_to_rub_rate := NULL;
+                END IF;
+            END IF;
+
+            IF v_payout_currency_to_rub_rate IS NULL OR v_payout_currency_to_rub_rate <= 0 THEN
+                SELECT curr_price INTO v_payout_currency_to_rub_rate
+                FROM asset_latest_prices
+                WHERE asset_id = v_payout_currency_id;
+            END IF;
+        END IF;
+
+        -- Проверяем, получал ли пользователь эту выплату:
+        -- 1) операции в валюте выплаты учитываем напрямую по amount
+        -- 2) операции в RUB приводим к валюте выплаты через курс на дату выплаты
+        SELECT COALESCE(
+            SUM(
+                CASE
+                    WHEN co.currency = v_payout_currency_id THEN ABS(COALESCE(co.amount, 0))
+                    WHEN co.currency = v_rub_currency_id
+                         AND v_payout_currency_to_rub_rate IS NOT NULL
+                         AND v_payout_currency_to_rub_rate > 0
+                    THEN ABS(COALESCE(co.amount_rub, co.amount, 0)) / v_payout_currency_to_rub_rate
+                    ELSE 0
+                END
+            ),
+            0
+        ) INTO v_received_amount_in_payout_ccy
+        FROM cash_operations co
+        WHERE co.user_id = v_user_id
+          AND co.portfolio_id = v_portfolio_id
+          AND co.asset_id = v_asset_id
+          AND co.type = v_operation_type_id
+          AND co.date::date BETWEEN v_payout.payment_date - INTERVAL '14 days' AND v_payout.payment_date + INTERVAL '14 days';
+
+        v_received_amount := v_received_amount_in_payout_ccy;
         
         -- Если выплата не была получена (или получена не полностью)
-        IF v_received_amount < v_expected_amount - 0.01 THEN
+        IF v_received_amount < v_expected_amount - v_expected_tolerance THEN
             -- Добавляем в таблицу неполученных выплат
             -- Записи для этого актива уже удалены в начале функции, поэтому дубликатов не будет
-            INSERT INTO missed_payouts (
-                user_id,
-                portfolio_id,
-                portfolio_asset_id,
-                asset_id,
-                payout_id
-            ) VALUES (
-                v_user_id,
-                v_portfolio_id,
-                p_portfolio_asset_id,
-                v_asset_id,
-                v_payout.id
-            );
+            INSERT INTO missed_payouts (portfolio_asset_id, payout_id)
+            VALUES (p_portfolio_asset_id, v_payout.id);
             
             v_missed_count := v_missed_count + 1;
         END IF;

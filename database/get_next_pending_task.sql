@@ -22,6 +22,7 @@ BEGIN
         SELECT it.id
         FROM import_tasks it
         WHERE it.status = 'pending'
+          AND EXISTS (SELECT 1 FROM portfolios p WHERE p.id = it.portfolio_id)
         ORDER BY it.priority DESC, it.created_at ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
@@ -32,7 +33,7 @@ BEGIN
         RETURN QUERY
         SELECT 
             it.id,
-            it.user_id,
+            p.user_id,
             it.portfolio_id,
             it.task_type,
             it.broker_id,
@@ -40,6 +41,7 @@ BEGIN
             it.portfolio_name,
             it.priority
         FROM import_tasks it
+        INNER JOIN portfolios p ON p.id = it.portfolio_id
         WHERE it.id = v_task_id;
     END IF;
 END;

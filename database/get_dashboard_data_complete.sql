@@ -20,7 +20,7 @@ connections_data AS (
             'last_sync_at', ubc.last_sync_at
         ) AS connection
     FROM user_broker_connections ubc
-    WHERE ubc.user_id = p_user_id
+    INNER JOIN portfolios_base pb ON pb.id = ubc.portfolio_id
     ORDER BY ubc.portfolio_id, ubc.last_sync_at DESC
 ),
 
@@ -228,7 +228,9 @@ recent_transactions AS (
 missed_payouts_count AS (
     SELECT COUNT(*)::int AS count
     FROM missed_payouts mp
-    WHERE mp.user_id = p_user_id
+    JOIN portfolio_assets pa ON pa.id = mp.portfolio_asset_id
+    JOIN portfolios po ON po.id = pa.portfolio_id
+    WHERE po.user_id = p_user_id
 )
 
 SELECT jsonb_build_object(

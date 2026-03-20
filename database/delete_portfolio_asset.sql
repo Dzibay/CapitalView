@@ -54,7 +54,7 @@ BEGIN
     DELETE FROM fifo_lots 
     WHERE portfolio_asset_id = p_portfolio_asset_id;
     
-    DELETE FROM portfolio_daily_positions 
+    DELETE FROM portfolio_asset_daily_values 
     WHERE portfolio_asset_id = p_portfolio_asset_id;
     
     DELETE FROM portfolio_assets 

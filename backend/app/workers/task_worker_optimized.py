@@ -10,7 +10,6 @@
 """
 import asyncio
 from typing import Optional
-from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
 from app.domain.services.task_service import (
@@ -22,7 +21,7 @@ from app.domain.services.portfolio_import_service import import_broker_portfolio
 from app.domain.services.user_service import get_user_by_id
 from app.domain.services.broker_connections_service import upsert_broker_connection
 from app.constants import BrokerID
-from app.infrastructure.database.postgres_async import table_insert_async, table_update_async, table_select_async
+from app.infrastructure.database.postgres_async import table_update_async
 from app.core.logging import get_logger
 
 from app.config import Config
@@ -103,7 +102,6 @@ async def process_import_task(task: dict) -> bool:
     portfolio_id = task.get("portfolio_id")
     broker_id = task["broker_id"]
     broker_token = task["broker_token"]
-    portfolio_name = task.get("portfolio_name")
     retry_count = task.get("retry_count", 0)
     
     try:
@@ -144,68 +142,16 @@ async def process_import_task(task: dict) -> bool:
         
         if not broker_data:
             raise Exception("Не удалось получить данные от брокера")
-        
-        # Создаем или обновляем портфель (если не указан)
+
         if not portfolio_id:
-            await update_task_status_async(
-                task_id,
-                TaskStatus.PROCESSING,
-                progress=40,
-                progress_message="Создание портфеля..."
-            )
-            
-            from app.domain.services.portfolio_service import get_user_portfolio_parent
-            
-            user_root_portfolio = await get_user_portfolio_parent(user_email)
-            parent_portfolio_id = user_root_portfolio["id"]
-            portfolio_name_final = portfolio_name or f"Портфель {broker_id}"
-            
-            # Проверяем, не существует ли уже портфель с таким именем (защита от race condition)
-            existing = await table_select_async(
-                "portfolios",
-                select="id",
-                filters={"parent_portfolio_id": parent_portfolio_id, "name": portfolio_name_final}
-            )
-            
-            if existing:
-                # Портфель уже существует (возможно, создан другой параллельной задачей)
-                portfolio_id = existing[0]["id"]
-                logger.info(f"Портфель '{portfolio_name_final}' уже существует, используем id={portfolio_id}")
-            else:
-                # Портфель не существует, создаем новый
-                new_portfolio = {
-                    "user_id": user_id,
-                    "parent_portfolio_id": parent_portfolio_id,
-                    "name": portfolio_name_final,
-                    "description": f"Импорт из брокера {broker_id} — {datetime.utcnow().isoformat()}",
-                }
-                
-                # Используем асинхронную вставку
-                res = await table_insert_async("portfolios", new_portfolio)
-                
-                if res:
-                    portfolio_id = res[0]["id"]
-                    logger.info(f"Создан новый портфель id={portfolio_id}")
-                else:
-                    # Вставка не удалась, возможно портфель был создан другой задачей
-                    # Проверяем повторно (race condition)
-                    existing_retry = await table_select_async(
-                        "portfolios",
-                        select="id",
-                        filters={"parent_portfolio_id": parent_portfolio_id, "name": portfolio_name_final}
-                    )
-                    if existing_retry:
-                        portfolio_id = existing_retry[0]["id"]
-                        logger.info(f"Портфель '{portfolio_name_final}' создан другой задачей, используем id={portfolio_id}")
-                    else:
-                        raise Exception(f"Ошибка при создании портфеля '{portfolio_name_final}'")
-        else:
-            await update_task_status_async(
-                task_id,
-                TaskStatus.PROCESSING,
-                progress=40,
-                progress_message="Обновление портфеля..."
-            )
+            raise Exception("Задача импорта без portfolio_id — некорректные данные")
+
+        await update_task_status_async(
+            task_id,
+            TaskStatus.PROCESSING,
+            progress=40,
+            progress_message="Обновление портфеля..."
+        )
         
         # Импортируем данные
         await update_task_status_async(

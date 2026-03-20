@@ -1,13 +1,15 @@
 """
 Инициализация БД: таблицы, справочники, функции, индексы.
 
+Скрипты migrate_*.sql сюда не входят — их выполняют вручную на существующей БД
+в нужном порядке (см. database/).
+
 Запуск с сервера (БД без внешнего IP, доступна только из приватной сети):
   docker compose run --rm backend python -m scripts.init_db
 
 Или локально при доступе к БД:
   cd backend && python -m scripts.init_db
 """
-import os
 import sys
 from pathlib import Path
 
@@ -31,7 +33,12 @@ INDEXES_SQL = DB_DIR / "create_indexes.sql"
 
 # Файлы функций: get_user_portfolios_analytics до get_dashboard_data_complete (зависимость)
 _EXCLUDED = ("init.sql", "bd.sql", "create_indexes.sql")
-_ALL_FUNCTIONS = sorted(f for f in DB_DIR.glob("*.sql") if f.name not in _EXCLUDED)
+_ALL_FUNCTIONS = sorted(
+    f
+    for f in DB_DIR.glob("*.sql")
+    if f.name not in _EXCLUDED
+    and not f.name.startswith("migrate_")
+)
 _PRIORITY = ["get_user_portfolios_analytics.sql"]  # должен быть до get_dashboard_data_complete
 FUNCTION_FILES = [f for f in _ALL_FUNCTIONS if f.name in _PRIORITY] + [
     f for f in _ALL_FUNCTIONS if f.name not in _PRIORITY

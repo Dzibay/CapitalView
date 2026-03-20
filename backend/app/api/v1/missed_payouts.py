@@ -3,7 +3,9 @@ API endpoints для работы с неполученными выплатам
 """
 from fastapi import APIRouter, Depends, Body, HTTPException
 from http import HTTPStatus
-from typing import List, Optional
+from typing import List, Optional, Set, Tuple
+
+from pydantic import BaseModel, Field
 
 from app.core.dependencies import get_current_user
 from app.utils.response import success_response
@@ -17,6 +19,16 @@ from app.utils.date import normalize_date_to_string
 router = APIRouter(prefix="/missed-payouts", tags=["missed-payouts"])
 
 _missed_payout_repository = MissedPayoutRepository()
+
+
+class MissedPayoutKey(BaseModel):
+    """Составной ключ строки missed_payouts (позиция в портфеле + выплата)."""
+    portfolio_asset_id: int = Field(..., ge=1)
+    payout_id: int = Field(..., ge=1)
+
+
+def _missed_payout_row_key(row: dict) -> Tuple[int, int]:
+    return (int(row["portfolio_asset_id"]), int(row["payout_id"]))
 
 
 @router.get("/")
@@ -48,35 +60,35 @@ async def get_missed_payouts_route(
 @router.delete("/batch")
 @invalidate("dashboard:{user.id}")
 async def delete_missed_payouts_batch_route(
-    missed_payout_ids: List[int] = Body(...),
+    keys: List[MissedPayoutKey] = Body(...),
     user: dict = Depends(get_current_user)
 ):
     """
     Удаляет несколько неполученных выплат (игнорирует их).
     
     Args:
-        missed_payout_ids: Список ID записей в missed_payouts
+        keys: Список пар (portfolio_asset_id, payout_id)
         user: Текущий пользователь из токена
     """
     try:
-        if not missed_payout_ids:
+        if not keys:
             raise HTTPException(
                 status_code=HTTPStatus.BAD_REQUEST,
-                detail="Список ID не может быть пустым"
+                detail="Список не может быть пустым"
             )
         
-        # Проверяем, что все выплаты принадлежат пользователю
         payouts = await _missed_payout_repository.get_user_missed_payouts_async(user_id=user["id"])
-        payout_ids = {p["id"] for p in payouts}
+        allowed: Set[Tuple[int, int]] = {_missed_payout_row_key(p) for p in payouts}
         
-        invalid_ids = [pid for pid in missed_payout_ids if pid not in payout_ids]
-        if invalid_ids:
+        requested = {(k.portfolio_asset_id, k.payout_id) for k in keys}
+        invalid = requested - allowed
+        if invalid:
             raise HTTPException(
                 status_code=HTTPStatus.FORBIDDEN,
-                detail=f"Некоторые выплаты не найдены или не принадлежат пользователю: {invalid_ids}"
+                detail=f"Некоторые выплаты не найдены или не принадлежат пользователю: {sorted(invalid)}"
             )
         
-        deleted_count = await _missed_payout_repository.delete_missed_payouts_batch(missed_payout_ids)
+        deleted_count = await _missed_payout_repository.delete_missed_payouts_batch(sorted(requested))
         
         return success_response(
             data={"deleted_count": deleted_count},
@@ -205,7 +217,7 @@ async def check_missed_payouts_for_user_route(
 @router.post("/add-operations-batch")
 @invalidate("dashboard:{user.id}")
 async def add_operations_from_missed_payouts_batch_route(
-    missed_payout_ids: List[int] = Body(...),
+    keys: List[MissedPayoutKey] = Body(...),
     user: dict = Depends(get_current_user)
 ):
     """
@@ -214,31 +226,36 @@ async def add_operations_from_missed_payouts_batch_route(
     После успешного создания операций удаляет соответствующие записи из missed_payouts.
     
     Args:
-        missed_payout_ids: Список ID записей в missed_payouts для создания операций
+        keys: Список пар (portfolio_asset_id, payout_id) для создания операций
         user: Текущий пользователь из токена
     """
     try:
-        if not missed_payout_ids:
+        if not keys:
             raise HTTPException(
                 status_code=HTTPStatus.BAD_REQUEST,
-                detail="Список ID не может быть пустым"
+                detail="Список не может быть пустым"
             )
         
-        # Получаем данные неполученных выплат пользователя
         payouts = await _missed_payout_repository.get_user_missed_payouts_async(user_id=user["id"])
-        payout_dict = {p["id"]: p for p in payouts}
-        payout_ids = set(payout_dict.keys())
+        payout_dict = {_missed_payout_row_key(p): p for p in payouts}
+        allowed = set(payout_dict.keys())
         
-        # Проверяем, что все выплаты принадлежат пользователю
-        invalid_ids = [pid for pid in missed_payout_ids if pid not in payout_ids]
-        if invalid_ids:
+        ordered_keys: List[Tuple[int, int]] = []
+        seen_req: Set[Tuple[int, int]] = set()
+        for k in keys:
+            t = (k.portfolio_asset_id, k.payout_id)
+            if t not in seen_req:
+                seen_req.add(t)
+                ordered_keys.append(t)
+        
+        invalid = seen_req - allowed
+        if invalid:
             raise HTTPException(
                 status_code=HTTPStatus.FORBIDDEN,
-                detail=f"Некоторые выплаты не найдены или не принадлежат пользователю: {invalid_ids}"
+                detail=f"Некоторые выплаты не найдены или не принадлежат пользователю: {sorted(invalid)}"
             )
         
-        # Формируем список выплат для создания операций
-        selected_payouts = [payout_dict[pid] for pid in missed_payout_ids]
+        selected_payouts = [payout_dict[t] for t in ordered_keys]
         
         # Создаем операции через универсальный apply_operations/apply_operations_batch
         operations_list = []
@@ -309,7 +326,7 @@ async def add_operations_from_missed_payouts_batch_route(
                 "failed_operations": result.get("failed_operations", []),
                 "checked_assets_count": len(portfolio_asset_ids)
             },
-            message=f"Успешно создано {result.get('inserted_count', 0)} операций из {len(missed_payout_ids)} неполученных выплат"
+            message=f"Успешно создано {result.get('inserted_count', 0)} операций из {len(ordered_keys)} неполученных выплат"
         )
     except HTTPException:
         raise

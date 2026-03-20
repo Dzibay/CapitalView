@@ -7,6 +7,7 @@ from app.domain.services.task_service import (
     get_task,
     get_user_tasks,
     cancel_task,
+    import_task_belongs_to_user,
 )
 from app.constants import HTTPStatus
 from app.core.dependencies import get_current_user
@@ -32,9 +33,7 @@ async def get_task_route(
             detail="Задача не найдена"
         )
     
-    task_user_id = str(task["user_id"]) if task.get("user_id") else None
-    user_id = str(user["id"]) if user.get("id") else None
-    if task_user_id != user_id:
+    if not import_task_belongs_to_user(task, user["id"]):
         raise HTTPException(
             status_code=HTTPStatus.FORBIDDEN,
             detail="Доступ запрещен"
@@ -57,9 +56,7 @@ async def get_task_status_route(
             detail="Задача не найдена"
         )
     
-    task_user_id = str(task["user_id"]) if task.get("user_id") else None
-    user_id = str(user["id"]) if user.get("id") else None
-    if task_user_id != user_id:
+    if not import_task_belongs_to_user(task, user["id"]):
         raise HTTPException(
             status_code=HTTPStatus.FORBIDDEN,
             detail="Доступ запрещен"

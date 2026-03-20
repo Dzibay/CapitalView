@@ -35,11 +35,31 @@ const props = defineProps({
   formatCurrency: {
     type: Function,
     default: (x) => x
+  },
+  /** 'today' — как раньше; 'lastPoint' — ось до последней точки (прогнозы в будущее) */
+  aggregationEnd: {
+    type: String,
+    default: 'today',
+    validator: (v) => ['today', 'lastPoint'].includes(v)
+  },
+  /** Сливаются в plugins.tooltip.callbacks (Chart.js), внешний тултип берёт body отсюда */
+  tooltipCallbacks: {
+    type: Object,
+    default: () => ({})
+  },
+  /** true — без дневной/недельной агрегации (нет «ступенек» между редкими точками) */
+  skipAggregation: {
+    type: Boolean,
+    default: false
+  },
+  /** Мин. расстояние между подписями дат по X (px); от него и ширины графика считается число меток */
+  minPxPerXTick: {
+    type: Number,
+    default: 60
   }
 })
 
 const chartCanvas = ref(null)
-const chartWrapper = ref(null)
 let chartInstance = null
 
 const LABEL_FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"
@@ -121,25 +141,6 @@ function externalTooltipHandler(context) {
   el.style.pointerEvents = 'none'
 }
 
-function isBoundaryTick(labels, index) {
-  if (!labels || index <= 0 || index >= labels.length) return false
-  try {
-    const d = new Date(labels[index])
-    const p = new Date(labels[index - 1])
-    const f = new Date(labels[0])
-    const l = new Date(labels[labels.length - 1])
-    if ([d, p, f, l].some(x => isNaN(x.getTime()))) return false
-    const totalDays = (l - f) / 86400000
-    if (totalDays <= 45 && index >= 2) {
-      const pp = new Date(labels[index - 2])
-      if (!isNaN(pp.getTime()) && d.getMonth() !== pp.getMonth()) return true
-    }
-    if (totalDays <= 100) return d.getMonth() !== p.getMonth()
-    if (totalDays <= 1825) return d.getFullYear() !== p.getFullYear()
-    return false
-  } catch { return false }
-}
-
 /* --------------------------------------------------------------------------
    Helpers
 -------------------------------------------------------------------------- */
@@ -152,7 +153,10 @@ const norm = (date) => {
 
 const parseDate = (d) => {
   if (typeof d === 'string') {
-    const parts = d.split('T')[0].split('-')
+    const trimmed = d.trim()
+    const yearOnly = /^(\d{4})$/.exec(trimmed)
+    if (yearOnly) return norm(new Date(+yearOnly[1], 11, 31))
+    const parts = trimmed.split('T')[0].split('-')
     if (parts.length === 3)
       return norm(new Date(+parts[0], +parts[1] - 1, +parts[2]))
   }
@@ -171,10 +175,345 @@ const shortMonth = (date) => {
   return m.charAt(0).toUpperCase() + m.slice(1)
 }
 
+/** Запасной вариант: равномерно по индексам (если даты не разобрать) */
+function pickTickIndicesByIndex(length, cap) {
+  const set = new Set()
+  if (length <= 0) return set
+  const maxLabels = Math.max(2, Math.min(length, Math.max(2, cap)))
+  if (maxLabels >= length) {
+    for (let i = 0; i < length; i++) set.add(i)
+    return set
+  }
+  for (let k = 0; k < maxLabels; k++) {
+    set.add(Math.round((k * (length - 1)) / (maxLabels - 1)))
+  }
+  return set
+}
+
+function labelTimeValid(labels, i) {
+  try {
+    const t = parseDate(labels[i]).getTime()
+    return Number.isFinite(t) && !isNaN(t)
+  } catch {
+    return false
+  }
+}
+
+function parseLabelTimes(labels) {
+  const n = labels?.length ?? 0
+  let lo = 0
+  let hi = n - 1
+  while (lo <= hi && !labelTimeValid(labels, lo)) lo++
+  while (hi >= lo && !labelTimeValid(labels, hi)) hi--
+  return { lo, hi, n }
+}
+
+/**
+ * span = (m−1)·q + r, q = ⌊span/(m−1)⌋, 0 ≤ r < m−1.
+ * Подбираем m ∈ [2, min(span+1, cap)], максимизируя m − k·r (k=2): сильнее штрафуем остаток,
+ * но не отказываемся от почти полного бюджета меток ради r=0 (в отличие от сырого min r).
+ * При равном score — больше m.
+ */
+function pickOptimalTickCount(span, cap) {
+  const mMax = Math.min(span + 1, Math.max(2, cap))
+  if (span <= 0 || mMax <= 2) return Math.max(1, Math.min(span + 1, mMax))
+  const k = 2
+  let bestM = 2
+  let bestScore = -Infinity
+  for (let m = 2; m <= mMax; m++) {
+    const gaps = m - 1
+    const q = Math.floor(span / gaps)
+    const r = span - gaps * q
+    const score = m - k * r
+    if (score > bestScore || (score === bestScore && m > bestM)) {
+      bestScore = score
+      bestM = m
+    }
+  }
+  return bestM
+}
+
+/**
+ * Ровно m подписей: span = (m−1)·q + r, q = ⌊span/(m−1)⌋.
+ * Остаток r делим пополам: отступ слева ⌊r/2⌋, справа ⌈r/2⌉ — первая подпись lo+⌊r/2⌋,
+ * между подписями везде q, последняя hi−⌈r/2⌉ (= lo+⌊r/2⌋+(m−1)·q). При r=0 снова lo…hi с шагом q.
+ */
+function pickTickFixedIndexStep(lo, hi, maxLabels) {
+  const set = new Set()
+  const span = hi - lo
+  if (span < 0) return set
+  const mBudget = Math.min(maxLabels, span + 1)
+
+  if (mBudget >= span + 1) {
+    for (let i = lo; i <= hi; i++) set.add(i)
+    return set
+  }
+  if (mBudget <= 1) {
+    set.add(lo)
+    return set
+  }
+
+  const m = pickOptimalTickCount(span, maxLabels)
+
+  const gaps = m - 1
+  const q = Math.floor(span / gaps)
+  const r = span - q * gaps
+  const leftInset = Math.floor(r / 2)
+  const start = lo + leftInset
+  for (let k = 0; k < m; k++) {
+    set.add(start + k * q)
+  }
+  return set
+}
+
+function pickTickIndicesByTime(labels, cap) {
+  const { lo, hi, n } = parseLabelTimes(labels)
+  if (lo > hi) return new Set()
+
+  const maxLabels = Math.max(2, Math.min(n, Math.max(2, cap)))
+
+  if (maxLabels >= n) {
+    const all = new Set()
+    for (let i = 0; i < n; i++) all.add(i)
+    return all
+  }
+
+  return pickTickFixedIndexStep(lo, hi, maxLabels)
+}
+
+/** Первый индекс каждого календарного месяца на [lo, hi] */
+function collectMonthBoundaryIndices(labels, lo, hi) {
+  const out = []
+  let lastKey = null
+  for (let i = lo; i <= hi; i++) {
+    if (!labelTimeValid(labels, i)) continue
+    const d = parseDate(labels[i])
+    const key = d.getFullYear() * 12 + d.getMonth()
+    if (key !== lastKey) {
+      lastKey = key
+      out.push(i)
+    }
+  }
+  return out
+}
+
+/** Первый индекс каждого календарного года на [lo, hi] */
+function collectYearBoundaryIndices(labels, lo, hi) {
+  const out = []
+  let lastY = null
+  for (let i = lo; i <= hi; i++) {
+    if (!labelTimeValid(labels, i)) continue
+    const y = parseDate(labels[i]).getFullYear()
+    if (y !== lastY) {
+      lastY = y
+      out.push(i)
+    }
+  }
+  return out
+}
+
+/**
+ * Подписи только по «якорям» (месяц или год), прореживание тем же pickTickFixedIndexStep по списку якорей.
+ * Интервал по умолчанию 1 месяц/год; при нехватке cap с ширины — шаг растёт (меньше меток).
+ */
+function pickTicksFromCandidates(candidates, cap) {
+  const set = new Set()
+  if (candidates.length === 0) return set
+  const L = candidates.length
+  const maxLabels = Math.max(2, Math.min(L, Math.max(2, cap)))
+  if (maxLabels >= L) {
+    for (const idx of candidates) set.add(idx)
+    return set
+  }
+  const posHi = L - 1
+  const inner = pickTickFixedIndexStep(0, posHi, maxLabels)
+  for (const p of inner) set.add(candidates[p])
+  return set
+}
+
+function pickTickIndicesByMonth(labels, lo, hi, cap) {
+  const c = collectMonthBoundaryIndices(labels, lo, hi)
+  return pickTicksFromCandidates(c, cap)
+}
+
+function pickTickIndicesByYear(labels, lo, hi, cap) {
+  const c = collectYearBoundaryIndices(labels, lo, hi)
+  return pickTicksFromCandidates(c, cap)
+}
+
+/** <180 дн. — по индексу; [180,700) — по месяцам; ≥700 — по годам */
+const SPAN_AXIS_DAY = 180
+const SPAN_AXIS_MONTH_MAX = 700
+
+function xAxisSpanBucket(spanDays) {
+  if (spanDays < SPAN_AXIS_DAY) return 0
+  if (spanDays < SPAN_AXIS_MONTH_MAX) return 1
+  return 2
+}
+
+function getXTickIndexSetForSpan(labels, spanDays, chart, minPx) {
+  const w = xAxisChartWidth(chart)
+  const cap = Math.max(2, Math.floor(w / Math.max(24, minPx)))
+  const { lo, hi } = parseLabelTimes(labels)
+  if (lo > hi) return new Set()
+
+  const bucket = xAxisSpanBucket(spanDays)
+  if (bucket === 0) {
+    return pickTickIndicesByTime(labels, cap)
+  }
+  if (bucket === 1) {
+    return pickTickIndicesByMonth(labels, lo, hi, cap)
+  }
+  return pickTickIndicesByYear(labels, lo, hi, cap)
+}
+
+function xAxisChartWidth(chart) {
+  const a = chart?.chartArea
+  if (a && a.right > a.left) return a.right - a.left
+  const w = chart?.width
+  return typeof w === 'number' && w > 0 ? w * 0.72 : 280
+}
+
+/** После первого layout chartArea даёт реальную ширину; иначе кэш тиков считается по fallback и подсветка/метки неверны до ресайза */
+const xTickRelayoutPlugin = {
+  id: 'mlXTickRelayout',
+  afterLayout(chart) {
+    if (chart.$mlXTickRelayouting) return
+    const labels = chart.data?.labels
+    if (!labels?.length) return
+    const w = xAxisChartWidth(chart)
+    if (!(w > 0)) return
+    const sig = chart.$mlXTickSig
+    if (sig && Math.abs(sig.w - w) > 1) {
+      chart.$mlXTickSig = null
+      chart.$mlXTickSpan = undefined
+      chart.$mlXTickRelayouting = true
+      try {
+        chart.update('none')
+      } finally {
+        chart.$mlXTickRelayouting = false
+      }
+    }
+  }
+}
+
+function getXTickIndexSet(chart, labels, minPx, spanDays) {
+  const byTime = getXTickIndexSetForSpan(labels, spanDays, chart, minPx)
+  if (byTime.size > 0) return byTime
+  const w = xAxisChartWidth(chart)
+  const cap = Math.max(2, Math.floor(w / Math.max(24, minPx)))
+  return pickTickIndicesByIndex(labels?.length ?? 0, cap)
+}
+
+/**
+ * <180 дн. — при смене месяца/года относительно предыдущей видимой метки только месяц, иначе день+месяц;
+ * [180,700) — см. sortedTickIndices; ≥700 — только год.
+ */
+function formatXAxisDateLabel(labels, index, d, spanDays, sortedTickIndices) {
+  const sm = shortMonth(d)
+  const y = d.getFullYear()
+  const day = d.getDate()
+  if (spanDays < SPAN_AXIS_DAY) {
+    if (!sortedTickIndices?.length) return `${day} ${sm}`
+    const pos = sortedTickIndices.indexOf(index)
+    if (pos <= 0) return day === 1 ? sm : `${day} ${sm}`
+    let p
+    try {
+      p = parseDate(labels[sortedTickIndices[pos - 1]])
+      if (isNaN(p.getTime())) return `${day} ${sm}`
+    } catch {
+      return `${day} ${sm}`
+    }
+    if (p.getMonth() !== d.getMonth() || p.getFullYear() !== d.getFullYear()) return sm
+    return `${day} ${sm}`
+  }
+  if (spanDays < SPAN_AXIS_MONTH_MAX) {
+    if (!sortedTickIndices?.length) return sm
+    const pos = sortedTickIndices.indexOf(index)
+    if (pos <= 0) return sm
+    let p
+    try {
+      p = parseDate(labels[sortedTickIndices[pos - 1]])
+      if (isNaN(p.getTime())) return sm
+    } catch {
+      return sm
+    }
+    if (p.getFullYear() !== d.getFullYear()) return String(y)
+    return sm
+  }
+  return String(y)
+}
+
+/** Подсветка соседних показанных тиков в зависимости от режима оси */
+function computeXTickEmphasis(labels, tickIndices, spanDays) {
+  const emphasis = new Set()
+  const sorted = Array.from(tickIndices).sort((a, b) => a - b)
+  for (let i = 1; i < sorted.length; i++) {
+    const idx = sorted[i]
+    const prevIdx = sorted[i - 1]
+    let d
+    let p
+    try {
+      d = new Date(labels[idx])
+      p = new Date(labels[prevIdx])
+      if (isNaN(d.getTime()) || isNaN(p.getTime())) continue
+    } catch {
+      continue
+    }
+    if (spanDays < SPAN_AXIS_DAY) {
+      if (spanDays <= 120) {
+        if (d.getMonth() !== p.getMonth() || d.getFullYear() !== p.getFullYear()) emphasis.add(idx)
+      } else if (d.getFullYear() !== p.getFullYear()) {
+        emphasis.add(idx)
+      }
+    } else if (spanDays < SPAN_AXIS_MONTH_MAX) {
+      if (d.getFullYear() !== p.getFullYear()) emphasis.add(idx)
+    } else if (Math.floor(d.getFullYear() / 10) !== Math.floor(p.getFullYear() / 10)) {
+      emphasis.add(idx)
+    }
+  }
+  return emphasis
+}
+
+function spanDaysForLabels(labels) {
+  if (!labels?.length) return 0
+  const { lo, hi } = parseLabelTimes(labels)
+  if (lo > hi) return 0
+  try {
+    const first = parseDate(labels[lo])
+    const last = parseDate(labels[hi])
+    if (isNaN(first.getTime()) || isNaN(last.getTime())) return 0
+    return (last - first) / 86400000
+  } catch {
+    return 0
+  }
+}
+
+function ensureXTickCache(chart, labels, minPx) {
+  if (!labels?.length) return
+  const w = xAxisChartWidth(chart)
+  const span = spanDaysForLabels(labels)
+  const spanBucket = xAxisSpanBucket(span)
+  const sig = chart.$mlXTickSig
+  if (
+    !sig ||
+    sig.n !== labels.length ||
+    sig.w !== w ||
+    sig.minPx !== minPx ||
+    sig.spanBucket !== spanBucket
+  ) {
+    chart.$mlXTickSet = getXTickIndexSet(chart, labels, minPx, span)
+    chart.$mlXTickSorted = Array.from(chart.$mlXTickSet).sort((a, b) => a - b)
+    chart.$mlXTickEmphasis = computeXTickEmphasis(labels, chart.$mlXTickSet, span)
+    chart.$mlXTickSpan = span
+    chart.$mlXTickSig = { n: labels.length, w, minPx, spanBucket }
+  }
+}
+
 /* --------------------------------------------------------------------------
    Adaptive data aggregation with interval-based sampling
 -------------------------------------------------------------------------- */
-function aggregateData(dataObj, period, chartType, zeroAtStart) {
+function aggregateData(dataObj, period, chartType, zeroAtStart, aggregationEnd = 'today') {
   if (!dataObj?.labels?.length) return { labels: [], datasets: [] }
 
   const today = new Date()
@@ -188,6 +527,7 @@ function aggregateData(dataObj, period, chartType, zeroAtStart) {
   if (!points.length) return { labels: [], datasets: Array.from({ length: numDS }, () => []) }
 
   const firstPt = points[0].date
+  const lastDataDate = points[points.length - 1].date
   const needsZero = (zeroAtStart !== undefined) ? zeroAtStart : (chartType !== 'price')
 
   let start
@@ -201,7 +541,8 @@ function aggregateData(dataObj, period, chartType, zeroAtStart) {
     start = norm(start)
   }
 
-  const end = norm(today)
+  const end =
+    aggregationEnd === 'lastPoint' ? norm(lastDataDate) : norm(today)
   const totalDays = Math.round((end - start) / 86400000)
 
   const samples = []
@@ -251,18 +592,40 @@ function aggregateData(dataObj, period, chartType, zeroAtStart) {
   for (const s of samples) {
     const ts = s.date.getTime()
     while (pi < points.length && points[pi].date.getTime() <= ts) {
-      cur = points[pi].values.map(v => v ?? 0)
+      cur = points[pi].values.map((v) => {
+        if (v === null || v === undefined) return null
+        const n = Number(v)
+        return Number.isFinite(n) ? n : 0
+      })
       pi++
     }
     if (s.zero) {
       bufs.forEach(arr => arr.push(0))
     } else {
-      bufs.forEach((arr, i) => arr.push(cur[i]))
+      bufs.forEach((arr, i) => {
+        const val = cur[i]
+        arr.push(val === null ? null : val)
+      })
     }
     labels.push(fmtDate(s.date))
   }
 
   return { labels, datasets: bufs }
+}
+
+function prepareRawSeries(dataObj) {
+  if (!dataObj?.labels?.length) return { labels: [], datasets: [] }
+  const numDS = dataObj.datasets?.length ?? 0
+  if (!numDS) return { labels: [], datasets: [] }
+  const labels = dataObj.labels.map((lbl) => fmtDate(parseDate(lbl)))
+  const datasets = dataObj.datasets.map((ds) =>
+    (ds.data || []).map((v) => {
+      if (v === null || v === undefined) return null
+      const n = Number(v)
+      return Number.isFinite(n) ? n : 0
+    })
+  )
+  return { labels, datasets }
 }
 
 /* --------------------------------------------------------------------------
@@ -305,7 +668,9 @@ const renderChart = (aggr) => {
   const ctx = chartCanvas.value?.getContext('2d')
   if (!ctx) return
 
-  const allValues = aggr.datasets.flat()
+  const allValues = aggr.datasets
+    .flat()
+    .filter((v) => typeof v === 'number' && Number.isFinite(v))
   const minValue = allValues.length ? Math.min(...allValues) : 0
   const maxValue = allValues.length ? Math.max(...allValues) : 100
   const range = maxValue - minValue
@@ -332,28 +697,33 @@ const renderChart = (aggr) => {
   }
 
   const datasets = props.chartData.datasets.map((ds, i) => {
+    const lineColor = ds.color || ds.borderColor || '#5478EA'
     const base = {
       label: ds.label,
       data: aggr.datasets[i],
-      borderColor: ds.color,
-      borderWidth: i === 0 ? 3 : 2,
-      tension: i === 0 ? 0.4 : 0.35,
-      pointRadius: 0,
-      pointHoverRadius: i === 0 ? 5 : 3,
-      pointHitRadius: 8,
-      pointBackgroundColor: ds.color,
-      pointBorderColor: '#fff',
-      pointHoverBorderWidth: 2,
-      pointBorderWidth: 0
+      borderColor: lineColor,
+      borderWidth: ds.borderWidth ?? (i === 0 ? 3 : 2),
+      tension: ds.tension ?? (i === 0 ? 0.4 : 0.35),
+      pointRadius: ds.pointRadius ?? 0,
+      pointHoverRadius: ds.pointHoverRadius ?? (i === 0 ? 5 : 3),
+      pointHitRadius: ds.pointHitRadius ?? 8,
+      pointBackgroundColor: ds.pointBackgroundColor ?? ds.backgroundColor ?? lineColor,
+      pointBorderColor: ds.pointBorderColor ?? '#fff',
+      pointHoverBorderWidth: ds.pointHoverBorderWidth ?? 2,
+      pointBorderWidth: ds.pointBorderWidth ?? 0,
+      spanGaps: ds.spanGaps ?? false
     }
+    if (ds.order != null) base.order = ds.order
+    if (ds.borderDash) base.borderDash = ds.borderDash
+    if (ds.showLine === false) base.showLine = false
     if (ds.fill) {
       base.fill = true
       base.backgroundColor = (context) => {
         const { ctx: c, chartArea } = context.chart
         if (!chartArea) return null
         const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
-        g.addColorStop(0, ds.color + '33')
-        g.addColorStop(1, ds.color + '00')
+        g.addColorStop(0, lineColor + '33')
+        g.addColorStop(1, lineColor + '00')
         return g
       }
     } else {
@@ -363,10 +733,13 @@ const renderChart = (aggr) => {
   })
 
   if (chartInstance) {
+    chartInstance.$mlXTickSig = null
+    chartInstance.$mlXTickSpan = undefined
     chartInstance.data.labels = aggr.labels
     chartInstance.data.datasets = datasets
     chartInstance.options.scales.y.min = yMin
     chartInstance.options.scales.y.max = yMax
+    chartInstance.options.plugins.tooltip.callbacks = { ...props.tooltipCallbacks }
     chartInstance.update()
     return
   }
@@ -384,7 +757,7 @@ const renderChart = (aggr) => {
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: { labels: aggr.labels, datasets },
-    plugins: [crosshairPlugin],
+    plugins: [crosshairPlugin, xTickRelayoutPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -421,96 +794,57 @@ const renderChart = (aggr) => {
           grid: { display: false, drawBorder: false },
           border: { display: false },
           ticks: {
-            color: (ctx) => isBoundaryTick(ctx.chart?.data?.labels, ctx.index) ? LABEL_COLOR_BOLD : LABEL_COLOR,
-            font: (ctx) => ({
-              size: 11,
-              family: LABEL_FONT,
-              weight: isBoundaryTick(ctx.chart?.data?.labels, ctx.index) ? '500' : '300'
-            }),
+            color: (ctx) => {
+              const chart = ctx.chart
+              const labels = chart?.data?.labels
+              if (!labels?.length) return LABEL_COLOR
+              ensureXTickCache(chart, labels, props.minPxPerXTick)
+              return chart.$mlXTickEmphasis?.has(ctx.index) ? LABEL_COLOR_BOLD : LABEL_COLOR
+            },
+            font: (ctx) => {
+              const chart = ctx.chart
+              const labels = chart?.data?.labels
+              let bold = false
+              if (labels?.length) {
+                ensureXTickCache(chart, labels, props.minPxPerXTick)
+                bold = !!chart.$mlXTickEmphasis?.has(ctx.index)
+              }
+              return {
+                size: 11,
+                family: LABEL_FONT,
+                weight: bold ? '500' : '300'
+              }
+            },
             autoSkip: false,
             maxRotation: 0,
             minRotation: 0,
             padding: 8,
 
             callback: function (_value, index) {
-              const labels = this.chart.data.labels
+              const chart = this.chart
+              const labels = chart.data.labels
               if (!labels || index >= labels.length) return ''
 
+              ensureXTickCache(chart, labels, props.minPxPerXTick)
+              if (!chart.$mlXTickSet.has(index)) return ''
+
               let d
-              try { d = new Date(labels[index]); if (isNaN(d.getTime())) return '' }
-              catch { return '' }
-
-              const prev = index > 0
-                ? (() => { try { const p = new Date(labels[index - 1]); return isNaN(p.getTime()) ? null : p } catch { return null } })()
-                : null
-
-              const first = (() => { try { const f = new Date(labels[0]); return isNaN(f.getTime()) ? null : f } catch { return null } })()
-              const last = (() => { try { const l = new Date(labels[labels.length - 1]); return isNaN(l.getTime()) ? null : l } catch { return null } })()
-              if (!first || !last) return ''
-
-              const totalDays = (last - first) / 86400000
-              const sm = shortMonth(d)
-              const dm = `${d.getDate()} ${sm}`
-              const monthYr = `${sm}'${String(d.getFullYear()).slice(2)}`
-              const isLast = index === labels.length - 1
-              const monthChanged = prev && d.getMonth() !== prev.getMonth()
-
-              if (totalDays <= 7) {
-                if (isLast) return ''
-                if (monthChanged) return monthYr
-                return dm
-              }
-
-              if (totalDays <= 45) {
-                if (isLast) return ''
-                const diff = labels.length - 1 - index
-                if (diff % 2 !== 1) return ''
-                if (index >= 2) {
-                  try {
-                    const prevVisDate = new Date(labels[index - 2])
-                    if (!isNaN(prevVisDate.getTime()) && d.getMonth() !== prevVisDate.getMonth())
-                      return monthYr
-                  } catch { /* пропускаем */ }
-                }
-                return dm
-              }
-
-              if (totalDays <= 100) {
-                if (monthChanged) return monthYr
-                if (d.getDate() === 15) return dm
-                if (index === 0 && d.getDate() <= 7) return dm
+              try {
+                d = parseDate(labels[index])
+                if (isNaN(d.getTime())) return ''
+              } catch {
                 return ''
               }
 
-              if (totalDays <= 500) {
-                if (index === 0 && d.getDate() <= 7) return sm
-                if (!prev) return ''
-                if (d.getFullYear() !== prev.getFullYear()) return d.getFullYear().toString()
-                if (monthChanged) return sm
-                return ''
-              }
-
-              if (totalDays <= 1825) {
-                if (index === 0) return d.getFullYear().toString()
-                if (!prev) return ''
-                if (d.getFullYear() !== prev.getFullYear()) return d.getFullYear().toString()
-                if (monthChanged && (d.getMonth() === 0 || d.getMonth() === 6)) return sm
-                return ''
-              }
-
-              const totalYears = totalDays / 365
-              const yearStep = totalYears > 12 ? Math.ceil(totalYears / 10) : 1
-
-              if (index === 0) return d.getFullYear().toString()
-              if (!prev) return ''
-              if (d.getFullYear() !== prev.getFullYear()) {
-                if ((d.getFullYear() - first.getFullYear()) % yearStep === 0)
-                  return d.getFullYear().toString()
-              }
-              return ''
+              return formatXAxisDateLabel(
+                labels,
+                index,
+                d,
+                chart.$mlXTickSpan ?? 0,
+                chart.$mlXTickSorted
+              )
             }
-          },
-          grid: { display: false }
+          }
         }
       },
 
@@ -520,6 +854,7 @@ const renderChart = (aggr) => {
           enabled: false,
           mode: 'index',
           intersect: false,
+          callbacks: { ...props.tooltipCallbacks },
           external: externalTooltipHandler
         }
       }
@@ -529,12 +864,24 @@ const renderChart = (aggr) => {
 
 /* -------------------------------------------------------------------------- */
 const update = () => {
-  const aggr = aggregateData(props.chartData, props.period, props.chartType, props.zeroAtStart)
+  const aggr = props.skipAggregation
+    ? prepareRawSeries(props.chartData)
+    : aggregateData(
+        props.chartData,
+        props.period,
+        props.chartType,
+        props.zeroAtStart,
+        props.aggregationEnd
+      )
   renderChart(aggr)
 }
 
 watch(() => props.chartData, update, { deep: true })
 watch(() => props.period, update)
+watch(() => props.aggregationEnd, update)
+watch(() => props.skipAggregation, update)
+watch(() => props.minPxPerXTick, update)
+watch(() => props.tooltipCallbacks, update, { deep: true })
 
 onMounted(update)
 
@@ -548,7 +895,7 @@ onUnmounted(() => {
 
 <template>
   <div class="chart-container">
-    <div ref="chartWrapper" class="chart-wrapper">
+    <div class="chart-wrapper">
       <canvas ref="chartCanvas"></canvas>
     </div>
   </div>

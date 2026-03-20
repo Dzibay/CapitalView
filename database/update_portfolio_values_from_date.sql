@@ -47,7 +47,7 @@ BEGIN
         SELECT LEAST(
             COALESCE((
                 SELECT min(report_date)
-                FROM portfolio_daily_positions
+                FROM portfolio_asset_daily_values
                 WHERE portfolio_id = p_portfolio_id
             ), '9999-12-31'::date),
             COALESCE((
@@ -69,8 +69,8 @@ BEGIN
     ),
 
     ------------------------------------------------------------------
-    -- УПРОЩЕНО: Агрегируем данные напрямую из portfolio_daily_positions по датам
-    -- portfolio_daily_positions уже содержит данные на каждую дату (заполняется в update_portfolio_asset_positions_from_date)
+    -- УПРОЩЕНО: Агрегируем данные напрямую из portfolio_asset_daily_values по датам
+    -- portfolio_asset_daily_values уже содержит данные на каждую дату (заполняется в update_portfolio_asset_positions_from_date)
     -- Поэтому можно просто агрегировать без сложных JOIN'ов
     ------------------------------------------------------------------
     positions_aggregated AS (
@@ -82,7 +82,7 @@ BEGIN
             ROUND(SUM(COALESCE(pdp.payouts, 0))::numeric, 2) AS total_payouts,
             ROUND(SUM(COALESCE(pdp.commissions, 0))::numeric, 2) AS total_commissions,
             ROUND(SUM(COALESCE(pdp.taxes, 0))::numeric, 2) AS total_taxes
-        FROM portfolio_daily_positions pdp
+        FROM portfolio_asset_daily_values pdp
         WHERE pdp.portfolio_id = p_portfolio_id
           AND pdp.report_date >= p_from_date
         GROUP BY pdp.report_date
@@ -142,7 +142,7 @@ BEGIN
     LEFT JOIN balance_accumulated ba ON ba.report_date = d.report_date
     -- Вставляем записи для всех дат, где есть активы ИЛИ операции
     WHERE EXISTS (
-        SELECT 1 FROM portfolio_daily_positions pdp 
+        SELECT 1 FROM portfolio_asset_daily_values pdp 
         WHERE pdp.portfolio_id = p_portfolio_id 
         AND pdp.report_date = d.report_date
     ) OR EXISTS (

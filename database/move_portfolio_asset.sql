@@ -56,7 +56,7 @@ BEGIN
     -- 5. Обновляем данные
     UPDATE portfolio_assets SET portfolio_id = p_target_portfolio_id WHERE id = p_portfolio_asset_id;
 
-    UPDATE portfolio_daily_positions SET portfolio_id = p_target_portfolio_id WHERE portfolio_asset_id = p_portfolio_asset_id;
+    UPDATE portfolio_asset_daily_values SET portfolio_id = p_target_portfolio_id WHERE portfolio_asset_id = p_portfolio_asset_id;
 
     UPDATE cash_operations SET portfolio_id = p_target_portfolio_id
     WHERE portfolio_id = v_source_portfolio_id AND asset_id = v_asset_id;

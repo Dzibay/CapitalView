@@ -27,7 +27,7 @@ BEGIN
             THEN pdp.position_value - pdp.cumulative_invested
             ELSE NULL
         END AS unrealized_pnl
-    FROM portfolio_daily_positions pdp
+    FROM portfolio_asset_daily_values pdp
     WHERE pdp.portfolio_asset_id = p_portfolio_asset_id
       AND (p_from_date IS NULL OR pdp.report_date >= p_from_date)
       AND (p_to_date IS NULL OR pdp.report_date <= p_to_date)

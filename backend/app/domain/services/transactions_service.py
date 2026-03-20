@@ -22,7 +22,7 @@ def get_transactions(user_id, portfolio_id=None, asset_name=None, start_date=Non
     if end_date:
         params["p_end_date"] = end_date
 
-    transactions = rpc("get_user_transactions", params) or []
+    transactions = rpc("get_transactions", params) or []
     return transactions
 
 

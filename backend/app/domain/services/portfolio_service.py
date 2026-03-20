@@ -13,7 +13,7 @@ _transaction_repository = TransactionRepository()
 _operation_repository = OperationRepository()
 from concurrent.futures import ThreadPoolExecutor
 from time import time
-from typing import Dict
+from typing import Dict, Optional
 from datetime import datetime
 from app.utils.date import normalize_date_to_string
 from app.core.logging import get_logger
@@ -100,6 +100,44 @@ async def get_user_portfolio_parent(user_email: str):
         if not portfolio["parent_portfolio_id"]:
             return portfolio
     return None
+
+
+async def ensure_portfolio_for_broker_import(
+    user_id: str,
+    user_email: str,
+    broker_id: int,
+    portfolio_name: Optional[str] = None,
+) -> int:
+    """
+    Дочерний портфель под корнем пользователя для фонового импорта от брокера.
+    Используется, если клиент не передал portfolio_id: задача import_tasks хранит только portfolio_id.
+    """
+    user_root_portfolio = await get_user_portfolio_parent(user_email)
+    if not user_root_portfolio:
+        raise ValueError("Корневой портфель пользователя не найден")
+
+    parent_portfolio_id = user_root_portfolio["id"]
+    name_final = portfolio_name or f"Портфель {broker_id}"
+
+    existing = await _portfolio_repository.find_by_parent_and_name(parent_portfolio_id, name_final)
+    if existing:
+        return int(existing["id"])
+
+    new_portfolio = {
+        "user_id": user_id,
+        "parent_portfolio_id": parent_portfolio_id,
+        "name": name_final,
+        "description": f"Импорт из брокера {broker_id} — {datetime.utcnow().isoformat()}",
+    }
+    res = await table_insert_async("portfolios", new_portfolio)
+    if res:
+        return int(res[0]["id"])
+
+    existing_retry = await _portfolio_repository.find_by_parent_and_name(parent_portfolio_id, name_final)
+    if existing_retry:
+        return int(existing_retry["id"])
+
+    raise ValueError("Не удалось создать портфель для импорта")
 
 
 def get_portfolio_info(portfolio_id: int):

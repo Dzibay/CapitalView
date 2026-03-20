@@ -60,8 +60,7 @@ BEGIN
     FROM (
         SELECT id, broker_id, api_key, last_sync_at
         FROM user_broker_connections
-        WHERE user_id = p_user_id
-          AND portfolio_id = v_portfolio_id
+        WHERE portfolio_id = v_portfolio_id
           AND broker_id = p_broker_id
         LIMIT 1
     ) bc;

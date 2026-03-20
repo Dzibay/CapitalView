@@ -99,7 +99,7 @@ begin
     ------------------------------------------------------------------
     -- 8. Daily tables
     ------------------------------------------------------------------
-    delete from portfolio_daily_positions where portfolio_id = any(v_portfolio_ids);
+    delete from portfolio_asset_daily_values where portfolio_id = any(v_portfolio_ids);
     delete from portfolio_daily_values where portfolio_id = any(v_portfolio_ids);
 
     ------------------------------------------------------------------

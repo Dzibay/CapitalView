@@ -10,6 +10,10 @@ const props = defineProps({
   payouts: {
     type: Array,
     default: () => []
+  },
+  currency: {
+    type: String,
+    default: 'RUB'
   }
 })
 
@@ -56,7 +60,7 @@ const formatDate = formatDateForDisplay
           <span class="payout-type" :class="getPayoutTypeClass(payout.type)">
             {{ getPayoutTypeLabel(payout.type) }}
           </span>
-          <span class="payout-amount">{{ formatOperationAmount(payout.value || 0) }}</span>
+          <span class="payout-amount">{{ formatOperationAmount(payout.value || 0, props.currency) }}</span>
         </div>
         <div class="payout-date">{{ formatDate(payout.payment_date) }}</div>
         <div v-if="payout.record_date" class="payout-meta">

@@ -15,7 +15,8 @@ from app.domain.services.portfolio_service import (
     update_portfolio_description,
     get_portfolio_info,
     get_portfolio_summary,
-    refresh_portfolio_assets_and_daily_values
+    refresh_portfolio_assets_and_daily_values,
+    ensure_portfolio_for_broker_import,
 )
 from app.domain.services.task_service import create_import_task
 from app.domain.services.access_control_service import check_portfolio_access
@@ -289,11 +290,26 @@ async def import_broker_route(
                 detail=error_message
             )
     
+    portfolio_id = data.portfolio_id
+    if portfolio_id is None:
+        try:
+            portfolio_id = await ensure_portfolio_for_broker_import(
+                user_id=str(user["id"]),
+                user_email=user["email"],
+                broker_id=data.broker_id,
+                portfolio_name=data.portfolio_name,
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=str(e)
+            )
+
     task = create_import_task(
         user_id=user["id"],
         broker_id=data.broker_id,
         broker_token=data.token,
-        portfolio_id=data.portfolio_id,
+        portfolio_id=portfolio_id,
         portfolio_name=data.portfolio_name,
         priority=0
     )
