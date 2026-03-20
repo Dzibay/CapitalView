@@ -55,12 +55,11 @@ const props = defineProps({
   /** Мин. расстояние между подписями дат по X (px); от него и ширины графика считается число меток */
   minPxPerXTick: {
     type: Number,
-    default: 52
+    default: 60
   }
 })
 
 const chartCanvas = ref(null)
-const chartWrapper = ref(null)
 let chartInstance = null
 
 const LABEL_FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"
@@ -176,8 +175,8 @@ const shortMonth = (date) => {
   return m.charAt(0).toUpperCase() + m.slice(1)
 }
 
-/** Равномерно по оси индексов, всегда края; не больше cap меток */
-function pickTickIndices(length, cap) {
+/** Запасной вариант: равномерно по индексам (если даты не разобрать) */
+function pickTickIndicesByIndex(length, cap) {
   const set = new Set()
   if (length <= 0) return set
   const maxLabels = Math.max(2, Math.min(length, Math.max(2, cap)))
@@ -191,6 +190,183 @@ function pickTickIndices(length, cap) {
   return set
 }
 
+function labelTimeValid(labels, i) {
+  try {
+    const t = parseDate(labels[i]).getTime()
+    return Number.isFinite(t) && !isNaN(t)
+  } catch {
+    return false
+  }
+}
+
+function parseLabelTimes(labels) {
+  const n = labels?.length ?? 0
+  let lo = 0
+  let hi = n - 1
+  while (lo <= hi && !labelTimeValid(labels, lo)) lo++
+  while (hi >= lo && !labelTimeValid(labels, hi)) hi--
+  return { lo, hi, n }
+}
+
+/**
+ * span = (m−1)·q + r, q = ⌊span/(m−1)⌋, 0 ≤ r < m−1.
+ * Подбираем m ∈ [2, min(span+1, cap)], максимизируя m − k·r (k=2): сильнее штрафуем остаток,
+ * но не отказываемся от почти полного бюджета меток ради r=0 (в отличие от сырого min r).
+ * При равном score — больше m.
+ */
+function pickOptimalTickCount(span, cap) {
+  const mMax = Math.min(span + 1, Math.max(2, cap))
+  if (span <= 0 || mMax <= 2) return Math.max(1, Math.min(span + 1, mMax))
+  const k = 2
+  let bestM = 2
+  let bestScore = -Infinity
+  for (let m = 2; m <= mMax; m++) {
+    const gaps = m - 1
+    const q = Math.floor(span / gaps)
+    const r = span - gaps * q
+    const score = m - k * r
+    if (score > bestScore || (score === bestScore && m > bestM)) {
+      bestScore = score
+      bestM = m
+    }
+  }
+  return bestM
+}
+
+/**
+ * Ровно m подписей: span = (m−1)·q + r, q = ⌊span/(m−1)⌋.
+ * Остаток r делим пополам: отступ слева ⌊r/2⌋, справа ⌈r/2⌉ — первая подпись lo+⌊r/2⌋,
+ * между подписями везде q, последняя hi−⌈r/2⌉ (= lo+⌊r/2⌋+(m−1)·q). При r=0 снова lo…hi с шагом q.
+ */
+function pickTickFixedIndexStep(lo, hi, maxLabels) {
+  const set = new Set()
+  const span = hi - lo
+  if (span < 0) return set
+  const mBudget = Math.min(maxLabels, span + 1)
+
+  if (mBudget >= span + 1) {
+    for (let i = lo; i <= hi; i++) set.add(i)
+    return set
+  }
+  if (mBudget <= 1) {
+    set.add(lo)
+    return set
+  }
+
+  const m = pickOptimalTickCount(span, maxLabels)
+
+  const gaps = m - 1
+  const q = Math.floor(span / gaps)
+  const r = span - q * gaps
+  const leftInset = Math.floor(r / 2)
+  const start = lo + leftInset
+  for (let k = 0; k < m; k++) {
+    set.add(start + k * q)
+  }
+  return set
+}
+
+function pickTickIndicesByTime(labels, cap) {
+  const { lo, hi, n } = parseLabelTimes(labels)
+  if (lo > hi) return new Set()
+
+  const maxLabels = Math.max(2, Math.min(n, Math.max(2, cap)))
+
+  if (maxLabels >= n) {
+    const all = new Set()
+    for (let i = 0; i < n; i++) all.add(i)
+    return all
+  }
+
+  return pickTickFixedIndexStep(lo, hi, maxLabels)
+}
+
+/** Первый индекс каждого календарного месяца на [lo, hi] */
+function collectMonthBoundaryIndices(labels, lo, hi) {
+  const out = []
+  let lastKey = null
+  for (let i = lo; i <= hi; i++) {
+    if (!labelTimeValid(labels, i)) continue
+    const d = parseDate(labels[i])
+    const key = d.getFullYear() * 12 + d.getMonth()
+    if (key !== lastKey) {
+      lastKey = key
+      out.push(i)
+    }
+  }
+  return out
+}
+
+/** Первый индекс каждого календарного года на [lo, hi] */
+function collectYearBoundaryIndices(labels, lo, hi) {
+  const out = []
+  let lastY = null
+  for (let i = lo; i <= hi; i++) {
+    if (!labelTimeValid(labels, i)) continue
+    const y = parseDate(labels[i]).getFullYear()
+    if (y !== lastY) {
+      lastY = y
+      out.push(i)
+    }
+  }
+  return out
+}
+
+/**
+ * Подписи только по «якорям» (месяц или год), прореживание тем же pickTickFixedIndexStep по списку якорей.
+ * Интервал по умолчанию 1 месяц/год; при нехватке cap с ширины — шаг растёт (меньше меток).
+ */
+function pickTicksFromCandidates(candidates, cap) {
+  const set = new Set()
+  if (candidates.length === 0) return set
+  const L = candidates.length
+  const maxLabels = Math.max(2, Math.min(L, Math.max(2, cap)))
+  if (maxLabels >= L) {
+    for (const idx of candidates) set.add(idx)
+    return set
+  }
+  const posHi = L - 1
+  const inner = pickTickFixedIndexStep(0, posHi, maxLabels)
+  for (const p of inner) set.add(candidates[p])
+  return set
+}
+
+function pickTickIndicesByMonth(labels, lo, hi, cap) {
+  const c = collectMonthBoundaryIndices(labels, lo, hi)
+  return pickTicksFromCandidates(c, cap)
+}
+
+function pickTickIndicesByYear(labels, lo, hi, cap) {
+  const c = collectYearBoundaryIndices(labels, lo, hi)
+  return pickTicksFromCandidates(c, cap)
+}
+
+/** <180 дн. — по индексу; [180,700) — по месяцам; ≥700 — по годам */
+const SPAN_AXIS_DAY = 180
+const SPAN_AXIS_MONTH_MAX = 700
+
+function xAxisSpanBucket(spanDays) {
+  if (spanDays < SPAN_AXIS_DAY) return 0
+  if (spanDays < SPAN_AXIS_MONTH_MAX) return 1
+  return 2
+}
+
+function getXTickIndexSetForSpan(labels, spanDays, chart, minPx) {
+  const w = xAxisChartWidth(chart)
+  const cap = Math.max(2, Math.floor(w / Math.max(24, minPx)))
+  const { lo, hi } = parseLabelTimes(labels)
+  if (lo > hi) return new Set()
+
+  const bucket = xAxisSpanBucket(spanDays)
+  if (bucket === 0) {
+    return pickTickIndicesByTime(labels, cap)
+  }
+  if (bucket === 1) {
+    return pickTickIndicesByMonth(labels, lo, hi, cap)
+  }
+  return pickTickIndicesByYear(labels, lo, hi, cap)
+}
+
 function xAxisChartWidth(chart) {
   const a = chart?.chartArea
   if (a && a.right > a.left) return a.right - a.left
@@ -198,23 +374,140 @@ function xAxisChartWidth(chart) {
   return typeof w === 'number' && w > 0 ? w * 0.72 : 280
 }
 
-function getXTickIndexSet(chart, labelsLength, minPx) {
-  const w = xAxisChartWidth(chart)
-  const cap = Math.max(2, Math.floor(w / Math.max(24, minPx)))
-  return pickTickIndices(labelsLength, cap)
+/** После первого layout chartArea даёт реальную ширину; иначе кэш тиков считается по fallback и подсветка/метки неверны до ресайза */
+const xTickRelayoutPlugin = {
+  id: 'mlXTickRelayout',
+  afterLayout(chart) {
+    if (chart.$mlXTickRelayouting) return
+    const labels = chart.data?.labels
+    if (!labels?.length) return
+    const w = xAxisChartWidth(chart)
+    if (!(w > 0)) return
+    const sig = chart.$mlXTickSig
+    if (sig && Math.abs(sig.w - w) > 1) {
+      chart.$mlXTickSig = null
+      chart.$mlXTickSpan = undefined
+      chart.$mlXTickRelayouting = true
+      try {
+        chart.update('none')
+      } finally {
+        chart.$mlXTickRelayouting = false
+      }
+    }
+  }
 }
 
-/** Формат подписи только от длины интервала (дней между первой и последней точкой) */
-function formatXAxisDateLabel(d, spanDays) {
+function getXTickIndexSet(chart, labels, minPx, spanDays) {
+  const byTime = getXTickIndexSetForSpan(labels, spanDays, chart, minPx)
+  if (byTime.size > 0) return byTime
+  const w = xAxisChartWidth(chart)
+  const cap = Math.max(2, Math.floor(w / Math.max(24, minPx)))
+  return pickTickIndicesByIndex(labels?.length ?? 0, cap)
+}
+
+/**
+ * <180 дн. — при смене месяца/года относительно предыдущей видимой метки только месяц, иначе день+месяц;
+ * [180,700) — см. sortedTickIndices; ≥700 — только год.
+ */
+function formatXAxisDateLabel(labels, index, d, spanDays, sortedTickIndices) {
   const sm = shortMonth(d)
   const y = d.getFullYear()
   const day = d.getDate()
-  if (spanDays <= 21) return `${day} ${sm}`
-  if (spanDays <= 120) return `${day} ${sm}`
-  if (spanDays <= 540) return `${day} ${sm}`
-  if (spanDays <= 1000) return `${sm} '${String(y).slice(2)}`
-  if (spanDays <= 3600) return `${sm} ${y}`
+  if (spanDays < SPAN_AXIS_DAY) {
+    if (!sortedTickIndices?.length) return `${day} ${sm}`
+    const pos = sortedTickIndices.indexOf(index)
+    if (pos <= 0) return day === 1 ? sm : `${day} ${sm}`
+    let p
+    try {
+      p = parseDate(labels[sortedTickIndices[pos - 1]])
+      if (isNaN(p.getTime())) return `${day} ${sm}`
+    } catch {
+      return `${day} ${sm}`
+    }
+    if (p.getMonth() !== d.getMonth() || p.getFullYear() !== d.getFullYear()) return sm
+    return `${day} ${sm}`
+  }
+  if (spanDays < SPAN_AXIS_MONTH_MAX) {
+    if (!sortedTickIndices?.length) return sm
+    const pos = sortedTickIndices.indexOf(index)
+    if (pos <= 0) return sm
+    let p
+    try {
+      p = parseDate(labels[sortedTickIndices[pos - 1]])
+      if (isNaN(p.getTime())) return sm
+    } catch {
+      return sm
+    }
+    if (p.getFullYear() !== d.getFullYear()) return String(y)
+    return sm
+  }
   return String(y)
+}
+
+/** Подсветка соседних показанных тиков в зависимости от режима оси */
+function computeXTickEmphasis(labels, tickIndices, spanDays) {
+  const emphasis = new Set()
+  const sorted = Array.from(tickIndices).sort((a, b) => a - b)
+  for (let i = 1; i < sorted.length; i++) {
+    const idx = sorted[i]
+    const prevIdx = sorted[i - 1]
+    let d
+    let p
+    try {
+      d = new Date(labels[idx])
+      p = new Date(labels[prevIdx])
+      if (isNaN(d.getTime()) || isNaN(p.getTime())) continue
+    } catch {
+      continue
+    }
+    if (spanDays < SPAN_AXIS_DAY) {
+      if (spanDays <= 120) {
+        if (d.getMonth() !== p.getMonth() || d.getFullYear() !== p.getFullYear()) emphasis.add(idx)
+      } else if (d.getFullYear() !== p.getFullYear()) {
+        emphasis.add(idx)
+      }
+    } else if (spanDays < SPAN_AXIS_MONTH_MAX) {
+      if (d.getFullYear() !== p.getFullYear()) emphasis.add(idx)
+    } else if (Math.floor(d.getFullYear() / 10) !== Math.floor(p.getFullYear() / 10)) {
+      emphasis.add(idx)
+    }
+  }
+  return emphasis
+}
+
+function spanDaysForLabels(labels) {
+  if (!labels?.length) return 0
+  const { lo, hi } = parseLabelTimes(labels)
+  if (lo > hi) return 0
+  try {
+    const first = parseDate(labels[lo])
+    const last = parseDate(labels[hi])
+    if (isNaN(first.getTime()) || isNaN(last.getTime())) return 0
+    return (last - first) / 86400000
+  } catch {
+    return 0
+  }
+}
+
+function ensureXTickCache(chart, labels, minPx) {
+  if (!labels?.length) return
+  const w = xAxisChartWidth(chart)
+  const span = spanDaysForLabels(labels)
+  const spanBucket = xAxisSpanBucket(span)
+  const sig = chart.$mlXTickSig
+  if (
+    !sig ||
+    sig.n !== labels.length ||
+    sig.w !== w ||
+    sig.minPx !== minPx ||
+    sig.spanBucket !== spanBucket
+  ) {
+    chart.$mlXTickSet = getXTickIndexSet(chart, labels, minPx, span)
+    chart.$mlXTickSorted = Array.from(chart.$mlXTickSet).sort((a, b) => a - b)
+    chart.$mlXTickEmphasis = computeXTickEmphasis(labels, chart.$mlXTickSet, span)
+    chart.$mlXTickSpan = span
+    chart.$mlXTickSig = { n: labels.length, w, minPx, spanBucket }
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -441,6 +734,7 @@ const renderChart = (aggr) => {
 
   if (chartInstance) {
     chartInstance.$mlXTickSig = null
+    chartInstance.$mlXTickSpan = undefined
     chartInstance.data.labels = aggr.labels
     chartInstance.data.datasets = datasets
     chartInstance.options.scales.y.min = yMin
@@ -463,7 +757,7 @@ const renderChart = (aggr) => {
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: { labels: aggr.labels, datasets },
-    plugins: [crosshairPlugin],
+    plugins: [crosshairPlugin, xTickRelayoutPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -500,96 +794,57 @@ const renderChart = (aggr) => {
           grid: { display: false, drawBorder: false },
           border: { display: false },
           ticks: {
-            color: (ctx) => isBoundaryTick(ctx.chart?.data?.labels, ctx.index) ? LABEL_COLOR_BOLD : LABEL_COLOR,
-            font: (ctx) => ({
-              size: 11,
-              family: LABEL_FONT,
-              weight: isBoundaryTick(ctx.chart?.data?.labels, ctx.index) ? '500' : '300'
-            }),
+            color: (ctx) => {
+              const chart = ctx.chart
+              const labels = chart?.data?.labels
+              if (!labels?.length) return LABEL_COLOR
+              ensureXTickCache(chart, labels, props.minPxPerXTick)
+              return chart.$mlXTickEmphasis?.has(ctx.index) ? LABEL_COLOR_BOLD : LABEL_COLOR
+            },
+            font: (ctx) => {
+              const chart = ctx.chart
+              const labels = chart?.data?.labels
+              let bold = false
+              if (labels?.length) {
+                ensureXTickCache(chart, labels, props.minPxPerXTick)
+                bold = !!chart.$mlXTickEmphasis?.has(ctx.index)
+              }
+              return {
+                size: 11,
+                family: LABEL_FONT,
+                weight: bold ? '500' : '300'
+              }
+            },
             autoSkip: false,
             maxRotation: 0,
             minRotation: 0,
             padding: 8,
 
             callback: function (_value, index) {
-              const labels = this.chart.data.labels
+              const chart = this.chart
+              const labels = chart.data.labels
               if (!labels || index >= labels.length) return ''
 
+              ensureXTickCache(chart, labels, props.minPxPerXTick)
+              if (!chart.$mlXTickSet.has(index)) return ''
+
               let d
-              try { d = new Date(labels[index]); if (isNaN(d.getTime())) return '' }
-              catch { return '' }
-
-              const prev = index > 0
-                ? (() => { try { const p = new Date(labels[index - 1]); return isNaN(p.getTime()) ? null : p } catch { return null } })()
-                : null
-
-              const first = (() => { try { const f = new Date(labels[0]); return isNaN(f.getTime()) ? null : f } catch { return null } })()
-              const last = (() => { try { const l = new Date(labels[labels.length - 1]); return isNaN(l.getTime()) ? null : l } catch { return null } })()
-              if (!first || !last) return ''
-
-              const totalDays = (last - first) / 86400000
-              const sm = shortMonth(d)
-              const dm = `${d.getDate()} ${sm}`
-              const monthYr = `${sm}'${String(d.getFullYear()).slice(2)}`
-              const isLast = index === labels.length - 1
-              const monthChanged = prev && d.getMonth() !== prev.getMonth()
-
-              if (totalDays <= 7) {
-                if (isLast) return ''
-                if (monthChanged) return monthYr
-                return dm
-              }
-
-              if (totalDays <= 45) {
-                if (isLast) return ''
-                const diff = labels.length - 1 - index
-                if (diff % 2 !== 1) return ''
-                if (index >= 2) {
-                  try {
-                    const prevVisDate = new Date(labels[index - 2])
-                    if (!isNaN(prevVisDate.getTime()) && d.getMonth() !== prevVisDate.getMonth())
-                      return monthYr
-                  } catch { /* пропускаем */ }
-                }
-                return dm
-              }
-
-              if (totalDays <= 100) {
-                if (monthChanged) return monthYr
-                if (d.getDate() === 15) return dm
-                if (index === 0 && d.getDate() <= 7) return dm
+              try {
+                d = parseDate(labels[index])
+                if (isNaN(d.getTime())) return ''
+              } catch {
                 return ''
               }
 
-              if (totalDays <= 500) {
-                if (index === 0 && d.getDate() <= 7) return sm
-                if (!prev) return ''
-                if (d.getFullYear() !== prev.getFullYear()) return d.getFullYear().toString()
-                if (monthChanged) return sm
-                return ''
-              }
-
-              if (totalDays <= 1825) {
-                if (index === 0) return d.getFullYear().toString()
-                if (!prev) return ''
-                if (d.getFullYear() !== prev.getFullYear()) return d.getFullYear().toString()
-                if (monthChanged && (d.getMonth() === 0 || d.getMonth() === 6)) return sm
-                return ''
-              }
-
-              const totalYears = totalDays / 365
-              const yearStep = totalYears > 12 ? Math.ceil(totalYears / 10) : 1
-
-              if (index === 0) return d.getFullYear().toString()
-              if (!prev) return ''
-              if (d.getFullYear() !== prev.getFullYear()) {
-                if ((d.getFullYear() - first.getFullYear()) % yearStep === 0)
-                  return d.getFullYear().toString()
-              }
-              return ''
+              return formatXAxisDateLabel(
+                labels,
+                index,
+                d,
+                chart.$mlXTickSpan ?? 0,
+                chart.$mlXTickSorted
+              )
             }
-          },
-          grid: { display: false }
+          }
         }
       },
 
@@ -625,6 +880,7 @@ watch(() => props.chartData, update, { deep: true })
 watch(() => props.period, update)
 watch(() => props.aggregationEnd, update)
 watch(() => props.skipAggregation, update)
+watch(() => props.minPxPerXTick, update)
 watch(() => props.tooltipCallbacks, update, { deep: true })
 
 onMounted(update)
@@ -639,7 +895,7 @@ onUnmounted(() => {
 
 <template>
   <div class="chart-container">
-    <div ref="chartWrapper" class="chart-wrapper">
+    <div class="chart-wrapper">
       <canvas ref="chartCanvas"></canvas>
     </div>
   </div>
