@@ -1,5 +1,6 @@
 import asyncio
 from app.infrastructure.database.database_service import rpc, table_insert_async
+from app.infrastructure.database.postgres_service import get_db_connection
 from app.domain.services.user_service import get_user_by_email
 from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
@@ -14,7 +15,7 @@ _operation_repository = OperationRepository()
 from concurrent.futures import ThreadPoolExecutor
 from time import time
 from typing import Dict
-from datetime import datetime
+from datetime import datetime, date
 from app.utils.date import normalize_date_to_string
 from app.core.logging import get_logger
 
@@ -225,6 +226,99 @@ def update_portfolios_with_asset(asset_id: int, from_date) -> None:
     except Exception as e:
         # Логируем ошибку, но не прерываем выполнение
         logger.error(f"Ошибка при обновлении портфелей с активом {asset_id}: {e}", exc_info=True)
+
+
+def refresh_portfolio_assets_and_daily_values(portfolio_id: int) -> Dict:
+    """
+    Пересчитывает portfolio_assets (update_portfolio_asset) и daily data (update_assets_daily_values)
+    для всех активов, которые есть в указанном портфеле.
+
+    Важно:
+    - update_assets_daily_values вызывается ОДИН раз для набора asset_id
+    - p_from_date выбирается как самая ранняя transaction_date::date среди активов
+    """
+    # 1) Берём активы портфеля (получаем portfolio_asset_id и asset_id)
+    portfolio_assets = get_portfolio_assets_sync(portfolio_id) or []
+    if not portfolio_assets:
+        return {
+            "success": True,
+            "portfolio_id": portfolio_id,
+            "asset_ids": [],
+            "from_date": None,
+            "updated_portfolios": [],
+            "updated_portfolio_assets": 0,
+        }
+
+    # 2) Уникальные asset_id (они будут использованы в update_assets_daily_values)
+    asset_ids = sorted({pa.get("asset_id") for pa in portfolio_assets if pa.get("asset_id") is not None})
+    if not asset_ids:
+        return {
+            "success": True,
+            "portfolio_id": portfolio_id,
+            "asset_ids": [],
+            "from_date": None,
+            "updated_portfolios": [],
+            "updated_portfolio_assets": 0,
+        }
+
+    # 3) Получаем все portfolio_asset_id, которые соответствуют этим asset_id
+    # (чтобы update_portfolio_asset сделал согласованно для всех затронутых portfolio_assets)
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT pa.id
+                FROM portfolio_assets pa
+                WHERE pa.asset_id = ANY(%s)
+                """,
+                (asset_ids,),
+            )
+            portfolio_asset_ids = [r[0] for r in cur.fetchall()]
+
+            # 4) Самая ранняя дата транзакций среди этих portfolio_assets/asset_ids
+            cur.execute(
+                """
+                SELECT MIN(t.transaction_date::date) AS min_date
+                FROM transactions t
+                JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
+                WHERE pa.asset_id = ANY(%s)
+                """,
+                (asset_ids,),
+            )
+            row = cur.fetchone()
+            min_date = row[0] if row else None
+
+    # 5) Пересчитываем portfolio_asset (кол-во/avg_price) для всех portfolio_asset_id
+    updated_portfolio_assets = 0
+    for pa_id in portfolio_asset_ids:
+        rpc("update_portfolio_asset", {"pa_id": pa_id})
+        updated_portfolio_assets += 1
+
+    # 6) update_assets_daily_values: один вызов для всех asset_ids
+    if min_date:
+        from_date = min_date
+    else:
+        # Если транзакций нет — ставим from_date сегодня, чтобы не генерировать миллионы дат
+        from_date = date.today()
+
+    normalized_from_date = normalize_date_to_string(from_date, include_time=False)
+
+    updated_daily_portfolios = rpc(
+        "update_assets_daily_values",
+        {
+            "p_asset_ids": asset_ids,
+            "p_from_date": normalized_from_date,
+        },
+    )
+
+    return {
+        "success": True,
+        "portfolio_id": portfolio_id,
+        "asset_ids": asset_ids,
+        "from_date": normalized_from_date,
+        "updated_portfolios": updated_daily_portfolios or [],
+        "updated_portfolio_assets": updated_portfolio_assets,
+    }
 
 
 # --- пул потоков для фоновых операций ---

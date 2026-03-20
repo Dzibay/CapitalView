@@ -33,6 +33,11 @@ export default {
     return res.data;
   },
 
+  async refreshPortfolio(portfolio_id) {
+    const res = await apiClient.post(API_ENDPOINTS.PORTFOLIO.REFRESH(portfolio_id), {});
+    return res.data;
+  },
+
   async updatePortfolioGoal(portfolioId, { title, targetAmount, monthlyContribution, annualReturn, useInflation, inflationRate }) {
     const payload = {
       text: title || '',

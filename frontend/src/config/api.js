@@ -19,6 +19,7 @@ export const API_ENDPOINTS = {
     ADD: '/portfolios/',  // Исправлено: на backend это POST /portfolios/ (со слешем!)
     DELETE: (id) => `/portfolios/${id}`,  // Исправлено: на backend это DELETE /portfolios/{id}
     CLEAR: (id) => `/portfolios/${id}/clear`,
+    REFRESH: (id) => `/portfolios/${id}/refresh`,
     DESCRIPTION: (id) => `/portfolios/${id}/description`,
     ASSETS: (id) => `/portfolios/${id}/assets`,
     HISTORY: (id) => `/portfolios/${id}/history`,
