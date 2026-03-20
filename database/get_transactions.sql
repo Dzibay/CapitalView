@@ -1,4 +1,7 @@
-CREATE OR REPLACE FUNCTION get_user_transactions(
+-- Старое имя функции (до рефакторинга схемы)
+DROP FUNCTION IF EXISTS get_user_transactions(uuid, integer, bigint, text, timestamp without time zone, timestamp without time zone);
+
+CREATE OR REPLACE FUNCTION get_transactions(
     p_user_id uuid,
     p_limit integer DEFAULT 1000,
     p_portfolio_id bigint DEFAULT NULL,

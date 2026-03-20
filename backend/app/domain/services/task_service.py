@@ -48,7 +48,7 @@ def import_task_belongs_to_user(task: Optional[dict], user_id) -> bool:
 
 def create_import_task(
     user_id,
-    broker_id: str,
+    broker_id: int,
     broker_token: str,
     portfolio_id: int,
     portfolio_name: Optional[str] = None,
@@ -71,7 +71,7 @@ def create_import_task(
             "portfolio_id": portfolio_id,
             "task_type": TaskType.IMPORT_BROKER.value,
             "status": TaskStatus.PENDING.value,
-            "broker_id": str(broker_id),
+            "broker_id": int(broker_id),
             "broker_token": broker_token,
             "priority": priority,
             "progress": 0,

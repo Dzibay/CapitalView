@@ -20,12 +20,12 @@ class TransactionRepository(BaseRepository):
     # ─── RPC-методы ────────────────────────────────────────────
 
     async def get_user_transactions(self, user_id: str, limit: int = 1000) -> List[Dict[str, Any]]:
-        return await rpc_async("get_user_transactions", {
+        return await rpc_async("get_transactions", {
             "p_user_id": user_id, "p_limit": limit,
         }) or []
 
     def get_user_transactions_sync(self, user_id: str, limit: int = 1000) -> List[Dict[str, Any]]:
-        return rpc("get_user_transactions", {
+        return rpc("get_transactions", {
             "p_user_id": user_id, "p_limit": limit,
         }) or []
 

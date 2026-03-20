@@ -117,7 +117,7 @@ def check_broker_token_exists(user_id: str, broker_id: int, broker_token: str) -
             "import_tasks",
             select="portfolio_id, portfolio_name, status",
             filters={
-                "broker_id": str(broker_id),
+                "broker_id": broker_id,
                 "broker_token": broker_token
             },
             in_filters={"portfolio_id": pids},

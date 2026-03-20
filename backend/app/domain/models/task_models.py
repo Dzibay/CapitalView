@@ -25,7 +25,7 @@ class TaskType(str, Enum):
 class CreateImportTaskRequest(BaseModel):
     """Запрос на создание задачи импорта."""
     portfolio_id: Optional[int] = Field(None, description="ID существующего портфеля для обновления")
-    broker_id: str = Field(..., description="ID брокера (например, 'tinkoff')")
+    broker_id: int = Field(..., ge=1, description="ID брокера (справочник brokers)")
     broker_token: str = Field(..., description="Токен API брокера")
     portfolio_name: Optional[str] = Field(None, description="Имя портфеля (если создается новый)")
     priority: int = Field(0, ge=0, le=100, description="Приоритет задачи (0-100)")
@@ -34,7 +34,6 @@ class CreateImportTaskRequest(BaseModel):
 class TaskResponse(BaseModel):
     """Ответ с информацией о задаче."""
     id: int
-    user_id: int
     portfolio_id: Optional[int]
     task_type: str
     status: str

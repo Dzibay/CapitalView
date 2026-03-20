@@ -131,7 +131,6 @@ BEGIN
                 
                 WITH inserted_transactions AS (
                     INSERT INTO transactions (
-                        user_id,
                         portfolio_asset_id,
                         transaction_type,
                         quantity,
@@ -140,7 +139,6 @@ BEGIN
                         realized_pnl
                     )
                     SELECT 
-                        t.user_id,
                         t.portfolio_asset_id,
                         1,
                         t.quantity,
@@ -163,7 +161,6 @@ BEGIN
                       )
                     RETURNING 
                         id,
-                        user_id,
                         portfolio_asset_id,
                         quantity,
                         price,
@@ -188,7 +185,7 @@ BEGIN
                 SELECT
                     tibt.tx_id,
                     COALESCE(tso.payment, 0),
-                    t.user_id,
+                    p.user_id,
                     tibt.portfolio_asset_id,
                     1,
                     tibt.transaction_date,
@@ -197,6 +194,8 @@ BEGIN
                     COALESCE(tso.currency_id, (SELECT a.quote_asset_id FROM portfolio_assets pa JOIN assets a ON a.id = pa.asset_id WHERE pa.id = tibt.portfolio_asset_id LIMIT 1), 1)
                 FROM temp_inserted_buy_tx tibt
                 JOIN transactions t ON t.id = tibt.tx_id
+                JOIN portfolio_assets pa ON pa.id = tibt.portfolio_asset_id
+                JOIN portfolios p ON p.id = pa.portfolio_id
                 LEFT JOIN temp_sorted_ops tso ON
                     tso.portfolio_asset_id = tibt.portfolio_asset_id
                     AND tso.operation_type = v_buy_op_type_id
@@ -211,7 +210,7 @@ BEGIN
                 SELECT DISTINCT ON (tibt.tx_id)
                     tibt.tx_id,
                     COALESCE(tso.payment, 0),
-                    t.user_id,
+                    p.user_id,
                     tibt.portfolio_asset_id,
                     1,
                     tibt.transaction_date,
@@ -220,6 +219,8 @@ BEGIN
                     COALESCE(tso.currency_id, (SELECT a.quote_asset_id FROM portfolio_assets pa JOIN assets a ON a.id = pa.asset_id WHERE pa.id = tibt.portfolio_asset_id LIMIT 1), 1)
                 FROM temp_inserted_buy_tx tibt
                 JOIN transactions t ON t.id = tibt.tx_id
+                JOIN portfolio_assets pa ON pa.id = tibt.portfolio_asset_id
+                JOIN portfolios p ON p.id = pa.portfolio_id
                 LEFT JOIN temp_sorted_ops tso ON
                     tso.portfolio_asset_id = tibt.portfolio_asset_id
                     AND tso.operation_type = v_buy_op_type_id
@@ -305,7 +306,6 @@ BEGIN
                     END IF;
 
                     INSERT INTO transactions (
-                        user_id,
                         portfolio_asset_id,
                         transaction_type,
                         quantity,
@@ -314,7 +314,6 @@ BEGIN
                         realized_pnl
                     )
                     VALUES (
-                        v_tx_item.user_id,
                         v_tx_item.portfolio_asset_id,
                         v_tx_item.transaction_type,
                         v_tx_item.quantity,
@@ -407,7 +406,7 @@ BEGIN
             IF array_length(v_tx_ids, 1) > 0 THEN
                 INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id, amount_rub)
                 SELECT
-                    t.user_id,
+                    p.user_id,
                     pa.portfolio_id,
                     CASE 
                         WHEN t.transaction_type = 1 THEN v_buy_op_type_id
@@ -442,6 +441,7 @@ BEGIN
                     END)
                 FROM transactions t
                 JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
+                JOIN portfolios p ON p.id = pa.portfolio_id
                 LEFT JOIN temp_tx_payment_map tpm ON tpm.transaction_id = t.id
                 WHERE t.id = ANY(v_tx_ids)
                   AND t.transaction_type IN (1, 2, 3)

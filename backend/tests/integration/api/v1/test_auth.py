@@ -81,7 +81,7 @@ class TestAuthLogin:
         
         # Мокаем проверку пароля
         mock_user_copy = mock_user.copy()
-        mock_user_copy["password_hash"] = bcrypt.generate_password_hash("password123").decode('utf-8')
+        mock_user_copy["password_hash"] = bcrypt.generate_password_hash("password123")
         
         with patch('app.api.v1.auth.get_user_by_email', return_value=mock_user_copy):
             with patch('app.api.v1.auth.bcrypt.check_password_hash', return_value=True):

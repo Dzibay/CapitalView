@@ -44,13 +44,10 @@ ON transactions(portfolio_asset_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date_desc 
 ON transactions(transaction_date DESC);
 
-CREATE INDEX IF NOT EXISTS idx_transactions_portfolio_asset_date 
+CREATE INDEX IF NOT EXISTS idx_transactions_portfolio_asset_date
 ON transactions(portfolio_asset_id, transaction_date DESC);
 
-CREATE INDEX IF NOT EXISTS idx_transactions_user_id 
-ON transactions(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_transactions_type 
+CREATE INDEX IF NOT EXISTS idx_transactions_type
 ON transactions(transaction_type) 
 WHERE transaction_type IN (2, 3);
 

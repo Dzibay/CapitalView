@@ -147,7 +147,11 @@ class TestTransactionRepository:
     def test_get_user_transactions_sync_empty(self):
         """Тест получения транзакций пользователя, когда транзакций нет."""
         repo = TransactionRepository()
-        result = repo.get_user_transactions_sync("00000000-0000-0000-0000-000000000000")
+        with patch(
+            "app.infrastructure.database.repositories.transaction_repository.rpc",
+            return_value=[],
+        ):
+            result = repo.get_user_transactions_sync("00000000-0000-0000-0000-000000000000")
         assert isinstance(result, list)
         assert len(result) == 0
     
