@@ -14,7 +14,8 @@ from app.domain.services.portfolio_service import (
     get_user_portfolio_parent,
     update_portfolio_description,
     get_portfolio_info,
-    get_portfolio_summary
+    get_portfolio_summary,
+    refresh_portfolio_assets_and_daily_values
 )
 from app.domain.services.task_service import create_import_task
 from app.domain.services.access_control_service import check_portfolio_access
@@ -132,6 +133,22 @@ async def portfolio_clear_route(
     logger.info(f"Запрос очистки портфеля {portfolio_id}")
     rpc("clear_portfolio_full", {"p_portfolio_id": portfolio_id})
     return success_response(message="Портфель успешно очищен")
+
+
+@router.post("/{portfolio_id}/refresh", status_code=HTTPStatus.ACCEPTED)
+@invalidate("dashboard:{user.id}")
+async def portfolio_refresh_route(
+    portfolio_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """Полный пересчёт portfolio_assets и portfolio_daily_* для активов портфеля."""
+    check_portfolio_access(portfolio_id, user["id"])
+    result = refresh_portfolio_assets_and_daily_values(portfolio_id)
+    return success_response(
+        data={"result": result},
+        message="Портфель успешно обновлен",
+        status_code=HTTPStatus.ACCEPTED,
+    )
 
 
 @router.get("/{portfolio_id}/assets")

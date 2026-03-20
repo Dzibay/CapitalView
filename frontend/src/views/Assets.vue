@@ -55,6 +55,20 @@ const clearPortfolio = async (portfolioId) => {
   await portfoliosStore.clearPortfolio(portfolioId);
 };
 
+const refreshPortfolio = async (portfolioId) => {
+  // Предотвращаем повторный запуск, если пользователь нажал несколько раз
+  if (!portfolioId) return
+  if (updatingPortfolios.value.has(portfolioId)) return
+
+  updatingPortfolios.value.add(portfolioId)
+  try {
+    await portfoliosStore.refreshPortfolio(portfolioId)
+    await reloadDashboard()
+  } finally {
+    updatingPortfolios.value.delete(portfolioId)
+  }
+}
+
 const addPortfolio = async (portfolioData) => {
   await portfoliosStore.addPortfolio(portfolioData);
 };
@@ -344,6 +358,7 @@ const handleMoveAsset = (asset) => {
 
         <ContextMenu
           @clearPortfolio="clearPortfolio"
+          @refreshPortfolio="refreshPortfolio"
           @deletePortfolio="deletePortfolio"
           @removeAsset="removeAsset"
           @addTransaction="handleAddTransaction"

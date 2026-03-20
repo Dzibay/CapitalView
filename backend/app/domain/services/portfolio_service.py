@@ -227,6 +227,23 @@ def update_portfolios_with_asset(asset_id: int, from_date) -> None:
         logger.error(f"Ошибка при обновлении портфелей с активом {asset_id}: {e}", exc_info=True)
 
 
+def refresh_portfolio_assets_and_daily_values(portfolio_id: int) -> Dict:
+    """
+    Backend-обёртка: вызывает одну SQL-функцию в БД.
+    Реальный пересчёт (update_portfolio_asset + update_assets_daily_values)
+    теперь выполняется целиком в refresh_portfolio_assets_and_daily_values(...).
+    """
+    result = rpc(
+        "refresh_portfolio_assets_and_daily_values",
+        {"p_portfolio_id": portfolio_id},
+    )
+
+    if isinstance(result, dict) and result.get("success") is False:
+        raise Exception(result.get("error") or "Ошибка обновления портфеля")
+
+    return result
+
+
 # --- пул потоков для фоновых операций ---
 executor = ThreadPoolExecutor(max_workers=10)
 

@@ -96,6 +96,19 @@ export const usePortfoliosStore = defineStore('portfolios', {
       }
     },
 
+    async refreshPortfolio(portfolioId) {
+      try {
+        const res = await portfolioService.refreshPortfolio(portfolioId)
+        if (!res.success) throw new Error(res.error || 'Ошибка обновления портфеля')
+        return res
+      } catch (err) {
+        if (import.meta.env.VITE_APP_DEV) {
+          console.error('Ошибка обновления портфеля:', err)
+        }
+        throw err
+      }
+    },
+
     async importPortfolio({ broker_id, token, portfolioId, portfolio_name }) {
       try {
         const res = await portfolioService.importPortfolio(broker_id, token, portfolioId, portfolio_name)

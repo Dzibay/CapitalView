@@ -37,10 +37,11 @@ export function useContextMenu() {
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
     
-    // Определяем количество элементов меню
+    // Определяем количество элементов меню (оценка высоты для позиционирования)
     let itemCount = 2
     if (type === 'portfolio') {
-      itemCount = 2
+      // Всегда: clear + refresh, опционально: delete (если есть parent_portfolio_id)
+      itemCount = payload?.parent_portfolio_id ? 3 : 2
     } else if (type === 'asset') {
       itemCount = 4 // включая разделитель
     } else if (type === 'transaction') {

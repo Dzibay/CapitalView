@@ -1,10 +1,11 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
-import { Briefcase, TrendingUp, Receipt, DollarSign, PlusCircle, BarChart3, MoveRight, Trash2, Edit, RotateCcw } from 'lucide-vue-next'
+import { Briefcase, TrendingUp, Receipt, DollarSign, PlusCircle, BarChart3, MoveRight, Trash2, Edit, RotateCcw, RefreshCw } from 'lucide-vue-next'
 import { useContextMenu } from '../../composables/useContextMenu'
 
 const emit = defineEmits([
   'clearPortfolio',
+  'refreshPortfolio',
   'deletePortfolio',
   'addTransaction',
   'addPrice',
@@ -105,6 +106,10 @@ onBeforeUnmount(() => {
         <button class="item" @click="closeMenu(); $emit('clearPortfolio', menu.payload.id)">
           <RotateCcw :size="16" class="item-icon" />
           <span class="item-text">Очистить</span>
+        </button>
+        <button class="item" @click="closeMenu(); $emit('refreshPortfolio', menu.payload.id)">
+          <RefreshCw :size="16" class="item-icon" />
+          <span class="item-text">Обновить</span>
         </button>
         <button 
           v-if="menu.payload.parent_portfolio_id" 
