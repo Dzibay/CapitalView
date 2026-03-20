@@ -172,7 +172,9 @@ CREATE TABLE IF NOT EXISTS portfolio_daily_positions (
   commissions numeric DEFAULT 0,
   taxes numeric DEFAULT 0,
   total_pnl numeric,
-  CONSTRAINT portfolio_daily_positions_pkey PRIMARY KEY (portfolio_asset_id, report_date)
+  CONSTRAINT portfolio_daily_positions_pkey PRIMARY KEY (portfolio_asset_id, report_date),
+  CONSTRAINT portfolio_daily_positions_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES portfolio_assets(id) ON DELETE CASCADE,
+  CONSTRAINT portfolio_daily_positions_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS portfolio_daily_values (
@@ -186,7 +188,8 @@ CREATE TABLE IF NOT EXISTS portfolio_daily_values (
   total_commissions numeric DEFAULT 0,
   total_taxes numeric DEFAULT 0,
   balance numeric DEFAULT 0,
-  CONSTRAINT portfolio_daily_values_pkey PRIMARY KEY (portfolio_id, report_date)
+  CONSTRAINT portfolio_daily_values_pkey PRIMARY KEY (portfolio_id, report_date),
+  CONSTRAINT portfolio_daily_values_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS import_tasks (
