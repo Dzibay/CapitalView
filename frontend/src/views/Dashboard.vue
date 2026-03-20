@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '../stores/auth.store'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
@@ -36,6 +36,8 @@ const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 const portfoliosStore = usePortfoliosStore()
+const phase2Ready = ref(false)
+const phase3Ready = ref(false)
 
 // Используем composable для аналитики портфеля
 const {
@@ -47,43 +49,42 @@ const {
   profitWidgetData,
   calculatedAnnualDividends,
   returnData,
-  portfolioChartData,
-  collectPortfolioIds
+  portfolioChartData
 } = usePortfolioAnalytics()
 
-// Функция для сбора всех активов выбранного портфеля и его дочерних
-function collectAssets(portfolio, allPortfolios) {
-  let assets = [...(portfolio.assets || [])]
-  const children = allPortfolios.filter(p => p.parent_portfolio_id === portfolio.id)
+const childrenByParent = computed(() => {
+  const map = new Map()
+  for (const p of portfolios.value) {
+    const parentId = p.parent_portfolio_id ?? '__root__'
+    if (!map.has(parentId)) map.set(parentId, [])
+    map.get(parentId).push(p.id)
+  }
+  return map
+})
 
-  for (const child of children) {
-    assets = assets.concat(collectAssets(child, allPortfolios))
+const selectedPortfolioIds = computed(() => {
+  const root = selectedPortfolio.value
+  if (!root) return new Set()
+
+  const ids = new Set()
+  const stack = [root.id]
+  const tree = childrenByParent.value
+
+  while (stack.length) {
+    const id = stack.pop()
+    if (ids.has(id)) continue
+    ids.add(id)
+    const children = tree.get(id) || []
+    for (const childId of children) stack.push(childId)
   }
 
-  return assets
-}
+  return ids
+})
 
-const parsedDashboard = computed(() => {
-  const data = dashboardStore.data
-  if (!data || !selectedPortfolio.value) return null
-
-  const allPortfolios = portfolios.value
-
-  const portfolioIds = collectPortfolioIds(selectedPortfolio.value, allPortfolios)
-  const assets = collectAssets(selectedPortfolio.value, allPortfolios)
-
-  // Фильтруем транзакции по всем id портфелей
-  const transactions = (dashboardStore.transactions ?? []).filter(t => portfolioIds.includes(t.portfolio_id))
-  
-  return {
-    totalAmount: totalCapitalWidgetData.value.totalAmount,
-    investedAmount: totalCapitalWidgetData.value.investedAmount,
-    monthlyChange: selectedPortfolio.value.monthly_change || 0,
-    assetAllocation: selectedPortfolio.value.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] },
-    portfolioChart: portfolioChartData.value,
-    assets,
-    transactions
-  }
+const selectedTransactions = computed(() => {
+  const ids = selectedPortfolioIds.value
+  if (ids.size === 0) return []
+  return (dashboardStore.transactions ?? []).filter(t => ids.has(t.portfolio_id))
 })
 
 const goalData = computed(() => {
@@ -122,21 +123,47 @@ const monthlyPayouts = computed(() => {
 
 // Данные для RecentTransactionsWidget - последние транзакции, отсортированные по дате
 const recentTransactions = computed(() => {
-  const transactions = parsedDashboard.value?.transactions || []
-  // Сортируем по дате (новые первыми) и берем последние
-  return [...transactions]
-    .sort((a, b) => {
-      const dateA = new Date(a.transaction_date || 0)
-      const dateB = new Date(b.transaction_date || 0)
-      return dateB - dateA
-    })
-    .slice(0, 10)
+  const top = []
+  for (const tx of selectedTransactions.value) {
+    const ts = new Date(tx.transaction_date || 0).getTime()
+    if (!Number.isFinite(ts)) continue
+    let inserted = false
+    for (let i = 0; i < top.length; i++) {
+      const cur = new Date(top[i].transaction_date || 0).getTime()
+      if (ts > cur) {
+        top.splice(i, 0, tx)
+        inserted = true
+        break
+      }
+    }
+    if (!inserted) top.push(tx)
+    if (top.length > 10) top.pop()
+  }
+  return top
+})
+
+onMounted(() => {
+  // Фаза 2: после первого кадра подключаем основной график.
+  requestAnimationFrame(() => {
+    phase2Ready.value = true
+  })
+
+  // Фаза 3: второстепенные тяжёлые виджеты рендерим в idle-время.
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    window.requestIdleCallback(() => {
+      phase3Ready.value = true
+    }, { timeout: 250 })
+  } else {
+    setTimeout(() => {
+      phase3Ready.value = true
+    }, 80)
+  }
 })
 
 </script>
 
 <template>
-  <PageLayout v-if="!uiStore.loading && parsedDashboard">
+  <PageLayout v-if="!uiStore.loading && selectedPortfolio">
     <PageHeader 
       :title="`С возвращением, ${authStore.user?.name}`"
       subtitle="Главная"
@@ -199,21 +226,19 @@ const recentTransactions = computed(() => {
 
       <!-- 1. Динамика капитала — на планшете на всю ширину -->
       <WidgetContainer class="chart-dynamics-widget" :gridColumn="8" minHeight="var(--widget-height-xlarge)">
-        <PortfolioChartWidget 
-          :chartData="portfolioChartData"
-        />
+        <PortfolioChartWidget v-if="phase2Ready" :chartData="portfolioChartData" />
       </WidgetContainer>
 
       <!-- 2. Рост и падение за день (на планшете в одну строку) -->
       <WidgetContainer class="top-up-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
-        <TopMoversWidget
+        <TopMoversWidget v-if="phase3Ready"
           title="Топ роста за день"
           :assets="selectedPortfolio.combined_assets || []"
           direction="up"
         />
       </WidgetContainer>
       <WidgetContainer class="top-down-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
-        <TopMoversWidget
+        <TopMoversWidget v-if="phase3Ready"
           title="Топ падений за день"
           :assets="selectedPortfolio.combined_assets || []"
           direction="down"
@@ -222,19 +247,19 @@ const recentTransactions = computed(() => {
 
       <!-- 3. Распределение активов и последние операции (на планшете в одну строку) -->
       <WidgetContainer class="allocation-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
-        <AssetAllocationWidget
+        <AssetAllocationWidget v-if="phase3Ready"
           :assetAllocation="assetAllocationData"
         />
       </WidgetContainer>
       <WidgetContainer class="recent-tx-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
-        <RecentTransactionsWidget
+        <RecentTransactionsWidget v-if="phase3Ready"
           :transactions="recentTransactions"
         />
       </WidgetContainer>
 
       <!-- 4. Выплаты по месяцам — на планшете на всю ширину -->
       <WidgetContainer class="payouts-chart-widget" :gridColumn="6" minHeight="var(--widget-height-medium)">
-        <PayoutsChartWidget 
+        <PayoutsChartWidget v-if="phase3Ready"
           title="Полученные выплаты по месяцам"
           :payouts="monthlyPayouts"
           mode="past"
@@ -243,7 +268,7 @@ const recentTransactions = computed(() => {
 
       <!-- 5. Достижение цели — на планшете на всю ширину -->
       <WidgetContainer class="goal-progress-widget" :gridColumn="6" minHeight="var(--widget-height-medium)">
-        <GoalProgressWidget 
+        <GoalProgressWidget v-if="phase3Ready"
           :goal-data="goalData"
           :onSaveGoal="portfoliosStore.updatePortfolioGoal"
           :default-return-percent="returnData.returnPercent"
