@@ -20,6 +20,12 @@ const dashboardStore = useDashboardStore()
 
 const missedPayouts = ref([])
 const selectedPayouts = ref([])
+
+const payoutRowKey = (p) =>
+  `${p.portfolio_asset_id}:${p.payout_id}`
+
+const samePayoutKey = (a, b) =>
+  a.portfolio_asset_id === b.portfolio_asset_id && a.payout_id === b.payout_id
 const loading = ref(false)
 const processing = ref(false)
 const error = ref('')
@@ -39,18 +45,25 @@ const loadMissedPayouts = async () => {
 }
 
 // Выбор/снятие выбора выплаты
-const togglePayout = (payoutId) => {
-  const index = selectedPayouts.value.indexOf(payoutId)
+const togglePayout = (payout) => {
+  const row = {
+    portfolio_asset_id: payout.portfolio_asset_id,
+    payout_id: payout.payout_id
+  }
+  const index = selectedPayouts.value.findIndex((x) => samePayoutKey(x, row))
   if (index > -1) {
     selectedPayouts.value.splice(index, 1)
   } else {
-    selectedPayouts.value.push(payoutId)
+    selectedPayouts.value.push(row)
   }
 }
 
 // Выбрать все
 const selectAll = () => {
-  selectedPayouts.value = missedPayouts.value.map(p => p.id || p.missed_payout_id)
+  selectedPayouts.value = missedPayouts.value.map((p) => ({
+    portfolio_asset_id: p.portfolio_asset_id,
+    payout_id: p.payout_id
+  }))
 }
 
 // Снять выбор со всех
@@ -148,10 +161,12 @@ const formatAmount = (amount) => {
 
 // Вычисляемые свойства
 const hasSelected = computed(() => selectedPayouts.value.length > 0)
-const allSelected = computed(() => 
-  missedPayouts.value.length > 0 && 
-  selectedPayouts.value.length === missedPayouts.value.length
-)
+const allSelected = computed(() => {
+  if (missedPayouts.value.length === 0) return false
+  if (selectedPayouts.value.length !== missedPayouts.value.length) return false
+  const sel = new Set(selectedPayouts.value.map(payoutRowKey))
+  return missedPayouts.value.every((p) => sel.has(payoutRowKey(p)))
+})
 
 // Загружаем данные при открытии модалки
 onMounted(() => {
@@ -219,15 +234,15 @@ watch(() => props.show, (newVal) => {
         <div class="payouts-items">
           <div 
             v-for="payout in missedPayouts" 
-            :key="payout.id || payout.missed_payout_id"
+            :key="payoutRowKey(payout)"
             class="payout-item"
-            :class="{ selected: selectedPayouts.includes(payout.id || payout.missed_payout_id) }"
+            :class="{ selected: selectedPayouts.some((s) => samePayoutKey(s, payout)) }"
           >
             <div class="payout-checkbox">
               <input 
                 type="checkbox"
-                :checked="selectedPayouts.includes(payout.id || payout.missed_payout_id)"
-                @change="togglePayout(payout.id || payout.missed_payout_id)"
+                :checked="selectedPayouts.some((s) => samePayoutKey(s, payout))"
+                @change="togglePayout(payout)"
                 class="checkbox"
               />
             </div>

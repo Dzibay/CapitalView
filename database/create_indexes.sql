@@ -220,13 +220,8 @@ ON user_broker_connections(user_id, broker_id, api_key)
 WHERE api_key IS NOT NULL;
 
 -- ============================================================================
--- ТАБЛИЦА: missed_payouts
+-- ТАБЛИЦА: missed_payouts (PK portfolio_asset_id + payout_id; payout_id — для выборок по выплате)
 -- ============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_missed_payouts_user_id ON missed_payouts(user_id);
-CREATE INDEX IF NOT EXISTS idx_missed_payouts_portfolio_id ON missed_payouts(portfolio_id);
-CREATE INDEX IF NOT EXISTS idx_missed_payouts_portfolio_asset_id ON missed_payouts(portfolio_asset_id);
-CREATE INDEX IF NOT EXISTS idx_missed_payouts_asset_id ON missed_payouts(asset_id);
 CREATE INDEX IF NOT EXISTS idx_missed_payouts_payout_id ON missed_payouts(payout_id);
-CREATE INDEX IF NOT EXISTS idx_missed_payouts_created_at ON missed_payouts(created_at DESC);
 

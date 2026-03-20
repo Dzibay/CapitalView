@@ -223,19 +223,8 @@ BEGIN
         IF v_received_amount < v_expected_amount - v_expected_tolerance THEN
             -- Добавляем в таблицу неполученных выплат
             -- Записи для этого актива уже удалены в начале функции, поэтому дубликатов не будет
-            INSERT INTO missed_payouts (
-                user_id,
-                portfolio_id,
-                portfolio_asset_id,
-                asset_id,
-                payout_id
-            ) VALUES (
-                v_user_id,
-                v_portfolio_id,
-                p_portfolio_asset_id,
-                v_asset_id,
-                v_payout.id
-            );
+            INSERT INTO missed_payouts (portfolio_asset_id, payout_id)
+            VALUES (p_portfolio_asset_id, v_payout.id);
             
             v_missed_count := v_missed_count + 1;
         END IF;

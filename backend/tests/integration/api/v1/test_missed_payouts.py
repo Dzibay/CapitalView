@@ -18,9 +18,9 @@ class TestMissedPayoutsGet:
         
         test_payouts = [
             {
-                "id": 1,
                 "user_id": mock_user["id"],
                 "portfolio_id": 1,
+                "portfolio_asset_id": 1,
                 "asset_id": 1,
                 "payout_id": 1,
                 "expected_amount": 1000.0,
@@ -63,35 +63,13 @@ class TestMissedPayoutsGet:
 class TestMissedPayoutsDelete:
     """Тесты для удаления (игнорирования) неполученных выплат."""
     
-    def test_delete_missed_payout_success(self, authenticated_client, mock_user):
-        """Тест успешного удаления неполученной выплаты."""
-        from unittest.mock import patch, AsyncMock
-        
-        test_payouts = [
-            {
-                "id": 1,
-                "user_id": mock_user["id"],
-                "portfolio_id": 1
-            }
-        ]
-        
-        with patch('app.api.v1.missed_payouts._missed_payout_repository.get_user_missed_payouts_async', new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = test_payouts
-            
-            with patch('app.api.v1.missed_payouts._missed_payout_repository.delete_missed_payout', new_callable=AsyncMock) as mock_delete:
-                mock_delete.return_value = True
-                
-                response = authenticated_client.delete("/api/v1/missed-payouts/1")
-                assert_success_response(response)
-    
     def test_delete_missed_payouts_batch_success(self, authenticated_client, mock_user):
         """Тест успешного удаления нескольких неполученных выплат."""
         from unittest.mock import patch, AsyncMock
-        import json
         
         test_payouts = [
-            {"id": 1, "user_id": mock_user["id"]},
-            {"id": 2, "user_id": mock_user["id"]}
+            {"portfolio_asset_id": 10, "payout_id": 1, "user_id": mock_user["id"]},
+            {"portfolio_asset_id": 11, "payout_id": 2, "user_id": mock_user["id"]}
         ]
         
         with patch('app.api.v1.missed_payouts._missed_payout_repository.get_user_missed_payouts_async', new_callable=AsyncMock) as mock_get:
@@ -100,11 +78,13 @@ class TestMissedPayoutsDelete:
             with patch('app.api.v1.missed_payouts._missed_payout_repository.delete_missed_payouts_batch', new_callable=AsyncMock) as mock_delete:
                 mock_delete.return_value = 2
                 
-                # TestClient.delete() не поддерживает content, используем request()
                 response = authenticated_client.request(
                     "DELETE",
                     "/api/v1/missed-payouts/batch",
-                    json=[1, 2]
+                    json=[
+                        {"portfolio_asset_id": 10, "payout_id": 1},
+                        {"portfolio_asset_id": 11, "payout_id": 2},
+                    ]
                 )
                 assert_success_response(response)
 

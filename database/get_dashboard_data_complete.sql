@@ -228,7 +228,9 @@ recent_transactions AS (
 missed_payouts_count AS (
     SELECT COUNT(*)::int AS count
     FROM missed_payouts mp
-    WHERE mp.user_id = p_user_id
+    JOIN portfolio_assets pa ON pa.id = mp.portfolio_asset_id
+    JOIN portfolios po ON po.id = pa.portfolio_id
+    WHERE po.user_id = p_user_id
 )
 
 SELECT jsonb_build_object(

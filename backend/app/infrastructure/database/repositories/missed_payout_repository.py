@@ -1,9 +1,10 @@
 """
 Repository для работы с неполученными выплатами (missed_payouts).
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
+
 from app.infrastructure.database.database_service import rpc
-from app.infrastructure.database.postgres_async import rpc_async, table_delete_async
+from app.infrastructure.database.postgres_async import rpc_async, table_delete_async, get_connection_pool
 
 
 class MissedPayoutRepository:
@@ -37,53 +38,66 @@ class MissedPayoutRepository:
     
     async def delete_missed_payout(
         self,
-        missed_payout_id: int
+        portfolio_asset_id: int,
+        payout_id: int
     ) -> bool:
         """
         Удаляет неполученную выплату (игнорирует её).
         
         Args:
-            missed_payout_id: ID записи в missed_payouts
+            portfolio_asset_id: ID актива в портфеле
+            payout_id: ID выплаты из asset_payouts
             
         Returns:
             True если удалено успешно, False если не найдено
         """
         result = await table_delete_async(
             "missed_payouts",
-            filters={"id": missed_payout_id}
+            filters={
+                "portfolio_asset_id": portfolio_asset_id,
+                "payout_id": payout_id,
+            }
         )
         return bool(result)
     
     async def delete_missed_payouts_batch(
         self,
-        missed_payout_ids: List[int]
+        keys: List[Tuple[int, int]]
     ) -> int:
         """
         Удаляет несколько неполученных выплат (игнорирует их) одним запросом.
         
         Args:
-            missed_payout_ids: Список ID записей в missed_payouts
+            keys: Список пар (portfolio_asset_id, payout_id)
             
         Returns:
-            Количество удаленных записей
+            Количество удалённых записей
         """
-        if not missed_payout_ids:
+        if not keys:
             return 0
         
-        # Оптимизация: удаляем все записи одним запросом вместо цикла
-        result = await table_delete_async(
-            "missed_payouts",
-            in_filters={"id": missed_payout_ids}
-        )
+        pa_ids = [k[0] for k in keys]
+        p_ids = [k[1] for k in keys]
         
-        # Возвращаем количество удаленных записей
-        # Если result - это количество, возвращаем его, иначе возвращаем длину списка ID
-        if isinstance(result, int):
-            return result
-        elif result is not None:
-            return len(missed_payout_ids)
-        else:
-            return 0
+        pool = await get_connection_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                DELETE FROM missed_payouts mp
+                USING unnest($1::bigint[], $2::bigint[]) AS x(pa_id, pid)
+                WHERE mp.portfolio_asset_id = x.pa_id AND mp.payout_id = x.pid
+                """,
+                pa_ids,
+                p_ids,
+            )
+        
+        # asyncpg: 'DELETE N' prefix
+        if result and str(result).upper().startswith("DELETE "):
+            try:
+                return int(str(result).split()[-1])
+            except (ValueError, IndexError):
+                return len(keys)
+        return len(keys)
     
     async def check_missed_payouts(
         self,

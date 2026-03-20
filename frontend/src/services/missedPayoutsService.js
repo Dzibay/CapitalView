@@ -17,10 +17,12 @@ export default {
     return res.data;
   },
 
-  async deleteMissedPayoutsBatch(missed_payout_ids) {
-    // FastAPI Body(...) без embed=True ожидает массив напрямую
+  /**
+   * @param {Array<{ portfolio_asset_id: number, payout_id: number }>} keys
+   */
+  async deleteMissedPayoutsBatch(keys) {
     const res = await apiClient.delete(`${API_ENDPOINTS.MISSED_PAYOUTS.BASE}/batch`, {
-      data: missed_payout_ids
+      data: keys
     });
     return res.data;
   },
@@ -40,10 +42,11 @@ export default {
     return res.data;
   },
 
-  async addOperationsFromMissedPayoutsBatch(missed_payout_ids) {
-    // Создает операции выплат из списка неполученных выплат батчем
-    // FastAPI Body(...) без embed=True ожидает массив напрямую
-    const res = await apiClient.post(`${API_ENDPOINTS.MISSED_PAYOUTS.BASE}/add-operations-batch`, missed_payout_ids);
+  /**
+   * @param {Array<{ portfolio_asset_id: number, payout_id: number }>} keys
+   */
+  async addOperationsFromMissedPayoutsBatch(keys) {
+    const res = await apiClient.post(`${API_ENDPOINTS.MISSED_PAYOUTS.BASE}/add-operations-batch`, keys);
     return res.data;
   }
 };

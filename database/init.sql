@@ -227,20 +227,11 @@ CREATE TABLE IF NOT EXISTS user_broker_connections (
 );
 
 CREATE TABLE IF NOT EXISTS missed_payouts (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  user_id uuid NOT NULL,
-  portfolio_id bigint NOT NULL,
   portfolio_asset_id bigint NOT NULL,
-  asset_id bigint NOT NULL,
   payout_id bigint NOT NULL,
-  created_at timestamp(0) without time zone DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT missed_payouts_pkey PRIMARY KEY (id),
-  CONSTRAINT missed_payouts_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  CONSTRAINT missed_payouts_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,
+  CONSTRAINT missed_payouts_pkey PRIMARY KEY (portfolio_asset_id, payout_id),
   CONSTRAINT missed_payouts_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES portfolio_assets(id) ON DELETE CASCADE,
-  CONSTRAINT missed_payouts_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE,
-  CONSTRAINT missed_payouts_payout_id_fkey FOREIGN KEY (payout_id) REFERENCES asset_payouts(id) ON DELETE CASCADE,
-  CONSTRAINT missed_payouts_unique UNIQUE (portfolio_asset_id, payout_id)
+  CONSTRAINT missed_payouts_payout_id_fkey FOREIGN KEY (payout_id) REFERENCES asset_payouts(id) ON DELETE CASCADE
 );
 
 -- Справочные данные (если пусто)
