@@ -1587,7 +1587,10 @@ async function handlePortfolioChange(portfolioId) {
       <!-- Полная история выплат -->
       <div class="widgets-grid">
         <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
-          <AssetPayoutsListWidget :payouts="payouts?.history || []" />
+          <AssetPayoutsListWidget
+            :payouts="payouts?.history || []"
+            :currency="assetCurrency"
+          />
         </WidgetContainer>
       </div>
 
