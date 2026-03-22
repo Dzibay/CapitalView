@@ -62,7 +62,7 @@ onMounted(async () => {
       xPercent: -50,
       yPercent: -50,
       zIndex: 5,
-      width: 'min(960px, calc(100vw - 32px))',
+      width: 'min(1000px, calc(100vw - 32px))',
       maxWidth: 960
     })
   }
@@ -126,7 +126,7 @@ onMounted(async () => {
       bottom: 'auto',
       yPercent: -50,
       zIndex: 5,
-      width: 'min(960px, calc(100vw - 32px))',
+      width: 'min(1000px, calc(100vw - 32px))',
       maxWidth: 960
     })
     return
@@ -143,14 +143,14 @@ onMounted(async () => {
       top: 'auto',
       yPercent: 75,
       zIndex: 5,
-      width: 'min(960px, calc(100vw - 32px))',
+      width: 'min(1000px, calc(100vw - 32px))',
       maxWidth: 960
     },
     {
       top: '50%',
       bottom: 'auto',
       yPercent: -50,
-      width: 'min(960px, calc(100vw - 32px))',
+      width: 'min(1000px, calc(100vw - 32px))',
       maxWidth: 960,
       ease: 'none',
       immediateRender: true,

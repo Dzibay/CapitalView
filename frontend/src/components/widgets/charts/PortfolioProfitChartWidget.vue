@@ -178,7 +178,7 @@ watch(() => props.chartData, () => {
       </p>
 
       <div class="capital-growth">
-        <p>Прирост: {{ formatCurrency(profitAbs) }}</p>
+        <p class="capital-growth-label">Прирост: {{ formatCurrency(profitAbs) }}</p>
         <ValueChangePill 
           :value="profitPercent" 
           :is-positive="profitAbs >= 0"
@@ -208,10 +208,27 @@ watch(() => props.chartData, () => {
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.capital-growth-label {
+  margin: 0;
+  font-size: var(--text-caption-size, 0.8125rem);
+  font-weight: 500;
+  color: var(--text-tertiary, #6b7280);
+  line-height: 1.25;
+}
+
+@media (max-width: 768px) {
+  .capital-growth-label {
+    font-size: var(--widget-font-secondary, 0.9375rem);
+  }
 }
 
 .chart-wrapper {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   position: relative;
   min-height: 0;
   max-height: 300px;

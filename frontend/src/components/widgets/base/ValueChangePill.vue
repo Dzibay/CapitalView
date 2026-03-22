@@ -48,13 +48,22 @@ const isNegative = computed(() => {
 .value-change-pill {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: 1px 6px;
   border-radius: 999px;
-  font-size: var(--widget-font-small, 0.875rem);
+  font-size: var(--widget-font-small, 0.8125rem);
+  font-weight: 500;
+  line-height: 1.15;
   background: rgba(28, 189, 136, 0.12);
 }
 .value-change-pill :deep(.value-change) {
   font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  gap: 0.12rem;
+}
+.value-change-pill :deep(.arrow-icon svg) {
+  width: 12px;
+  height: 12px;
 }
 .value-change-pill :deep(.value-change.positive) {
   color: var(--positiveColor);

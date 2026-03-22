@@ -220,7 +220,7 @@ onMounted(() => {
       </p>
 
       <div class="capital-growth">
-        <p>Прирост: {{ formatCurrency(growthAmount) }}</p>
+        <p class="capital-growth-label">Прирост: {{ formatCurrency(growthAmount) }}</p>
         <ValueChangePill 
           :value="growthPercent" 
           :is-positive="growthAmount >= 0"
@@ -255,9 +255,19 @@ onMounted(() => {
   gap: 1rem;
   flex-wrap: wrap;
 }
-.chart-wrapper { 
-  flex: 1; 
-  position: relative; 
+
+.capital-growth-label {
+  margin: 0;
+  font-size: var(--text-caption-size, 0.8125rem);
+  font-weight: 500;
+  color: var(--text-tertiary, #6b7280);
+  line-height: 1.25;
+}
+.chart-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
   min-height: 200px;
   min-width: 0;
   width: 100%;
@@ -281,7 +291,7 @@ onMounted(() => {
     flex-wrap: wrap;
     gap: 0.5rem;
   }
-  .capital-growth {
+  .capital-growth-label {
     font-size: var(--widget-font-secondary, 0.9375rem);
   }
   .chart-wrapper {

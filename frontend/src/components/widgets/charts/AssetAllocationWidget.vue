@@ -111,8 +111,11 @@ watch(() => props.assetAllocation, () => {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   width: 100%;
   min-width: 0;
+  flex: 1;
+  min-height: 0;
 }
 
 .chart-wrapper {

@@ -61,6 +61,24 @@ const props = defineProps({
 
 const chartCanvas = ref(null)
 let chartInstance = null
+let chartResizeObserver = null
+
+function attachChartResizeObserver() {
+  if (chartResizeObserver) {
+    chartResizeObserver.disconnect()
+    chartResizeObserver = null
+  }
+  const containerEl = chartCanvas.value?.closest('.chart-container')
+  if (containerEl && typeof ResizeObserver !== 'undefined') {
+    chartResizeObserver = new ResizeObserver(() => {
+      chartInstance?.resize()
+    })
+    chartResizeObserver.observe(containerEl)
+  }
+  requestAnimationFrame(() => {
+    chartInstance?.resize()
+  })
+}
 
 const LABEL_FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"
 const LABEL_COLOR = '#94a3b8'
@@ -741,6 +759,7 @@ const renderChart = (aggr) => {
     chartInstance.options.scales.y.max = yMax
     chartInstance.options.plugins.tooltip.callbacks = { ...props.tooltipCallbacks }
     chartInstance.update()
+    requestAnimationFrame(() => chartInstance?.resize())
     return
   }
 
@@ -886,6 +905,8 @@ watch(() => props.tooltipCallbacks, update, { deep: true })
 onMounted(update)
 
 onUnmounted(() => {
+  chartResizeObserver?.disconnect()
+  chartResizeObserver = null
   if (chartInstance) {
     chartInstance.destroy()
     chartInstance = null
@@ -905,11 +926,16 @@ onUnmounted(() => {
 .chart-container {
   width: 100%;
   height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 .chart-wrapper {
   width: 100%;
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   position: relative;
 }
 </style>
