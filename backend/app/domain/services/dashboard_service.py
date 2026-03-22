@@ -608,10 +608,10 @@ async def get_dashboard_data(user_id: int):
     portfolios = build_portfolio_hierarchy(portfolios)
     logger.debug(f'Иерархия: {time() - time1:.2f} сек')
 
+    # Оставляем assets как прямые позиции портфеля (из SQL). Агрегат по поддереву только
+    # в total_value / history / analytics; для дерева и списков иначе дублируются строки детей.
     for p in portfolios:
-        combined = p.pop("combined_assets", None)
-        if combined is not None:
-            p["assets"] = combined
+        p.pop("combined_assets", None)
 
     time1 = time()
     for p in portfolios:
