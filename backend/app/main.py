@@ -55,6 +55,7 @@ from app.api.v1 import (
     operations,
     analytics,
     dashboard,
+    reference,
     tasks,
     test_errors,
     missed_payouts,
@@ -69,6 +70,7 @@ app.include_router(transactions.router, prefix="/api/v1", tags=["transactions"])
 app.include_router(operations.router, prefix="/api/v1", tags=["operations"])
 app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
+app.include_router(reference.router, prefix="/api/v1", tags=["reference"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(test_errors.router, prefix="/api/v1", tags=["test-errors"])
 app.include_router(missed_payouts.router, prefix="/api/v1", tags=["missed-payouts"])
@@ -83,9 +85,12 @@ async def startup_event():
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     logger.info(f"Log level: {Config.LOG_LEVEL}")
     
-    # Подключение Redis
+    # Подключение Redis (async — декораторы кэша; sync — общий справочник для всех воркеров)
     from app.infrastructure.cache import init_redis
+    from app.infrastructure.cache.redis_client_sync import init_redis_sync
+
     await init_redis(Config.REDIS_URL)
+    init_redis_sync(Config.REDIS_URL)
     
     # Опциональное обновление справочников (MOEX, дивиденды, купоны, крипто)
     # Включается через RUN_REFERENCE_UPDATES=1
@@ -109,7 +114,10 @@ async def shutdown_event():
     logger.info("🛑 CapitalView API shutting down...")
     
     from app.infrastructure.cache import close_redis
+    from app.infrastructure.cache.redis_client_sync import close_redis_sync
+
     await close_redis()
+    close_redis_sync()
 
 
 @app.get("/")

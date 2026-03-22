@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
+import { expandPortfolioHistoryForCharts } from '../utils/portfolioHistory'
 
 /**
  * Composable для работы с аналитикой портфеля
@@ -191,60 +192,24 @@ export function usePortfolioAnalytics() {
     if (!uiStore.selectedPortfolioId) {
       return { labels: [], data_value: [], data_invested: [], data_balance: [] }
     }
-    
+
     const portfolio = portfolios.value.find(p => p.id === uiStore.selectedPortfolioId)
-    if (!portfolio?.history) {
-      return { labels: [], data_value: [], data_invested: [], data_balance: [] }
+    const ex = expandPortfolioHistoryForCharts(portfolio?.history)
+    return {
+      labels: ex.labels,
+      data_value: ex.data_value,
+      data_invested: ex.data_invested,
+      data_balance: ex.data_balance
     }
-
-    // Если история уже в нужном формате
-    if (portfolio.history.labels && portfolio.history.data_value) {
-      return {
-        labels: portfolio.history.labels || [],
-        data_value: portfolio.history.data_value || [],
-        data_invested: portfolio.history.data_invested || [],
-        data_balance: portfolio.history.data_balance || []
-      }
-    }
-
-    // Если история в формате массива объектов, преобразуем
-    if (Array.isArray(portfolio.history) && portfolio.history.length > 0) {
-      return {
-        labels: portfolio.history.map(h => h.date || h.month || ''),
-        data_value: portfolio.history.map(h => h.value || h.total_value || 0),
-        data_invested: portfolio.history.map(h => h.invested || h.total_invested || 0),
-        data_balance: portfolio.history.map(h => h.balance || 0)
-      }
-    }
-
-    return { labels: [], data_value: [], data_invested: [], data_balance: [] }
   })
 
   // Данные для PortfolioProfitChartWidget
   const profitChartData = computed(() => {
-    if (!selectedPortfolio.value?.history) {
-      return { labels: [], data_pnl: [] }
+    const ex = expandPortfolioHistoryForCharts(selectedPortfolio.value?.history)
+    return {
+      labels: ex.labels,
+      data_pnl: ex.data_pnl
     }
-
-    const history = selectedPortfolio.value.history
-
-    // Если история уже в нужном формате
-    if (history.labels && history.data_pnl) {
-      return {
-        labels: history.labels || [],
-        data_pnl: history.data_pnl || []
-      }
-    }
-
-    // Если история в формате массива объектов, преобразуем
-    if (Array.isArray(history) && history.length > 0) {
-      return {
-        labels: history.map(h => h.date || ''),
-        data_pnl: history.map(h => Number(h.pnl || h.total_pnl || 0))
-      }
-    }
-
-    return { labels: [], data_pnl: [] }
   })
 
   return {

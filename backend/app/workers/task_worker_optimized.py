@@ -303,11 +303,15 @@ def run_worker():
         async def _runner():
             # Инициализируем Redis в воркере, чтобы invalidate_cache работал.
             from app.infrastructure.cache import init_redis, close_redis
+            from app.infrastructure.cache.redis_client_sync import init_redis_sync, close_redis_sync
+
             await init_redis(Config.REDIS_URL)
+            init_redis_sync(Config.REDIS_URL)
             try:
                 await worker_loop()
             finally:
                 await close_redis()
+                close_redis_sync()
 
         asyncio.run(_runner())
     except KeyboardInterrupt:

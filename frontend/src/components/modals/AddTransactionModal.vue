@@ -13,6 +13,7 @@ import operationsService from '../../services/operationsService'
 import { normalizeDateToString } from '../../utils/date'
 import { getCurrencySymbol } from '../../utils/currencySymbols'
 import { normalizeCashOperationAmount } from '../../utils/operationAmount'
+import { fetchReferenceAssetMeta } from '../../services/referenceService'
 
 const props = defineProps({
   asset: Object,
@@ -25,6 +26,23 @@ const transactionsStore = useTransactionsStore()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 const assetsStore = useAssetsStore()
+
+const resolvedAssetMeta = ref(null)
+watch(
+  () => props.asset?.asset_id,
+  async (id) => {
+    if (!id) {
+      resolvedAssetMeta.value = null
+      return
+    }
+    try {
+      resolvedAssetMeta.value = await fetchReferenceAssetMeta(id)
+    } catch {
+      resolvedAssetMeta.value = null
+    }
+  },
+  { immediate: true }
+)
 
 // Типы операций
 const operationTypes = [
@@ -58,14 +76,12 @@ const minDate = ref(null) // Минимальная дата (первая це�
 const minDateForOperations = ref(null) // Минимальная дата для операций (первая покупка актива)
 const minDateForCurrencyOperations = ref(null) // Минимальная дата для дат выплат, когда создаём актив из валюты выплаты
 const isSystemAsset = computed(() => {
-  // Системный актив - это актив без user_id или с is_custom === false
   if (!props.asset?.asset_id) return false
-  const refData = dashboardStore.referenceData
-  if (refData?.assets) {
-    const asset = refData.assets.find(a => a.id === props.asset.asset_id)
-    return asset && (asset.user_id === null || asset.is_custom === false)
-  }
-  return false
+  if (props.asset.is_custom === true) return false
+  if (props.asset.is_custom === false) return true
+  const m = resolvedAssetMeta.value
+  if (!m || m.id !== props.asset.asset_id) return false
+  return m.user_id == null || m.is_custom === false
 })
 
 // Поля для повторяющихся операций
@@ -337,13 +353,13 @@ const isCashOperation = computed(() => {
 const assetCurrencyTicker = computed(() => {
   if (props.asset?.currency_ticker) return props.asset.currency_ticker
   const refData = dashboardStore.referenceData
-  if (!refData?.assets || !props.asset?.asset_id) return 'RUB'
-  const a = refData.assets.find(x => x.id === props.asset.asset_id)
-  if (!a) return 'RUB'
-  if (a.currency_ticker) return a.currency_ticker
-  if (a.quote_asset_id) {
-    const q = refData.assets.find(x => x.id === a.quote_asset_id)
-    return q?.ticker || 'RUB'
+  const assetId = props.asset?.asset_id
+  if (!assetId) return 'RUB'
+  const m = resolvedAssetMeta.value
+  if (m && m.id === assetId && m.quote_ticker) return m.quote_ticker
+  if (m?.quote_asset_id != null && refData?.currencies) {
+    const c = refData.currencies.find((x) => x.id === m.quote_asset_id)
+    if (c?.ticker) return c.ticker
   }
   return 'RUB'
 })
@@ -501,15 +517,14 @@ function findAssetInPortfolio(portfolioId, assetId) {
 // Если актив не найден - создает новый кастомный актив
 async function findOrCreateCurrencyAsset(currencyTicker, currencyId, skipReload = false) {
   const refData = dashboardStore.referenceData
-  if (!refData?.assets) {
+  if (!refData?.currencies?.length) {
     throw new Error('Не удалось загрузить справочные данные')
   }
   
   // Получаем portfolio_id
   const portfolioId = getPortfolioId()
   
-  // Ищем актив с таким тикером валюты
-  const existingAsset = refData.assets.find(a => a.ticker === currencyTicker && !a.user_id)
+  const existingAsset = refData.currencies.find((c) => c.ticker === currencyTicker)
   
   if (existingAsset) {
     // Проверяем, есть ли актив уже в нужном портфеле
@@ -577,17 +592,13 @@ async function findOrCreateCurrencyAsset(currencyTicker, currencyId, skipReload 
 // Если передан cachedHistory, использует его вместо загрузки из API
 async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
   try {
-    // Сначала пытаемся получить информацию об активе из referenceData
     const refData = dashboardStore.referenceData
-    let assetTicker = null
-    let assetInfo = null
-    
-    if (refData?.assets) {
-      assetInfo = refData.assets.find(a => a.id === assetId)
-      if (assetInfo && assetInfo.ticker) {
-        assetTicker = assetInfo.ticker
-      }
+    let assetInfo =
+      resolvedAssetMeta.value?.id === assetId ? resolvedAssetMeta.value : null
+    if (!assetInfo) {
+      assetInfo = await fetchReferenceAssetMeta(assetId)
     }
+    const assetTicker = assetInfo?.ticker || null
     
     let priceHistory = cachedHistory
     
@@ -651,40 +662,20 @@ async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
       }
     }
     
-    // Если цена не найдена в истории, пытаемся получить из referenceData
-    if (refData) {
-      // Сначала пробуем получить из assets
-      if (refData.assets && assetInfo) {
-        if (assetInfo.last_price) {
-          const price = parseFloat(assetInfo.last_price)
-          if (price && price > 0) {
-            return price
-          }
-        }
+    if (refData && assetInfo?.last_price) {
+      const price = parseFloat(assetInfo.last_price)
+      if (price && price > 0) return price
+    }
+
+    if (assetTicker && refData?.currencies) {
+      const currency = refData.currencies.find((c) => c.ticker === assetTicker)
+      if (currency?.rate_to_rub) {
+        const rate = parseFloat(currency.rate_to_rub)
+        if (rate && rate > 0) return rate
       }
-      
-      // Если это валюта/криптовалюта, пробуем получить курс из currencies
-      if (assetTicker && refData.currencies) {
-        const currency = refData.currencies.find(c => c.ticker === assetTicker)
-        if (currency) {
-          // Для валют/криптовалют используем rate_to_rub как цену в рублях
-          if (currency.rate_to_rub) {
-            const rate = parseFloat(currency.rate_to_rub)
-            if (rate && rate > 0) {
-              return rate
-            }
-          }
-          // Если rate_to_rub нет, пробуем получить из asset_last_currency_prices через assets
-          if (refData.assets) {
-            const currencyAsset = refData.assets.find(a => a.ticker === assetTicker)
-            if (currencyAsset && currencyAsset.last_price) {
-              const price = parseFloat(currencyAsset.last_price)
-              if (price && price > 0) {
-                return price
-              }
-            }
-          }
-        }
+      if (currency?.last_price) {
+        const p = parseFloat(currency.last_price)
+        if (p && p > 0) return p
       }
     }
     
@@ -715,10 +706,9 @@ async function loadCurrencyPriceHistoryForDateRestriction() {
   }
 
   const refData = dashboardStore.referenceData
-  const refAssets = refData?.assets || []
-
-  // Берём системный asset по тикеру валюты (портфелный/кастомный не нужен для ограничений).
-  const currencySystemAsset = refAssets.find(a => a.ticker === selectedCurrency.value.ticker && (!a.user_id || a.user_id === null))
+  const currencySystemAsset = refData?.currencies?.find(
+    (c) => c.ticker === selectedCurrency.value.ticker
+  )
   const currencyAssetId = currencySystemAsset?.id
 
   if (!currencyAssetId) {
@@ -968,18 +958,15 @@ async function createBuyTransaction(assetId, portfolioAssetId, quantity, transac
   // Если цена не найдена, пытаемся получить из referenceData по тикеру
   if (!price || price <= 0) {
     const refData = dashboardStore.referenceData
-    if (refData?.assets) {
-      const asset = refData.assets.find(a => a.id === assetId)
-      if (asset?.ticker && refData.currencies) {
-        const currency = refData.currencies.find(c => c.ticker === asset.ticker)
-        if (currency?.rate_to_rub) {
-          price = parseFloat(currency.rate_to_rub)
-        }
+    const asset = await fetchReferenceAssetMeta(assetId)
+    if (asset?.ticker && refData?.currencies) {
+      const currency = refData.currencies.find((c) => c.ticker === asset.ticker)
+      if (currency?.rate_to_rub) {
+        price = parseFloat(currency.rate_to_rub)
       }
-      // Если не нашли в currencies, пробуем last_price из assets
-      if ((!price || price <= 0) && asset?.last_price) {
-        price = parseFloat(asset.last_price)
-      }
+    }
+    if ((!price || price <= 0) && asset?.last_price) {
+      price = parseFloat(asset.last_price)
     }
   }
   
@@ -1264,17 +1251,15 @@ const handleSubmit = async () => {
           // fallback как в createBuyTransaction
           if (!buyPrice || buyPrice <= 0) {
             const refData = dashboardStore.referenceData
-            if (refData?.assets) {
-              const asset = refData.assets.find(a => a.id === currencyAsset.asset_id)
-              if (asset?.ticker && refData.currencies) {
-                const currency = refData.currencies.find(c => c.ticker === asset.ticker)
-                if (currency?.rate_to_rub) {
-                  buyPrice = parseFloat(currency.rate_to_rub)
-                }
+            const asset = await fetchReferenceAssetMeta(currencyAsset.asset_id)
+            if (asset?.ticker && refData?.currencies) {
+              const currency = refData.currencies.find((c) => c.ticker === asset.ticker)
+              if (currency?.rate_to_rub) {
+                buyPrice = parseFloat(currency.rate_to_rub)
               }
-              if ((!buyPrice || buyPrice <= 0) && asset?.last_price) {
-                buyPrice = parseFloat(asset.last_price)
-              }
+            }
+            if ((!buyPrice || buyPrice <= 0) && asset?.last_price) {
+              buyPrice = parseFloat(asset.last_price)
             }
           }
 
@@ -1325,17 +1310,15 @@ const handleSubmit = async () => {
 
         if (!buyPrice || buyPrice <= 0) {
           const refData = dashboardStore.referenceData
-          if (refData?.assets) {
-            const asset = refData.assets.find(a => a.id === currencyAsset.asset_id)
-            if (asset?.ticker && refData.currencies) {
-              const currency = refData.currencies.find(c => c.ticker === asset.ticker)
-              if (currency?.rate_to_rub) {
-                buyPrice = parseFloat(currency.rate_to_rub)
-              }
+          const asset = await fetchReferenceAssetMeta(currencyAsset.asset_id)
+          if (asset?.ticker && refData?.currencies) {
+            const currency = refData.currencies.find((c) => c.ticker === asset.ticker)
+            if (currency?.rate_to_rub) {
+              buyPrice = parseFloat(currency.rate_to_rub)
             }
-            if ((!buyPrice || buyPrice <= 0) && asset?.last_price) {
-              buyPrice = parseFloat(asset.last_price)
-            }
+          }
+          if ((!buyPrice || buyPrice <= 0) && asset?.last_price) {
+            buyPrice = parseFloat(asset.last_price)
           }
         }
 

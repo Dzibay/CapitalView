@@ -282,6 +282,15 @@ def refresh_portfolio_assets_and_daily_values(portfolio_id: int) -> Dict:
     return result
 
 
+async def get_portfolio_payout_positions(user_id, root_portfolio_id: int):
+    return await asyncio.to_thread(
+        lambda: rpc(
+            "get_portfolio_payout_positions",
+            {"p_user_id": str(user_id), "p_root_portfolio_id": root_portfolio_id},
+        )
+    )
+
+
 # --- пул потоков для фоновых операций ---
 executor = ThreadPoolExecutor(max_workers=10)
 

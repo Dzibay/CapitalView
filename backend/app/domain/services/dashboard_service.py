@@ -2,7 +2,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from time import time
 import copy
-from app.domain.services.reference_service import get_reference_data_cached
 from app.domain.services.portfolio_aggregation import (
     create_empty_analytics_maps,
     merge_analytics_arrays_into_maps,
@@ -450,7 +449,6 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
                 )
     
     portfolio["history"] = aggregated_history
-    portfolio["asset_allocation"] = calculate_asset_allocation(combined_assets)
 
     analytics_lists = convert_analytics_maps_to_lists(maps)
 
@@ -529,38 +527,6 @@ def build_portfolio_hierarchy(portfolios):
     return list(portfolio_map.values())
 
 
-def calculate_asset_allocation(assets):
-    """
-    Считает распределение активов для ОДНОГО портфеля 
-    (на основе переданного списка всех его активов, вкл. дочерние).
-    """
-    if not assets:
-        return {"labels": [], "datasets": [{"backgroundColor": [], "data": []}]}
-    
-    allocation = {}
-    for asset in assets or []:  # ← безопасно
-        atype = asset.get("type")
-        if not atype:
-            continue
-        quantity = float(asset.get("quantity") or 0.0)
-        price = float(asset.get("last_price") or 0.0)
-        currency_multiplier = float(asset.get("currency_rate_to_rub") or 1.0)
-        allocation[atype] = allocation.get(atype, 0) + (
-            quantity * price * currency_multiplier / float(asset.get("leverage") or 1.0)
-        )
-
-    return {
-        "labels": list(allocation.keys()),
-        "datasets": [{
-            "backgroundColor": [
-                '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6',
-                '#10b981', '#f472b6', '#60a5fa', '#fbbf24', '#a78bfa'
-            ],
-            "data": list(allocation.values())
-        }]
-    }
-
-
 def calculate_monthly_change(history):
     """
     Вычисляет прибыль за месяц как разницу между текущей прибылью и прибылью месяц назад.
@@ -608,64 +574,59 @@ def _normalize_analytics(analytics):
     return analytics
 
 
+def _history_row_date(h: dict) -> str:
+    raw = h.get("date") or ""
+    return str(raw).split("T")[0]
+
+
 @cache("dashboard:{user_id}", ttl=300)
 async def get_dashboard_data(user_id: int):
     """
-    Оптимизированная функция получения данных дашборда.
-    Использует единый SQL запрос для всех данных + правильную агрегацию аналитики.
-    Результат кэшируется в Redis на 5 минут.
+    Данные дашборда: портфели (агрегированные позиции в assets), компактная история, последние сделки.
+    Справочники — отдельный GET /reference. История: history.series — [[date, value, invested, payouts, pnl, balance], ...].
     """
     time1 = time()
-    
-    # Один SQL запрос получает все данные: портфели, активы, историю, аналитику, транзакции, connections
+
     data = rpc("get_dashboard_data_complete", {"p_user_id": user_id})
     logger.debug(f'SQL RPC (complete): {time() - time1:.2f} сек')
-    
+
     if not data:
         return {
             "portfolios": [],
-            "transactions": [],
-            "referenceData": get_reference_data_cached()
+            "recent_transactions": [],
+            "missed_payouts_count": 0,
         }
-    
+
     portfolios = data.get("portfolios", []) or []
-    transactions = data.get("transactions", []) or []
-    
-    # Нормализуем аналитику: заменяем null на пустые массивы
+    recent_transactions = data.get("transactions", []) or []
+
     for portfolio in portfolios:
         if portfolio.get("analytics"):
             portfolio["analytics"] = _normalize_analytics(portfolio["analytics"])
-    
-    # Объединяем дочерние портфели и пересчитываем суммы (активы, история, аналитика)
-    # Аналитика уже приходит из get_dashboard_data_complete и агрегируется в build_portfolio_hierarchy
+
     time1 = time()
     portfolios = build_portfolio_hierarchy(portfolios)
     logger.debug(f'Иерархия: {time() - time1:.2f} сек')
-    
-    # total_profit уже рассчитан в SQL функции get_user_portfolios_analytics из total_pnl
-    # НЕ пересчитываем его здесь, используем значение из SQL функции
-    # Если total_profit отсутствует, это означает, что таблица portfolio_daily_values не обновлена
-    # В этом случае оставляем None или 0, но не пересчитываем неправильно
-    
-    # Обрабатываем историю и считаем динамику
+
+    for p in portfolios:
+        combined = p.pop("combined_assets", None)
+        if combined is not None:
+            p["assets"] = combined
+
     time1 = time()
     for p in portfolios:
-        hist = p.get('history')
+        hist = p.get("history")
         if not isinstance(hist, list):
             hist = []
 
         sorted_hist = sorted(
-            [h for h in hist if isinstance(h, dict) and 'date' in h and 'value' in h],
-            key=lambda x: x['date']
+            [h for h in hist if isinstance(h, dict) and "date" in h and "value" in h],
+            key=lambda x: x["date"],
         )
 
-        # Для графиков капитала/прибыли (всё кроме истории цены актива) нужно,
-        # чтобы "Все время" начиналось с нулевой отметки в общей истории.
-        # Добавляем синтетическую точку перед первой реальной датой.
         zero_point = None
         if sorted_hist:
-            first_date_raw = sorted_hist[0].get('date') or ''
-            first_date_str = str(first_date_raw).split('T')[0]
+            first_date_str = _history_row_date(sorted_hist[0])
             try:
                 first_date = datetime.strptime(first_date_str, "%Y-%m-%d").date()
                 zero_point = {
@@ -677,47 +638,40 @@ async def get_dashboard_data(user_id: int):
                     "balance": 0.0,
                 }
             except Exception:
-                # Если дату распарсить не удалось, не вставляем синтетическую точку.
                 zero_point = None
 
-        # Формируем данные для графика
-        # Баланс передается отдельно, агрегация value + balance происходит на фронтенде
-        labels = [h['date'] for h in sorted_hist]
-        data_value = [h['value'] for h in sorted_hist]
-        data_invested = [h['invested'] for h in sorted_hist]
-        data_payouts = [h['payouts'] for h in sorted_hist]
-        data_pnl = [h['pnl'] for h in sorted_hist]
-        data_balance = [h.get('balance', 0) for h in sorted_hist]
-
+        series = []
         if zero_point:
-            labels.insert(0, zero_point['date'])
-            data_value.insert(0, zero_point['value'])
-            data_invested.insert(0, zero_point['invested'])
-            data_payouts.insert(0, zero_point['payouts'])
-            data_pnl.insert(0, zero_point['pnl'])
-            data_balance.insert(0, zero_point['balance'])
+            series.append(
+                [
+                    zero_point["date"],
+                    zero_point["value"],
+                    zero_point["invested"],
+                    zero_point["payouts"],
+                    zero_point["pnl"],
+                    zero_point["balance"],
+                ]
+            )
+        for h in sorted_hist:
+            series.append(
+                [
+                    _history_row_date(h),
+                    float(h.get("value") or 0),
+                    float(h.get("invested") or 0),
+                    float(h.get("payouts") or 0),
+                    float(h.get("pnl") or 0),
+                    float(h.get("balance") or 0),
+                ]
+            )
 
-        p['history'] = {
-            'labels': labels,
-            'data_value': data_value,
-            'data_invested': data_invested,
-            'data_payouts': data_payouts,
-            'data_pnl': data_pnl,
-            # Баланс передается отдельно для агрегации на фронтенде
-            'data_balance': data_balance,
-        }
-
-        # monthly_change считаем только по реальным точкам (без синтетического "0")
-        p['monthly_change'] = calculate_monthly_change(sorted_hist)
-        p['asset_allocation'] = calculate_asset_allocation(p.get('combined_assets') or p.get('assets', []))
+        p["history"] = {"series": series}
+        p["monthly_change"] = calculate_monthly_change(sorted_hist)
     logger.debug(f'Форматирование: {time() - time1:.2f} сек')
 
-    # Сортировка по стоимости
-    portfolios = sorted(portfolios, key=lambda x: x.get('total_value', 0), reverse=True)
+    portfolios = sorted(portfolios, key=lambda x: x.get("total_value", 0), reverse=True)
 
     return {
         "portfolios": portfolios,
-        "transactions": transactions,
-        "referenceData": get_reference_data_cached(),  # Из кеша (загружено при старте)
-        "missed_payouts_count": data.get("missed_payouts_count", 0) if data else 0
+        "recent_transactions": recent_transactions,
+        "missed_payouts_count": data.get("missed_payouts_count", 0) if data else 0,
     }

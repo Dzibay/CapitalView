@@ -1,8 +1,12 @@
 import { defineStore } from 'pinia'
 import { fetchDashboardData } from '../services/dashboardService'
+import { fetchReferenceData } from '../services/referenceService'
 import operationsService from '../services/operationsService'
 import transactionsService from '../services/transactionsService'
 import { useUIStore } from './ui.store'
+
+/** Один общий Promise на параллельные fetchDashboard (Strict Mode / двойной mount). */
+let dashboardFetchInFlight = null
 
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
@@ -28,10 +32,9 @@ export const useDashboardStore = defineStore('dashboard', {
     
     hasData: (state) => state.portfolios.length > 0,
     
-    // Для обратной совместимости с текущим форматом dashboardData.value.data
     data: (state) => ({
       portfolios: state.portfolios,
-      transactions: state.transactions,
+      recent_transactions: state.recentTransactions,
       referenceData: state.referenceData,
       analytics: state.analytics
     })
@@ -40,61 +43,68 @@ export const useDashboardStore = defineStore('dashboard', {
   actions: {
     async fetchDashboard(force = false, showLoading = true) {
       const uiStore = useUIStore()
-      
-      // Кеширование: не загружаем, если данные свежие
-      if (!force && this.lastFetch && 
+
+      if (!force && this.lastFetch &&
           Date.now() - this.lastFetch < this.cacheTimeout) {
         return
       }
 
-      if (showLoading) {
-        uiStore.setLoading(true)
+      if (dashboardFetchInFlight) {
+        return dashboardFetchInFlight
       }
-      try {
-        const data = await fetchDashboardData()
-        
-        // Отладочный вывод только в dev при явном включении
-        if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_DASHBOARD_DATA) {
-          console.log('📊 Dashboard Data:', JSON.parse(JSON.stringify(data)))
-        }
-        
-        if (data?.data) {
-          this.portfolios = data.data.portfolios || []
-          // Последние транзакции из dashboard — только для виджета, не для страницы Транзакций
-          this.recentTransactions = data.data.transactions || []
-          // Если полные списки ещё не загружены, используем хотя бы то, что есть
-          if (!this.fullListsLoaded) {
-            this.transactions = this.recentTransactions
-          }
-          this.referenceData = data.data.referenceData || {}
-          this.missedPayoutsCount = data.data.missed_payouts_count || 0
-          
-          // Аналитика теперь приходит в полном формате из get_user_portfolios_analytics
-          // Она уже в правильном формате с totals, monthly_flow, monthly_payouts, asset_distribution, etc.
-          // Извлекаем аналитику из портфелей
-          this.analytics = (data.data.portfolios || [])
-            .filter(p => p.analytics && Object.keys(p.analytics).length > 0)
-            .map(p => ({
-              portfolio_id: p.id,
-              portfolio_name: p.name,
-              ...p.analytics  // Распаковываем всю аналитику (totals, monthly_flow, monthly_payouts, etc.)
-            }))
-          this.analyticsLoaded = true
-        }
-        
-        this.lastFetch = Date.now()
-        // Полные списки транзакций/операций загружаются лениво при переходе на страницу Transactions
-        // Это экономит 2 тяжёлых запроса при каждом открытии дашборда
-      } catch (err) {
-        if (import.meta.env.VITE_APP_DEV && (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error'))) {
-            console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
-        }
-        throw err
-      } finally {
+
+      dashboardFetchInFlight = (async () => {
         if (showLoading) {
-          uiStore.setLoading(false)
+          uiStore.setLoading(true)
         }
-      }
+        try {
+          const [dashBody, refBody] = await Promise.all([
+            fetchDashboardData(),
+            fetchReferenceData({ bypassCache: force }).catch(() => null)
+          ])
+
+          if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_DASHBOARD_DATA) {
+            console.log('📊 Dashboard:', JSON.parse(JSON.stringify(dashBody)))
+          }
+
+          if (dashBody?.dashboard) {
+            const d = dashBody.dashboard
+            this.portfolios = d.portfolios || []
+            this.recentTransactions = d.recent_transactions || []
+            if (!this.fullListsLoaded) {
+              this.transactions = this.recentTransactions
+            }
+            this.missedPayoutsCount = d.missed_payouts_count || 0
+
+            this.analytics = (d.portfolios || [])
+              .filter(p => p.analytics && Object.keys(p.analytics).length > 0)
+              .map(p => ({
+                portfolio_id: p.id,
+                portfolio_name: p.name,
+                ...p.analytics
+              }))
+            this.analyticsLoaded = true
+          }
+
+          if (refBody?.reference) {
+            this.referenceData = refBody.reference
+          }
+
+          this.lastFetch = Date.now()
+        } catch (err) {
+          if (import.meta.env.VITE_APP_DEV && (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error'))) {
+            console.error('Не удалось подключиться к серверу. Убедитесь, что backend запущен на http://localhost:5000')
+          }
+          throw err
+        } finally {
+          if (showLoading) {
+            uiStore.setLoading(false)
+          }
+          dashboardFetchInFlight = null
+        }
+      })()
+
+      return dashboardFetchInFlight
     },
 
     async reloadDashboard(showLoading = true) {

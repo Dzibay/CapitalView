@@ -59,26 +59,35 @@
               <input
                 type="text"
                 v-model="searchQuery"
-                placeholder="Поиск по названию или тикеру..."
-                @input="form.asset_id = null"
+                placeholder="Поиск по названию или тикеру (от 2 символов)..."
+                @input="onAssetSearchInput"
                 required
                 class="form-input search-input"
               />
-              <ul v-if="searchQuery && !form.asset_id" class="dropdown">
-                <li
-                  v-for="a in filteredAssets"
-                  :key="a.id"
-                  @click="selectAsset(a)"
-                >
-                  <div class="asset-info-row">
-                    <span class="asset-name">{{ a.name }}</span>
-                    <span class="asset-ticker">{{ a.ticker || '—' }}</span>
-                  </div>
+              <ul
+                v-if="searchQuery.trim().length >= 2 && !form.asset_id"
+                class="dropdown"
+              >
+                <li v-if="searchLoading" class="create-new">
+                  <Loader2 :size="20" class="empty-icon spinner-icon" />
+                  <span>Поиск…</span>
                 </li>
-                <li class="create-new" v-if="filteredAssets.length === 0">
-                  <Search :size="20" class="empty-icon" />
-                  <span>Актив не найден. Выберите "Кастомный" для создания нового.</span>
-                </li>
+                <template v-else>
+                  <li
+                    v-for="a in searchResults"
+                    :key="a.id"
+                    @click="selectAsset(a)"
+                  >
+                    <div class="asset-info-row">
+                      <span class="asset-name">{{ a.name }}</span>
+                      <span class="asset-ticker">{{ a.ticker || '—' }}</span>
+                    </div>
+                  </li>
+                  <li v-if="searchResults.length === 0" class="create-new">
+                    <Search :size="20" class="empty-icon" />
+                    <span>Актив не найден. Выберите «Кастомный» для создания нового.</span>
+                  </li>
+                </template>
               </ul>
             </div>
             <div v-if="form.asset_id" class="selected-asset">
@@ -227,6 +236,10 @@ import { Button, ToggleSwitch, DateInput } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
 import FormInput from '../base/FormInput.vue'
 import assetsService from '../../services/assetsService'
+import {
+  searchReferenceAssets,
+  fetchReferenceAssetMeta,
+} from '../../services/referenceService'
 import { useDashboardStore } from '../../stores/dashboard.store'
 import { useTransactionsStore } from '../../stores/transactions.store'
 import { getCurrencySymbol } from '../../utils/currencySymbols'
@@ -258,6 +271,11 @@ const form = reactive({ ...initialFormState })
 const saving = ref(false)           // индикатор сохранения
 const searchQuery = ref("")
 const assetTypeChoice = ref("system") // 'system' или 'custom' - по умолчанию системный
+const searchResults = ref([])
+const searchLoading = ref(false)
+const selectedAssetMeta = ref(null)
+let searchDebounceTimer = null
+let searchRequestSeq = 0
 
 // Использование рыночной цены для системных активов
 const useMarketPrice = ref(true) // Переключатель для автоматической загрузки рыночной цены (включен по умолчанию)
@@ -272,15 +290,15 @@ const createDepositOperation = ref(true)
 
 // Валюта выбранного актива для сообщения об операции пополнения
 const depositCurrencyTicker = computed(() => {
-  if (!form.asset_id || !props.referenceData?.assets) return 'RUB'
-  const a = props.referenceData.assets.find(x => x.id === form.asset_id)
-  if (!a) return 'RUB'
-  if (a.currency_ticker) return a.currency_ticker
-  if (a.quote_asset_id && props.referenceData.assets) {
-    const q = props.referenceData.assets.find(x => x.id === a.quote_asset_id)
-    return q?.ticker || 'RUB'
+  if (!form.asset_id) return 'RUB'
+  const meta = selectedAssetMeta.value
+  if (!meta || meta.id !== form.asset_id) return 'RUB'
+  if (meta.quote_ticker) return meta.quote_ticker
+  if (meta.quote_asset_id != null && props.referenceData?.currencies) {
+    const c = props.referenceData.currencies.find((x) => x.id === meta.quote_asset_id)
+    return c?.ticker || 'RUB'
   }
-  return (typeof a.currency === 'string' ? a.currency : null) || 'RUB'
+  return 'RUB'
 })
 const depositCurrencySymbol = computed(() => getCurrencySymbol(depositCurrencyTicker.value))
 
@@ -290,13 +308,22 @@ const fiatCurrencies = computed(() => {
   return props.referenceData.currencies.filter(c => c.asset_type_id === 7)
 })
 
+function onAssetSearchInput() {
+  form.asset_id = null
+  selectedAssetMeta.value = null
+}
+
 const resetAssetFields = () => {
+    clearTimeout(searchDebounceTimer)
     form.asset_id = null
     form.name = ''
     form.ticker = ''
     form.asset_type_id = null
     form.currency = null
     searchQuery.value = ''
+    searchResults.value = []
+    searchLoading.value = false
+    selectedAssetMeta.value = null
 }
 
 const setAssetTypeChoice = (choice) => {
@@ -354,23 +381,38 @@ const submitForm = async () => {
   }
 }
 
-const filteredAssets = computed(() => {
-  if (!searchQuery.value) return props.referenceData.assets
-  const q = searchQuery.value.toLowerCase()
-
-  return props.referenceData.assets.filter(a =>
-    a.name.toLowerCase().includes(q) ||
-    (a.ticker || "").toLowerCase().includes(q)
-  )
+watch(searchQuery, () => {
+  if (form.asset_id) return
+  clearTimeout(searchDebounceTimer)
+  const q = searchQuery.value.trim()
+  if (q.length < 2) {
+    searchResults.value = []
+    searchLoading.value = false
+    return
+  }
+  searchLoading.value = true
+  searchDebounceTimer = setTimeout(async () => {
+    const seq = ++searchRequestSeq
+    try {
+      const items = await searchReferenceAssets(q, 25)
+      if (seq === searchRequestSeq) searchResults.value = items
+    } catch (e) {
+      console.error(e)
+      if (seq === searchRequestSeq) searchResults.value = []
+    } finally {
+      if (seq === searchRequestSeq) searchLoading.value = false
+    }
+  }, 280)
 })
 
 const selectAsset = async (asset) => {
+  selectedAssetMeta.value = asset
   form.asset_id = asset.id
   // Устанавливаем name, ticker и currency для системного актива, 
   // чтобы передать их на backend (если это требуется) и для отображения в поле поиска
   form.name = asset.name
   form.ticker = asset.ticker
-  form.currency = asset.currency
+  form.currency = asset.quote_asset_id ?? null
   // Отображаем выбранное значение в поле поиска
   searchQuery.value = `${asset.name} (${asset.ticker || '—'})`
   
@@ -394,17 +436,13 @@ const selectAsset = async (asset) => {
 // Если передан cachedHistory, использует его вместо загрузки из API
 async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
   try {
-    // Сначала пытаемся получить информацию об активе из referenceData
     const refData = dashboardStore.referenceData
-    let assetTicker = null
-    let assetInfo = null
-    
-    if (refData?.assets) {
-      assetInfo = refData.assets.find(a => a.id === assetId)
-      if (assetInfo && assetInfo.ticker) {
-        assetTicker = assetInfo.ticker
-      }
+    let assetInfo =
+      selectedAssetMeta.value?.id === assetId ? selectedAssetMeta.value : null
+    if (!assetInfo) {
+      assetInfo = await fetchReferenceAssetMeta(assetId)
     }
+    const assetTicker = assetInfo?.ticker || null
     
     let priceHistory = cachedHistory
     
@@ -461,40 +499,20 @@ async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
       }
     }
     
-    // Если цена не найдена в истории, пытаемся получить из referenceData
-    if (refData) {
-      // Сначала пробуем получить из assets
-      if (refData.assets && assetInfo) {
-        if (assetInfo.last_price) {
-          const price = parseFloat(assetInfo.last_price)
-          if (price && price > 0) {
-            return price
-          }
-        }
+    if (refData && assetInfo?.last_price) {
+      const price = parseFloat(assetInfo.last_price)
+      if (price && price > 0) return price
+    }
+
+    if (assetTicker && refData?.currencies) {
+      const currency = refData.currencies.find((c) => c.ticker === assetTicker)
+      if (currency?.rate_to_rub) {
+        const rate = parseFloat(currency.rate_to_rub)
+        if (rate && rate > 0) return rate
       }
-      
-      // Если это валюта/криптовалюта, пробуем получить курс из currencies
-      if (assetTicker && refData.currencies) {
-        const currency = refData.currencies.find(c => c.ticker === assetTicker)
-        if (currency) {
-          // Для валют/криптовалют используем rate_to_rub как цену в рублях
-          if (currency.rate_to_rub) {
-            const rate = parseFloat(currency.rate_to_rub)
-            if (rate && rate > 0) {
-              return rate
-            }
-          }
-          // Если rate_to_rub нет, пробуем получить из asset_last_currency_prices через assets
-          if (refData.assets) {
-            const currencyAsset = refData.assets.find(a => a.ticker === assetTicker)
-            if (currencyAsset && currencyAsset.last_price) {
-              const price = parseFloat(currencyAsset.last_price)
-              if (price && price > 0) {
-                return price
-              }
-            }
-          }
-        }
+      if (currency?.last_price) {
+        const p = parseFloat(currency.last_price)
+        if (p && p > 0) return p
       }
     }
     

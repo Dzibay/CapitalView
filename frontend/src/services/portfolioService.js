@@ -38,6 +38,16 @@ export default {
     return res.data;
   },
 
+  async getBrokerCredentials(portfolio_id) {
+    const res = await apiClient.get(API_ENDPOINTS.PORTFOLIO.BROKER_CREDENTIALS(portfolio_id));
+    return { broker_id: res.data.broker_id, api_key: res.data.api_key };
+  },
+
+  async getPayoutPositions(portfolio_id) {
+    const res = await apiClient.get(API_ENDPOINTS.PORTFOLIO.PAYOUT_POSITIONS(portfolio_id));
+    return res.data.positions || [];
+  },
+
   async updatePortfolioGoal(portfolioId, { title, targetAmount, monthlyContribution, annualReturn, useInflation, inflationRate }) {
     const payload = {
       text: title || '',

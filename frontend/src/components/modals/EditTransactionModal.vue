@@ -8,6 +8,7 @@ import { useDashboardStore } from '../../stores/dashboard.store'
 import { normalizeDateToString } from '../../utils/date'
 import { getCurrencySymbol } from '../../utils/currencySymbols'
 import ModalBase from './ModalBase.vue'
+import { fetchReferenceAssetMeta } from '../../services/referenceService'
 
 const props = defineProps({
   transaction: Object,
@@ -17,6 +18,8 @@ const props = defineProps({
 const emit = defineEmits(['close', 'save'])
 
 const dashboardStore = useDashboardStore()
+
+const resolvedAssetMeta = ref(null)
 
 const editedTx = ref({ ...props.transaction })
 const saving = ref(false)
@@ -31,12 +34,9 @@ const lastMarketPrice = ref(null) // Последняя загруженная �
 const isSystemAsset = computed(() => {
   const assetId = props.transaction?.asset_id
   if (!assetId) return false
-  const refData = dashboardStore.referenceData
-  if (refData?.assets) {
-    const asset = refData.assets.find(a => a.id === assetId)
-    return asset && (asset.user_id === null || asset.is_custom === false)
-  }
-  return false
+  const m = resolvedAssetMeta.value
+  if (!m || m.id !== assetId) return false
+  return m.user_id == null || m.is_custom === false
 })
 
 // Валюта актива для отображения в поле Цена
@@ -44,13 +44,12 @@ const assetCurrencyTicker = computed(() => {
   if (props.transaction?.currency_ticker) return props.transaction.currency_ticker
   const refData = dashboardStore.referenceData
   const assetId = props.transaction?.asset_id
-  if (!refData?.assets || !assetId) return 'RUB'
-  const a = refData.assets.find(x => x.id === assetId)
-  if (!a) return 'RUB'
-  if (a.currency_ticker) return a.currency_ticker
-  if (a.quote_asset_id) {
-    const q = refData.assets.find(x => x.id === a.quote_asset_id)
-    return q?.ticker || 'RUB'
+  if (!assetId) return 'RUB'
+  const m = resolvedAssetMeta.value
+  if (m && m.id === assetId && m.quote_ticker) return m.quote_ticker
+  if (m?.quote_asset_id != null && refData?.currencies) {
+    const c = refData.currencies.find((x) => x.id === m.quote_asset_id)
+    if (c?.ticker) return c.ticker
   }
   return 'RUB'
 })
@@ -136,8 +135,13 @@ const updateRelatedDeposit = ref(true)
 
 watch(
   () => props.transaction,
-  async (newTx) => {
+  async (newTx, oldTx) => {
     if (!newTx) return
+
+    if (oldTx && newTx?.asset_id !== oldTx?.asset_id) {
+      priceHistoryCache.value = null
+      minDate.value = null
+    }
     
     // Сохраняем оригинальную дату транзакции перед обновлением
     const originalDate = newTx?.transaction_date
@@ -156,14 +160,22 @@ watch(
         editedTx.value.transaction_date = normalizedDate
       }
     }
-    
-    // Загружаем историю цен при изменении транзакции
-    if (isSystemAsset.value && newTx?.asset_id) {
+
+    resolvedAssetMeta.value = newTx.asset_id
+      ? await fetchReferenceAssetMeta(newTx.asset_id)
+      : null
+
+    const system =
+      resolvedAssetMeta.value &&
+      (resolvedAssetMeta.value.user_id == null || resolvedAssetMeta.value.is_custom === false)
+
+    if (system && newTx?.asset_id) {
       await loadPriceHistoryForDateRestriction(savedDate || originalDate)
-      // Загружаем рыночную цену на дату транзакции
       if (useMarketPrice.value && editedTx.value.transaction_date) {
         await loadMarketPrice(true)
       }
+    } else {
+      minDate.value = null
     }
   },
   { immediate: true }
@@ -249,15 +261,12 @@ async function loadPriceHistoryForDateRestriction(originalDate = null) {
 async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
   try {
     const refData = dashboardStore.referenceData
-    let assetTicker = null
-    let assetInfo = null
-    
-    if (refData?.assets) {
-      assetInfo = refData.assets.find(a => a.id === assetId)
-      if (assetInfo && assetInfo.ticker) {
-        assetTicker = assetInfo.ticker
-      }
+    let assetInfo =
+      resolvedAssetMeta.value?.id === assetId ? resolvedAssetMeta.value : null
+    if (!assetInfo) {
+      assetInfo = await fetchReferenceAssetMeta(assetId)
     }
+    const assetTicker = assetInfo?.ticker || null
     
     let priceHistory = cachedHistory || priceHistoryCache.value
     
@@ -284,22 +293,20 @@ async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
       }
     }
     
-    if (refData) {
-      if (refData.assets && assetInfo && assetInfo.last_price) {
-        const price = parseFloat(assetInfo.last_price)
-        if (price && price > 0) {
-          return price
-        }
+    if (refData && assetInfo?.last_price) {
+      const price = parseFloat(assetInfo.last_price)
+      if (price && price > 0) return price
+    }
+
+    if (assetTicker && refData?.currencies) {
+      const currency = refData.currencies.find((c) => c.ticker === assetTicker)
+      if (currency?.rate_to_rub) {
+        const rate = parseFloat(currency.rate_to_rub)
+        if (rate && rate > 0) return rate
       }
-      
-      if (assetTicker && refData.currencies) {
-        const currency = refData.currencies.find(c => c.ticker === assetTicker)
-        if (currency?.rate_to_rub) {
-          const rate = parseFloat(currency.rate_to_rub)
-          if (rate && rate > 0) {
-            return rate
-          }
-        }
+      if (currency?.last_price) {
+        const p = parseFloat(currency.last_price)
+        if (p && p > 0) return p
       }
     }
     

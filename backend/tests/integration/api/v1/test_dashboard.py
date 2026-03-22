@@ -17,18 +17,17 @@ class TestDashboard:
         
         dashboard_data = {
             "portfolios": [],
-            "transactions": [],
-            "operations": [],
-            "total_value": 0,
-            "total_invested": 0
+            "recent_transactions": [],
+            "missed_payouts_count": 0,
         }
-        
+
         with patch('app.api.v1.dashboard.get_dashboard_data', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = dashboard_data
-            
+
             response = authenticated_client.get("/api/v1/dashboard/")
             data = get_response_data(response)
-            assert "data" in data
+            assert "dashboard" in data
+            assert data["dashboard"]["portfolios"] == []
     
     def test_get_dashboard_unauthorized(self, client):
         """Тест получения дашборда без авторизации."""

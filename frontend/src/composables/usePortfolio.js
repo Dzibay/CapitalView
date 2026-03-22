@@ -3,9 +3,11 @@
  * Централизует логику работы с портфелями и их иерархией
  */
 import { computed, ref } from 'vue';
+import { expandPortfolioHistoryForCharts } from '../utils/portfolioHistory';
+import { assetAllocationFromPositions } from '../utils/assetAllocationFromPositions';
 
 export function usePortfolio(dashboardData, selectedPortfolioId) {
-  const portfolios = computed(() => dashboardData.value?.data?.portfolios ?? []);
+  const portfolios = computed(() => dashboardData.value?.portfolios ?? []);
 
   const selectedPortfolio = computed(() => {
     if (!selectedPortfolioId.value) return null;
@@ -120,8 +122,8 @@ export function usePortfolio(dashboardData, selectedPortfolioId) {
 
     // Используем Set для быстрого поиска O(1) вместо O(n) includes
     const portfolioIdSet = new Set(portfolioIds);
-    const data = dashboardData.value?.data;
-    const transactions = (data?.transactions ?? []).filter(
+    const data = dashboardData.value;
+    const transactions = (data?.recent_transactions ?? []).filter(
       t => portfolioIdSet.has(t.portfolio_id)
     );
 
@@ -135,11 +137,8 @@ export function usePortfolio(dashboardData, selectedPortfolioId) {
       totalAmount: Number(selectedPortfolio.value.total_value || 0), // total_value уже включает баланс на бэкенде
       investedAmount: Number(selectedPortfolio.value.total_invested || 0) + balance, // investedAmount + баланс
       monthlyChange: selectedPortfolio.value.monthly_change || 0,
-      assetAllocation: selectedPortfolio.value.asset_allocation ?? {
-        labels: [],
-        datasets: [{ backgroundColor: [], data: [] }]
-      },
-      portfolioChart: selectedPortfolio.value.history ?? { labels: [], data: [] },
+      assetAllocation: assetAllocationFromPositions(assets),
+      portfolioChart: expandPortfolioHistoryForCharts(selectedPortfolio.value.history),
     };
   });
 

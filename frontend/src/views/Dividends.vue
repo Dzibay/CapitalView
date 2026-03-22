@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { getCurrencySymbol } from '../utils/currencySymbols'
 import { useUIStore } from '../stores/ui.store'
+import portfolioService from '../services/portfolioService'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import PageLayout from '../layouts/PageLayout.vue'
@@ -15,35 +16,43 @@ const uiStore = useUIStore()
 // === STATE ===
 const currentDate = ref(new Date()) // Текущий месяц
 const selectedDay = ref(null)       // Выбранный день
+/** Позиции с выплатами для выбранного портфеля (поддерево), не из дашборда */
+const payoutPositions = ref([])
 
 const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
 const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+
+watch(
+  () => uiStore.selectedPortfolioId,
+  async (id) => {
+    payoutPositions.value = []
+    if (!id) return
+    try {
+      payoutPositions.value = await portfolioService.getPayoutPositions(id)
+    } catch (e) {
+      if (import.meta.env.VITE_APP_DEV) console.error(e)
+      payoutPositions.value = []
+    }
+  },
+  { immediate: true }
+)
 
 // === COMPUTED: ДАННЫЕ ===
 
 // 1. Список портфелей для селектора
 const portfolios = computed(() => dashboardStore.portfolios ?? [])
 
-// 2. Сбор дивидендов (ОБНОВЛЕННАЯ СТРУКТУРА)
+// 2. Сбор дивидендов из отдельного API выплат
 const allDividends = computed(() => {
-  const dataPortfolios = dashboardStore.portfolios
-  if (!dataPortfolios || !uiStore.selectedPortfolioId) return []
-
-  // 1. Находим текущий выбранный портфель
-  const targetPortfolio = dataPortfolios.find(p => p.id === uiStore.selectedPortfolioId)
-
-  // Если портфель не найден или у него нет combined_assets — возвращаем пустоту
-  if (!targetPortfolio || !targetPortfolio.combined_assets) return []
+  if (!payoutPositions.value?.length) return []
 
   const list = []
-  
-  // 2. Проходимся по активам (исключаем проданные — quantity === 0)
-  targetPortfolio.combined_assets
+
+  payoutPositions.value
     .filter(asset => (asset.quantity || 0) > 0)
     .forEach(asset => {
-    // Ищем массив выплат (в новой структуре это asset.payouts)
-    const payouts = asset.payouts || asset.dividends || [] 
-    
+    const payouts = asset.payouts || []
+
     payouts.forEach(div => {
       // --- ОПРЕДЕЛЕНИЕ ДАТ ---
       // Для календаря (grid) приоритет: Payment > Record > LastBuy
@@ -66,8 +75,7 @@ const allDividends = computed(() => {
       const paymentType = div.type || 'dividend'
 
       list.push({
-        // Уникальный ID
-        id: div.id || `${asset.id}-${mainDateStr}-${div.value}`,
+        id: div.id || `${asset.asset_id ?? asset.portfolio_asset_id}-${mainDateStr}-${div.value}`,
         
         assetTicker: asset.ticker,
         assetName: asset.name,

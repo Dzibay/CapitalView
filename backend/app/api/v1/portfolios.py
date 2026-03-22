@@ -88,6 +88,40 @@ async def add_portfolio_route(
     )
 
 
+@router.get("/{portfolio_id}/broker-credentials")
+async def portfolio_broker_credentials_route(
+    portfolio_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """Секрет брокера для синхронизации (не отдаётся в составе дашборда)."""
+    from app.domain.services.broker_connections_service import get_user_portfolio_connections
+
+    check_portfolio_access(portfolio_id, user["id"])
+    conns = get_user_portfolio_connections(str(user["id"]))
+    cred = conns.get(portfolio_id)
+    if not cred or not cred.get("api_key"):
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND,
+            detail="Нет сохранённого API-ключа брокера для этого портфеля",
+        )
+    return success_response(data=cred)
+
+
+@router.get("/{portfolio_id}/payout-positions")
+async def portfolio_payout_positions_route(
+    portfolio_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """Позиции с выплатами для календаря дивидендов (поддерево портфеля)."""
+    from app.domain.services.portfolio_service import get_portfolio_payout_positions
+
+    check_portfolio_access(portfolio_id, user["id"])
+    payload = await get_portfolio_payout_positions(user["id"], portfolio_id)
+    if not isinstance(payload, dict):
+        payload = {"positions": []}
+    return success_response(data=payload)
+
+
 @router.get("/{portfolio_id}")
 async def get_portfolio_route(
     portfolio_id: int,

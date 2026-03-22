@@ -529,19 +529,6 @@ const assetQuoteCurrency = computed(() => {
       }
     }
     
-    // Если не нашли в currencies, ищем в assets (для криптовалют)
-    if (refData?.assets) {
-      const currencyAsset = refData.assets.find(a => a.id === quoteAssetId)
-      if (currencyAsset && currencyAsset.ticker) {
-        // Нормализуем ticker (берем первые 3 символа)
-        const normalized = currencyAsset.ticker.trim().substring(0, 3).toUpperCase()
-        const validCurrencyCodes = ['RUB', 'USD', 'EUR', 'GBP', 'CNY', 'JPY', 'BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'SOL']
-        if (validCurrencyCodes.includes(normalized)) {
-          return normalized
-        }
-        return currencyAsset.ticker
-      }
-    }
   }
   
   // Fallback: используем currency_ticker из данных актива
@@ -700,13 +687,6 @@ const assetCurrency = computed(() => {
       }
     }
     
-    // Ищем валюту в списке активов (assets)
-    if (refData && refData.assets) {
-      const currencyAsset = refData.assets.find(a => a.id === quoteAssetId)
-      if (currencyAsset && currencyAsset.ticker) {
-        return normalizeCurrencyTicker(currencyAsset.ticker)
-      }
-    }
   }
   
   // Если не нашли по quote_asset_id, пробуем получить из currency_ticker (но нормализуем)
