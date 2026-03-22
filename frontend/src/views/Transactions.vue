@@ -44,9 +44,18 @@ onMounted(() => {
 const transactions = computed(() => dashboardStore.transactions || [])
 const operations = computed(() => dashboardStore.operations || [])
 
-// справочник активов (для доп. инфы в подсказках)
 const referenceData = computed(() => dashboardStore.referenceData || {})
-const referenceAssets = computed(() => referenceData.value.assets || [])
+
+const tickerByAssetName = computed(() => {
+  const map = new Map()
+  for (const t of transactions.value) {
+    const name = t.asset_name
+    if (name && t.ticker != null && t.ticker !== '' && !map.has(name)) {
+      map.set(name, t)
+    }
+  }
+  return map
+})
 
 // Обертки для совместимости
 const deleteTransactions = async (transaction_ids) => {
@@ -301,11 +310,10 @@ const filteredOperationsAssetsList = computed(() => {
   return base.filter(a => a?.toLowerCase().includes(q))
 })
 
-// поиск доп. инфы по активу (для подсказки)
+// Тикер для подсказки в фильтре: из загруженных транзакций (поле ticker в API)
 const getAssetMeta = (name) => {
   if (!name) return null
-  const meta = referenceAssets.value.find(a => a.name === name || a.ticker === name)
-  return meta || null
+  return tickerByAssetName.value.get(name) || null
 }
 
 // Экранирование HTML для защиты от XSS

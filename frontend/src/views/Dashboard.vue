@@ -5,6 +5,7 @@ import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import { usePortfoliosStore } from '../stores/portfolios.store'
 import { usePortfolioAnalytics } from '../composables/usePortfolioAnalytics'
+import { assetAllocationFromPositions } from '../utils/assetAllocationFromPositions'
 
 // Компоненты
 import LoadingState from '../components/base/LoadingState.vue'
@@ -108,12 +109,12 @@ const goalData = computed(() => {
   return result
 })
 
-// Данные для AssetAllocationWidget
+// Данные для AssetAllocationWidget (считаем из агрегированных позиций портфеля)
 const assetAllocationData = computed(() => {
   if (!selectedPortfolio.value) {
     return { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
   }
-  return selectedPortfolio.value.asset_allocation ?? { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
+  return assetAllocationFromPositions(selectedPortfolio.value.assets || [])
 })
 
 // Данные для MonthlyPayoutsChartWidget
@@ -233,14 +234,14 @@ onMounted(() => {
       <WidgetContainer class="top-up-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
         <TopMoversWidget v-if="phase3Ready"
           title="Топ роста за день"
-          :assets="selectedPortfolio.combined_assets || []"
+          :assets="selectedPortfolio.assets || []"
           direction="up"
         />
       </WidgetContainer>
       <WidgetContainer class="top-down-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
         <TopMoversWidget v-if="phase3Ready"
           title="Топ падений за день"
-          :assets="selectedPortfolio.combined_assets || []"
+          :assets="selectedPortfolio.assets || []"
           direction="down"
         />
       </WidgetContainer>

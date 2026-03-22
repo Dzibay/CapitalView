@@ -16,7 +16,6 @@ connections_data AS (
         ubc.portfolio_id,
         jsonb_build_object(
             'broker_id', ubc.broker_id,
-            'api_key', ubc.api_key,
             'last_sync_at', ubc.last_sync_at
         ) AS connection
     FROM user_broker_connections ubc
@@ -34,28 +33,53 @@ first_purchase_data AS (
     ORDER BY t.portfolio_asset_id, t.transaction_date ASC, t.id ASC
 ),
 
-asset_payouts_data AS (
-    SELECT 
+user_asset_ids AS (
+    SELECT DISTINCT pa.asset_id AS asset_id
+    FROM portfolio_assets pa
+    INNER JOIN portfolios_base pb ON pb.id = pa.portfolio_id
+    WHERE pa.asset_id IS NOT NULL
+),
+
+-- Годовые суммы value по record_date; строки с !value в смысле JS (null / 0) не учитываются — как в getDividendYield5Y
+payout_year_totals AS (
+    SELECT
         ap.asset_id,
-        jsonb_agg(
-            jsonb_build_object(
-                'last_buy_date', ap.last_buy_date,
-                'record_date', ap.record_date,
-                'payment_date', ap.payment_date,
-                'value', ap.value,
-                'dividend_yield', ap.dividend_yield,
-                'type', ap.type
-            )
-            ORDER BY ap.payment_date DESC
-        ) AS dividends
+        EXTRACT(YEAR FROM ap.record_date::date)::int AS yr,
+        SUM(ap.value::numeric) AS yr_total
     FROM asset_payouts ap
-    WHERE ap.asset_id IN (
-        SELECT DISTINCT pa.asset_id
-        FROM portfolio_assets pa
-        JOIN portfolios_base pb ON pb.id = pa.portfolio_id
-        WHERE pa.asset_id IS NOT NULL
-    )
+    INNER JOIN user_asset_ids u ON u.asset_id = ap.asset_id
+    WHERE ap.record_date IS NOT NULL
+      AND ap.value IS NOT NULL
+      AND ap.value::numeric <> 0
+    GROUP BY ap.asset_id, EXTRACT(YEAR FROM ap.record_date::date)
+),
+
+-- Текущий календарный год: все выплаты с record_date в этом году, parseFloat(value)||0 на строку
+div_current_year AS (
+    SELECT
+        ap.asset_id,
+        COALESCE(
+            SUM(COALESCE(ap.value::numeric, 0)) FILTER (
+                WHERE EXTRACT(YEAR FROM ap.record_date::date)::int = EXTRACT(YEAR FROM CURRENT_DATE)::int
+            ),
+            0
+        ) AS div_sum_cy
+    FROM asset_payouts ap
+    INNER JOIN user_asset_ids u ON u.asset_id = ap.asset_id
+    WHERE ap.record_date IS NOT NULL
     GROUP BY ap.asset_id
+),
+
+-- Средняя годовая выплата по «валидным» годам из окна [CY-4 .. CY] (год есть в yearly и yearly[y] truthy), как getDividendYield5Y
+div_5y_avg AS (
+    SELECT
+        pyt.asset_id,
+        (AVG(pyt.yr_total))::numeric AS avg_annual
+    FROM payout_year_totals pyt
+    WHERE pyt.yr >= EXTRACT(YEAR FROM CURRENT_DATE)::int - 4
+      AND pyt.yr <= EXTRACT(YEAR FROM CURRENT_DATE)::int
+      AND pyt.yr_total <> 0
+    GROUP BY pyt.asset_id
 ),
 
 portfolio_assets_data AS (
@@ -86,7 +110,14 @@ portfolio_assets_data AS (
                     * COALESCE(pa.quantity, 0) * COALESCE(curr.curr_price, 1)),
                 'first_purchase_date', fpd.first_purchase_date,
                 'first_purchase_price', COALESCE(fpd.first_purchase_price, 0),
-                'dividends', COALESCE(apd.dividends, '[]'::jsonb)
+                'dividend_yield_year_pct', CASE
+                    WHEN COALESCE(apf.curr_price, 0) = 0 THEN 0::numeric
+                    ELSE (COALESCE(dcy.div_sum_cy, 0) / NULLIF(COALESCE(apf.curr_price, 0)::numeric, 0)) * 100
+                END,
+                'dividend_yield_5y_pct', CASE
+                    WHEN COALESCE(apf.curr_price, 0) = 0 THEN 0::numeric
+                    ELSE (COALESCE(d5.avg_annual, 0) / NULLIF(COALESCE(apf.curr_price, 0)::numeric, 0)) * 100
+                END
             )
             ORDER BY pa.id
         ) AS assets
@@ -98,7 +129,8 @@ portfolio_assets_data AS (
     LEFT JOIN assets qa ON qa.id = a.quote_asset_id
     LEFT JOIN asset_latest_prices curr ON curr.asset_id = a.quote_asset_id
     LEFT JOIN first_purchase_data fpd ON fpd.portfolio_asset_id = pa.id
-    LEFT JOIN asset_payouts_data apd ON apd.asset_id = pa.asset_id
+    LEFT JOIN div_current_year dcy ON dcy.asset_id = pa.asset_id
+    LEFT JOIN div_5y_avg d5 ON d5.asset_id = pa.asset_id
     GROUP BY pa.portfolio_id
 ),
 

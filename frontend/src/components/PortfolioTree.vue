@@ -102,32 +102,40 @@ const sortedPortfolios = computed(() => sortPortfolios(unref(props.portfolios)))
 // ==== Остальная логика ====
 const togglePortfolio = (id) => emit("togglePortfolio", id);
 
-// 📈 Дивидендная доходность за текущий календарный год (%)
+// 📈 Дивидендная доходность за текущий календарный год (%) — с сервера (get_dashboard_data_complete) или как раньше
 const getDividendYieldCurrentYear = (asset) => {
-  if (!asset.dividends || !asset.last_price) return 0;
-  const currentYear = new Date().getFullYear();
-  const totalDividends = asset.dividends
-    .filter(d => new Date(d.record_date).getFullYear() === currentYear)
-    .reduce((sum, d) => sum + (parseFloat(d.value) || 0), 0);
-  return (totalDividends / asset.last_price) * 100;
-};
-
-// 📊 Средняя дивидендная доходность за последние 5 лет (%)
-const getDividendYield5Y = (asset) => {
-  if (!asset.dividends || !asset.last_price) return 0;
-  const yearly = {};
-  for (const d of asset.dividends) {
-    if (!d.record_date || !d.value) continue;
-    const year = new Date(d.record_date).getFullYear();
-    yearly[year] = (yearly[year] || 0) + parseFloat(d.value);
+  if (asset.dividend_yield_year_pct != null && asset.dividend_yield_year_pct !== '') {
+    return Number(asset.dividend_yield_year_pct)
   }
-  const currentYear = new Date().getFullYear();
-  const yearsToInclude = Array.from({ length: 5 }, (_, i) => currentYear - i).reverse();
-  const validYears = yearsToInclude.filter(y => yearly[y]);
-  if (validYears.length === 0) return 0;
-  const avgDividends = validYears.reduce((sum, y) => sum + yearly[y], 0) / validYears.length;
-  return (avgDividends / asset.last_price) * 100;
-};
+  const payouts = asset.payouts || asset.dividends || []
+  if (!payouts.length || !asset.last_price) return 0
+  const currentYear = new Date().getFullYear()
+  const totalDividends = payouts
+    .filter(d => new Date(d.record_date).getFullYear() === currentYear)
+    .reduce((sum, d) => sum + (parseFloat(d.value) || 0), 0)
+  return (totalDividends / asset.last_price) * 100
+}
+
+// 📊 Средняя дивидендная доходность за окно 5 лет (%) — с сервера или как раньше
+const getDividendYield5Y = (asset) => {
+  if (asset.dividend_yield_5y_pct != null && asset.dividend_yield_5y_pct !== '') {
+    return Number(asset.dividend_yield_5y_pct)
+  }
+  const payouts = asset.payouts || asset.dividends || []
+  if (!payouts.length || !asset.last_price) return 0
+  const yearly = {}
+  for (const d of payouts) {
+    if (!d.record_date || !d.value) continue
+    const year = new Date(d.record_date).getFullYear()
+    yearly[year] = (yearly[year] || 0) + parseFloat(d.value)
+  }
+  const currentYear = new Date().getFullYear()
+  const yearsToInclude = Array.from({ length: 5 }, (_, i) => currentYear - i).reverse()
+  const validYears = yearsToInclude.filter(y => yearly[y])
+  if (validYears.length === 0) return 0
+  const avgDividends = validYears.reduce((sum, y) => sum + yearly[y], 0) / validYears.length
+  return (avgDividends / asset.last_price) * 100
+}
 </script>
 
 <template>

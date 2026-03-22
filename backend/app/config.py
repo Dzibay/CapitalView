@@ -34,7 +34,7 @@ class Config:
     CORS_SUPPORTS_CREDENTIALS = True
     CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     
-    # Redis (опционально — кэширование отключено, если не задан)
+    # Redis: желателен при нескольких воркерах uvicorn/gunicorn — общий кэш справочника и брокеров
     REDIS_URL = os.getenv("REDIS_URL", "")
     
     # Google OAuth

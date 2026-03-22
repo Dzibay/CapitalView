@@ -19,6 +19,7 @@ import PortfolioTree from '../components/PortfolioTree.vue';
 import ContextMenu from '../components/base/ContextMenu.vue';
 import { useModals } from '../composables/useModal';
 import { usePortfolio } from '../composables/usePortfolio';
+import portfolioService from '../services/portfolioService';
 import { Button, ToggleSwitch } from '../components/base';
 import LoadingState from '../components/base/LoadingState.vue';
 import PageLayout from '../layouts/PageLayout.vue';
@@ -156,12 +157,9 @@ const currentImportTaskId = ref(null);
 // Используем композабл для работы с портфелями
 // Передаем computed ref для dashboardData из store
 const dashboardDataComputed = computed(() => ({
-  value: {
-    data: {
-      portfolios: dashboardStore.portfolios,
-      referenceData: dashboardStore.referenceData
-    }
-  }
+  portfolios: dashboardStore.portfolios,
+  recent_transactions: dashboardStore.recentTransactions,
+  referenceData: dashboardStore.referenceData
 }));
 const { portfolios: portfolioList, buildPortfolioTree } = usePortfolio(dashboardDataComputed, null);
 
@@ -172,7 +170,7 @@ const parsedDashboard = computed(() => {
   return {
     portfolios,
     portfolioTree,
-    reference: dashboardStore.referenceData ?? [],
+    reference: dashboardStore.referenceData ?? {},
   };
 });
 
@@ -184,19 +182,21 @@ const refreshPortfolios = async () => {
   
   // Создаем массив промисов для асинхронных вызовов
   const importPromises = portfolios.map(async (p) => {
-    if (p.connection?.api_key) {
-      updatingPortfolios.value.add(p.id)
-      try {
-        // При автоматическом обновлении показываем модалку статуса
-        await importPortfolio({
-          broker_id: p.connection.broker_id,
-          token: p.connection.api_key,
-          portfolioId: p.id,
-          portfolio_name: null
-        }, true); // showStatusModal = true - показываем модалку
-      } finally {
-        updatingPortfolios.value.delete(p.id)
-      }
+    if (!p.connection?.broker_id) return
+    updatingPortfolios.value.add(p.id)
+    try {
+      const cred = await portfolioService.getBrokerCredentials(p.id)
+      if (!cred?.api_key) return
+      await importPortfolio({
+        broker_id: cred.broker_id,
+        token: cred.api_key,
+        portfolioId: p.id,
+        portfolio_name: null
+      }, true)
+    } catch {
+      // Нет ключа или ошибка сети — пропускаем портфель
+    } finally {
+      updatingPortfolios.value.delete(p.id)
     }
   });
 

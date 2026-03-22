@@ -13,6 +13,12 @@ export const API_ENDPOINTS = {
   DASHBOARD: {
     BASE: '/dashboard/',
   },
+  REFERENCE: {
+    BASE: '/reference/',
+    VERSION: '/reference/version',
+    SEARCH_ASSETS: '/reference/assets/search',
+    ASSET_META: (id) => `/reference/assets/${id}`,
+  },
   PORTFOLIO: {
     BASE: '/portfolios/',
     LIST: '/portfolios/',  // Исправлено: на backend это GET /portfolios/ (со слешем!)
@@ -25,6 +31,8 @@ export const API_ENDPOINTS = {
     HISTORY: (id) => `/portfolios/${id}/history`,
     IMPORT_BROKER: '/portfolios/import-broker',  // Исправлено: на backend это /portfolios/import-broker
     BROKERS: '/portfolios/brokers',  // Получение списка брокеров
+    BROKER_CREDENTIALS: (id) => `/portfolios/${id}/broker-credentials`,
+    PAYOUT_POSITIONS: (id) => `/portfolios/${id}/payout-positions`,
   },
   ASSETS: {
     BASE: '/assets/',

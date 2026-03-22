@@ -20,11 +20,9 @@ async def dashboard(user: dict = Depends(get_current_user)):
     """Получение данных дашборда пользователя."""
     start = time.time()
     
-    data = await get_dashboard_data(user["id"])
-    
+    dashboard = await get_dashboard_data(user["id"])
+
     elapsed = time.time() - start
     logger.info(f"Dashboard user={user['id']}: {elapsed:.2f}s")
-    
-    # Для большого payload лучше сериализовать orjson-ом,
-    # чтобы уменьшить время, которое сейчас "прилетает" в middleware.
-    return ORJSONResponse(content=success_response(data={"data": data}))
+
+    return ORJSONResponse(content=success_response(data={"dashboard": dashboard}))

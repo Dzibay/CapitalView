@@ -1,11 +1,11 @@
 """
-Redis client for caching.
+Асинхронный Redis-клиент (redis.asyncio) — декораторы кэша, async-код.
 
-Graceful degradation: if Redis is unavailable, all operations return None/False
-and the app continues to work without caching.
+Синхронный доступ — модуль redis_client_sync (отдельное TCP-подключение).
 """
 import redis.asyncio as aioredis
 from typing import Optional
+
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
