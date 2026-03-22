@@ -6,6 +6,7 @@ import { useUIStore } from '../stores/ui.store'
 import { usePortfoliosStore } from '../stores/portfolios.store'
 import { usePortfolioAnalytics } from '../composables/usePortfolioAnalytics'
 import { assetAllocationFromPositions } from '../utils/assetAllocationFromPositions'
+import { collectSubtreeAssets } from '../utils/collectSubtreeAssets'
 
 // Компоненты
 import LoadingState from '../components/base/LoadingState.vue'
@@ -109,12 +110,17 @@ const goalData = computed(() => {
   return result
 })
 
-// Данные для AssetAllocationWidget (считаем из агрегированных позиций портфеля)
+// Позиции выбранной ветки (родитель + дочерние) — для графиков, т.к. у узла в store только прямые assets
+const selectedSubtreeAssets = computed(() => {
+  if (!selectedPortfolio.value) return []
+  return collectSubtreeAssets(selectedPortfolio.value, portfolios.value)
+})
+
 const assetAllocationData = computed(() => {
   if (!selectedPortfolio.value) {
     return { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
   }
-  return assetAllocationFromPositions(selectedPortfolio.value.assets || [])
+  return assetAllocationFromPositions(selectedSubtreeAssets.value)
 })
 
 // Данные для MonthlyPayoutsChartWidget
@@ -234,14 +240,14 @@ onMounted(() => {
       <WidgetContainer class="top-up-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
         <TopMoversWidget v-if="phase3Ready"
           title="Топ роста за день"
-          :assets="selectedPortfolio.assets || []"
+          :assets="selectedSubtreeAssets"
           direction="up"
         />
       </WidgetContainer>
       <WidgetContainer class="top-down-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
         <TopMoversWidget v-if="phase3Ready"
           title="Топ падений за день"
-          :assets="selectedPortfolio.assets || []"
+          :assets="selectedSubtreeAssets"
           direction="down"
         />
       </WidgetContainer>
