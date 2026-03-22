@@ -3,11 +3,19 @@ import { inject, ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { gsap } from 'gsap'
 import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import { HERO_ASSET_PATHS, HERO_MOTION_INTRO_PROGRESS } from './config/heroAssetPaths'
+import {
+  HERO_ASSET_PATHS,
+  HERO_MOTION_INTRO_PROGRESS,
+  HERO_BLOCK_WEBP_SRCS,
+  HERO_BLOCK_ROTATION_START_DEG,
+  HERO_BLOCK_ROTATION_END_DEG,
+  HERO_BLOCK_ROTATION_DURATION
+} from './config/heroAssetPaths'
 
 gsap.registerPlugin(MotionPathPlugin, ScrollTrigger)
 
 const PATHS = HERO_ASSET_PATHS
+const BLOCK_ICONS = HERO_BLOCK_WEBP_SRCS
 const INTRO_PROGRESS = HERO_MOTION_INTRO_PROGRESS
 
 const landingHeroScrollTrigger = inject('landingHeroScrollTrigger')
@@ -35,10 +43,15 @@ onMounted(async () => {
   if (blocks.length !== 6) return
 
   if (prefersReduced || isNarrow) {
-    gsap.set(blocks, { opacity: 1, scale: 1, xPercent: -50, yPercent: -50 })
     blocks.forEach((el, i) => {
       const sel = `#${pathId(i)}`
+      const endRot = HERO_BLOCK_ROTATION_END_DEG[i] ?? 0
       gsap.set(el, {
+        opacity: 1,
+        scale: 1,
+        rotation: endRot,
+        xPercent: -50,
+        yPercent: -50,
         motionPath: {
           path: sel,
           align: sel,
@@ -55,7 +68,9 @@ onMounted(async () => {
   const tl = gsap.timeline({ paused: true })
   blocks.forEach((el, i) => {
     const sel = `#${pathId(i)}`
-    
+    const startRot = HERO_BLOCK_ROTATION_START_DEG[i] ?? 0
+    const endRot = HERO_BLOCK_ROTATION_END_DEG[i] ?? 0
+
     // Движение по кривой (от 0 до 1)
     tl.to(el, {
       motionPath: {
@@ -68,6 +83,17 @@ onMounted(async () => {
       duration: 1,
       ease: 'none'
     }, 0)
+
+    tl.fromTo(
+      el,
+      { rotation: startRot },
+      {
+        rotation: endRot,
+        duration: HERO_BLOCK_ROTATION_DURATION,
+        ease: 'power2.out'
+      },
+      0
+    )
 
     // ДОБАВЛЯЕМ: Исчезновение в самом конце (например, с 0.85 до 1.0 прогресса)
     tl.to(el, {
@@ -153,7 +179,17 @@ onUnmounted(() => {
         fill="none"
       />
     </svg>
-    <div v-for="(_, i) in PATHS" :key="'block-' + i" class="asset-block" />
+    <div v-for="(_, i) in PATHS" :key="'block-' + i" class="asset-block">
+      <img
+        class="asset-block__icon"
+        :src="BLOCK_ICONS[i]"
+        width="48"
+        height="48"
+        decoding="async"
+        draggable="false"
+        alt=""
+      />
+    </div>
   </div>
 </template>
 
@@ -174,12 +210,10 @@ onUnmounted(() => {
   overflow: visible;
 }
 
+/* Пути нужны MotionPathPlugin; линии не рисуем */
 .curve-path {
   fill: none;
-  stroke: rgba(100, 116, 139, 0.22);
-  stroke-width: 1.25;
-  vector-effect: non-scaling-stroke;
-  stroke-linecap: round;
+  stroke: none;
   pointer-events: none;
 }
 
@@ -187,6 +221,9 @@ onUnmounted(() => {
   position: absolute;
   left: 0;
   top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: clamp(44px, 5.2vw, 62px);
   height: clamp(44px, 5.2vw, 62px);
   border-radius: 16px;
@@ -195,14 +232,19 @@ onUnmounted(() => {
     0 0 0 1px rgba(15, 23, 42, 0.06),
     0 12px 32px rgba(15, 23, 42, 0.1),
     0 4px 12px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
   will-change: transform;
 }
 
-@media (max-width: 767px) {
-  .curve-path {
-    stroke: rgba(100, 116, 139, 0.12);
-  }
+.asset-block__icon {
+  width: clamp(34px, 5.1vw, 52px);
+  height: clamp(34px, 5.1vw, 52px);
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
 
+@media (max-width: 767px) {
   .asset-block {
     opacity: 0.55;
   }

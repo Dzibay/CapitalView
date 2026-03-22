@@ -268,15 +268,20 @@ onUnmounted(() => {
 
 <style scoped>
 .landing-dash-mock {
+  position: relative;
   width: 100%;
-  border-radius: 20px;
-  background: #f1f5f9;
-  border: 1px solid rgba(71, 85, 105, 0.2);
+  /* Радиус ближе к окнам macOS (~12px), чуть крупнее для масштаба превью */
+  border-radius: clamp(12px, 1.35cqi, 16px);
+  background: #eceff3;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  /* «Окно» macOS: внешняя тень + тонкий тёмный ободок + внутренний верхний блик */
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.55) inset,
-    0 1px 0 rgba(255, 255, 255, 0.4) inset,
-    0 24px 64px rgba(15, 23, 42, 0.1),
-    0 8px 24px rgba(15, 23, 42, 0.05);
+    0 0 0 0.5px rgba(0, 0, 0, 0.06),
+    0 28px 70px -16px rgba(15, 23, 42, 0.22),
+    0 12px 28px -10px rgba(15, 23, 42, 0.14),
+    0 4px 10px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22);
   overflow: hidden;
   /* Масштаб типографики и метрик от ширины превью (не трогая сами виджеты) */
   container-type: inline-size;

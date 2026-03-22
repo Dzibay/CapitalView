@@ -17,3 +17,26 @@ export const HERO_ASSET_PATHS = [
 
 /** После интро кубики уже «вошли» в дугу к центру; дорисовка к фокусу — по скроллу */
 export const HERO_MOTION_INTRO_PROGRESS = 0.15
+
+/**
+ * Иконки на анимированных кубиках героя (WebP в public).
+ * Индекс совпадает с HERO_ASSET_PATHS: 0–2 слева, 3–5 справа.
+ * Положите файлы в frontend/public/landing/hero-blocks/
+ */
+export const HERO_BLOCK_WEBP_SRCS = [
+  '/landing/hero-blocks/0.webp',
+  '/landing/hero-blocks/1.webp',
+  '/landing/hero-blocks/2.webp',
+  '/landing/hero-blocks/3.webp',
+  '/landing/hero-blocks/4.webp',
+  '/landing/hero-blocks/5.webp'
+]
+
+/**
+ * Поворот кубиков (градусы, индекс как у путей).
+ * Интерполяция start → end за первые HERO_BLOCK_ROTATION_DURATION доли общего таймлайна (0–1).
+ * Чтобы крутить почти весь полёт — поставьте duration ближе к 1.
+ */
+export const HERO_BLOCK_ROTATION_START_DEG = [-150, 100, -80, 120, -70, 90]
+export const HERO_BLOCK_ROTATION_END_DEG = [-15, -11, -9, 10, 5, 6]
+export const HERO_BLOCK_ROTATION_DURATION = 0.34
