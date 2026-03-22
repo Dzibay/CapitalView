@@ -1,17 +1,115 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, inject, nextTick, unref } from 'vue'
 import { LineChart } from 'lucide-vue-next'
 import MultiLineChart from '../../charts/MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
 import ValueChangePill from '../base/ValueChangePill.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
 import ToggleSwitch from '../../base/ToggleSwitch.vue'
+import { LANDING_DASH_REVEAL_KEY } from '../../../constants/landingDashboardReveal'
 
 const props = defineProps({
   chartData: {
     type: Object,
     required: true
+  },
+  /** Лендинг: линия и блок сумм «прорисовываются» при появлении превью */
+  scrollRevealChart: {
+    type: Boolean,
+    default: false
+  },
+  landingRevealRef: {
+    type: Object,
+    default: null
   }
+})
+
+const injectedLandingReveal = inject(LANDING_DASH_REVEAL_KEY, null)
+
+function revealSource() {
+  return props.landingRevealRef ?? injectedLandingReveal
+}
+
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3)
+}
+
+const drawProgress = ref(props.scrollRevealChart ? 0 : 1)
+const summaryT = ref(props.scrollRevealChart ? 0 : 1)
+let chartRevealRaf = null
+
+function setChartRevealStatic() {
+  drawProgress.value = 1
+  summaryT.value = 1
+}
+
+function runChartRevealAnimation() {
+  const duration = 1450
+  if (prefersReducedMotion()) {
+    setChartRevealStatic()
+    return
+  }
+  const start = performance.now()
+  if (chartRevealRaf) cancelAnimationFrame(chartRevealRaf)
+  function frame(now) {
+    const u = Math.min(1, (now - start) / duration)
+    const t = easeOutCubic(u)
+    drawProgress.value = t
+    summaryT.value = t
+    if (u < 1) chartRevealRaf = requestAnimationFrame(frame)
+    else {
+      chartRevealRaf = null
+      setChartRevealStatic()
+    }
+  }
+  drawProgress.value = 0
+  summaryT.value = 0
+  chartRevealRaf = requestAnimationFrame(frame)
+}
+
+function syncChartReveal() {
+  if (!props.scrollRevealChart) {
+    setChartRevealStatic()
+    return
+  }
+  const src = revealSource()
+  if (src == null) {
+    setChartRevealStatic()
+    return
+  }
+  if (!unref(src)) {
+    drawProgress.value = 0
+    summaryT.value = 0
+    return
+  }
+  runChartRevealAnimation()
+}
+
+watch(
+  () => {
+    if (!props.scrollRevealChart) return null
+    const src = revealSource()
+    if (src == null) return true
+    return unref(src)
+  },
+  (revealed) => {
+    if (!props.scrollRevealChart) return
+    nextTick(() => {
+      if (revealed) syncChartReveal()
+      else {
+        drawProgress.value = 0
+        summaryT.value = 0
+      }
+    })
+  }
+)
+
+onUnmounted(() => {
+  if (chartRevealRaf) cancelAnimationFrame(chartRevealRaf)
 })
 
 const selectedPeriod = ref("All")
@@ -195,10 +293,16 @@ watch(() => props.chartData, updateStatsForPeriod, { deep: true })
 watch(() => selectedPeriod.value, updateStatsForPeriod)
 watch(() => includeBalance.value, updateStatsForPeriod)
 
-// Инициализация при монтировании
+// Инициализация при монтировании (сначала цифры периода, затем анимация графика)
 onMounted(() => {
   updateStatsForPeriod()
+  nextTick(() => syncChartReveal())
 })
+
+const displayStartValue = computed(() => Math.round(startValue.value * summaryT.value))
+const displayEndValue = computed(() => Math.round(endValue.value * summaryT.value))
+const displayGrowthAmount = computed(() => Math.round((endValue.value - startValue.value) * summaryT.value))
+const displayGrowthPercent = computed(() => (Number(growthPercent.value) || 0) * summaryT.value)
 
 </script>
 
@@ -216,13 +320,13 @@ onMounted(() => {
 
     <div class="capital-info">
       <p class="capital-values" style="margin-top: 0;">
-        {{ formatCurrency(startValue) }} → {{ formatCurrency(endValue) }}
+        {{ formatCurrency(displayStartValue) }} → {{ formatCurrency(displayEndValue) }}
       </p>
 
       <div class="capital-growth">
-        <p class="capital-growth-label">Прирост: {{ formatCurrency(growthAmount) }}</p>
-        <ValueChangePill 
-          :value="growthPercent" 
+        <p class="capital-growth-label">Прирост: {{ formatCurrency(displayGrowthAmount) }}</p>
+        <ValueChangePill
+          :value="displayGrowthPercent"
           :is-positive="growthAmount >= 0"
           format="percent"
         />
@@ -236,6 +340,7 @@ onMounted(() => {
         :period="selectedPeriod"
         :formatCurrency="formatCurrency"
         :zeroAtStart="false"
+        :draw-progress="drawProgress"
       />
     </div>
   </Widget>

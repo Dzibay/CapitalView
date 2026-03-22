@@ -56,6 +56,11 @@ const props = defineProps({
   minPxPerXTick: {
     type: Number,
     default: 60
+  },
+  /** 0…1 — доля точек слева (отрисовка «слева направо», лендинг) */
+  drawProgress: {
+    type: Number,
+    default: 1
   }
 })
 
@@ -679,14 +684,37 @@ function getNiceMin(value) {
   return r > padded ? r - step : r
 }
 
+/**
+ * Полная ось X с первого кадра: все метки остаются, «непрорисованный» хвост — null.
+ * Линия и заливка растут слева направо без появления новых подписей по мере прогресса.
+ */
+function maskAggregatedSeriesByProgress(aggr, progress) {
+  const p = Math.max(0, Math.min(1, progress))
+  if (p >= 1 || !aggr?.labels?.length) return aggr
+  const n = aggr.labels.length
+  if (p <= 0) {
+    return {
+      labels: aggr.labels.slice(),
+      datasets: aggr.datasets.map((arr) => arr.map(() => null))
+    }
+  }
+  const cut = Math.min(n, Math.max(2, Math.ceil(n * p)))
+  return {
+    labels: aggr.labels.slice(),
+    datasets: aggr.datasets.map((arr) => arr.map((v, i) => (i < cut ? v : null)))
+  }
+}
+
 /* --------------------------------------------------------------------------
    Render
 -------------------------------------------------------------------------- */
-const renderChart = (aggr) => {
+/** boundsAggr — полный ряд для min/max по Y при анимации drawProgress (ось не «прыгает») */
+const renderChart = (aggr, boundsAggr = null) => {
   const ctx = chartCanvas.value?.getContext('2d')
   if (!ctx) return
 
-  const allValues = aggr.datasets
+  const boundSrc = boundsAggr && props.drawProgress < 1 ? boundsAggr : aggr
+  const allValues = boundSrc.datasets
     .flat()
     .filter((v) => typeof v === 'number' && Number.isFinite(v))
   const minValue = allValues.length ? Math.min(...allValues) : 0
@@ -729,7 +757,7 @@ const renderChart = (aggr) => {
       pointBorderColor: ds.pointBorderColor ?? '#fff',
       pointHoverBorderWidth: ds.pointHoverBorderWidth ?? 2,
       pointBorderWidth: ds.pointBorderWidth ?? 0,
-      spanGaps: ds.spanGaps ?? false
+      spanGaps: props.drawProgress < 1 ? false : (ds.spanGaps ?? false)
     }
     if (ds.order != null) base.order = ds.order
     if (ds.borderDash) base.borderDash = ds.borderDash
@@ -758,7 +786,8 @@ const renderChart = (aggr) => {
     chartInstance.options.scales.y.min = yMin
     chartInstance.options.scales.y.max = yMax
     chartInstance.options.plugins.tooltip.callbacks = { ...props.tooltipCallbacks }
-    chartInstance.update()
+    if (props.drawProgress < 1) chartInstance.update('none')
+    else chartInstance.update()
     requestAnimationFrame(() => chartInstance?.resize())
     return
   }
@@ -780,7 +809,8 @@ const renderChart = (aggr) => {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      animation: aggr.labels.length > 200 ? false : { duration: 400 },
+      animation:
+        props.drawProgress < 1 ? false : aggr.labels.length > 200 ? false : { duration: 400 },
       transitions: {
         active: {
           animation: { duration: 150, easing: 'easeOutCubic' }
@@ -883,7 +913,7 @@ const renderChart = (aggr) => {
 
 /* -------------------------------------------------------------------------- */
 const update = () => {
-  const aggr = props.skipAggregation
+  const aggrRaw = props.skipAggregation
     ? prepareRawSeries(props.chartData)
     : aggregateData(
         props.chartData,
@@ -892,7 +922,8 @@ const update = () => {
         props.zeroAtStart,
         props.aggregationEnd
       )
-  renderChart(aggr)
+  const aggr = maskAggregatedSeriesByProgress(aggrRaw, props.drawProgress)
+  renderChart(aggr, aggrRaw)
 }
 
 watch(() => props.chartData, update, { deep: true })
@@ -900,6 +931,7 @@ watch(() => props.period, update)
 watch(() => props.aggregationEnd, update)
 watch(() => props.skipAggregation, update)
 watch(() => props.minPxPerXTick, update)
+watch(() => props.drawProgress, update)
 watch(() => props.tooltipCallbacks, update, { deep: true })
 
 onMounted(update)

@@ -1,9 +1,10 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, inject, onMounted, unref } from 'vue'
 import { PieChart } from 'lucide-vue-next'
 import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, DoughnutController } from 'chart.js'
 import Widget from '../base/Widget.vue'
+import { LANDING_DASH_REVEAL_KEY } from '../../../constants/landingDashboardReveal'
 
 ChartJS.register(Title, Tooltip, Legend, ArcElement, DoughnutController)
 
@@ -12,7 +13,43 @@ const props = defineProps({
   assetAllocation: {
     type: Object,
     required: true
+  },
+  scrollReveal: {
+    type: Boolean,
+    default: false
+  },
+  landingRevealRef: {
+    type: [Object, Boolean],
+    default: null
   }
+})
+
+const injectedLandingReveal = inject(LANDING_DASH_REVEAL_KEY, null)
+
+function revealSource() {
+  return props.landingRevealRef ?? injectedLandingReveal
+}
+const doughnutRemountKey = ref(0)
+
+function bumpDoughnut() {
+  doughnutRemountKey.value += 1
+}
+
+watch(
+  () => {
+    if (!props.scrollReveal) return null
+    const src = revealSource()
+    if (src == null) return false
+    return unref(src)
+  },
+  (ok) => {
+    if (props.scrollReveal && ok) bumpDoughnut()
+  }
+)
+
+onMounted(() => {
+  const src = revealSource()
+  if (props.scrollReveal && src != null && unref(src)) bumpDoughnut()
 })
 
 const centerInfo = ref({
@@ -87,7 +124,7 @@ watch(() => props.assetAllocation, () => {
   <Widget title="Распределение активов" :icon="PieChart">
     <div v-if="assetAllocation && assetAllocation.labels" class="allocation-container">
       <div class="chart-wrapper">
-        <Doughnut :data="chartData" :options="chartOptions" />
+        <Doughnut :key="doughnutRemountKey" :data="chartData" :options="chartOptions" />
         <div v-if="centerInfo.label" class="chart-center">
           <span class="center-label">{{ centerInfo.label }}</span>
           <span class="center-percentage">{{ centerInfo.percentage }}%</span>

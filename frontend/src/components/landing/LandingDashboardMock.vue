@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide, nextTick } from 'vue'
+import { LANDING_DASH_REVEAL_KEY } from '../../constants/landingDashboardReveal'
 import {
   LayoutDashboard,
   BarChart3,
@@ -28,9 +29,21 @@ import {
   landingDashboardUserPreview
 } from '../../content/landingDashboardMock'
 
+const props = defineProps({
+  /**
+   * false — сразу полные цифры и графики без счётчиков/дорисовки (удобно для отладки и a11y).
+   * true — анимации после появления ~50% превью в viewport.
+   */
+  revealAnimations: {
+    type: Boolean,
+    default: true
+  }
+})
+
 const root = ref(null)
-const phase2Ready = ref(false)
-const phase3Ready = ref(false)
+/** Триггер анимаций: виджеты с scroll-reveal / scroll-reveal-chart читают через landingRevealRef + unref */
+const dashboardReveal = ref(!props.revealAnimations)
+provide(LANDING_DASH_REVEAL_KEY, dashboardReveal)
 
 const capital = computed(() => landingDashboardTotalCapital)
 const profit = computed(() => landingDashboardProfit)
@@ -40,32 +53,29 @@ const chartData = computed(() => landingDashboardPortfolioChart)
 const allocation = computed(() => landingDashboardAssetAllocation)
 const userPreview = landingDashboardUserPreview
 
+/** Срабатывание, когда видно ≥50% площади превью дашборда */
+const LANDING_DASH_IO_THRESHOLDS = Array.from({ length: 41 }, (_, i) => i / 40)
+const LANDING_DASH_REVEAL_RATIO = 1
+
 let observer
+let landingRevealTriggered = false
 
 onMounted(() => {
+  if (!props.revealAnimations) return
+
   observer = new IntersectionObserver(
     (entries) => {
       entries.forEach((e) => {
-        if (!e.isIntersecting) return
-        requestAnimationFrame(() => {
-          phase2Ready.value = true
-        })
-        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-          window.requestIdleCallback(
-            () => {
-              phase3Ready.value = true
-            },
-            { timeout: 300 }
-          )
-        } else {
-          setTimeout(() => {
-            phase3Ready.value = true
-          }, 120)
-        }
+        if (landingRevealTriggered || !e.isIntersecting) return
+        if (e.intersectionRatio < LANDING_DASH_REVEAL_RATIO) return
+        landingRevealTriggered = true
         observer?.unobserve(e.target)
+        nextTick(() => {
+          dashboardReveal.value = true
+        })
       })
     },
-    { threshold: 0.08, rootMargin: '80px 0px' }
+    { threshold: LANDING_DASH_IO_THRESHOLDS, rootMargin: '0px' }
   )
   if (root.value) observer.observe(root.value)
 })
@@ -184,6 +194,8 @@ onUnmounted(() => {
               <TotalCapitalWidget
                 :total-amount="capital.totalAmount"
                 :invested-amount="capital.investedAmount"
+                :scroll-reveal="revealAnimations"
+                :landing-reveal-ref="dashboardReveal"
               />
             </WidgetContainer>
             <WidgetContainer class="landing-dash-mock__wc" min-height="112px">
@@ -193,10 +205,16 @@ onUnmounted(() => {
                 :monthly-change="profit.monthlyChange"
                 :invested-amount="profit.investedAmount"
                 :analytics="profit.analytics"
+                :scroll-reveal="revealAnimations"
+                :landing-reveal-ref="dashboardReveal"
               />
             </WidgetContainer>
             <WidgetContainer class="landing-dash-mock__wc" min-height="112px">
-              <DividendsWidget :annual-dividends="dividends.annualDividends" />
+              <DividendsWidget
+                :annual-dividends="dividends.annualDividends"
+                :scroll-reveal="revealAnimations"
+                :landing-reveal-ref="dashboardReveal"
+              />
             </WidgetContainer>
             <WidgetContainer class="landing-dash-mock__wc" min-height="112px">
               <ReturnWidget
@@ -204,6 +222,8 @@ onUnmounted(() => {
                 :return-percent-on-invested="returns.returnPercentOnInvested"
                 :total-value="returns.totalValue"
                 :total-invested="returns.totalInvested"
+                :scroll-reveal="revealAnimations"
+                :landing-reveal-ref="dashboardReveal"
               />
             </WidgetContainer>
           </div>
@@ -218,16 +238,26 @@ onUnmounted(() => {
                 :annual-dividends="dividends.annualDividends"
                 :return-percent="returns.returnPercent"
                 :return-percent-on-invested="returns.returnPercentOnInvested"
+                :scroll-reveal="revealAnimations"
+                :landing-reveal-ref="dashboardReveal"
               />
             </WidgetContainer>
           </div>
 
           <div class="landing-dash-mock__charts">
             <WidgetContainer class="landing-dash-mock__wc landing-dash-mock__chart-box">
-              <PortfolioChartWidget v-if="phase2Ready" :chart-data="chartData" />
+              <PortfolioChartWidget
+                :scroll-reveal-chart="revealAnimations"
+                :landing-reveal-ref="dashboardReveal"
+                :chart-data="chartData"
+              />
             </WidgetContainer>
             <WidgetContainer class="landing-dash-mock__wc landing-dash-mock__alloc-box" min-height="240px">
-              <AssetAllocationWidget v-if="phase3Ready" :asset-allocation="allocation" />
+              <AssetAllocationWidget
+                :scroll-reveal="revealAnimations"
+                :landing-reveal-ref="dashboardReveal"
+                :asset-allocation="allocation"
+              />
             </WidgetContainer>
           </div>
         </div>
@@ -241,10 +271,12 @@ onUnmounted(() => {
   width: 100%;
   border-radius: 20px;
   background: #f1f5f9;
+  border: 1px solid rgba(71, 85, 105, 0.2);
   box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.06),
-    0 24px 64px rgba(15, 23, 42, 0.12),
-    0 8px 24px rgba(15, 23, 42, 0.06);
+    0 0 0 1px rgba(255, 255, 255, 0.55) inset,
+    0 1px 0 rgba(255, 255, 255, 0.4) inset,
+    0 24px 64px rgba(15, 23, 42, 0.1),
+    0 8px 24px rgba(15, 23, 42, 0.05);
   overflow: hidden;
   /* Масштаб типографики и метрик от ширины превью (не трогая сами виджеты) */
   container-type: inline-size;
