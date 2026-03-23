@@ -1,10 +1,11 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, inject, onUnmounted, ref, unref, watch } from 'vue'
 import { BarChart2 } from 'lucide-vue-next'
 import Widget from '../base/Widget.vue'
 import ValueChangePill from '../base/ValueChangePill.vue'
 import Tooltip from '../../base/Tooltip.vue'
 import { formatCurrency } from '../../../utils/formatCurrency'
+import { LANDING_DASH_REVEAL_KEY } from '../../../constants/landingDashboardReveal'
 
 const props = defineProps({
   totalAmount: { type: Number, required: true },
@@ -15,6 +16,89 @@ const props = defineProps({
   annualDividends: { type: Number, default: 0 },
   returnPercent: { type: Number, default: 0 },
   returnPercentOnInvested: { type: Number, default: 0 },
+  scrollReveal: { type: Boolean, default: false },
+  landingRevealRef: { type: [Object, Boolean], default: null }
+})
+
+const injectedLandingReveal = inject(LANDING_DASH_REVEAL_KEY, null)
+
+function revealSource() {
+  return props.landingRevealRef ?? injectedLandingReveal
+}
+
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3)
+}
+
+const revealT = ref(1)
+const popScale = ref(1)
+let consRaf = null
+
+function applyStaticReveal() {
+  revealT.value = 1
+  popScale.value = 1
+}
+
+function runRevealAnim() {
+  const duration = 920
+  if (prefersReducedMotion()) {
+    applyStaticReveal()
+    return
+  }
+  const start = performance.now()
+  if (consRaf) cancelAnimationFrame(consRaf)
+  function frame(now) {
+    const u = Math.min(1, (now - start) / duration)
+    const t = easeOutCubic(u)
+    revealT.value = t
+    popScale.value = 0.92 + 0.08 * t
+    if (u < 1) consRaf = requestAnimationFrame(frame)
+    else {
+      consRaf = null
+      applyStaticReveal()
+    }
+  }
+  revealT.value = 0
+  popScale.value = 0.92
+  consRaf = requestAnimationFrame(frame)
+}
+
+function syncConsolidatedReveal() {
+  if (!props.scrollReveal) {
+    applyStaticReveal()
+    return
+  }
+  const src = revealSource()
+  if (src == null) {
+    applyStaticReveal()
+    return
+  }
+  const revealed = unref(src)
+  if (!revealed) {
+    revealT.value = 0
+    popScale.value = 0.92
+    return
+  }
+  runRevealAnim()
+}
+
+watch(
+  () => {
+    if (!props.scrollReveal) return true
+    const src = revealSource()
+    if (src == null) return true
+    return unref(src)
+  },
+  () => syncConsolidatedReveal(),
+  { immediate: true }
+)
+
+onUnmounted(() => {
+  if (consRaf) cancelAnimationFrame(consRaf)
 })
 
 const capitalProfitPercent = computed(() => {
@@ -68,6 +152,22 @@ const dividendsMonthly = computed(() => (props.annualDividends || 0) / 12)
 
 const formattedPercent = (value) =>
   new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + '%'
+
+const displayTotalAmount = computed(() => Math.round(props.totalAmount * revealT.value))
+const displayInvestedAmount = computed(() => Math.round(props.investedAmount * revealT.value))
+const displayCapitalProfitPercent = computed(() => capitalProfitPercent.value * revealT.value)
+const displayTotalProfit = computed(() => props.totalProfit * revealT.value)
+const displayProfitToInvestedPercent = computed(() => profitToInvestedPercent.value * revealT.value)
+const displayAnnualDividends = computed(() => Math.round(props.annualDividends * revealT.value))
+const displayDividendsMonthly = computed(() => Math.round(dividendsMonthly.value * revealT.value))
+const displayReturnPercent = computed(() => props.returnPercent * revealT.value)
+const displayReturnOnInvested = computed(() => props.returnPercentOnInvested * revealT.value)
+
+const topSectionStyle = computed(() =>
+  props.scrollReveal
+    ? { transform: `scale(${popScale.value})`, transformOrigin: 'left center', willChange: 'transform' }
+    : undefined
+)
 </script>
 
 <template>
@@ -75,15 +175,19 @@ const formattedPercent = (value) =>
     <div class="consolidated-content">
       <!-- 1. Общий капитал: слева сумма и «Инвестировано», справа value-change по центру по высоте -->
       <div class="top-section">
-        <div class="top-section-left">
+        <div class="top-section-left" :style="topSectionStyle">
           <Tooltip :content="capitalTooltip" position="top">
-            <div class="main-value">{{ formatCurrency(totalAmount, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}</div>
+            <div class="main-value">
+              {{ formatCurrency(displayTotalAmount, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+            </div>
           </Tooltip>
-          <p class="secondary-text invested-line">Инвестировано: {{ formatCurrency(investedAmount, { maximumFractionDigits: 0 }) }}</p>
+          <p class="secondary-text invested-line">
+            Инвестировано: {{ formatCurrency(displayInvestedAmount, { maximumFractionDigits: 0 }) }}
+          </p>
         </div>
         <div class="top-section-right">
           <ValueChangePill
-            :value="capitalProfitPercent"
+            :value="displayCapitalProfitPercent"
             :is-positive="capitalProfitPercent >= 0"
             format="percent"
           />
@@ -97,11 +201,11 @@ const formattedPercent = (value) =>
           <div class="profit-right">
             <Tooltip :content="profitBreakdownTooltip" position="top">
               <span class="profit-value" :class="totalProfit >= 0 ? 'positive' : 'negative'">
-                {{ totalProfit >= 0 ? '+' : '' }}{{ formatCurrency(totalProfit, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                {{ totalProfit >= 0 ? '+' : '' }}{{ formatCurrency(displayTotalProfit, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
               </span>
             </Tooltip>
             <ValueChangePill
-              :value="profitToInvestedPercent"
+              :value="displayProfitToInvestedPercent"
               :is-positive="profitToInvestedPercent >= 0"
               format="percent"
             />
@@ -116,9 +220,9 @@ const formattedPercent = (value) =>
         <div class="bottom-block">
           <span class="bottom-label">Дивиденды</span>
           <Tooltip content="Среднегодовые дивиденды всех активов в портфеле" position="top">
-            <div class="bottom-value">{{ formatCurrency(annualDividends, { maximumFractionDigits: 0 }) }} в год</div>
+            <div class="bottom-value">{{ formatCurrency(displayAnnualDividends, { maximumFractionDigits: 0 }) }} в год</div>
           </Tooltip>
-          <p class="secondary-text">{{ formatCurrency(dividendsMonthly, { maximumFractionDigits: 0 }) }} в месяц</p>
+          <p class="secondary-text">{{ formatCurrency(displayDividendsMonthly, { maximumFractionDigits: 0 }) }} в месяц</p>
         </div>
         <div class="bottom-block">
           <span class="bottom-label">Доходность</span>
@@ -126,11 +230,11 @@ const formattedPercent = (value) =>
             content="Средневзвешенная годовая доходность всех активов в портфеле (на основе текущей стоимости активов и средней дивидендной доходности за 5 лет). Учитывается только дивидендная и купонная доходность"
             position="top"
           >
-            <div class="bottom-value">{{ formattedPercent(returnPercent) }}</div>
+            <div class="bottom-value">{{ formattedPercent(displayReturnPercent) }}</div>
           </Tooltip>
           <p class="secondary-text">
             <Tooltip content="Средневзвешенная годовая доходность на основе средней цены покупки активов" position="top">
-              <span>на вложенный капитал: {{ formattedPercent(returnPercentOnInvested) }}</span>
+              <span>на вложенный капитал: {{ formattedPercent(displayReturnOnInvested) }}</span>
             </Tooltip>
           </p>
         </div>

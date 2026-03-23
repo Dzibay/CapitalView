@@ -18,7 +18,9 @@ const props = defineProps({
   totalInvested: {
     type: Number,
     default: 0
-  }
+  },
+  scrollReveal: { type: Boolean, default: false },
+  landingRevealRef: { type: [Object, Boolean], default: null }
 })
 </script>
 
@@ -33,5 +35,7 @@ const props = defineProps({
     secondary-format="percent"
     secondary-text=" на вложенный капитал"
     secondary-tooltip="Средневзвешенная годовая доходность на основе средней цены покупки активов"
+    :scroll-reveal="scrollReveal"
+    :landing-reveal-ref="landingRevealRef"
   />
 </template>
