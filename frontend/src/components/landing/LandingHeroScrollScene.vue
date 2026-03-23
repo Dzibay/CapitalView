@@ -1,22 +1,89 @@
 <script setup>
+import { onMounted, onUnmounted, ref } from 'vue'
 import { ArrowRight, Check } from 'lucide-vue-next'
+import { gsap } from 'gsap'
+
+const heroCenterRef = ref(null)
+const titleWordsLine1 = ['Ваши', 'инвестиции.']
+const titleWordsLine2 = ['Одна', 'картина.']
+const leadWords = 'Объединяйте брокерские счета, следите за доходностью и дивидендами — в одном спокойном интерфейсе, без таблиц и ручных пересчётов.'.split(' ')
+let introTl = null
+
+onMounted(() => {
+  const center = heroCenterRef.value
+  if (!center) return
+
+  const prefersReduced =
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (prefersReduced) return
+
+  const badge = center.querySelector('.hero-badge')
+  const title = center.querySelector('.hero-scene-title')
+  const titleWordNodes = center.querySelectorAll('.hero-title-word')
+  const leadWordNodes = center.querySelectorAll('.hero-lead-word')
+  const lead = center.querySelector('.hero-scene-lead')
+  const cta = center.querySelector('.hero-scene-cta')
+  if (!badge || !title || !titleWordNodes.length || !leadWordNodes.length || !lead || !cta) return
+
+  introTl = gsap.timeline({ defaults: { ease: 'power3.out' } })
+  introTl
+    .fromTo(
+      badge,
+      { autoAlpha: 0, y: 14, filter: 'blur(6px)' },
+      { autoAlpha: 1, y: 0, filter: 'blur(0px)', duration: 0.8 }
+    )
+    .fromTo(
+      titleWordNodes,
+      { autoAlpha: 0, yPercent: 120, filter: 'blur(8px)' },
+      { autoAlpha: 1, yPercent: 0, filter: 'blur(0px)', duration: 0.68, stagger: 0.12 },
+      '-=0.28'
+    )
+    .fromTo(
+      leadWordNodes,
+      { autoAlpha: 0, yPercent: 120, filter: 'blur(8px)' },
+      { autoAlpha: 1, yPercent: 0, filter: 'blur(0px)', duration: 0.62, stagger: 0.03 },
+      '-=0.24'
+    )
+    .fromTo(
+      cta,
+      { autoAlpha: 0, y: 10, scale: 0.985 },
+      { autoAlpha: 1, y: 0, scale: 1, duration: 0.74 },
+      '-=0.14'
+    )
+})
+
+onUnmounted(() => {
+  introTl?.kill()
+  introTl = null
+})
 </script>
 
 <template>
   <div class="hero-scene-root">
     <section class="hero-scene" aria-labelledby="hero-scene-title">
       <div class="hero-scene-content container">
-        <div class="hero-center">
+        <div ref="heroCenterRef" class="hero-center">
           <div class="hero-badge">
             <Check :size="14" :stroke-width="2.5" />
             Сервис временно бесплатный
           </div>
           <h1 id="hero-scene-title" class="hero-scene-title">
-            Ваши инвестиции.<br />Одна картина.
+            <span class="hero-line">
+              <span v-for="(word, i) in titleWordsLine1" :key="'title-w1-' + i" class="hero-title-word">
+                {{ word }}
+              </span>
+            </span>
+            <br />
+            <span class="hero-line">
+              <span v-for="(word, i) in titleWordsLine2" :key="'title-w2-' + i" class="hero-title-word">
+                {{ word }}
+              </span>
+            </span>
           </h1>
           <p class="hero-scene-lead">
-            Объединяйте брокерские счета, следите за доходностью и дивидендами — в одном спокойном
-            интерфейсе, без таблиц и ручных пересчётов.
+            <span v-for="(word, i) in leadWords" :key="'lead-word-' + i" class="hero-lead-word">
+              {{ word }}
+            </span>
           </p>
           <div class="hero-scene-cta">
             <router-link to="/login" class="btn-hero-primary">
@@ -94,6 +161,22 @@ import { ArrowRight, Check } from 'lucide-vue-next'
   letter-spacing: -0.035em;
   line-height: 1.08;
   color: #0f172a;
+}
+
+.hero-line {
+  display: inline-block;
+}
+
+.hero-title-word {
+  display: inline-block;
+  margin-right: 0.24em;
+  will-change: transform, opacity, filter;
+}
+
+.hero-lead-word {
+  display: inline-block;
+  margin-right: 0.28em;
+  will-change: transform, opacity, filter;
 }
 
 .hero-scene-lead {

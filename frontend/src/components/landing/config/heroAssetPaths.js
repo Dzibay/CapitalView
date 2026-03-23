@@ -16,7 +16,7 @@ export const HERO_ASSET_PATHS = [
 ]
 
 /** После интро кубики уже «вошли» в дугу к центру; дорисовка к фокусу — по скроллу */
-export const HERO_MOTION_INTRO_PROGRESS = 0.15
+export const HERO_MOTION_INTRO_PROGRESS = 0.1
 
 /**
  * Иконки на анимированных кубиках героя (WebP в public).

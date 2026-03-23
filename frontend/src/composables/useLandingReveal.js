@@ -7,11 +7,23 @@ const OBSERVER_OPTIONS = { threshold: 0.08, rootMargin: '0px 0px -40px 0px' }
  */
 export function useLandingReveal(rootRef) {
   let observer
+  let mutationObserver
+  const observed = new WeakSet()
+
+  function observeAll(root) {
+    if (!observer) return
+    root.querySelectorAll('.reveal').forEach((el) => {
+      if (observed.has(el)) return
+      observed.add(el)
+      observer.observe(el)
+    })
+  }
 
   function attach() {
     observer?.disconnect()
     const root = rootRef.value
     if (!root) return
+
     observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
@@ -20,7 +32,14 @@ export function useLandingReveal(rootRef) {
         }
       })
     }, OBSERVER_OPTIONS)
-    root.querySelectorAll('.reveal').forEach((el) => observer.observe(el))
+
+    // Начальная разметка
+    observeAll(root)
+
+    // Важно для async-рендера секций: элементы .reveal могут появляться позже.
+    mutationObserver?.disconnect()
+    mutationObserver = new MutationObserver(() => observeAll(root))
+    mutationObserver.observe(root, { childList: true, subtree: true })
   }
 
   onMounted(async () => {
@@ -31,5 +50,6 @@ export function useLandingReveal(rootRef) {
 
   onUnmounted(() => {
     observer?.disconnect()
+    mutationObserver?.disconnect()
   })
 }

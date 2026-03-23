@@ -8,7 +8,7 @@ defineProps({
 </script>
 
 <template>
-  <section class="section section-alt snap-section">
+  <section id="landing-pain" class="section section-alt snap-section">
     <div class="container">
       <h2 class="section-heading reveal">Знакомо?</h2>
       <p class="section-intro reveal">

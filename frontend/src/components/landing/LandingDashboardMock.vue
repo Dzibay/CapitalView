@@ -270,6 +270,8 @@ onUnmounted(() => {
 .landing-dash-mock {
   position: relative;
   width: 100%;
+  /* Высота превью вычисляется от ширины (responsive) */
+  aspect-ratio: 16 / 9;
   /* Радиус ближе к окнам macOS (~12px), чуть крупнее для масштаба превью */
   border-radius: clamp(12px, 1.35cqi, 16px);
   background: #eceff3;
@@ -322,8 +324,8 @@ onUnmounted(() => {
 .landing-dash-mock__shell {
   display: grid;
   grid-template-columns: minmax(102px, min(var(--landing-sb-width), 100%)) 1fr;
-  min-height: 420px;
-  max-height: min(72vh, 640px);
+  height: 100%;
+  min-height: 0;
 }
 
 .landing-dash-mock__stats-mobile {

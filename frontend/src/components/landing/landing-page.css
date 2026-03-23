@@ -14,9 +14,17 @@ html.cv-landing-snap {
 
 .cv-landing .snap-section {
   scroll-margin-top: 64px;
+  /* На больших экранах было слишком много вертикальной пустоты:
+     по умолчанию не растягиваем секции на всю высоту экрана. */
+  min-height: auto;
+  box-sizing: border-box;
+}
+
+/* Первая и вторая секции оставляем “полноэкранными” для snap-сценария */
+.cv-landing .landing-dashboard-section.snap-section,
+.cv-landing #landing-pain.snap-section {
   min-height: 100vh;
   min-height: 100dvh;
-  box-sizing: border-box;
 }
 
 /* ========================================
@@ -422,7 +430,7 @@ html.cv-landing-snap {
 .cv-landing .landing-dashboard-floating .landing-dashboard-overlap {
   pointer-events: auto;
   width: 100%;
-  max-width: 1000px;
+  max-width: 1200px;
   margin: 0 auto;
   will-change: transform;
 }
@@ -777,7 +785,7 @@ html.cv-landing-snap {
   display: grid;
   grid-template-columns: 1fr;
   gap: 24px;
-  max-width: 1000px;
+  max-width: 1200px;
   margin: 56px auto 0;
 }
 
