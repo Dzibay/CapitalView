@@ -7,7 +7,9 @@ const props = defineProps({
   annualDividends: {
     type: Number,
     default: 0
-  }
+  },
+  scrollReveal: { type: Boolean, default: false },
+  landingRevealRef: { type: [Object, Boolean], default: null }
 })
 
 // Средняя выплата в месяц = годовые дивиденды / 12
@@ -27,5 +29,7 @@ const monthlyAverage = computed(() => {
     :secondary-value="monthlyAverage"
     secondary-format="currency"
     secondary-text-suffix=" в месяц"
+    :scroll-reveal="scrollReveal"
+    :landing-reveal-ref="landingRevealRef"
   />
 </template>

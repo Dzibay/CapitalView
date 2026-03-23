@@ -9,6 +9,8 @@ const props = defineProps({
   monthlyChange: { type: Number, required: true },
   investedAmount: { type: Number, required: true },
   analytics: { type: Object, default: () => ({}) },
+  scrollReveal: { type: Boolean, default: false },
+  landingRevealRef: { type: [Object, Boolean], default: null }
 })
 
 // Рост прибыли за месяц в процентах
@@ -95,8 +97,10 @@ const profitBreakdownTooltip = computed(() => {
   <StatCardWidget
     title="Прибыль"
     :icon="profitToInvestedPercent >= 0 ? TrendingUp : TrendingDown"
-    :main-value="`${totalProfit.toFixed(2)} ₽`"
-    main-value-format="custom"
+    :main-value="totalProfit"
+    main-value-format="currency"
+    :main-currency-max-digits="2"
+    :main-currency-min-digits="2"
     :main-value-tooltip="profitBreakdownTooltip"
     :change-value="monthlyGrowthPercent"
     :change-tooltip="`Изменение прибыли за последний месяц составляет ${formattedMonthlyGrowthPercent}`"
@@ -104,5 +108,7 @@ const profitBreakdownTooltip = computed(() => {
     secondary-format="percent"
     :secondary-class="profitToInvestedPercent >= 0 ? 'positive' : 'negative'"
     secondary-text=" от инвестиций"
+    :scroll-reveal="scrollReveal"
+    :landing-reveal-ref="landingRevealRef"
   />
 </template>

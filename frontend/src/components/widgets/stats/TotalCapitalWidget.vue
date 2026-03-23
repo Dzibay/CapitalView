@@ -6,6 +6,8 @@ import StatCardWidget from '../base/StatCardWidget.vue'
 const props = defineProps({
   totalAmount: { type: Number, required: true },
   investedAmount: { type: Number, required: true },
+  scrollReveal: { type: Boolean, default: false },
+  landingRevealRef: { type: [Object, Boolean], default: null }
 })
 
 const profitPercent = computed(() => {
@@ -42,5 +44,7 @@ const tooltipText = computed(() => {
     secondary-text="Инвестировано: "
     :secondary-value="investedAmount"
     secondary-format="currency"
+    :scroll-reveal="scrollReveal"
+    :landing-reveal-ref="landingRevealRef"
   />
 </template>
