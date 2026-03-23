@@ -272,6 +272,7 @@ onUnmounted(() => {
   width: 100%;
   /* Высота превью вычисляется от ширины (responsive) */
   aspect-ratio: 16 / 9;
+  max-height: min(72vh, 640px);
   /* Радиус ближе к окнам macOS (~12px), чуть крупнее для масштаба превью */
   border-radius: clamp(12px, 1.35cqi, 16px);
   background: #eceff3;
