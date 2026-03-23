@@ -73,8 +73,13 @@ begin
     end if;
 
     ------------------------------------------------------------------
-    -- 6. portfolio_asset_daily_values удалены каскадом с portfolio_assets;
-    -- portfolio_daily_values, user_broker_connections, оставшиеся import_tasks — каскадом при удалении портфелей.
+    -- 6. portfolio_asset_daily_values удалены каскадом с portfolio_assets.
+    -- В режиме clear (p_delete_self = false) корневой портфель остаётся, поэтому
+    -- его portfolio_daily_values нужно удалить явно, иначе история не очищается.
+    delete from portfolio_daily_values
+    where portfolio_id = any(v_portfolio_ids);
+    -- user_broker_connections и оставшиеся import_tasks удалятся каскадом только
+    -- для реально удаляемых портфелей (дочерних и/или корня при p_delete_self=true).
     ------------------------------------------------------------------
 
     ------------------------------------------------------------------
