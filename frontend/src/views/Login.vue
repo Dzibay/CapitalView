@@ -72,10 +72,11 @@ const submitButtonText = computed(() => loading.value ? 'Загрузка...' : 
 const googleAuthUrl = computed(() => {
   const base = import.meta.env.VITE_API_BASE_URL || '/api/v1';
   const redirect = route.query.redirect;
-  const path = (base.endsWith('/') ? base + 'auth/google' : base + '/auth/google').replace(/\/+/g, '/');
-  const url = path.startsWith('http') ? new URL(path) : new URL(path, window.location.origin);
+  const path = base.endsWith('/') ? `${base}auth/google` : `${base}/auth/google`;
+  const isAbsolute = /^https?:\/\//i.test(path);
+  const url = isAbsolute ? new URL(path) : new URL(path, window.location.origin);
   if (redirect) url.searchParams.set('state', redirect);
-  return url.pathname + url.search;
+  return isAbsolute ? url.toString() : `${url.pathname}${url.search}`;
 });
 
 const oauthErrorMessages = {
