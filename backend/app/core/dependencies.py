@@ -99,25 +99,3 @@ async def get_current_user(
         raise NotFoundError("Пользователь")
 
 
-async def get_optional_current_user(
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
-) -> Optional[dict]:
-    """
-    Получает текущего пользователя, если токен предоставлен.
-    Возвращает None, если токен не предоставлен или невалиден.
-    
-    Args:
-        request: FastAPI Request объект
-        credentials: Опциональный HTTP Bearer токен
-        
-    Returns:
-        dict или None: Данные пользователя или None
-    """
-    try:
-        return await get_current_user(request, credentials)
-    except (UnauthorizedError, NotFoundError):
-        return None
-    except Exception as e:
-        logger.warning(f"Ошибка при получении опционального пользователя: {e}")
-        return None
