@@ -45,6 +45,12 @@ let dashboardScrollTween = null
 let detachReleasedDashboardListeners = null
 let dashboardIntroTween = null
 
+const isMobile = ref(false)
+
+onMounted(() => {
+  isMobile.value = window.innerWidth < 768
+})
+
 onMounted(async () => {
   document.documentElement.classList.add('cv-landing-snap')
 
@@ -241,13 +247,14 @@ const {
 
     <div ref="heroStageRef" class="landing-hero-dashboard-stage">
       <div class="landing-hero-bg" aria-hidden="true" />
-      <LandingHeroBlocksOverlay />
+      <LandingHeroBlocksOverlay v-if="!isMobile" />
       <section ref="heroSectionRef" class="landing-hero-section">
         <LandingHeroScrollScene />
       </section>
     </div>
 
     <div
+      v-if="!isMobile"
       ref="dashboardPullRef"
       class="landing-dashboard-floating"
       aria-label="Пример интерфейса"
@@ -257,7 +264,7 @@ const {
       </div>
     </div>
 
-    <section ref="dashboardSpacerRef" class="landing-dashboard-section snap-section" />
+    <section v-if="!isMobile" ref="dashboardSpacerRef" class="landing-dashboard-section snap-section" />
 
     <LandingPainSection :items="painPoints" />
     <LandingFeaturesSection :items="features" />
