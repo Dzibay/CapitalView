@@ -6,7 +6,7 @@ import { useLandingContent } from '../../composables/useLandingContent'
 import { useLandingReveal } from '../../composables/useLandingReveal'
 import LandingBackground from './LandingBackground.vue'
 import LandingHeader from './LandingHeader.vue'
-import LandingHeroScrollScene from './LandingHeroScrollScene.vue'
+import LandingHero from './LandingHero.vue'
 import LandingHeroBlocksOverlay from './LandingHeroBlocksOverlay.vue'
 import LandingDashboardMock from './LandingDashboardMock.vue'
 import LandingFooter from './LandingFooter.vue'
@@ -249,7 +249,7 @@ const {
       <div class="landing-hero-bg" aria-hidden="true" />
       <LandingHeroBlocksOverlay v-if="!isMobile" />
       <section ref="heroSectionRef" class="landing-hero-section">
-        <LandingHeroScrollScene />
+        <LandingHero />
       </section>
     </div>
 
