@@ -15,16 +15,6 @@ function setStep(i) {
 
 <template>
   <section id="how-it-works" class="section snap-section steps-section">
-    <!-- Gradient mesh -->
-    <div class="steps-mesh" aria-hidden="true" />
-
-    <!-- Вертикальные декоративные линии -->
-    <div class="steps-lines" aria-hidden="true">
-      <div class="steps-vline" /><div class="steps-vline" /><div class="steps-vline" />
-      <div class="steps-vline" /><div class="steps-vline" /><div class="steps-vline" />
-      <div class="steps-vline" /><div class="steps-vline" />
-    </div>
-
     <!-- Плавающий orb -->
     <div class="steps-glow-orb" aria-hidden="true" />
 
@@ -108,7 +98,7 @@ section#how-it-works.steps-section {
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
-  background: #f8f9fb;
+  background: transparent;
   /* Правый край мока/бейджей = правый край контентной области .container */
   --steps-mock-right: max(24px, calc((100% - 1200px) / 2 + 24px));
 }
@@ -116,38 +106,6 @@ section#how-it-works.steps-section {
 .steps-inner {
   position: relative;
   width: 100%;
-}
-
-/* ── Gradient mesh ── */
-.steps-mesh {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 50% 60% at 75% 40%, rgba(59, 130, 246, 0.06), transparent),
-    radial-gradient(ellipse 40% 50% at 85% 70%, rgba(139, 92, 246, 0.04), transparent),
-    radial-gradient(ellipse 30% 40% at 60% 20%, rgba(6, 182, 212, 0.03), transparent);
-}
-
-/* ── Вертикальные линии ── */
-.steps-lines {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  display: flex;
-  justify-content: space-between;
-  /* Визуально совпадает с полями .container (24px) */
-  padding: 0 24px;
-}
-.steps-vline {
-  width: 1px;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    rgba(15, 23, 42, 0.04) 30%,
-    rgba(15, 23, 42, 0.04) 70%,
-    transparent 100%
-  );
 }
 
 /* ── Плавающий orb ── */

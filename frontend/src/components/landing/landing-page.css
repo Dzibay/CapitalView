@@ -133,6 +133,81 @@ html.cv-landing-snap {
   padding: 0 24px;
 }
 
+/* Единый светлый фон под hero: крупные эллипсы + сетка с большим шагом, без швов */
+/* Те же боковые поля и скругление, что у .landing-hero-dashboard-stage — контент совпадает по ширине */
+.cv-landing .landing-light-surface {
+  position: relative;
+  z-index: 6;
+  /* не hidden — обрезает раскрытый FAQ и длинный контент снизу */
+  overflow-x: clip;
+  overflow-y: visible;
+  background-color: #f8f9fb;
+  /* Низ совпадает с футером (#f8f9fb), иначе виден горизонтальный шов */
+  background-image: linear-gradient(180deg, #fafbfd 0%, #f8f9fb 35%, #f8f9fb 100%);
+}
+
+.cv-landing .landing-light-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse min(1400px, 95vw) min(520px, 48vh) at 10% 14%,
+      rgba(59, 130, 246, 0.085),
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse min(1100px, 82vw) min(480px, 42vh) at 90% 10%,
+      rgba(139, 92, 246, 0.068),
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse min(1600px, 100vw) min(580px, 52vh) at 58% 46%,
+      rgba(59, 130, 246, 0.048),
+      transparent 62%
+    ),
+    radial-gradient(
+      ellipse min(980px, 72vw) min(500px, 44vh) at 18% 82%,
+      rgba(6, 182, 212, 0.045),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse min(900px, 68vw) min(440px, 40vh) at 88% 86%,
+      rgba(139, 92, 246, 0.04),
+      transparent 50%
+    );
+}
+
+.cv-landing .landing-light-vlines {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+.cv-landing .landing-light-vline {
+  flex: 0 0 1px;
+  width: 1px;
+  align-self: stretch;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(15, 23, 42, 0.04) 30%,
+    rgba(15, 23, 42, 0.04) 70%,
+    transparent 100%
+  );
+}
+
+.cv-landing .landing-light-surface > section.section.snap-section {
+  position: relative;
+  z-index: 1;
+}
+
 .cv-landing .section.snap-section {
   padding: clamp(28px, 5vh, 56px) 0;
   display: flex;
@@ -356,6 +431,26 @@ html.cv-landing-snap {
   box-sizing: border-box;
 }
 
+/* Сглаживание: низ hero-stage → светлый блок */
+.cv-landing .landing-hero-dashboard-stage::after {
+  content: '';
+  position: absolute;
+  left: -16px;
+  right: -16px;
+  bottom: -1px;
+  height: clamp(160px, 28vh, 320px);
+  pointer-events: none;
+  z-index: 6;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(248, 249, 251, 0.12) 18%,
+    rgba(248, 249, 251, 0.48) 44%,
+    rgba(248, 249, 251, 0.82) 68%,
+    #f8f9fb 100%
+  );
+}
+
 .cv-landing .landing-hero-bg {
   position: absolute;
   inset: 0;
@@ -411,7 +506,8 @@ html.cv-landing-snap {
   justify-content: flex-start;
   min-height: auto;
   padding: 72px 0 40px;
-  margin-top: 8px;
+  margin-top: 0;
+  background: #f8f9fb;
   border-top: 1px solid rgba(100, 116, 139, 0.38);
   box-shadow:
     0 -1px 0 rgba(255, 255, 255, 0.55),
@@ -518,7 +614,8 @@ html.cv-landing-snap {
   }
 
   .cv-landing .landing-hero-dashboard-stage,
-  .cv-landing .landing-hero-section {
+  .cv-landing .landing-hero-section,
+  .cv-landing .landing-light-surface {
     margin-left: 12px;
     margin-right: 12px;
     border-radius: 10px;

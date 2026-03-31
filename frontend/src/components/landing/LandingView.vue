@@ -102,15 +102,23 @@ const {
       </div>
     </div>
 
-    <LandingAnalyticsSection />
-    <LandingIntegrationSection
-      :bullets="integrationBullets"
-      :coming-soon-brokers="comingSoonBrokers"
-    />
-    <LandingStepsSection :items="steps" />
-    <LandingSecuritySection :tabs="securityTabs" />
-    <LandingPricingSection :features="pricingFeatures" />
-    <LandingFaqSection :items="faq" />
+    <div class="landing-light-surface">
+      <div class="landing-light-vlines" aria-hidden="true">
+        <span class="landing-light-vline" /><span class="landing-light-vline" />
+        <span class="landing-light-vline" /><span class="landing-light-vline" />
+        <span class="landing-light-vline" /><span class="landing-light-vline" />
+        <span class="landing-light-vline" /><span class="landing-light-vline" />
+      </div>
+      <LandingAnalyticsSection />
+      <LandingIntegrationSection
+        :bullets="integrationBullets"
+        :coming-soon-brokers="comingSoonBrokers"
+      />
+      <LandingStepsSection :items="steps" />
+      <LandingSecuritySection :tabs="securityTabs" />
+      <LandingPricingSection :features="pricingFeatures" />
+      <LandingFaqSection :items="faq" />
+    </div>
     <LandingFooter />
   </div>
 </template>

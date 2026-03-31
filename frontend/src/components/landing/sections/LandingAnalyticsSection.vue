@@ -57,13 +57,6 @@ const blocks = [
 
 <template>
   <section id="features" class="section snap-section analytics-section">
-    <div class="analytics-mesh" aria-hidden="true" />
-    <div class="analytics-lines" aria-hidden="true">
-      <div class="analytics-vline" /><div class="analytics-vline" /><div class="analytics-vline" />
-      <div class="analytics-vline" /><div class="analytics-vline" /><div class="analytics-vline" />
-      <div class="analytics-vline" /><div class="analytics-vline" />
-    </div>
-
     <div class="container analytics-container">
       <div class="analytics-header">
         <div class="analytics-label reveal">Возможности</div>
@@ -136,38 +129,7 @@ section#features.analytics-section {
   position: relative;
   overflow: hidden;
   padding: clamp(72px, 10vh, 100px) 0;
-  background: #f8f9fb;
-}
-
-/* ── Gradient mesh ── */
-.analytics-mesh {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 50% 60% at 75% 40%, rgba(59, 130, 246, 0.06), transparent),
-    radial-gradient(ellipse 40% 50% at 85% 70%, rgba(139, 92, 246, 0.04), transparent),
-    radial-gradient(ellipse 30% 40% at 60% 20%, rgba(6, 182, 212, 0.03), transparent);
-}
-
-/* ── Vertical lines ── */
-.analytics-lines {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  display: flex;
-  justify-content: space-between;
-  padding: 0 24px;
-}
-.analytics-vline {
-  width: 1px;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    rgba(15, 23, 42, 0.04) 30%,
-    rgba(15, 23, 42, 0.04) 70%,
-    transparent 100%
-  );
+  background: transparent;
 }
 
 /* ── Container ── */
