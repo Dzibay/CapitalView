@@ -15,10 +15,10 @@ import './landing-page.css'
 
 gsap.registerPlugin(ScrollTrigger)
 
-const LandingPainSection = defineAsyncComponent(() => import('./sections/LandingPainSection.vue'))
-const LandingFeaturesSection = defineAsyncComponent(() => import('./sections/LandingFeaturesSection.vue'))
+const LandingAnalyticsSection = defineAsyncComponent(() => import('./sections/LandingAnalyticsSection.vue'))
 const LandingStepsSection = defineAsyncComponent(() => import('./sections/LandingStepsSection.vue'))
 const LandingIntegrationSection = defineAsyncComponent(() => import('./sections/LandingIntegrationSection.vue'))
+const LandingSecuritySection = defineAsyncComponent(() => import('./sections/LandingSecuritySection.vue'))
 const LandingPricingSection = defineAsyncComponent(() => import('./sections/LandingPricingSection.vue'))
 const LandingFaqSection = defineAsyncComponent(() => import('./sections/LandingFaqSection.vue'))
 
@@ -70,13 +70,11 @@ onUnmounted(() => {
 })
 
 const {
-  painPoints,
-  features,
-  steps,
-  integrationFeatures,
+  integrationBullets,
   comingSoonBrokers,
-  pricing,
-  testimonials,
+  steps,
+  securityTabs,
+  pricingFeatures,
   faq
 } = useLandingContent()
 </script>
@@ -104,14 +102,14 @@ const {
       </div>
     </div>
 
-    <LandingPainSection :items="painPoints" />
-    <LandingFeaturesSection :items="features" />
-    <LandingStepsSection :items="steps" />
+    <LandingAnalyticsSection />
     <LandingIntegrationSection
-      :integration-features="integrationFeatures"
+      :bullets="integrationBullets"
       :coming-soon-brokers="comingSoonBrokers"
     />
-    <LandingPricingSection :plans="pricing" />
+    <LandingStepsSection :items="steps" />
+    <LandingSecuritySection :tabs="securityTabs" />
+    <LandingPricingSection :features="pricingFeatures" />
     <LandingFaqSection :items="faq" />
     <LandingFooter />
   </div>
