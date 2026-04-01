@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { authService } from '../services/authService.js';
 
@@ -7,10 +7,25 @@ const route = useRoute();
 const router = useRouter();
 
 const isLoginMode = ref(true);
+const verificationMode = ref(false);
 const email = ref('');
 const password = ref('');
 const message = ref('');
+const messageType = ref('error');
 const loading = ref(false);
+const resendCooldown = ref(0);
+let cooldownTimer = null;
+
+function startCooldown() {
+  resendCooldown.value = 60;
+  clearInterval(cooldownTimer);
+  cooldownTimer = setInterval(() => {
+    resendCooldown.value--;
+    if (resendCooldown.value <= 0) clearInterval(cooldownTimer);
+  }, 1000);
+}
+
+onUnmounted(() => clearInterval(cooldownTimer));
 
 onMounted(async () => {
   const token = localStorage.getItem('access_token');
@@ -28,8 +43,15 @@ onMounted(async () => {
 
 const toggleMode = () => {
   isLoginMode.value = !isLoginMode.value;
+  verificationMode.value = false;
   message.value = '';
 };
+
+function enterVerificationMode() {
+  verificationMode.value = true;
+  message.value = '';
+  startCooldown();
+}
 
 const handleSubmit = async () => {
   message.value = '';
@@ -50,17 +72,35 @@ const handleSubmit = async () => {
       await router.replace(redirectPath);
     } else {
       await authService.register(email.value, password.value);
-      await authService.login(email.value, password.value);
-      const savedToken = localStorage.getItem('access_token');
-      if (!savedToken) throw new Error('Не удалось сохранить токен авторизации');
-      await new Promise(resolve => setTimeout(resolve, 50));
-      const redirectPath = router.currentRoute.value.query.redirect || '/dashboard';
-      await router.replace(redirectPath);
+      enterVerificationMode();
     }
   } catch (err) {
-    const defaultMsg = isLoginMode.value ? 'Ошибка входа' : 'Ошибка регистрации';
-    message.value = err.response?.data?.msg || err.message || defaultMsg;
-    authService.logout();
+    const detail = err.response?.data?.detail || err.response?.data?.msg || '';
+    if (detail === 'email_not_verified') {
+      await authService.resendVerification(email.value).catch(() => {});
+      enterVerificationMode();
+    } else {
+      const defaultMsg = isLoginMode.value ? 'Ошибка входа' : 'Ошибка регистрации';
+      message.value = detail || err.message || defaultMsg;
+      authService.logout();
+    }
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handleResend = async () => {
+  message.value = '';
+  loading.value = true;
+  try {
+    await authService.resendVerification(email.value);
+    messageType.value = 'success';
+    message.value = 'Письмо отправлено повторно';
+    startCooldown();
+  } catch (err) {
+    messageType.value = 'error';
+    const detail = err.response?.data?.detail || err.response?.data?.msg || '';
+    message.value = detail || 'Не удалось отправить письмо';
   } finally {
     loading.value = false;
   }
@@ -86,6 +126,9 @@ const oauthErrorMessages = {
   no_access_token: 'Не получен токен доступа',
   userinfo_failed: 'Не удалось получить данные пользователя',
   oauth_not_configured: 'Google OAuth не настроен',
+  invalid_verification_token: 'Ссылка подтверждения недействительна или уже использована',
+  verification_token_expired: 'Ссылка подтверждения истекла, запросите новую',
+  user_not_found: 'Пользователь не найден',
 };
 const oauthErrorText = computed(() => {
   const err = route.query.error;
@@ -117,7 +160,38 @@ const handleGoogleLogin = () => {
     <main class="auth-wrapper">
       <div class="auth-card">
         <transition name="fade" mode="out-in">
-          <div :key="isLoginMode" class="auth-content">
+          <!-- Экран «Проверьте почту» -->
+          <div v-if="verificationMode" key="verify" class="auth-content">
+            <div class="verify-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2"/>
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+              </svg>
+            </div>
+            <h1 class="auth-title">Проверьте почту</h1>
+            <p class="auth-subtitle">
+              Мы отправили ссылку для подтверждения на<br><strong>{{ email }}</strong>
+            </p>
+            <p class="auth-hint">
+              Перейдите по ссылке в письме, чтобы активировать аккаунт. Ссылка действительна 24 часа.
+            </p>
+
+            <div v-if="message" :class="['message', messageType === 'success' ? 'message-success' : 'message-error']">
+              {{ message }}
+            </div>
+
+            <button
+              type="button"
+              class="btn-resend"
+              :disabled="loading || resendCooldown > 0"
+              @click="handleResend"
+            >
+              {{ resendCooldown > 0 ? `Отправить повторно (${resendCooldown}с)` : 'Отправить письмо повторно' }}
+            </button>
+          </div>
+
+          <!-- Вход / Регистрация -->
+          <div v-else :key="isLoginMode" class="auth-content">
             <h1 class="auth-title">{{ title }}</h1>
             <p class="auth-subtitle">
               {{ isLoginMode ? 'Войдите в аккаунт для доступа к портфелю' : 'Создайте аккаунт и начните отслеживать инвестиции' }}
@@ -179,7 +253,10 @@ const handleGoogleLogin = () => {
         </transition>
 
         <div class="auth-footer">
-          <p v-if="isLoginMode">
+          <p v-if="verificationMode">
+            <button type="button" class="link-btn" @click="verificationMode = false; message = ''">Назад к входу</button>
+          </p>
+          <p v-else-if="isLoginMode">
             Нет аккаунта?
             <button type="button" class="link-btn" @click="toggleMode">Зарегистрироваться</button>
           </p>
@@ -487,6 +564,49 @@ const handleGoogleLogin = () => {
   background: rgba(239, 68, 68, 0.1);
   color: #dc2626;
   border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.message-success {
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.verify-icon {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.auth-hint {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  margin: 0 0 20px;
+  line-height: 1.6;
+}
+
+.btn-resend {
+  width: 100%;
+  padding: 12px 16px;
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  font-family: inherit;
+}
+
+.btn-resend:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.06);
+  border-color: var(--color-primary);
+}
+
+.btn-resend:disabled {
+  color: var(--color-text-secondary);
+  cursor: not-allowed;
 }
 
 .auth-footer {

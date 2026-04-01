@@ -63,6 +63,10 @@ export const authService = {
         return res.data;
     },
 
+    async resendVerification(email) {
+        return apiClient.post(API_ENDPOINTS.AUTH.RESEND_VERIFICATION, { email });
+    },
+
     logout() {
         localStorage.removeItem('access_token');
     },

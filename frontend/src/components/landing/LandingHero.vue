@@ -4,8 +4,8 @@ import { ArrowRight, Check } from 'lucide-vue-next'
 import { gsap } from 'gsap'
 
 const heroCenterRef = ref(null)
-const titleWordsLine1 = ['Ваши', 'инвестиции.']
-const titleWordsLine2 = ['Одна', 'картина.']
+const titleWordsLine1 = ['Все', 'инвестиции']
+const titleWordsLine2 = ['в', 'одном', 'месте']
 const leadWords = 'Объединяйте брокерские счета, следите за доходностью и дивидендами — в одном спокойном интерфейсе, без таблиц и ручных пересчётов.'.split(' ')
 let introTl = null
 
@@ -101,19 +101,15 @@ onUnmounted(() => {
 <style scoped>
 .hero-scene-root {
   position: relative;
-  min-height: 100%;
   box-sizing: border-box;
 }
 
 .hero-scene {
   position: relative;
   z-index: 4;
-  min-height: 100vh;
-  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 88px 0 clamp(48px, 12vh, 120px);
+  padding: clamp(130px, 28vh, 280px) 0 0;
   box-sizing: border-box;
 }
 
@@ -128,14 +124,11 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 20px;
-  flex: 1;
-  justify-content: center;
-  padding-bottom: clamp(32px, 6vh, 56px);
 }
 
 .hero-center {
   text-align: center;
-  max-width: 720px;
+  max-width: 800px;
   margin: 0 auto;
 }
 
@@ -155,12 +148,13 @@ onUnmounted(() => {
 }
 
 .hero-scene-title {
-  margin: 0 0 16px;
-  font-size: clamp(34px, 5.5vw + 12px, 56px);
-  font-weight: 700;
-  letter-spacing: -0.035em;
-  line-height: 1.08;
-  color: #0f172a;
+  margin: 0 0 20px;
+  font-family: 'Raleway', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: clamp(36px, 5.5vw + 14px, 62px);
+  font-weight: 400;
+  letter-spacing: -0.025em;
+  line-height: 1.06;
+  color: #0b1120;
 }
 
 .hero-line {
@@ -237,9 +231,35 @@ onUnmounted(() => {
 
 @media (max-width: 767px) {
   .hero-scene {
-    padding: 76px 0 20px;
-    min-height: 100vh;
-    min-height: 100dvh;
+    padding: clamp(100px, 18vh, 160px) 0 0;
+  }
+
+  .hero-scene-title {
+    font-size: clamp(30px, 8vw, 44px);
+  }
+
+  .hero-scene-lead {
+    font-size: clamp(15px, 3.8vw, 17px);
+    margin-bottom: 24px;
+  }
+
+  .btn-hero-primary,
+  .btn-hero-ghost {
+    padding: 14px 24px;
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 380px) {
+  .hero-scene-cta {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .btn-hero-primary,
+  .btn-hero-ghost {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

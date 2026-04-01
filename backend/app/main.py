@@ -29,7 +29,7 @@ app = FastAPI(
 # Сохраняем состояние приложения
 app.state.is_production = os.getenv("ENVIRONMENT", "development") == "production"
 
-# Регистрация middleware (порядок важен!)
+# Регистрация middleware
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(

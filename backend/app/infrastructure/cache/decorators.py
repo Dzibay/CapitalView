@@ -1,7 +1,7 @@
 """
-Cache decorators for Redis-backed caching.
+Кэш декораторы для Redis-backed кэша.
 
-Usage:
+Примеры использования:
 
     @cache("dashboard:{user_id}", ttl=300)
     async def get_dashboard_data(user_id: int):
@@ -13,11 +13,6 @@ Usage:
 
     # Явная инвалидация (для воркеров и т.д.)
     await invalidate_cache("dashboard:*")
-
-Key template syntax:
-    {param}       — simple parameter from function kwargs
-    {param.attr}  — dict key or object attribute (e.g. user["id"] via {user.id})
-    *             — wildcard for pattern-based deletion
 """
 import functools
 import inspect
@@ -61,7 +56,7 @@ def _deserialize(raw: str) -> Any:
 
 
 def _resolve_key(template: str, bound_args: dict) -> Optional[str]:
-    """Resolve '{param}' and '{param.attr}' placeholders from function arguments."""
+    """Разрешает '{param}' и '{param.attr}' заполнители из аргументов функции."""
     def _replacer(match: re.Match) -> str:
         expr = match.group(1)
         parts = expr.split(".")
@@ -85,7 +80,7 @@ def _resolve_key(template: str, bound_args: dict) -> Optional[str]:
 
 
 def _bind_args(func, args, kwargs) -> dict:
-    """Bind positional and keyword args to parameter names."""
+    """Связывает позиционные и ключевые аргументы с именами параметров."""
     try:
         sig = inspect.signature(func)
         bound = sig.bind(*args, **kwargs)
@@ -97,11 +92,11 @@ def _bind_args(func, args, kwargs) -> dict:
 
 def cache(key: str, ttl: int = 300):
     """
-    Cache the async function's return value in Redis.
+    Кэширует возвращаемое значение асинхронной функции в Redis.
 
-    On cache hit, returns deserialized cached data without calling the function.
-    On cache miss, calls the function, serializes the result, stores it in Redis.
-    If Redis is unavailable, the function is called normally.
+    При попадании в кэш, возвращает десериализованные данные без вызова функции.
+    При промахе в кэш, вызывает функцию, сериализует результат, сохраняет его в Redis.
+    Если Redis недоступен, функция вызывается нормально.
     """
     def decorator(func):
         _original = func
@@ -141,12 +136,12 @@ def cache(key: str, ttl: int = 300):
 
 def invalidate(*key_templates: str):
     """
-    Invalidate cache keys after the decorated async function executes successfully.
+    Инвалидирует кэш ключи после успешной выполнения асинхронной функции.
 
-    Supports:
-        @invalidate("dashboard:{user.id}")          — single key
-        @invalidate("dashboard:{user.id}", "analytics:{user.id}")  — multiple keys
-        @invalidate("dashboard:*")                   — wildcard pattern
+    Поддерживает:
+        @invalidate("dashboard:{user.id}")          — один ключ
+        @invalidate("dashboard:{user.id}", "analytics:{user.id}")  — несколько ключей
+        @invalidate("dashboard:*")                   — wildcard шаблон
     """
     def decorator(func):
         _original = func
@@ -188,9 +183,9 @@ def invalidate(*key_templates: str):
 
 async def invalidate_cache(*key_templates: str, **params: Any) -> int:
     """
-    Explicit cache invalidation function.
+    Явная функция инвалидации кэша.
 
-    Usage:
+    Примеры использования:
         await invalidate_cache("dashboard:123")
         await invalidate_cache("dashboard:*")
         await invalidate_cache("dashboard:{user_id}", user_id=123)
