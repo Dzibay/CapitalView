@@ -93,12 +93,11 @@ const {
 
       <div
         v-if="!isMobile"
-        class="landing-dashboard-sticky"
+        ref="dashboardOverlapRef"
+        class="container landing-dashboard-wrap"
         aria-label="Пример интерфейса"
       >
-        <div ref="dashboardOverlapRef" class="container landing-dashboard-overlap">
-          <LandingDashboardMock />
-        </div>
+        <LandingDashboardMock />
       </div>
     </div>
 

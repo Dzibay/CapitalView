@@ -416,22 +416,20 @@ html.cv-landing-snap {
 }
 
 /* ========================================
-   Hero+Dashboard stage (z 4): sticky dashboard (z 5) выше героя (z 2-4),
-   блоки overlay ниже дашборда. .section.snap-section (z 6) поверх всего stage.
+   Hero+Dashboard stage: контент (герой z4, дашборд z5) поверх декора.
+   ::after — только под контентом (между .landing-hero-bg и секциями), иначе градиент перекрывает мокап.
    ======================================== */
 .cv-landing .landing-hero-dashboard-stage {
   position: relative;
   z-index: 4;
   margin: 0 16px;
-  min-height: 170vh;
-  min-height: 170dvh;
   border: none;
   border-radius: 12px;
   overflow: visible;
   box-sizing: border-box;
 }
 
-/* Сглаживание: низ hero-stage → светлый блок */
+/* Сглаживание: низ hero-stage → светлый блок (ниже героя и дашборда) */
 .cv-landing .landing-hero-dashboard-stage::after {
   content: '';
   position: absolute;
@@ -440,7 +438,7 @@ html.cv-landing-snap {
   bottom: -1px;
   height: clamp(160px, 28vh, 320px);
   pointer-events: none;
-  z-index: 6;
+  z-index: 2;
   background: linear-gradient(
     180deg,
     transparent 0%,
@@ -465,30 +463,18 @@ html.cv-landing-snap {
   position: relative;
   z-index: 4;
   box-sizing: border-box;
-  min-height: 100vh;
-  min-height: 100dvh;
   margin: 0;
   border: none;
   background: transparent;
 }
 
-/* Dashboard mock: sticky-центрирование без position: fixed */
-.cv-landing .landing-dashboard-sticky {
-  position: sticky;
-  top: 50vh;
-  transform: translateY(-30%);
+/* Dashboard mock: фиксированный отступ от CTA-кнопок, нормальный document flow */
+.cv-landing .landing-dashboard-wrap {
+  position: relative;
   z-index: 5;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
-.cv-landing .landing-dashboard-sticky .landing-dashboard-overlap {
-  pointer-events: auto;
   width: 100%;
-  margin: 0 auto;
+  margin: clamp(48px, 6vh, 80px) auto 0;
+  padding-bottom: clamp(80px, 14vh, 160px);
   will-change: transform;
 }
 
@@ -507,6 +493,8 @@ html.cv-landing-snap {
   min-height: auto;
   padding: 72px 0 40px;
   margin-top: 0;
+  margin-left: 0;
+  margin-right: 0;
   background: #f8f9fb;
   border-top: 1px solid rgba(100, 116, 139, 0.38);
   box-shadow:
@@ -614,16 +602,38 @@ html.cv-landing-snap {
   }
 
   .cv-landing .landing-hero-dashboard-stage,
-  .cv-landing .landing-hero-section,
-  .cv-landing .landing-light-surface {
+  .cv-landing .landing-hero-section {
     margin-left: 12px;
     margin-right: 12px;
     border-radius: 10px;
   }
 
+  /* Дашборд на мобильных скрыт — нижний воздух вместо блока с мокапом */
+  .cv-landing .landing-hero-section {
+    padding-bottom: clamp(48px, 10vh, 88px);
+  }
+
   .cv-landing .footer-links {
     grid-template-columns: 1fr;
     gap: 32px;
+  }
+
+  /*
+   * Футер вне .landing-light-surface: общий .container даёт padding 16px + визуально «узкую» полосу.
+   * Поля задаём на footer (как у hero-stage / light-surface, 12px), внутри — без лишнего padding и без сжатия от margin:auto.
+   */
+  .cv-landing .footer.snap-section {
+    padding: 56px 12px 36px;
+    box-sizing: border-box;
+  }
+
+  .cv-landing .footer .container {
+    padding-left: 0;
+    padding-right: 0;
+    margin-left: 0;
+    margin-right: 0;
+    max-width: none;
+    width: 100%;
   }
 }
 

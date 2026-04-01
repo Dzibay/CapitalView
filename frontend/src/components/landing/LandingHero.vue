@@ -101,19 +101,15 @@ onUnmounted(() => {
 <style scoped>
 .hero-scene-root {
   position: relative;
-  min-height: 100%;
   box-sizing: border-box;
 }
 
 .hero-scene {
   position: relative;
   z-index: 4;
-  min-height: 100vh;
-  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 88px 0 clamp(48px, 12vh, 120px);
+  padding: clamp(130px, 28vh, 280px) 0 0;
   box-sizing: border-box;
 }
 
@@ -128,9 +124,6 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 20px;
-  flex: 1;
-  justify-content: center;
-  padding-bottom: clamp(32px, 6vh, 56px);
 }
 
 .hero-center {
@@ -238,9 +231,35 @@ onUnmounted(() => {
 
 @media (max-width: 767px) {
   .hero-scene {
-    padding: 76px 0 20px;
-    min-height: 100vh;
-    min-height: 100dvh;
+    padding: clamp(100px, 18vh, 160px) 0 0;
+  }
+
+  .hero-scene-title {
+    font-size: clamp(30px, 8vw, 44px);
+  }
+
+  .hero-scene-lead {
+    font-size: clamp(15px, 3.8vw, 17px);
+    margin-bottom: 24px;
+  }
+
+  .btn-hero-primary,
+  .btn-hero-ghost {
+    padding: 14px 24px;
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 380px) {
+  .hero-scene-cta {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .btn-hero-primary,
+  .btn-hero-ghost {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>
