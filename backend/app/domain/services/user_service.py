@@ -30,7 +30,11 @@ def get_user_by_id(user_id):
 def create_user(email: str, password: str):
     """Создает нового пользователя."""
     hashed = bcrypt.generate_password_hash(password)
-    result = _user_repository.create_sync({"email": email, "password_hash": hashed})
+    result = _user_repository.create_sync({
+        "email": email,
+        "password_hash": hashed,
+        "email_verified": False,
+    })
     return result
 
 

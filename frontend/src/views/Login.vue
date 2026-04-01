@@ -72,10 +72,12 @@ const handleSubmit = async () => {
       await router.replace(redirectPath);
     } else {
       await authService.register(email.value, password.value);
+      authService.logout();
       enterVerificationMode();
     }
   } catch (err) {
-    const detail = err.response?.data?.detail || err.response?.data?.msg || '';
+    const data = err.response?.data;
+    const detail = data?.detail || data?.msg || data?.error || '';
     if (detail === 'email_not_verified') {
       await authService.resendVerification(email.value).catch(() => {});
       enterVerificationMode();
