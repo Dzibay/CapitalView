@@ -12,8 +12,19 @@ CREATE TABLE IF NOT EXISTS users (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   password_hash text,
   name text DEFAULT 'Профессиональный инвестор',
+  email_verified boolean NOT NULL DEFAULT false,
   CONSTRAINT users_pkey PRIMARY KEY (id)
 );
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id bigserial PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token varchar(64) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL DEFAULT now() + interval '24 hours',
+  used boolean NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_evt_user_id ON email_verification_tokens(user_id);
 
 CREATE TABLE IF NOT EXISTS asset_types (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,

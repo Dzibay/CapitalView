@@ -54,3 +54,8 @@ class ChangePasswordRequest(BaseModel):
     @classmethod
     def validate_new_password(cls, v: str) -> str:
         return _validate_password_strength(v)
+
+
+class ResendVerificationRequest(BaseModel):
+    """Повторная отправка письма с подтверждением."""
+    email: EmailStr

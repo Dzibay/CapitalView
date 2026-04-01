@@ -43,6 +43,17 @@ class Config:
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
     BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
     
+    # SMTP (Яндекс 360 и др.) — письма подтверждения регистрации
+    SMTP_HOST = os.getenv("SMTP_HOST", "smtp.yandex.ru")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+    SMTP_USER = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "")
+    SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "CapitalView")
+    # true / 1 / yes — implicit SSL (порт 465); иначе STARTTLS (например порт 587)
+    _smtp_ssl = os.getenv("SMTP_SSL", "true").lower()
+    SMTP_USE_IMPLICIT_SSL = _smtp_ssl in ("1", "true", "yes")
+
     # Логирование
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     
