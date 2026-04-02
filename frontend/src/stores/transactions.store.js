@@ -9,8 +9,10 @@ export const useTransactionsStore = defineStore('transactions', {
     selectedAsset: '',
     assetSearch: '',
     recentAssets: [],
-    selectedPortfolio: '',
-    selectedType: '',
+    /** Пустой массив = все портфели (по имени, как в данных транзакций) */
+    selectedPortfolio: [],
+    /** Пустой массив = все типы */
+    selectedType: [],
     selectedCurrency: 'RUB',
     periodPreset: 'all',
     startDate: '',
@@ -21,8 +23,8 @@ export const useTransactionsStore = defineStore('transactions', {
     resetFilters() {
       this.selectedAsset = ''
       this.assetSearch = ''
-      this.selectedPortfolio = ''
-      this.selectedType = ''
+      this.selectedPortfolio = []
+      this.selectedType = []
       this.globalSearch = ''
       this.periodPreset = 'all'
       this.startDate = ''

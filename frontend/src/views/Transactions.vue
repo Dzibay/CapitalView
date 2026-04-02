@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useTransactionsStore } from '../stores/transactions.store'
@@ -18,6 +19,7 @@ import operationsService from '../services/operationsService'
 
 const dashboardStore = useDashboardStore()
 const transactionsStore = useTransactionsStore()
+const route = useRoute()
 
 const {
   viewMode,
@@ -361,12 +363,18 @@ watch(assetSearch, (newVal) => {
   }
 })
 
+const normalizeFilterList = (v) => {
+  if (Array.isArray(v)) return v.filter((x) => x != null && x !== '')
+  if (v == null || v === '') return []
+  return [v]
+}
+
 // --- ГЛАВНЫЙ ФИЛЬТР ---
 // Оптимизировано: ранний выход из проверок для лучшей производительности
 const applyFilter = () => {
   const assetFilter = selectedAsset.value
-  const portfolioFilter = selectedPortfolio.value
-  const typeFilter = selectedType.value
+  const portfolioNames = normalizeFilterList(selectedPortfolio.value)
+  const typeFilters = normalizeFilterList(selectedType.value)
   const term = globalSearch.value.trim().toLowerCase()
   const hasTerm = term.length > 0
 
@@ -390,8 +398,8 @@ const applyFilter = () => {
   filteredTransactions.value = txList.filter(tx => {
     // Быстрые проверки с ранним выходом
     if (assetFilter && tx.asset_name !== assetFilter) return false
-    if (portfolioFilter && tx.portfolio_name !== portfolioFilter) return false
-    if (typeFilter && tx.transaction_type !== typeFilter) return false
+    if (portfolioNames.length > 0 && !portfolioNames.includes(tx.portfolio_name)) return false
+    if (typeFilters.length > 0 && !typeFilters.includes(tx.transaction_type)) return false
 
     // Период (только если заданы даты)
     if (start || end) {
@@ -414,11 +422,9 @@ const applyFilter = () => {
   if (viewMode.value === 'operations') {
     const opsList = operations.value
     filteredOperations.value = opsList.filter(op => {
-      // Фильтр по портфелю
-      if (portfolioFilter && op.portfolio_name !== portfolioFilter) return false
-      
-      // Фильтр по типу операции
-      if (typeFilter && op.operation_type !== typeFilter) return false
+      if (portfolioNames.length > 0 && !portfolioNames.includes(op.portfolio_name)) return false
+
+      if (typeFilters.length > 0 && !typeFilters.includes(op.operation_type)) return false
       
       // Фильтр по активу (если указан)
       if (assetFilter && op.asset_name && op.asset_name !== assetFilter) return false
@@ -450,6 +456,80 @@ const resetFilters = () => {
   transactionsStore.resetFilters()
   applyFilter()
 }
+
+const parseQuarterRange = (quarterKey) => {
+  const m = quarterKey.match(/^(\d{4})-Q([1-4])$/)
+  if (!m) return null
+  const year = parseInt(m[1], 10)
+  const q = parseInt(m[2], 10)
+  const startMonth = (q - 1) * 3
+  return {
+    start: new Date(year, startMonth, 1),
+    end: new Date(year, startMonth + 3, 0)
+  }
+}
+
+const firstQuery = (v) => (Array.isArray(v) ? v[0] : v)
+
+/** Один или несколько opType в query (график выплат: дивиденды/купоны/погашение) */
+const normalizeOpTypesFromQuery = (raw) => {
+  if (raw == null || raw === '') return []
+  if (Array.isArray(raw)) {
+    return raw.map((x) => String(x).trim()).filter((s) => s.length > 0)
+  }
+  const s = String(raw).trim()
+  return s.length > 0 ? [s] : []
+}
+
+/** Диплинк с графика выплат: view=operations, month|quarter, opType (строка или повторяющиеся ключи) */
+const applyRouteFromQuery = () => {
+  const q = route.query
+  let touched = false
+
+  const view = firstQuery(q.view)
+  if (view === 'operations') {
+    viewMode.value = 'operations'
+    touched = true
+  }
+
+  const opTypes = normalizeOpTypesFromQuery(q.opType)
+  if (opTypes.length > 0) {
+    selectedType.value = opTypes
+    touched = true
+  }
+
+  const month = firstQuery(q.month)
+  if (typeof month === 'string' && /^\d{4}-\d{2}$/.test(month)) {
+    const [y, mo] = month.split('-').map((n) => parseInt(n, 10))
+    const start = new Date(y, mo - 1, 1)
+    const end = new Date(y, mo, 0)
+    periodPreset.value = 'custom'
+    startDate.value = getLocalYMD(start)
+    endDate.value = getLocalYMD(end)
+    touched = true
+  } else {
+    const quarter = firstQuery(q.quarter)
+    if (typeof quarter === 'string' && /^\d{4}-Q[1-4]$/.test(quarter)) {
+      const range = parseQuarterRange(quarter)
+      if (range) {
+        periodPreset.value = 'custom'
+        startDate.value = getLocalYMD(range.start)
+        endDate.value = getLocalYMD(range.end)
+        touched = true
+      }
+    }
+  }
+
+  if (touched) {
+    applyFilter()
+  }
+}
+
+watch(
+  () => route.query,
+  () => applyRouteFromQuery(),
+  { immediate: true, deep: true }
+)
 
 // следим за обновлением транзакций
 watch(transactions, () => {
@@ -864,6 +944,8 @@ const showSumsSummary = ref(false)
               empty-option-text="Все портфели"
               option-label="name"
               option-value="name"
+              multiple
+              min-width="200px"
               @change="applyFilter"
             />
             <CustomSelect
@@ -872,6 +954,8 @@ const showSumsSummary = ref(false)
               label="Тип"
               placeholder="Все типы"
               empty-option-text="Все типы"
+              multiple
+              min-width="220px"
               @change="applyFilter"
             />
             <CustomSelect

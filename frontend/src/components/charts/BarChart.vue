@@ -61,6 +61,11 @@ const props = defineProps({
   overrideOptions: {
     type: Object,
     default: () => ({})
+  },
+  /** Клик по столбцу (stacked: индекс категории). Передаётся из виджетов для навигации. */
+  onBarClick: {
+    type: Function,
+    default: null
   }
 })
 
@@ -538,7 +543,29 @@ const chartOptions = computed(() => {
     }
   }
 
-  return deepMerge(baseOptions, props.overrideOptions)
+  const merged = deepMerge(baseOptions, props.overrideOptions)
+
+  if (props.onBarClick) {
+    return {
+      ...merged,
+      onClick: (event, elements, chart) => {
+        if (!elements?.length || !chart?.data?.labels) return
+        const el = elements[0]
+        props.onBarClick({
+          index: el.index,
+          datasetIndex: el.datasetIndex,
+          label: chart.data.labels[el.index]
+        })
+      },
+      onHover: (event, elements, chart) => {
+        if (chart?.canvas) {
+          chart.canvas.style.cursor = elements?.length ? 'pointer' : 'default'
+        }
+      }
+    }
+  }
+
+  return merged
 })
 
 const allPlugins = computed(() => {

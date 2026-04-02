@@ -36,19 +36,25 @@ export function usePortfolioAnalytics() {
   // Обновление выбранной аналитики
   async function updateSelectedAnalytics() {
     const allAnalytics = dashboardStore.analytics ?? []
-    selectedPortfolioAnalytics.value =
-      allAnalytics.find(a => a.portfolio_id === uiStore.selectedPortfolioId) || null
+    const currentId = uiStore.selectedPortfolioId
+    const portfoliosList = dashboardStore.portfolios ?? []
+    const portfolioExists =
+      currentId != null && portfoliosList.some((p) => p.id === currentId)
 
-    // Fallback: если нет совпадения (persisted ID, смена устройства), берём первую доступную
-    if (!selectedPortfolioAnalytics.value && allAnalytics.length > 0) {
+    selectedPortfolioAnalytics.value =
+      allAnalytics.find((a) => a.portfolio_id === currentId) || null
+
+    // Fallback и смена выбранного портфеля — только если id битый / портфеля нет в списке.
+    // Пустой портфель (без активов) в analytics не попадает (см. dashboard.store) — выбор не трогаем.
+    if (!selectedPortfolioAnalytics.value && allAnalytics.length > 0 && !portfolioExists) {
       selectedPortfolioAnalytics.value = allAnalytics[0]
-      if (uiStore.selectedPortfolioId !== selectedPortfolioAnalytics.value.portfolio_id) {
+      if (currentId !== selectedPortfolioAnalytics.value.portfolio_id) {
         uiStore.setSelectedPortfolioId(selectedPortfolioAnalytics.value.portfolio_id)
       }
     }
 
-    if (!selectedPortfolioAnalytics.value) {
-      console.warn('⚠️ Аналитика не найдена для портфеля', uiStore.selectedPortfolioId)
+    if (!selectedPortfolioAnalytics.value && currentId != null && !portfolioExists) {
+      console.warn('⚠️ Аналитика не найдена для портфеля', currentId)
     }
   }
 

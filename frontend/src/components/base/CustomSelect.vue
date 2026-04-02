@@ -6,7 +6,7 @@
       :class="{ 'is-open': isOpen }" 
       @click="toggleDropdown"
     >
-      <span class="custom-select-value" :class="{ 'placeholder': !selectedValue }">
+      <span class="custom-select-value" :class="{ 'placeholder': !hasSelection }">
         {{ displayValue || placeholder }}
       </span>
       <span class="custom-select-arrow">▼</span>
@@ -26,11 +26,11 @@
       <div 
         v-if="showEmptyOption"
         class="custom-select-option" 
-        :class="{ 'is-selected': !selectedValue }"
+        :class="{ 'is-selected': !hasSelection }"
         @click="selectOption(null, emptyOptionText)"
       >
         <span>{{ emptyOptionText }}</span>
-        <span v-if="!selectedValue" class="check-icon">✓</span>
+        <span v-if="!hasSelection" class="check-icon">✓</span>
       </div>
       <div 
         v-for="option in options" 
@@ -53,8 +53,13 @@ import { Teleport } from 'vue'
 
 const props = defineProps({
   modelValue: {
-    type: [String, Number, Object, null],
+    type: [String, Number, Object, Array, null],
     default: null
+  },
+  /** Несколько значений; modelValue — массив выбранных optionValue */
+  multiple: {
+    type: Boolean,
+    default: false
   },
   options: {
     type: Array,
@@ -123,32 +128,78 @@ const getOptionValue = (option) => {
   return option[props.optionValue] || option.id || option.value || option
 }
 
+const selectedValuesArray = computed(() => {
+  if (!props.multiple) return []
+  const v = props.modelValue
+  if (Array.isArray(v)) return v
+  return []
+})
+
+const hasSelection = computed(() => {
+  if (props.multiple) {
+    return selectedValuesArray.value.length > 0
+  }
+  const v = props.modelValue
+  return v != null && v !== ''
+})
+
 const isSelected = (option) => {
   const optionValue = getOptionValue(option)
+  if (props.multiple) {
+    return selectedValuesArray.value.some((v) => v === optionValue)
+  }
   return optionValue === props.modelValue
 }
 
-const selectedValue = computed(() => props.modelValue)
-
 const displayValue = computed(() => {
-  if (!props.modelValue) return null
-  
-  // Если есть пустая опция и выбрана она
+  if (props.multiple) {
+    const vals = selectedValuesArray.value
+    if (vals.length === 0) return null
+    const labels = vals.map((v) => {
+      const opt = props.options.find((o) => getOptionValue(o) === v)
+      return opt ? getOptionLabel(opt) : String(v)
+    })
+    if (labels.length === 1) return labels[0]
+    const joined = labels.join(', ')
+    if (joined.length <= 48) return joined
+    return `${labels.slice(0, 2).join(', ')} (+${labels.length - 2})`
+  }
+
+  if (props.modelValue == null || props.modelValue === '') return null
+
   if (props.showEmptyOption && !props.modelValue) {
     return props.emptyOptionText
   }
-  
-  // Ищем выбранную опцию
-  const selected = props.options.find(opt => isSelected(opt))
+
+  const selected = props.options.find((opt) => getOptionValue(opt) === props.modelValue)
   if (selected) {
     return getOptionLabel(selected)
   }
-  
-  // Если значение не найдено, возвращаем само значение
+
   return String(props.modelValue)
 })
 
 const selectOption = (option, emptyText = null) => {
+  if (props.multiple) {
+    if (option === null) {
+      emit('update:modelValue', [])
+      emit('change', [])
+      isOpen.value = false
+      return
+    }
+    const value = getOptionValue(option)
+    const current = [...selectedValuesArray.value]
+    const idx = current.findIndex((v) => v === value)
+    if (idx >= 0) {
+      current.splice(idx, 1)
+    } else {
+      current.push(value)
+    }
+    emit('update:modelValue', current)
+    emit('change', current)
+    return
+  }
+
   if (option === null) {
     emit('update:modelValue', null)
     emit('change', null)
