@@ -889,91 +889,100 @@ const showSumsSummary = ref(false)
           <div class="card">
           <div class="toolbar">
             <div class="filters-top">
-              <!-- Поиск по активу -->
-              <div v-if="viewMode === 'transactions'" class="asset-search-wrapper">
-            <span class="select-label">Актив</span>
-            <span class="input-icon"><Search :size="16" /></span>
-            <input
-              type="text"
-              v-model="assetSearch"
-              placeholder="Поиск актива"
-              class="form-input"
-            />
-            <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
-            
-            <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
-              <li v-for="a in filteredAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
-                <span v-html="highlightMatch(a)" />
-                <span v-if="getAssetMeta(a)" class="meta-ticker">{{ getAssetMeta(a).ticker }}</span>
-              </li>
-              <li v-if="filteredAssetsList.length === 0" class="asset-empty">
-                <span class="asset-empty-icon"><Search :size="20" /></span>
-                Ничего не найдено
-              </li>
-            </ul>
+              <!-- Строка 1: поиск по активу + сброс (всегда вместе при сужении) -->
+              <div class="filters-row filters-row--primary">
+                <div v-if="viewMode === 'transactions'" class="asset-search-wrapper">
+                  <span class="select-label">Актив</span>
+                  <span class="input-icon"><Search :size="16" /></span>
+                  <input
+                    type="text"
+                    v-model="assetSearch"
+                    placeholder="Поиск актива"
+                    class="form-input"
+                  />
+                  <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
+
+                  <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
+                    <li v-for="a in filteredAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
+                      <span v-html="highlightMatch(a)" />
+                      <span v-if="getAssetMeta(a)" class="meta-ticker">{{ getAssetMeta(a).ticker }}</span>
+                    </li>
+                    <li v-if="filteredAssetsList.length === 0" class="asset-empty">
+                      <span class="asset-empty-icon"><Search :size="20" /></span>
+                      Ничего не найдено
+                    </li>
+                  </ul>
+                </div>
+
+                <div v-else class="asset-search-wrapper">
+                  <span class="select-label">Актив</span>
+                  <span class="input-icon"><Search :size="16" /></span>
+                  <input
+                    type="text"
+                    v-model="assetSearch"
+                    placeholder="Поиск актива"
+                    class="form-input"
+                  />
+                  <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
+
+                  <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
+                    <li v-for="a in filteredOperationsAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
+                      <span v-html="highlightMatch(a)" />
+                    </li>
+                    <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">
+                      <span class="asset-empty-icon"><Search :size="20" /></span>
+                      Ничего не найдено
+                    </li>
+                  </ul>
+                </div>
+
+                <button
+                  type="button"
+                  @click="resetFilters"
+                  class="btn btn-ghost reset-btn"
+                  title="Сбросить фильтры"
+                >
+                  <span class="reset-icon">↺</span>
+                </button>
               </div>
 
-              <div v-if="viewMode === 'operations'" class="asset-search-wrapper">
-            <span class="select-label">Актив</span>
-            <span class="input-icon"><Search :size="16" /></span>
-            <input
-              type="text"
-              v-model="assetSearch"
-              placeholder="Поиск актива"
-              class="form-input"
-            />
-            <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
-            
-            <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
-              <li v-for="a in filteredOperationsAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
-                <span v-html="highlightMatch(a)" />
-              </li>
-              <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">
-                <span class="asset-empty-icon"><Search :size="20" /></span>
-                Ничего не найдено
-              </li>
-            </ul>
-          </div>
-
-          <div class="select-group">
-            <CustomSelect
-              v-model="selectedPortfolio"
-              :options="portfolios"
-              label="Портфель"
-              placeholder="Все портфели"
-              empty-option-text="Все портфели"
-              option-label="name"
-              option-value="name"
-              multiple
-              min-width="200px"
-              @change="applyFilter"
-            />
-            <CustomSelect
-              v-model="selectedType"
-              :options="viewMode === 'transactions' ? txTypes.map(t => ({ value: t, label: t })) : operationTypes.map(t => ({ value: t, label: t }))"
-              label="Тип"
-              placeholder="Все типы"
-              empty-option-text="Все типы"
-              multiple
-              min-width="220px"
-              @change="applyFilter"
-            />
-            <CustomSelect
-              v-if="viewMode === 'operations'"
-              v-model="selectedCurrency"
-              :options="[
-                { value: 'RUB', label: 'Рубли (RUB)' },
-                { value: 'ORIGINAL', label: 'Оригинальная валюта' }
-              ]"
-              label="Валюта"
-              placeholder="Выберите валюту"
-              @change="applyFilter"
-            />
-            <button @click="resetFilters" class="btn btn-ghost reset-btn" title="Сбросить фильтры">
-              <span class="reset-icon">↺</span>
-            </button>
-          </div>  
-        </div>
+              <!-- Строка 2: портфель, тип, валюта — переносятся только внутри этой строки -->
+              <div class="filters-row filters-row--secondary select-group">
+                <CustomSelect
+                  v-model="selectedPortfolio"
+                  :options="portfolios"
+                  label="Портфель"
+                  placeholder="Все портфели"
+                  empty-option-text="Все портфели"
+                  option-label="name"
+                  option-value="name"
+                  multiple
+                  min-width="200px"
+                  @change="applyFilter"
+                />
+                <CustomSelect
+                  v-model="selectedType"
+                  :options="viewMode === 'transactions' ? txTypes.map(t => ({ value: t, label: t })) : operationTypes.map(t => ({ value: t, label: t }))"
+                  label="Тип"
+                  placeholder="Все типы"
+                  empty-option-text="Все типы"
+                  multiple
+                  min-width="220px"
+                  @change="applyFilter"
+                />
+                <CustomSelect
+                  v-if="viewMode === 'operations'"
+                  v-model="selectedCurrency"
+                  :options="[
+                    { value: 'RUB', label: 'Рубли (RUB)' },
+                    { value: 'ORIGINAL', label: 'Оригинальная валюта' }
+                  ]"
+                  label="Валюта"
+                  placeholder="Выберите валюту"
+                  @change="applyFilter"
+                />
+              </div>
+            </div>
 
         <div class="filters-bottom">
           <!-- Планшет и десктоп: чипсы -->
@@ -1431,11 +1440,36 @@ const showSumsSummary = ref(false)
 
 .filters-top {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 12px;
   margin-bottom: 16px;
+  width: 100%;
+}
+
+.filters-row {
+  display: flex;
   align-items: flex-end;
   width: 100%;
+  min-width: 0;
+}
+
+.filters-row--primary {
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+
+.filters-row--primary .asset-search-wrapper {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.filters-row--primary .reset-btn {
+  flex: 0 0 42px;
+}
+
+.filters-row--secondary {
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .filters-bottom {
@@ -1446,11 +1480,10 @@ const showSumsSummary = ref(false)
   gap: 12px;
 }
 
-/* Поиск актива */
+/* Поиск актива (ширина задаётся в .filters-row--primary) */
 .asset-search-wrapper {
   position: relative;
-  flex: 1 1 360px;
-  min-width: 150px;
+  min-width: 0;
 }
 
 .asset-search-wrapper .select-label {
@@ -1585,12 +1618,11 @@ const showSumsSummary = ref(false)
   color: #dc2626;
 }
 
-/* Селекты и кнопка сброса - Исправление переполнения */
+/* Селекты второй строки */
 .select-group {
   display: flex;
-  flex-wrap: wrap; /* Позволяет переносить элементы на мобильных */
+  flex-wrap: wrap;
   gap: 10px;
-  flex: 2 1 300px;
   min-width: 0;
 }
 
@@ -1865,29 +1897,6 @@ const showSumsSummary = ref(false)
 /* =========================================
    8. АДАПТИВ (MEDIA QUERIES)
    ========================================= */
-/* Десктоп: при сужении оставляем Поиск актива и блок фильтров на верхнем уровне.
-   Остальные селекты пусть переносятся внутри select-group (2-й уровень). */
-@media (min-width: 1025px) and (max-width: 1525px) {
-  .filters-top {
-    flex-wrap: nowrap;
-  }
-
-  .asset-search-wrapper {
-    flex: 0 1 320px;
-    min-width: 200px;
-  }
-
-  .select-group {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-
-  /* Кнопка сброса не должна “уезжать” из верхнего уровня вместе с остальными селектами */
-  .reset-btn {
-    margin-left: auto;
-  }
-}
-
 @media (max-width: 1024px) {
   .transactions-content {
     flex-direction: column;
@@ -1900,17 +1909,12 @@ const showSumsSummary = ref(false)
   .toolbar {
     padding: 12px;
   }
-  
-  /* Селекты занимают 100% ширины контейнера на мобильных при нехватке места */
+
   .select-group :deep(.custom-select-wrapper) {
     flex: 1 1 calc(50% - 10px);
     min-width: 100px;
   }
-  
-  .asset-search-wrapper {
-    flex: 1 1 100%;
-  }
-  
+
   .bulk-actions-desktop { display: none !important; }
   .bulk-actions-mobile { display: flex; }
   
@@ -1921,15 +1925,13 @@ const showSumsSummary = ref(false)
 }
 
 @media (max-width: 480px) {
-  /* Перевод селектов в колонку для предотвращения обрезки на супер-узких экранах */
   .select-group {
     flex-direction: column;
   }
   .select-group :deep(.custom-select-wrapper) {
     width: 100%;
   }
-  .reset-btn { width: 100%; }
-  
+
   .transactions-cards { padding: 8px; }
   .transaction-card-body { grid-template-columns: 1fr; }
 }
