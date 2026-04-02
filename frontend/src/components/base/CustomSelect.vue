@@ -3,10 +3,10 @@
     <span v-if="label" class="select-label">{{ label }}</span>
     <div 
       class="custom-select" 
-      :class="{ 'is-open': isOpen }" 
+      :class="{ 'is-open': isOpen, 'custom-select--compact': compact }" 
       @click="toggleDropdown"
     >
-      <span class="custom-select-value" :class="{ 'placeholder': !selectedValue }">
+      <span class="custom-select-value" :class="{ 'placeholder': !hasSelection }">
         {{ displayValue || placeholder }}
       </span>
       <span class="custom-select-arrow">▼</span>
@@ -18,7 +18,8 @@
         class="custom-select-dropdown" 
         :class="{ 
           'dropdown-top': dropdownPosition === 'top',
-          'dropdown-positioned': isDropdownPositioned
+          'dropdown-positioned': isDropdownPositioned,
+          'dropdown-compact': compact
         }"
         :style="dropdownStyle"
         @click.stop
@@ -26,11 +27,11 @@
       <div 
         v-if="showEmptyOption"
         class="custom-select-option" 
-        :class="{ 'is-selected': !selectedValue }"
+        :class="{ 'is-selected': !hasSelection }"
         @click="selectOption(null, emptyOptionText)"
       >
         <span>{{ emptyOptionText }}</span>
-        <span v-if="!selectedValue" class="check-icon">✓</span>
+        <span v-if="!hasSelection" class="check-icon">✓</span>
       </div>
       <div 
         v-for="option in options" 
@@ -51,10 +52,18 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Teleport } from 'vue'
 
+const compactOptionRowPx = 34
+const defaultOptionRowPx = 48
+
 const props = defineProps({
   modelValue: {
-    type: [String, Number, Object, null],
+    type: [String, Number, Object, Array, null],
     default: null
+  },
+  /** Несколько значений; modelValue — массив выбранных optionValue */
+  multiple: {
+    type: Boolean,
+    default: false
   },
   options: {
     type: Array,
@@ -91,7 +100,17 @@ const props = defineProps({
   flex: {
     type: String,
     default: '1'
-  }
+  },
+  /** Уменьшенная высота триггера и пунктов списка */
+  compact: {
+    type: Boolean,
+    default: false,
+  },
+  /** z-index выпадающего списка (например выше вложенного календаря) */
+  dropdownZIndex: {
+    type: Number,
+    default: 10000,
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
@@ -123,32 +142,78 @@ const getOptionValue = (option) => {
   return option[props.optionValue] || option.id || option.value || option
 }
 
+const selectedValuesArray = computed(() => {
+  if (!props.multiple) return []
+  const v = props.modelValue
+  if (Array.isArray(v)) return v
+  return []
+})
+
+const hasSelection = computed(() => {
+  if (props.multiple) {
+    return selectedValuesArray.value.length > 0
+  }
+  const v = props.modelValue
+  return v != null && v !== ''
+})
+
 const isSelected = (option) => {
   const optionValue = getOptionValue(option)
+  if (props.multiple) {
+    return selectedValuesArray.value.some((v) => v === optionValue)
+  }
   return optionValue === props.modelValue
 }
 
-const selectedValue = computed(() => props.modelValue)
-
 const displayValue = computed(() => {
-  if (!props.modelValue) return null
-  
-  // Если есть пустая опция и выбрана она
+  if (props.multiple) {
+    const vals = selectedValuesArray.value
+    if (vals.length === 0) return null
+    const labels = vals.map((v) => {
+      const opt = props.options.find((o) => getOptionValue(o) === v)
+      return opt ? getOptionLabel(opt) : String(v)
+    })
+    if (labels.length === 1) return labels[0]
+    const joined = labels.join(', ')
+    if (joined.length <= 48) return joined
+    return `${labels.slice(0, 2).join(', ')} (+${labels.length - 2})`
+  }
+
+  if (props.modelValue == null || props.modelValue === '') return null
+
   if (props.showEmptyOption && !props.modelValue) {
     return props.emptyOptionText
   }
-  
-  // Ищем выбранную опцию
-  const selected = props.options.find(opt => isSelected(opt))
+
+  const selected = props.options.find((opt) => getOptionValue(opt) === props.modelValue)
   if (selected) {
     return getOptionLabel(selected)
   }
-  
-  // Если значение не найдено, возвращаем само значение
+
   return String(props.modelValue)
 })
 
 const selectOption = (option, emptyText = null) => {
+  if (props.multiple) {
+    if (option === null) {
+      emit('update:modelValue', [])
+      emit('change', [])
+      isOpen.value = false
+      return
+    }
+    const value = getOptionValue(option)
+    const current = [...selectedValuesArray.value]
+    const idx = current.findIndex((v) => v === value)
+    if (idx >= 0) {
+      current.splice(idx, 1)
+    } else {
+      current.push(value)
+    }
+    emit('update:modelValue', current)
+    emit('change', current)
+    return
+  }
+
   if (option === null) {
     emit('update:modelValue', null)
     emit('change', null)
@@ -221,7 +286,8 @@ const calculateDropdownPosition = (isInitial = false) => {
     
     // Предполагаемая высота выпадающего списка (максимум 300px или меньше)
     const optionCount = props.showEmptyOption ? props.options.length + 1 : props.options.length
-    const estimatedDropdownHeight = Math.min(300, optionCount * 48 + 20)
+    const rowH = props.compact ? compactOptionRowPx : defaultOptionRowPx
+    const estimatedDropdownHeight = Math.min(300, optionCount * rowH + 16)
     
     // Вычисляем доступное пространство снизу и сверху
     const spaceBelow = viewportHeight - wrapperRect.bottom - 20 // 20px отступ от края
@@ -261,7 +327,8 @@ const calculateDropdownPosition = (isInitial = false) => {
       top: `${finalTop}px`,
       left: `${finalLeft}px`,
       width: `${width}px`,
-      maxHeight: `${maxHeight}px`
+      maxHeight: `${maxHeight}px`,
+      zIndex: props.dropdownZIndex,
     }
     
     // Помечаем, что позиция вычислена и элемент можно показывать
@@ -370,6 +437,22 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.custom-select.custom-select--compact {
+  padding: 5px 30px 5px 10px;
+  min-height: 32px;
+  border-radius: 8px;
+}
+
+.custom-select.custom-select--compact .custom-select-value {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.custom-select.custom-select--compact .custom-select-arrow {
+  right: 10px;
+  font-size: 10px;
+}
+
 .custom-select:hover {
   border-color: #d1d5db;
   background: #fafafa;
@@ -424,7 +507,6 @@ onUnmounted(() => {
   border: 1.5px solid #e5e7eb !important;
   border-radius: 8px !important;
   box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05) !important;
-  z-index: 10000 !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
   box-sizing: border-box !important;
@@ -553,5 +635,18 @@ onUnmounted(() => {
   background: rgba(37,99,235,0.1);
   border-radius: 50%;
   line-height: 1;
+}
+
+.custom-select-dropdown.dropdown-compact .custom-select-option {
+  padding: 6px 12px;
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.custom-select-dropdown.dropdown-compact .check-icon {
+  font-size: 14px;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
 }
 </style>

@@ -1,9 +1,15 @@
 <script setup>
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { HandCoins } from 'lucide-vue-next'
 import BarChart from '../../charts/BarChart.vue'
 import CustomSelect from '../../base/CustomSelect.vue'
 import Widget from '../base/Widget.vue'
+
+/** Совпадают с operation_type из get_cash_operations (CASE ot.name …) */
+const OP_TYPE_DIVIDENDS = 'Дивиденды'
+const OP_TYPE_COUPONS = 'Купоны'
+const OP_TYPE_AMORT = 'Погашение'
 
 const props = defineProps({
   title: {
@@ -19,8 +25,15 @@ const props = defineProps({
     type: String,
     default: 'past',
     validator: (value) => ['past', 'future'].includes(value)
+  },
+  /** Переход на /transactions: период + типы операций по фактическим выплатам в столбце */
+  enableBarNavigation: {
+    type: Boolean,
+    default: false
   }
 })
+
+const router = useRouter()
 
 // Фильтры
 const selectedPeriod = ref('12')
@@ -265,6 +278,38 @@ const chartDatasets = computed(() => {
   
   return sorted
 })
+
+const payoutRowToOperationTypes = (row) => {
+  const types = []
+  if (Number(row.dividends) > 0) types.push(OP_TYPE_DIVIDENDS)
+  if (Number(row.coupons) > 0) types.push(OP_TYPE_COUPONS)
+  if (Number(row.amortizations) > 0) types.push(OP_TYPE_AMORT)
+  return types
+}
+
+const onChartBarClick = ({ index }) => {
+  if (!props.enableBarNavigation || props.mode !== 'past') return
+  const row = filteredPayouts.value[index]
+  if (!row?.month) return
+
+  const query = { view: 'operations' }
+  const opTypes = payoutRowToOperationTypes(row)
+  if (opTypes.length === 1) {
+    query.opType = opTypes[0]
+  } else if (opTypes.length > 1) {
+    query.opType = opTypes
+  }
+
+  if (/^\d{4}-\d{2}$/.test(row.month)) {
+    query.month = row.month
+  } else if (/^\d{4}-Q[1-4]$/.test(row.month)) {
+    query.quarter = row.month
+  } else {
+    return
+  }
+
+  router.push({ path: '/transactions', query })
+}
 </script>
 
 <template>
@@ -297,7 +342,10 @@ const chartDatasets = computed(() => {
       <span class="total-value">{{ formatMoneyFull(totalPayouts) }}</span>
     </div>
     
-    <div class="chart-container">
+    <div
+      class="chart-container"
+      :class="{ 'chart-container--clickable': enableBarNavigation && mode === 'past' }"
+    >
       <BarChart
         v-if="filteredPayouts && filteredPayouts.length > 0"
         :labels="chartLabels"
@@ -305,6 +353,7 @@ const chartDatasets = computed(() => {
         :stacked="true"
         :format-value="formatMoney"
         height="300px"
+        :on-bar-click="enableBarNavigation && mode === 'past' ? onChartBarClick : null"
       />
       <div v-else class="empty-state">
         <p>{{ mode === 'past' ? 'Нет данных о выплатах' : 'Нет данных о будущих выплатах' }}</p>
@@ -336,6 +385,10 @@ const chartDatasets = computed(() => {
 .chart-container {
   height: 300px;
   position: relative;
+}
+
+.chart-container--clickable :deep(canvas) {
+  cursor: pointer;
 }
 
 .empty-state {

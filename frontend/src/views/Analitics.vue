@@ -158,6 +158,7 @@ onMounted(async () => {
           title="Полученные выплаты по месяцам"
           :payouts="selectedPortfolioAnalytics.monthly_payouts || []"
           mode="past"
+          enable-bar-navigation
         />
       </WidgetContainer>
 

@@ -270,6 +270,7 @@ onMounted(() => {
           title="Полученные выплаты по месяцам"
           :payouts="monthlyPayouts"
           mode="past"
+          enable-bar-navigation
         />
       </WidgetContainer>
 

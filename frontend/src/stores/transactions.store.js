@@ -5,24 +5,31 @@ import { useDashboardStore } from './dashboard.store'
 
 export const useTransactionsStore = defineStore('transactions', {
   state: () => ({
+    /** Показать шкалу дат на странице транзакций (сохраняется в localStorage) */
+    showPeriodTrack: false,
     viewMode: 'transactions',
     selectedAsset: '',
     assetSearch: '',
     recentAssets: [],
-    selectedPortfolio: '',
-    selectedType: '',
+    /** Пустой массив = все портфели (по имени, как в данных транзакций) */
+    selectedPortfolio: [],
+    /** Пустой массив = все типы */
+    selectedType: [],
     selectedCurrency: 'RUB',
     periodPreset: 'all',
     startDate: '',
     endDate: '',
     globalSearch: '',
   }),
+
+  persist: ['showPeriodTrack'],
+
   actions: {
     resetFilters() {
       this.selectedAsset = ''
       this.assetSearch = ''
-      this.selectedPortfolio = ''
-      this.selectedType = ''
+      this.selectedPortfolio = []
+      this.selectedType = []
       this.globalSearch = ''
       this.periodPreset = 'all'
       this.startDate = ''

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useTransactionsStore } from '../stores/transactions.store'
@@ -7,8 +8,8 @@ import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/base/ContextMenu.vue'
 import CustomSelect from '../components/base/CustomSelect.vue'
-import { DateInput, ToggleSwitch } from '../components/base'
-import { Search } from 'lucide-vue-next'
+import { DateInput, ToggleSwitch, PeriodFilter } from '../components/base'
+import { Search, SlidersHorizontal, ChevronDown } from 'lucide-vue-next'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
@@ -18,6 +19,7 @@ import operationsService from '../services/operationsService'
 
 const dashboardStore = useDashboardStore()
 const transactionsStore = useTransactionsStore()
+const route = useRoute()
 
 const {
   viewMode,
@@ -31,6 +33,7 @@ const {
   startDate,
   endDate,
   globalSearch,
+  showPeriodTrack,
 } = storeToRefs(transactionsStore)
 
 // Загружаем полные списки транзакций и операций при открытии страницы
@@ -121,6 +124,19 @@ const operationTypes = computed(() => {
     if (op.operation_type) typeSet.add(op.operation_type)
   }
   return Array.from(typeSet)
+})
+
+/** Самая ранняя дата среди транзакций и операций — левая граница шкалы периода */
+const earliestDataDate = computed(() => {
+  let best = ''
+  const consider = (raw) => {
+    const s = normalizeDateToString(raw)
+    if (!s) return
+    if (!best || s < best) best = s
+  }
+  for (const tx of transactions.value) consider(tx.transaction_date)
+  for (const op of operations.value) consider(op.operation_date)
+  return best
 })
 
 // Фильтры хранятся в transactionsStore для сохранения при навигации
@@ -361,12 +377,18 @@ watch(assetSearch, (newVal) => {
   }
 })
 
+const normalizeFilterList = (v) => {
+  if (Array.isArray(v)) return v.filter((x) => x != null && x !== '')
+  if (v == null || v === '') return []
+  return [v]
+}
+
 // --- ГЛАВНЫЙ ФИЛЬТР ---
 // Оптимизировано: ранний выход из проверок для лучшей производительности
 const applyFilter = () => {
   const assetFilter = selectedAsset.value
-  const portfolioFilter = selectedPortfolio.value
-  const typeFilter = selectedType.value
+  const portfolioNames = normalizeFilterList(selectedPortfolio.value)
+  const typeFilters = normalizeFilterList(selectedType.value)
   const term = globalSearch.value.trim().toLowerCase()
   const hasTerm = term.length > 0
 
@@ -390,8 +412,8 @@ const applyFilter = () => {
   filteredTransactions.value = txList.filter(tx => {
     // Быстрые проверки с ранним выходом
     if (assetFilter && tx.asset_name !== assetFilter) return false
-    if (portfolioFilter && tx.portfolio_name !== portfolioFilter) return false
-    if (typeFilter && tx.transaction_type !== typeFilter) return false
+    if (portfolioNames.length > 0 && !portfolioNames.includes(tx.portfolio_name)) return false
+    if (typeFilters.length > 0 && !typeFilters.includes(tx.transaction_type)) return false
 
     // Период (только если заданы даты)
     if (start || end) {
@@ -414,11 +436,9 @@ const applyFilter = () => {
   if (viewMode.value === 'operations') {
     const opsList = operations.value
     filteredOperations.value = opsList.filter(op => {
-      // Фильтр по портфелю
-      if (portfolioFilter && op.portfolio_name !== portfolioFilter) return false
-      
-      // Фильтр по типу операции
-      if (typeFilter && op.operation_type !== typeFilter) return false
+      if (portfolioNames.length > 0 && !portfolioNames.includes(op.portfolio_name)) return false
+
+      if (typeFilters.length > 0 && !typeFilters.includes(op.operation_type)) return false
       
       // Фильтр по активу (если указан)
       if (assetFilter && op.asset_name && op.asset_name !== assetFilter) return false
@@ -451,6 +471,80 @@ const resetFilters = () => {
   applyFilter()
 }
 
+const parseQuarterRange = (quarterKey) => {
+  const m = quarterKey.match(/^(\d{4})-Q([1-4])$/)
+  if (!m) return null
+  const year = parseInt(m[1], 10)
+  const q = parseInt(m[2], 10)
+  const startMonth = (q - 1) * 3
+  return {
+    start: new Date(year, startMonth, 1),
+    end: new Date(year, startMonth + 3, 0)
+  }
+}
+
+const firstQuery = (v) => (Array.isArray(v) ? v[0] : v)
+
+/** Один или несколько opType в query (график выплат: дивиденды/купоны/погашение) */
+const normalizeOpTypesFromQuery = (raw) => {
+  if (raw == null || raw === '') return []
+  if (Array.isArray(raw)) {
+    return raw.map((x) => String(x).trim()).filter((s) => s.length > 0)
+  }
+  const s = String(raw).trim()
+  return s.length > 0 ? [s] : []
+}
+
+/** Диплинк с графика выплат: view=operations, month|quarter, opType (строка или повторяющиеся ключи) */
+const applyRouteFromQuery = () => {
+  const q = route.query
+  let touched = false
+
+  const view = firstQuery(q.view)
+  if (view === 'operations') {
+    viewMode.value = 'operations'
+    touched = true
+  }
+
+  const opTypes = normalizeOpTypesFromQuery(q.opType)
+  if (opTypes.length > 0) {
+    selectedType.value = opTypes
+    touched = true
+  }
+
+  const month = firstQuery(q.month)
+  if (typeof month === 'string' && /^\d{4}-\d{2}$/.test(month)) {
+    const [y, mo] = month.split('-').map((n) => parseInt(n, 10))
+    const start = new Date(y, mo - 1, 1)
+    const end = new Date(y, mo, 0)
+    periodPreset.value = 'custom'
+    startDate.value = getLocalYMD(start)
+    endDate.value = getLocalYMD(end)
+    touched = true
+  } else {
+    const quarter = firstQuery(q.quarter)
+    if (typeof quarter === 'string' && /^\d{4}-Q[1-4]$/.test(quarter)) {
+      const range = parseQuarterRange(quarter)
+      if (range) {
+        periodPreset.value = 'custom'
+        startDate.value = getLocalYMD(range.start)
+        endDate.value = getLocalYMD(range.end)
+        touched = true
+      }
+    }
+  }
+
+  if (touched) {
+    applyFilter()
+  }
+}
+
+watch(
+  () => route.query,
+  () => applyRouteFromQuery(),
+  { immediate: true, deep: true }
+)
+
 // следим за обновлением транзакций
 watch(transactions, () => {
   // при первой загрузке ставим дефолтный пресет
@@ -479,9 +573,6 @@ watch(viewMode, () => {
 watch(
   [selectedPortfolio, selectedType, globalSearch, periodPreset],
   () => {
-    if (periodPreset.value !== 'custom') {
-      setPeriodPreset(periodPreset.value)
-    }
     applyFilter()
   }
 )
@@ -763,6 +854,25 @@ const transactionsSummary = computed(() => {
 
 // Показывать блок сумм между фильтрами и таблицей
 const showSumsSummary = ref(false)
+
+const showMobileFilters = ref(false)
+
+const activeFilterCount = computed(() => {
+  let count = 0
+  if (selectedAsset.value) count++
+  if (normalizeFilterList(selectedPortfolio.value).length > 0) count++
+  if (normalizeFilterList(selectedType.value).length > 0) count++
+  if (periodPreset.value && periodPreset.value !== 'all') count++
+  return count
+})
+
+const periodFilterLabel = computed(() => {
+  const labels = { today: 'Сегодня', week: 'Неделя', month: 'Месяц', quarter: 'Квартал', year: 'Год' }
+  if (periodPreset.value === 'custom') {
+    return `${formatDate(startDate.value)} — ${formatDate(endDate.value)}`
+  }
+  return labels[periodPreset.value] || periodPreset.value
+})
 </script>
 
 <template>
@@ -808,129 +918,151 @@ const showSumsSummary = ref(false)
         <div class="transactions-main">
           <div class="card">
           <div class="toolbar">
+            <div class="mobile-filter-bar">
+              <button @click="showMobileFilters = !showMobileFilters" class="mobile-filter-toggle-btn" type="button">
+                <SlidersHorizontal :size="16" />
+                <span>Фильтры</span>
+                <span v-if="activeFilterCount > 0" class="mobile-filter-badge">{{ activeFilterCount }}</span>
+                <ChevronDown :size="16" class="mobile-filter-chevron" :class="{ 'mobile-filter-chevron--open': showMobileFilters }" />
+              </button>
+              <div v-if="!showMobileFilters && activeFilterCount > 0" class="active-filters-summary">
+                <span v-if="selectedAsset" class="active-filter-chip">
+                  {{ selectedAsset }}
+                  <button @click.stop="assetSearch=''; selectedAsset=''; applyFilter()" class="chip-remove" type="button">&times;</button>
+                </span>
+                <span v-for="p in normalizeFilterList(selectedPortfolio)" :key="'p-' + p" class="active-filter-chip">{{ p }}</span>
+                <span v-for="t in normalizeFilterList(selectedType)" :key="'t-' + t" class="active-filter-chip">{{ t }}</span>
+                <span v-if="periodPreset !== 'all'" class="active-filter-chip">{{ periodFilterLabel }}</span>
+                <button @click.stop="resetFilters" class="active-filter-chip active-filter-chip--reset" type="button">Сбросить</button>
+              </div>
+            </div>
+            <div class="filters-collapsible" :class="{ 'filters-collapsible--hidden': isCardView && !showMobileFilters }">
             <div class="filters-top">
-              <!-- Поиск по активу -->
-              <div v-if="viewMode === 'transactions'" class="asset-search-wrapper">
-            <span class="select-label">Актив</span>
-            <span class="input-icon"><Search :size="16" /></span>
-            <input
-              type="text"
-              v-model="assetSearch"
-              placeholder="Поиск актива"
-              class="form-input"
-            />
-            <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
-            
-            <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
-              <li v-for="a in filteredAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
-                <span v-html="highlightMatch(a)" />
-                <span v-if="getAssetMeta(a)" class="meta-ticker">{{ getAssetMeta(a).ticker }}</span>
-              </li>
-              <li v-if="filteredAssetsList.length === 0" class="asset-empty">
-                <span class="asset-empty-icon"><Search :size="20" /></span>
-                Ничего не найдено
-              </li>
-            </ul>
+              <!-- Строка 1: поиск по активу + сброс (всегда вместе при сужении) -->
+              <div class="filters-row filters-row--primary">
+                <div v-if="viewMode === 'transactions'" class="asset-search-wrapper">
+                  <span class="select-label">Актив</span>
+                  <span class="input-icon"><Search :size="16" /></span>
+                  <input
+                    type="text"
+                    v-model="assetSearch"
+                    placeholder="Поиск актива"
+                    class="form-input"
+                  />
+                  <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
+
+                  <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
+                    <li v-for="a in filteredAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
+                      <span v-html="highlightMatch(a)" />
+                      <span v-if="getAssetMeta(a)" class="meta-ticker">{{ getAssetMeta(a).ticker }}</span>
+                    </li>
+                    <li v-if="filteredAssetsList.length === 0" class="asset-empty">
+                      <span class="asset-empty-icon"><Search :size="20" /></span>
+                      Ничего не найдено
+                    </li>
+                  </ul>
+                </div>
+
+                <div v-else class="asset-search-wrapper">
+                  <span class="select-label">Актив</span>
+                  <span class="input-icon"><Search :size="16" /></span>
+                  <input
+                    type="text"
+                    v-model="assetSearch"
+                    placeholder="Поиск актива"
+                    class="form-input"
+                  />
+                  <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
+
+                  <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
+                    <li v-for="a in filteredOperationsAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
+                      <span v-html="highlightMatch(a)" />
+                    </li>
+                    <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">
+                      <span class="asset-empty-icon"><Search :size="20" /></span>
+                      Ничего не найдено
+                    </li>
+                  </ul>
+                </div>
+
+                <button
+                  type="button"
+                  @click="resetFilters"
+                  class="btn btn-ghost reset-btn"
+                  title="Сбросить фильтры"
+                >
+                  <span class="reset-icon">↺</span>
+                </button>
               </div>
 
-              <div v-if="viewMode === 'operations'" class="asset-search-wrapper">
-            <span class="select-label">Актив</span>
-            <span class="input-icon"><Search :size="16" /></span>
-            <input
-              type="text"
-              v-model="assetSearch"
-              placeholder="Поиск актива"
-              class="form-input"
-            />
-            <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
-            
-            <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
-              <li v-for="a in filteredOperationsAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
-                <span v-html="highlightMatch(a)" />
-              </li>
-              <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">
-                <span class="asset-empty-icon"><Search :size="20" /></span>
-                Ничего не найдено
-              </li>
-            </ul>
-          </div>
-
-          <div class="select-group">
-            <CustomSelect
-              v-model="selectedPortfolio"
-              :options="portfolios"
-              label="Портфель"
-              placeholder="Все портфели"
-              empty-option-text="Все портфели"
-              option-label="name"
-              option-value="name"
-              @change="applyFilter"
-            />
-            <CustomSelect
-              v-model="selectedType"
-              :options="viewMode === 'transactions' ? txTypes.map(t => ({ value: t, label: t })) : operationTypes.map(t => ({ value: t, label: t }))"
-              label="Тип"
-              placeholder="Все типы"
-              empty-option-text="Все типы"
-              @change="applyFilter"
-            />
-            <CustomSelect
-              v-if="viewMode === 'operations'"
-              v-model="selectedCurrency"
-              :options="[
-                { value: 'RUB', label: 'Рубли (RUB)' },
-                { value: 'ORIGINAL', label: 'Оригинальная валюта' }
-              ]"
-              label="Валюта"
-              placeholder="Выберите валюту"
-              @change="applyFilter"
-            />
-            <button @click="resetFilters" class="btn btn-ghost reset-btn" title="Сбросить фильтры">
-              <span class="reset-icon">↺</span>
-            </button>
-          </div>  
-        </div>
+              <!-- Строка 2: портфель, тип, валюта — переносятся только внутри этой строки -->
+              <div class="filters-row filters-row--secondary select-group">
+                <CustomSelect
+                  v-model="selectedPortfolio"
+                  :options="portfolios"
+                  label="Портфель"
+                  placeholder="Все портфели"
+                  empty-option-text="Все портфели"
+                  option-label="name"
+                  option-value="name"
+                  multiple
+                  min-width="200px"
+                  @change="applyFilter"
+                />
+                <CustomSelect
+                  v-model="selectedType"
+                  :options="viewMode === 'transactions' ? txTypes.map(t => ({ value: t, label: t })) : operationTypes.map(t => ({ value: t, label: t }))"
+                  label="Тип"
+                  placeholder="Все типы"
+                  empty-option-text="Все типы"
+                  multiple
+                  min-width="220px"
+                  @change="applyFilter"
+                />
+                <CustomSelect
+                  v-if="viewMode === 'operations'"
+                  v-model="selectedCurrency"
+                  :options="[
+                    { value: 'RUB', label: 'Рубли (RUB)' },
+                    { value: 'ORIGINAL', label: 'Оригинальная валюта' }
+                  ]"
+                  label="Валюта"
+                  placeholder="Выберите валюту"
+                  @change="applyFilter"
+                />
+              </div>
+            </div>
 
         <div class="filters-bottom">
-          <!-- Планшет и десктоп: чипсы -->
-          <div v-if="!isMobilePeriod" class="chips-group">
-            <button v-for="p in ['today', 'week', 'month', 'year', 'all']" 
-                    :key="p" 
-                    class="chip" 
-                    :class="{ active: periodPreset === p }"
-                    @click="setPeriodPreset(p); periodPreset = p">
-              {{ {today:'Сегодня', week:'Неделя', month:'Месяц', year:'Год', all:'Всё время'}[p] }}
-            </button>
-            <button class="chip" :class="{ active: periodPreset === 'custom' }" @click="periodPreset = 'custom'">
-              Период...
-            </button>
-          </div>
-          <!-- Телефоны: выпадающий список -->
-          <div v-else class="period-select-mobile">
-            <CustomSelect
-              v-model="periodPreset"
-              :options="periodOptions"
-              option-value="value"
-              option-label="label"
-              label="Период"
-              placeholder="Период"
-              :show-empty-option="false"
-              @change="(v) => v && setPeriodPreset(v)"
-            />
-          </div>
-          
-          <div v-if="periodPreset === 'custom'" class="date-range">
-            <DateInput v-model="startDate" class="date-input" />
-            <span class="separator">—</span>
-            <DateInput v-model="endDate" class="date-input" />
-          </div>
-            </div>
+          <PeriodFilter
+            :preset="periodPreset"
+            :start-date="startDate"
+            :end-date="endDate"
+            :track-min-date="earliestDataDate"
+            :show-track="showPeriodTrack"
+            @update:preset="v => { periodPreset = v }"
+            @update:start-date="v => { startDate = v; applyFilter() }"
+            @update:end-date="v => { endDate = v; applyFilter() }"
+          >
+            <template #controls-suffix>
+              <ToggleSwitch
+                v-model="showPeriodTrack"
+                label="Отображать трек"
+                active-color="#2563eb"
+                hover-color="#1d4ed8"
+              />
+            </template>
+          </PeriodFilter>
+        </div>
 
             <div class="sums-toggle-row">
               <ToggleSwitch
                 v-model="showSumsSummary"
                 :label="viewMode === 'transactions' ? 'Показывать суммы по транзакциям' : 'Показывать суммы по операциям'"
+                active-color="#2563eb"
+                hover-color="#1d4ed8"
               />
+            </div>
             </div>
           </div>
 
@@ -962,7 +1094,6 @@ const showSumsSummary = ref(false)
             <template v-else>
               <h3 class="sums-block-title">Суммы по операциям</h3>
               <div class="operations-sums">
-                <div class="sums-label">Суммы по типам:</div>
                 <div class="sums-list">
                   <div
                     v-for="opType in operationTypes"
@@ -1347,11 +1478,36 @@ const showSumsSummary = ref(false)
 
 .filters-top {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 12px;
   margin-bottom: 16px;
+  width: 100%;
+}
+
+.filters-row {
+  display: flex;
   align-items: flex-end;
   width: 100%;
+  min-width: 0;
+}
+
+.filters-row--primary {
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+
+.filters-row--primary .asset-search-wrapper {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.filters-row--primary .reset-btn {
+  flex: 0 0 42px;
+}
+
+.filters-row--secondary {
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .filters-bottom {
@@ -1362,11 +1518,10 @@ const showSumsSummary = ref(false)
   gap: 12px;
 }
 
-/* Поиск актива */
+/* Поиск актива (ширина задаётся в .filters-row--primary) */
 .asset-search-wrapper {
   position: relative;
-  flex: 1 1 360px;
-  min-width: 150px;
+  min-width: 0;
 }
 
 .asset-search-wrapper .select-label {
@@ -1501,12 +1656,11 @@ const showSumsSummary = ref(false)
   color: #dc2626;
 }
 
-/* Селекты и кнопка сброса - Исправление переполнения */
+/* Селекты второй строки */
 .select-group {
   display: flex;
-  flex-wrap: wrap; /* Позволяет переносить элементы на мобильных */
+  flex-wrap: wrap;
   gap: 10px;
-  flex: 2 1 300px;
   min-width: 0;
 }
 
@@ -1779,54 +1933,157 @@ const showSumsSummary = ref(false)
 .empty-icon { font-size: 32px; display: block; opacity: 0.5; }
 
 /* =========================================
-   8. АДАПТИВ (MEDIA QUERIES)
+   8. МОБИЛЬНАЯ ПАНЕЛЬ ФИЛЬТРОВ
    ========================================= */
-/* Десктоп: при сужении оставляем Поиск актива и блок фильтров на верхнем уровне.
-   Остальные селекты пусть переносятся внутри select-group (2-й уровень). */
-@media (min-width: 1025px) and (max-width: 1525px) {
-  .filters-top {
-    flex-wrap: nowrap;
-  }
-
-  .asset-search-wrapper {
-    flex: 0 1 320px;
-    min-width: 200px;
-  }
-
-  .select-group {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-
-  /* Кнопка сброса не должна “уезжать” из верхнего уровня вместе с остальными селектами */
-  .reset-btn {
-    margin-left: auto;
-  }
+.mobile-filter-bar {
+  display: none;
 }
 
+.mobile-filter-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mobile-filter-toggle-btn:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.mobile-filter-toggle-btn:active {
+  background: #e5e7eb;
+}
+
+.mobile-filter-badge {
+  background: #2563eb;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.mobile-filter-chevron {
+  margin-left: auto;
+  color: #6b7280;
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+
+.mobile-filter-chevron--open {
+  transform: rotate(180deg);
+}
+
+.active-filters-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.active-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #eff6ff;
+  color: #2563eb;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #bfdbfe;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.active-filter-chip--reset {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.active-filter-chip--reset:hover {
+  background: #fee2e2;
+}
+
+.chip-remove {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+.chip-remove:hover {
+  color: #1d4ed8;
+}
+
+.filters-collapsible {
+  overflow: hidden;
+  max-height: 600px;
+  opacity: 1;
+  /* Место под «плавающие» подписи (Актив и т.д.), иначе overflow:hidden обрезает top: -8px */
+  padding-top: 12px;
+  transition: max-height 0.3s ease, opacity 0.2s ease, padding-top 0.25s ease;
+}
+
+.filters-collapsible--hidden {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  padding-top: 0;
+}
+
+/* =========================================
+   9. АДАПТИВ (MEDIA QUERIES)
+   ========================================= */
 @media (max-width: 1024px) {
   .transactions-content {
     flex-direction: column;
   }
   .chips-group { gap: 6px; }
   .chip { padding: 6px 12px; font-size: 12px; }
+
+  .mobile-filter-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
 }
 
 @media (max-width: 768px) {
   .toolbar {
     padding: 12px;
   }
-  
-  /* Селекты занимают 100% ширины контейнера на мобильных при нехватке места */
+
   .select-group :deep(.custom-select-wrapper) {
     flex: 1 1 calc(50% - 10px);
     min-width: 100px;
   }
-  
-  .asset-search-wrapper {
-    flex: 1 1 100%;
-  }
-  
+
   .bulk-actions-desktop { display: none !important; }
   .bulk-actions-mobile { display: flex; }
   
@@ -1837,15 +2094,13 @@ const showSumsSummary = ref(false)
 }
 
 @media (max-width: 480px) {
-  /* Перевод селектов в колонку для предотвращения обрезки на супер-узких экранах */
   .select-group {
     flex-direction: column;
   }
   .select-group :deep(.custom-select-wrapper) {
     width: 100%;
   }
-  .reset-btn { width: 100%; }
-  
+
   .transactions-cards { padding: 8px; }
   .transaction-card-body { grid-template-columns: 1fr; }
 }

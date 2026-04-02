@@ -2,24 +2,33 @@
 import { History } from 'lucide-vue-next'
 import Widget from '../base/Widget.vue'
 import { formatDateTimeForDisplay } from '../../../utils/date'
+import { getCurrencySymbol } from '../../../utils/currencySymbols'
 
 const props = defineProps({
   transactions: { type: Array, required: true }
 })
+
+const txLineTotal = (tx) => {
+  const q = Number(tx.quantity) || 0
+  const p = Number(tx.price) || 0
+  return q * p
+}
 </script>
 
 <template>
   <Widget title="Последние операции" :icon="History">
     <ul class="transactions-list">
-      <li v-for="tx in transactions.slice(0, 4)" :key="tx.id" class="transaction-item">
+      <li v-for="tx in transactions.slice(0, 4)" :key="tx.transaction_id || tx.id" class="transaction-item">
         <div class="tx-info">
           <span class="tx-type">{{ tx.transaction_type }}</span>
-          <span class="tx-asset">{{ tx.ticker }} · {{ tx.quantity }} шт.</span>
+          <span class="tx-asset">{{ tx.asset_name }} · {{ tx.quantity }} шт.</span>
         </div>
         <div class="tx-info-right">
           <span class="tx-date">{{ formatDateTimeForDisplay(tx.transaction_date) }}</span>
           <span class="tx-amount" :class="tx.transaction_type == 'Покупка' ? 'buy' : (tx.transaction_type === 'Погашение' ? 'redemption' : 'sell')">
-            {{ tx.transaction_type === 'Покупка' ? '-' : '+' }} {{ (tx.quantity * tx.price).toFixed(2) }} RUB
+            {{ tx.transaction_type === 'Покупка' ? '-' : '+' }}
+            {{ txLineTotal(tx).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}
+            {{ getCurrencySymbol(tx.currency_ticker || 'RUB') }}
           </span>
         </div>
       </li>

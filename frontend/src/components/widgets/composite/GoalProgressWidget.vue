@@ -190,6 +190,31 @@ const goalProjection = computed(() => {
       break
     }
   }
+
+  // После goal+12 остановка часто приходится на середину года: при группировке по годам
+  // последний столбец — это «неполный год» (2–3 мес. роста), предыдущие — почти по 12 мес.
+  // График визуально «плато». Доводим до конца календарного года (декабрь), без раздувания горизонта.
+  const MAX_CALENDAR_PAD = 14
+  let padSteps = 0
+  let lastPt = monthlyData[monthlyData.length - 1]
+  while (
+    lastPt &&
+    lastPt.date.getMonth() !== 11 &&
+    padSteps < MAX_CALENDAR_PAD &&
+    month < maxMonths
+  ) {
+    month++
+    current = current * (1 + monthlyReturnRate) + monthly
+    const date = new Date(startDate)
+    date.setMonth(date.getMonth() + month)
+    monthlyData.push({
+      month,
+      value: current,
+      date: new Date(date)
+    })
+    padSteps++
+    lastPt = monthlyData[monthlyData.length - 1]
+  }
   
   // Группируем по годам (берем значение на конец каждого года)
   const yearData = new Map()
