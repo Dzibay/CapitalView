@@ -54,7 +54,7 @@ onUnmounted(() => {
     <div class="container sec-container">
       <div class="sec-header">
         <div class="sec-label reveal">Безопасность</div>
-        <h2 class="sec-heading reveal">Защита без компромиссов</h2>
+        <h2 class="sec-heading reveal">Безопасный учёт инвестиций</h2>
       </div>
 
       <div class="sec-orbit reveal">

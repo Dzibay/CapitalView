@@ -1,6 +1,10 @@
 {
-  "name": "CapitalView",
-  "short_name": "Capital",
+  "name": "CapitalView — учёт инвестиций и аналитика портфеля",
+  "short_name": "CapitalView",
+  "description": "Онлайн-сервис для учёта инвестиций: объединяйте брокерские счета, отслеживайте доходность, дивиденды и купоны",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",
@@ -17,5 +21,6 @@
   ],
   "theme_color": "#ffffff",
   "background_color": "#ffffff",
-  "display": "standalone"
+  "display": "standalone",
+  "categories": ["finance", "business"]
 }

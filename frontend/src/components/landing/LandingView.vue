@@ -84,40 +84,43 @@ const {
     <LandingBackground />
     <LandingHeader />
 
-    <div class="landing-hero-dashboard-stage">
-      <div class="landing-hero-bg" aria-hidden="true" />
-      <section ref="heroSectionRef" class="landing-hero-section">
-        <LandingHeroBlocksOverlay v-if="!isMobile" />
-        <LandingHero />
-      </section>
+    <main>
+      <div class="landing-hero-dashboard-stage">
+        <div class="landing-hero-bg" aria-hidden="true" />
+        <section ref="heroSectionRef" class="landing-hero-section">
+          <LandingHeroBlocksOverlay v-if="!isMobile" />
+          <LandingHero />
+        </section>
 
-      <div
-        v-if="!isMobile"
-        ref="dashboardOverlapRef"
-        class="container landing-dashboard-wrap"
-        aria-label="Пример интерфейса"
-      >
-        <LandingDashboardMock />
+        <div
+          v-if="!isMobile"
+          ref="dashboardOverlapRef"
+          class="container landing-dashboard-wrap"
+          aria-label="Пример интерфейса дашборда CapitalView"
+        >
+          <LandingDashboardMock />
+        </div>
       </div>
-    </div>
 
-    <div class="landing-light-surface">
-      <div class="landing-light-vlines" aria-hidden="true">
-        <span class="landing-light-vline" /><span class="landing-light-vline" />
-        <span class="landing-light-vline" /><span class="landing-light-vline" />
-        <span class="landing-light-vline" /><span class="landing-light-vline" />
-        <span class="landing-light-vline" /><span class="landing-light-vline" />
+      <div class="landing-light-surface">
+        <div class="landing-light-vlines" aria-hidden="true">
+          <span class="landing-light-vline" /><span class="landing-light-vline" />
+          <span class="landing-light-vline" /><span class="landing-light-vline" />
+          <span class="landing-light-vline" /><span class="landing-light-vline" />
+          <span class="landing-light-vline" /><span class="landing-light-vline" />
+        </div>
+        <LandingAnalyticsSection />
+        <LandingIntegrationSection
+          :bullets="integrationBullets"
+          :coming-soon-brokers="comingSoonBrokers"
+        />
+        <LandingStepsSection :items="steps" />
+        <LandingSecuritySection :tabs="securityTabs" />
+        <LandingPricingSection :features="pricingFeatures" />
+        <LandingFaqSection :items="faq" />
       </div>
-      <LandingAnalyticsSection />
-      <LandingIntegrationSection
-        :bullets="integrationBullets"
-        :coming-soon-brokers="comingSoonBrokers"
-      />
-      <LandingStepsSection :items="steps" />
-      <LandingSecuritySection :tabs="securityTabs" />
-      <LandingPricingSection :features="pricingFeatures" />
-      <LandingFaqSection :items="faq" />
-    </div>
+    </main>
+
     <LandingFooter />
   </div>
 </template>

@@ -19,33 +19,67 @@ const ErrorStatus = () => import('../views/errors/ErrorStatus.vue');
 const NotFound404 = () => import('../views/errors/NotFound404.vue');
 
 const routes = [
-  { path: '/', component: Home },
-  { path: '/privacy', component: LegalDocument },
-  { path: '/terms', component: LegalDocument },
+  {
+    path: '/',
+    component: Home,
+    meta: {
+      title: 'CapitalView — учёт инвестиций, аналитика портфеля и дивидендный календарь',
+      robots: 'index, follow'
+    }
+  },
+  {
+    path: '/privacy',
+    component: LegalDocument,
+    meta: { title: 'Политика конфиденциальности — CapitalView', robots: 'noindex, follow' }
+  },
+  {
+    path: '/terms',
+    component: LegalDocument,
+    meta: { title: 'Условия использования — CapitalView', robots: 'noindex, follow' }
+  },
   {
     path: '/login',
     component: Login,
-    meta: { requiresGuest: true }
+    meta: {
+      requiresGuest: true,
+      title: 'Вход и регистрация — CapitalView',
+      robots: 'noindex, follow'
+    }
   },
-  { path: '/auth/callback', component: AuthCallback },
+  { path: '/auth/callback', component: AuthCallback, meta: { robots: 'noindex, follow' } },
   {
     path: '/',
     component: DashboardLayout,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, robots: 'noindex, follow' },
     children: [
-      { path: '/dashboard', component: Dashboard },
-      { path: '/analitics', component: Analitics },
-      { path: '/assets', component: Assets },
-      { path: '/assets/:id', component: AssetDetail, props: true },
-      { path: '/transactions', component: Transactions },
-      { path: '/dividends', component: Dividends },
-      { path: '/settings', component: Settings }
+      { path: '/dashboard', component: Dashboard, meta: { title: 'Дашборд — CapitalView' } },
+      { path: '/analitics', component: Analitics, meta: { title: 'Аналитика портфеля — CapitalView' } },
+      {
+        path: '/assets',
+        component: Assets,
+        meta: { title: 'Активы — CapitalView', robots: 'noindex, follow' }
+      },
+      {
+        path: '/assets/:id',
+        component: AssetDetail,
+        props: true,
+        meta: { title: 'Актив — CapitalView', robots: 'noindex, follow' }
+      },
+      { path: '/transactions', component: Transactions, meta: { title: 'Сделки — CapitalView' } },
+      { path: '/dividends', component: Dividends, meta: { title: 'Дивиденды и купоны — CapitalView' } },
+      { path: '/settings', component: Settings, meta: { title: 'Настройки — CapitalView' } }
     ]
   },
-  // Ошибки
-  { path: '/error/:code', component: ErrorStatus },
-  // Catch-all: всё остальное считаем 404
-  { path: '/:pathMatch(.*)*', component: NotFound404 }
+  {
+    path: '/error/:code',
+    component: ErrorStatus,
+    meta: { title: 'Ошибка — CapitalView', robots: 'noindex, follow' }
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    component: NotFound404,
+    meta: { title: 'Страница не найдена — CapitalView', robots: 'noindex, follow' }
+  }
 ]
 
 const router = createRouter({
@@ -162,16 +196,34 @@ router.beforeEach(async (to, from, next) => {
 // Если переменная не задана — используем ID из `frontend/index.html`, чтобы не терять pageview в SPA.
 const YM_COUNTER_ID = import.meta.env.VITE_YM_COUNTER_ID || 108158122
 
+const DEFAULT_TITLE = 'CapitalView — учёт инвестиций, аналитика портфеля и дивидендный календарь'
+
+function setMetaRobots(content) {
+  if (typeof document === 'undefined') return
+  let el = document.querySelector('meta[name="robots"]')
+  if (!el) {
+    el = document.createElement('meta')
+    el.setAttribute('name', 'robots')
+    document.head.appendChild(el)
+  }
+  el.setAttribute('content', content)
+}
+
 router.afterEach((to) => {
+  const pageTitle = to.meta?.title || to.matched.find(r => r.meta?.title)?.meta?.title || DEFAULT_TITLE
+  document.title = pageTitle
+
+  const robots =
+    [...to.matched].reverse().find((r) => r.meta?.robots)?.meta?.robots ?? 'index, follow'
+  setMetaRobots(robots)
+
   if (!YM_COUNTER_ID) return
   if (typeof window === 'undefined') return
   if (typeof window.ym !== 'function') return
 
   const url = `${window.location.origin}${to.fullPath}`
-  // SPA: отправляем "просмотр страницы" вручную при смене маршрута.
-  // Важно: для ym(..., 'hit') url передаём отдельным аргументом.
   window.ym(YM_COUNTER_ID, 'hit', url, {
-    title: document.title,
+    title: pageTitle,
     referer: document.referrer
   })
 })

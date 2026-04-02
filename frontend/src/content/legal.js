@@ -68,7 +68,7 @@ export const PRIVACY_POLICY = {
     },
     {
       heading: '9. Контакты',
-      content: `По вопросам обработки персональных данных обращайтесь через раздел «Поддержка» или по email: support@capitalview.ru`
+      content: `По вопросам обработки персональных данных обращайтесь через раздел «Поддержка» или по email: support@capital-view.ru`
     }
   ]
 }
@@ -119,7 +119,7 @@ export const TERMS_OF_USE = {
     },
     {
       heading: '10. Контакты',
-      content: `По вопросам использования Сервиса обращайтесь через раздел «Поддержка» или по email: support@capitalview.ru`
+      content: `По вопросам использования Сервиса обращайтесь через раздел «Поддержка» или по email: support@capital-view.ru`
     }
   ]
 }

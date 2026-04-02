@@ -10,8 +10,8 @@ defineProps({
   <section id="pricing" class="section snap-section">
     <div class="container">
       <div class="pricing-hero reveal">
-        <h2 class="pricing-heading">Бесплатно.<br>Без скрытых платежей.</h2>
-        <p class="pricing-sub">Все функции доступны без ограничений. Начните пользоваться прямо сейчас.</p>
+        <h2 class="pricing-heading">Бесплатный трекер<br>инвестиций</h2>
+        <p class="pricing-sub">Учёт инвестиций, аналитика портфеля, дивидендный календарь — все функции доступны без ограничений. Начните прямо сейчас.</p>
 
         <div class="pricing-checklist">
           <span v-for="feat in features" :key="feat" class="pricing-check-item">

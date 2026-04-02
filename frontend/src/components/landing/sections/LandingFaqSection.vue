@@ -18,7 +18,7 @@ function toggle(i) {
     <div class="container faq-container">
       <div class="faq-header">
         <div class="faq-label reveal">Поддержка</div>
-        <h2 class="faq-heading reveal">Частые вопросы</h2>
+        <h2 class="faq-heading reveal">Частые вопросы об учёте инвестиций</h2>
       </div>
 
       <div class="faq-list">

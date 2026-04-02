@@ -1,10 +1,11 @@
 User-agent: *
 Allow: /
 Disallow: /dashboard
-Disallow: /assets
 Disallow: /transactions
 Disallow: /dividends
 Disallow: /analitics
 Disallow: /settings
+Disallow: /auth/callback
+Disallow: /error
 
-# Sitemap: https://capitalview.ru/sitemap.xml
+Sitemap: https://capital-view.ru/sitemap.xml
