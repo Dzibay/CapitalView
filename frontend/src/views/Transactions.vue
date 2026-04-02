@@ -8,7 +8,7 @@ import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/base/ContextMenu.vue'
 import CustomSelect from '../components/base/CustomSelect.vue'
-import { DateInput, ToggleSwitch } from '../components/base'
+import { DateInput, ToggleSwitch, PeriodFilter } from '../components/base'
 import { Search } from 'lucide-vue-next'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
@@ -33,6 +33,7 @@ const {
   startDate,
   endDate,
   globalSearch,
+  showPeriodTrack,
 } = storeToRefs(transactionsStore)
 
 // Загружаем полные списки транзакций и операций при открытии страницы
@@ -123,6 +124,19 @@ const operationTypes = computed(() => {
     if (op.operation_type) typeSet.add(op.operation_type)
   }
   return Array.from(typeSet)
+})
+
+/** Самая ранняя дата среди транзакций и операций — левая граница шкалы периода */
+const earliestDataDate = computed(() => {
+  let best = ''
+  const consider = (raw) => {
+    const s = normalizeDateToString(raw)
+    if (!s) return
+    if (!best || s < best) best = s
+  }
+  for (const tx of transactions.value) consider(tx.transaction_date)
+  for (const op of operations.value) consider(op.operation_date)
+  return best
 })
 
 // Фильтры хранятся в transactionsStore для сохранения при навигации
@@ -559,9 +573,6 @@ watch(viewMode, () => {
 watch(
   [selectedPortfolio, selectedType, globalSearch, periodPreset],
   () => {
-    if (periodPreset.value !== 'custom') {
-      setPeriodPreset(periodPreset.value)
-    }
     applyFilter()
   }
 )
@@ -985,44 +996,33 @@ const showSumsSummary = ref(false)
             </div>
 
         <div class="filters-bottom">
-          <!-- Планшет и десктоп: чипсы -->
-          <div v-if="!isMobilePeriod" class="chips-group">
-            <button v-for="p in ['today', 'week', 'month', 'year', 'all']" 
-                    :key="p" 
-                    class="chip" 
-                    :class="{ active: periodPreset === p }"
-                    @click="setPeriodPreset(p); periodPreset = p">
-              {{ {today:'Сегодня', week:'Неделя', month:'Месяц', year:'Год', all:'Всё время'}[p] }}
-            </button>
-            <button class="chip" :class="{ active: periodPreset === 'custom' }" @click="periodPreset = 'custom'">
-              Период...
-            </button>
-          </div>
-          <!-- Телефоны: выпадающий список -->
-          <div v-else class="period-select-mobile">
-            <CustomSelect
-              v-model="periodPreset"
-              :options="periodOptions"
-              option-value="value"
-              option-label="label"
-              label="Период"
-              placeholder="Период"
-              :show-empty-option="false"
-              @change="(v) => v && setPeriodPreset(v)"
-            />
-          </div>
-          
-          <div v-if="periodPreset === 'custom'" class="date-range">
-            <DateInput v-model="startDate" class="date-input" />
-            <span class="separator">—</span>
-            <DateInput v-model="endDate" class="date-input" />
-          </div>
-            </div>
+          <PeriodFilter
+            :preset="periodPreset"
+            :start-date="startDate"
+            :end-date="endDate"
+            :track-min-date="earliestDataDate"
+            :show-track="showPeriodTrack"
+            @update:preset="v => { periodPreset = v }"
+            @update:start-date="v => { startDate = v; applyFilter() }"
+            @update:end-date="v => { endDate = v; applyFilter() }"
+          >
+            <template #controls-suffix>
+              <ToggleSwitch
+                v-model="showPeriodTrack"
+                label="Отображать трек"
+                active-color="#2563eb"
+                hover-color="#1d4ed8"
+              />
+            </template>
+          </PeriodFilter>
+        </div>
 
             <div class="sums-toggle-row">
               <ToggleSwitch
                 v-model="showSumsSummary"
                 :label="viewMode === 'transactions' ? 'Показывать суммы по транзакциям' : 'Показывать суммы по операциям'"
+                active-color="#2563eb"
+                hover-color="#1d4ed8"
               />
             </div>
           </div>

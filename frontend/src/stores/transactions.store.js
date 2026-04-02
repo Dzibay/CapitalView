@@ -5,6 +5,8 @@ import { useDashboardStore } from './dashboard.store'
 
 export const useTransactionsStore = defineStore('transactions', {
   state: () => ({
+    /** Показать шкалу дат на странице транзакций (сохраняется в localStorage) */
+    showPeriodTrack: false,
     viewMode: 'transactions',
     selectedAsset: '',
     assetSearch: '',
@@ -19,6 +21,9 @@ export const useTransactionsStore = defineStore('transactions', {
     endDate: '',
     globalSearch: '',
   }),
+
+  persist: ['showPeriodTrack'],
+
   actions: {
     resetFilters() {
       this.selectedAsset = ''
