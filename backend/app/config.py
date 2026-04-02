@@ -15,6 +15,8 @@ class Config:
     
     # Настройки JWT
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+    # Срок сессии веб-входа (дней). Для реже запрашиваемого логина с PWA / «Экран домой»
+    # можно увеличить через переменную окружения JWT_ACCESS_TOKEN_EXPIRES_DAYS (например 7).
     _jwt_days = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES_DAYS", "1"))
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=max(1, _jwt_days))
     JWT_ALGORITHM = "HS256"
