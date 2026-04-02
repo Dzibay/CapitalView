@@ -9,7 +9,7 @@ import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/base/ContextMenu.vue'
 import CustomSelect from '../components/base/CustomSelect.vue'
 import { DateInput, ToggleSwitch, PeriodFilter } from '../components/base'
-import { Search } from 'lucide-vue-next'
+import { Search, SlidersHorizontal, ChevronDown } from 'lucide-vue-next'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
@@ -854,6 +854,25 @@ const transactionsSummary = computed(() => {
 
 // Показывать блок сумм между фильтрами и таблицей
 const showSumsSummary = ref(false)
+
+const showMobileFilters = ref(false)
+
+const activeFilterCount = computed(() => {
+  let count = 0
+  if (selectedAsset.value) count++
+  if (normalizeFilterList(selectedPortfolio.value).length > 0) count++
+  if (normalizeFilterList(selectedType.value).length > 0) count++
+  if (periodPreset.value && periodPreset.value !== 'all') count++
+  return count
+})
+
+const periodFilterLabel = computed(() => {
+  const labels = { today: 'Сегодня', week: 'Неделя', month: 'Месяц', quarter: 'Квартал', year: 'Год' }
+  if (periodPreset.value === 'custom') {
+    return `${formatDate(startDate.value)} — ${formatDate(endDate.value)}`
+  }
+  return labels[periodPreset.value] || periodPreset.value
+})
 </script>
 
 <template>
@@ -899,6 +918,25 @@ const showSumsSummary = ref(false)
         <div class="transactions-main">
           <div class="card">
           <div class="toolbar">
+            <div class="mobile-filter-bar">
+              <button @click="showMobileFilters = !showMobileFilters" class="mobile-filter-toggle-btn" type="button">
+                <SlidersHorizontal :size="16" />
+                <span>Фильтры</span>
+                <span v-if="activeFilterCount > 0" class="mobile-filter-badge">{{ activeFilterCount }}</span>
+                <ChevronDown :size="16" class="mobile-filter-chevron" :class="{ 'mobile-filter-chevron--open': showMobileFilters }" />
+              </button>
+              <div v-if="!showMobileFilters && activeFilterCount > 0" class="active-filters-summary">
+                <span v-if="selectedAsset" class="active-filter-chip">
+                  {{ selectedAsset }}
+                  <button @click.stop="assetSearch=''; selectedAsset=''; applyFilter()" class="chip-remove" type="button">&times;</button>
+                </span>
+                <span v-for="p in normalizeFilterList(selectedPortfolio)" :key="'p-' + p" class="active-filter-chip">{{ p }}</span>
+                <span v-for="t in normalizeFilterList(selectedType)" :key="'t-' + t" class="active-filter-chip">{{ t }}</span>
+                <span v-if="periodPreset !== 'all'" class="active-filter-chip">{{ periodFilterLabel }}</span>
+                <button @click.stop="resetFilters" class="active-filter-chip active-filter-chip--reset" type="button">Сбросить</button>
+              </div>
+            </div>
+            <div class="filters-collapsible" :class="{ 'filters-collapsible--hidden': isCardView && !showMobileFilters }">
             <div class="filters-top">
               <!-- Строка 1: поиск по активу + сброс (всегда вместе при сужении) -->
               <div class="filters-row filters-row--primary">
@@ -1024,6 +1062,7 @@ const showSumsSummary = ref(false)
                 active-color="#2563eb"
                 hover-color="#1d4ed8"
               />
+            </div>
             </div>
           </div>
 
@@ -1894,7 +1933,131 @@ const showSumsSummary = ref(false)
 .empty-icon { font-size: 32px; display: block; opacity: 0.5; }
 
 /* =========================================
-   8. АДАПТИВ (MEDIA QUERIES)
+   8. МОБИЛЬНАЯ ПАНЕЛЬ ФИЛЬТРОВ
+   ========================================= */
+.mobile-filter-bar {
+  display: none;
+}
+
+.mobile-filter-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mobile-filter-toggle-btn:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.mobile-filter-toggle-btn:active {
+  background: #e5e7eb;
+}
+
+.mobile-filter-badge {
+  background: #2563eb;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.mobile-filter-chevron {
+  margin-left: auto;
+  color: #6b7280;
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+
+.mobile-filter-chevron--open {
+  transform: rotate(180deg);
+}
+
+.active-filters-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.active-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #eff6ff;
+  color: #2563eb;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #bfdbfe;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.active-filter-chip--reset {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.active-filter-chip--reset:hover {
+  background: #fee2e2;
+}
+
+.chip-remove {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+.chip-remove:hover {
+  color: #1d4ed8;
+}
+
+.filters-collapsible {
+  overflow: hidden;
+  max-height: 600px;
+  opacity: 1;
+  /* Место под «плавающие» подписи (Актив и т.д.), иначе overflow:hidden обрезает top: -8px */
+  padding-top: 12px;
+  transition: max-height 0.3s ease, opacity 0.2s ease, padding-top 0.25s ease;
+}
+
+.filters-collapsible--hidden {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  padding-top: 0;
+}
+
+/* =========================================
+   9. АДАПТИВ (MEDIA QUERIES)
    ========================================= */
 @media (max-width: 1024px) {
   .transactions-content {
@@ -1902,6 +2065,13 @@ const showSumsSummary = ref(false)
   }
   .chips-group { gap: 6px; }
   .chip { padding: 6px 12px; font-size: 12px; }
+
+  .mobile-filter-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
 }
 
 @media (max-width: 768px) {

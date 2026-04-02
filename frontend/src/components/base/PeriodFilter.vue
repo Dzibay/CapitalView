@@ -91,6 +91,15 @@ const noTransition = ref(false)
 
 const calendarTarget = ref(null)
 const calendarStyle = ref({})
+
+/** На узком экране диапазон дат — только системный date picker, без плавающего поля */
+const NATIVE_RANGE_MQ = '(max-width: 768px)'
+const isMobileNativeRange = ref(
+  typeof window !== 'undefined' && window.matchMedia(NATIVE_RANGE_MQ).matches,
+)
+const nativeRangeInputRef = ref(null)
+let nativeRangeMqCleanup = null
+
 /** После повторного клика по чипу — ввод даты с клавиатуры ('left' | 'right') */
 const inlineEditThumb = ref(null)
 const editDraft = ref('')
@@ -454,7 +463,7 @@ const positionCalendar = () => {
   const r = el.getBoundingClientRect()
   const vw = window.innerWidth
   const vh = window.innerHeight
-  const cw = CALENDAR_WIDTH
+  const cw = vw <= 768 ? Math.min(vw - 24, 360) : CALENDAR_WIDTH
   const calEl = typeof document !== 'undefined' ? document.querySelector('.pf-period-calendar-popover') : null
   const ch = calEl?.getBoundingClientRect().height || CALENDAR_EST_HEIGHT
   let left = r.left + r.width / 2 - cw / 2
@@ -493,6 +502,20 @@ const attachCalendarReposition = () => {
 const showCalendar = (thumb) => {
   inlineEditThumb.value = null
   calendarTarget.value = thumb
+  if (isMobileNativeRange.value) {
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        const el = nativeRangeInputRef.value
+        if (!el || !calendarTarget.value) return
+        try {
+          el.showPicker?.()
+        } catch {
+          el.focus()
+        }
+      })
+    })
+    return
+  }
   nextTick(() => {
     positionCalendar()
     attachCalendarReposition()
@@ -554,6 +577,22 @@ const gridModelValue = computed(() => {
     : normalizeDateToString(selEnd.value)
 })
 
+const mobilePickerMin = computed(() => {
+  if (!calendarTarget.value) return undefined
+  const a = normalizeDateToString(trackMin.value)
+  const b = calendarTarget.value === 'right' ? normalizeDateToString(selStart.value) : ''
+  if (a && b) return a > b ? a : b
+  return a || b || undefined
+})
+
+const mobilePickerMax = computed(() => {
+  if (!calendarTarget.value) return undefined
+  const a = normalizeDateToString(trackMax.value)
+  const b = calendarTarget.value === 'left' ? normalizeDateToString(selEnd.value) : ''
+  if (a && b) return a < b ? a : b
+  return a || b || undefined
+})
+
 const onDateGridPick = (ymd) => {
   const day = clampDayToTrack(parseDate(ymd))
   if (calendarTarget.value === 'left') {
@@ -570,6 +609,12 @@ const onDateGridPick = (ymd) => {
   emit('update:preset', 'custom')
   calendarTarget.value = null
   settleVisibleRange()
+}
+
+const onNativeRangeChange = (e) => {
+  const ymd = e.target?.value
+  if (!ymd || !calendarTarget.value) return
+  onDateGridPick(ymd)
 }
 
 watch(calendarTarget, (v) => {
@@ -628,18 +673,37 @@ watch([() => props.startDate, () => props.endDate], ([ns, ne]) => {
 })
 
 const handleDocClick = (e) => {
+  if (!calendarTarget.value) return
+  /* На мобильном нет DOM-попапа: не гасим target по документу — иначе ломается выбор в системном пикере */
+  if (isMobileNativeRange.value) return
   const t = e.target
-  if (calendarTarget.value) {
-    if (t instanceof Element && t.closest('.custom-select-dropdown')) return
-    const cal = document.querySelector('.pf-period-calendar-popover')
-    if (cal?.contains(t)) return
-    if (datesAnchorRef.value?.contains(t)) return
-    calendarTarget.value = null
+  if (t instanceof Element && t.closest('.custom-select-dropdown')) return
+  const cal = document.querySelector('.pf-period-calendar-popover')
+  if (cal?.contains(t)) return
+  if (datesAnchorRef.value?.contains(t)) return
+  calendarTarget.value = null
+}
+
+const initNativeRangeMq = () => {
+  if (typeof window === 'undefined') return
+  const mq = window.matchMedia(NATIVE_RANGE_MQ)
+  const apply = () => {
+    isMobileNativeRange.value = mq.matches
+  }
+  apply()
+  if (typeof mq.addEventListener === 'function') {
+    mq.addEventListener('change', apply)
+    nativeRangeMqCleanup = () => mq.removeEventListener('change', apply)
+  } else {
+    mq.addListener(apply)
+    nativeRangeMqCleanup = () => mq.removeListener(apply)
   }
 }
 
 onMounted(() => {
+  initNativeRangeMq()
   document.addEventListener('mousedown', handleDocClick, true)
+  document.addEventListener('pointerdown', handleDocClick, true)
   if (props.preset && props.preset !== 'custom') {
     applyPreset(props.preset)
   } else if (props.startDate || props.endDate) {
@@ -652,7 +716,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  nativeRangeMqCleanup?.()
+  nativeRangeMqCleanup = null
   document.removeEventListener('mousedown', handleDocClick, true)
+  document.removeEventListener('pointerdown', handleDocClick, true)
   stopAutoExpand()
   detachCalendarReposition()
 })
@@ -777,9 +844,22 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <input
+      v-if="isMobileNativeRange"
+      ref="nativeRangeInputRef"
+      type="date"
+      class="pf-hidden-native-date"
+      :value="gridModelValue"
+      :min="mobilePickerMin || undefined"
+      :max="mobilePickerMax || undefined"
+      tabindex="-1"
+      aria-hidden="true"
+      @change="onNativeRangeChange"
+    >
+
     <Teleport to="body">
       <DateInput
-        v-if="calendarTarget"
+        v-if="calendarTarget && !isMobileNativeRange"
         inline-panel
         class="pf-period-calendar-popover"
         :style="calendarStyle"
@@ -803,6 +883,22 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Якорь для showPicker() на мобильных — не показываем отдельное поле на экране */
+.pf-hidden-native-date {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  overflow: hidden;
 }
 
 .pf-controls {
@@ -963,7 +1059,9 @@ onUnmounted(() => {
 .pf-slider-area {
   position: relative;
   width: 100%;
-  padding: 0 2px;
+  /* Запас под ползунки (translateX(-50%), scale 1.15) и тень :active 8px — иначе обрезает overflow:hidden у предка */
+  padding: 0 22px;
+  box-sizing: border-box;
 }
 
 .pf-track-wrap {

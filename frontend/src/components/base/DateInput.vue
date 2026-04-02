@@ -81,6 +81,14 @@ const POPOVER_GAP = 8
 /** Выше панели календаря (z-index 10001), чтобы список лет не уходил под неё */
 const YEAR_DROPDOWN_Z = 10120
 
+/** На узких экранах — системный `<input type="date">` вместо сетки */
+const NATIVE_PICKER_MQ = '(max-width: 768px)'
+
+const useNativePicker = ref(
+  typeof window !== 'undefined' && window.matchMedia(NATIVE_PICKER_MQ).matches,
+)
+let mqCleanup = null
+
 const parseLocalDay = (str) => {
   if (!str) return null
   const d = new Date(str + 'T00:00:00')
@@ -325,6 +333,19 @@ watch(yearBounds, (b) => {
 
 const gridRootClass = computed(() => props.class || undefined)
 
+const nativeInputValue = computed(() => {
+  const v = props.modelValue
+  if (!v) return ''
+  const n = normalizeDateToString(v)
+  if (!n || n.length !== 10) return ''
+  return n
+})
+
+const onNativeChange = (e) => {
+  const v = e.target?.value
+  emit('update:modelValue', v || '')
+}
+
 // --- picker popover ---
 const open = ref(false)
 const wrapperRef = ref(null)
@@ -423,12 +444,31 @@ watch(open, (v) => {
   }
 })
 
+const initNativePickerMq = () => {
+  if (typeof window === 'undefined') return
+  const mq = window.matchMedia(NATIVE_PICKER_MQ)
+  const apply = () => {
+    useNativePicker.value = mq.matches
+  }
+  apply()
+  if (typeof mq.addEventListener === 'function') {
+    mq.addEventListener('change', apply)
+    mqCleanup = () => mq.removeEventListener('change', apply)
+  } else {
+    mq.addListener(apply)
+    mqCleanup = () => mq.removeListener(apply)
+  }
+}
+
 onMounted(() => {
+  initNativePickerMq()
   document.addEventListener('mousedown', onDocPointerDown, true)
   document.addEventListener('keydown', onKeydown)
 })
 
 onUnmounted(() => {
+  mqCleanup?.()
+  mqCleanup = null
   document.removeEventListener('mousedown', onDocPointerDown, true)
   document.removeEventListener('keydown', onKeydown)
   detachPopoverListeners()
@@ -437,7 +477,26 @@ onUnmounted(() => {
 
 <template>
   <div
-    v-if="!inlinePanel"
+    v-if="!inlinePanel && useNativePicker"
+    class="di-date-field"
+  >
+    <input
+      :id="id"
+      type="date"
+      :class="triggerClass"
+      class="di-date-native"
+      :value="nativeInputValue"
+      :min="minDate || undefined"
+      :max="maxDate || undefined"
+      :disabled="disabled"
+      :required="required"
+      :name="name || undefined"
+      autocomplete="off"
+      @change="onNativeChange"
+    >
+  </div>
+  <div
+    v-else-if="!inlinePanel"
     ref="wrapperRef"
     class="di-date-field"
   >
@@ -671,6 +730,17 @@ onUnmounted(() => {
   background: #f9fafb;
   color: #9ca3af;
   cursor: not-allowed;
+}
+
+input.di-date-native.di-date-trigger {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+input.di-date-native.di-date-trigger::-webkit-date-and-time-value {
+  text-align: left;
 }
 
 .di-date-field__text {
