@@ -3,27 +3,120 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Автоматически переводит все HTTP-запросы на HTTPS (устраняет Mixed Content) -->
     <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests" />
     
-    <!-- Yandex.WebMaster verification -->
     <meta name="yandex-verification" content="%VITE_YANDEX_VERIFICATION_ID%" />
 
-    <title>CapitalView — учёт и аналитика инвестиционного портфеля</title>
-    <meta name="description" content="Объединяйте брокерские счета, отслеживайте доходность и дивиденды, управляйте портфелем в одном месте. Автоимпорт из Т-Инвестиции." />
+    <title>CapitalView — учёт инвестиций, аналитика портфеля и дивидендный календарь</title>
+    <meta name="description" content="Учёт инвестиционного портфеля онлайн: объединяйте брокерские счета, отслеживайте доходность, дивиденды и купоны. Автоимпорт из Т-Инвестиции. Бесплатный трекер инвестиций для управления портфелем." />
+    <meta name="keywords" content="учёт инвестиций, аналитика портфеля, инвестиционный портфель, трекер инвестиций, дивидендный календарь, управление портфелем, учёт акций, отслеживание дивидендов, доходность портфеля, агрегатор брокерских счетов, синхронизация Т-Инвестиции, учёт облигаций" />
+    <link rel="canonical" href="https://capital-view.ru/" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="CapitalView — учёт и аналитика инвестиционного портфеля" />
-    <meta property="og:description" content="Объединяйте брокерские счета, отслеживайте доходность и дивиденды, управляйте портфелем в одном месте." />
+    <meta property="og:site_name" content="CapitalView" />
+    <meta property="og:title" content="CapitalView — учёт инвестиций, аналитика портфеля и дивидендный календарь" />
+    <meta property="og:description" content="Учёт инвестиционного портфеля онлайн: объединяйте брокерские счета, отслеживайте доходность, дивиденды и купоны. Бесплатный трекер инвестиций." />
     <meta property="og:locale" content="ru_RU" />
-    <!-- <meta property="og:image" content="https://capitalview.ru/og-image.png" /> -->
-    <!-- <meta property="og:url" content="https://capitalview.ru/" /> -->
+    <meta property="og:image" content="https://capital-view.ru/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="CapitalView — учёт и аналитика инвестиционного портфеля" />
+    <meta property="og:url" content="https://capital-view.ru/" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="CapitalView — учёт и аналитика инвестиционного портфеля" />
+    <meta name="twitter:title" content="CapitalView — учёт инвестиций и аналитика портфеля" />
     <meta name="twitter:description" content="Объединяйте брокерские счета, отслеживайте доходность и дивиденды, управляйте портфелем в одном месте." />
+    <meta name="twitter:image" content="https://capital-view.ru/og-image.png" />
+
+    <!-- Structured Data: Organization -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "CapitalView",
+      "url": "https://capital-view.ru",
+      "logo": "https://capital-view.ru/favicon.svg",
+      "description": "Онлайн-сервис для учёта инвестиций, аналитики портфеля и отслеживания дивидендов"
+    }
+    </script>
+
+    <!-- Structured Data: WebApplication -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "CapitalView",
+      "url": "https://capital-view.ru",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "RUB"
+      },
+      "description": "Учёт инвестиционного портфеля онлайн: объединяйте брокерские счета, отслеживайте доходность, дивиденды и купоны. Автоимпорт из Т-Инвестиции.",
+      "featureList": [
+        "Автоимпорт из Т-Инвестиции",
+        "Аналитика портфеля",
+        "Дивидендный календарь",
+        "Учёт акций и облигаций",
+        "Отслеживание доходности",
+        "Неограниченные портфели"
+      ]
+    }
+    </script>
+
+    <!-- Structured Data: FAQPage -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Безопасно ли подключать брокерский счёт?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Абсолютно безопасно. Мы используем только read-only доступ через официальный API брокера. Мы не можем совершать сделки, выводить средства или изменять настройки вашего счёта."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Какие брокеры поддерживаются?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Сейчас доступна интеграция с Т-Инвестиции. В ближайшее время добавим Сбер, ВТБ и Альфа-Банк. Вы также можете вносить данные вручную или добавлять кастомные активы — недвижимость, криптовалюта и другое."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Как часто обновляются данные?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Данные синхронизируются автоматически при каждом входе в систему. Для подключённых брокеров обновление происходит в реальном времени."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Можно ли использовать бесплатно?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Да. Сервис временно полностью бесплатный — все функции доступны без ограничений. Неограниченные портфели, импорт из Т-Инвестиции, дивидендный календарь и полная аналитика."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Есть ли мобильное приложение?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Веб-версия полностью адаптирована для мобильных устройств. Мобильное приложение для iOS и Android находится в разработке."
+          }
+        }
+      ]
+    }
+    </script>
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
@@ -33,10 +126,11 @@
     <meta name="apple-mobile-web-app-title" content="CapitalView" />
     <link rel="manifest" href="/site.webmanifest" />
 
-    <!-- Preconnect to Google Fonts for faster loading -->
+    <!-- Preconnect & preload Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Raleway:wght@200;300;400;500;600;700&display=swap" />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Raleway:wght@200;300;400;500;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Raleway:wght@200;300;400;500;600;700&display=swap" /></noscript>
   </head>
   <body>
     <div id="app"></div>

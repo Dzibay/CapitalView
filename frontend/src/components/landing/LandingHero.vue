@@ -4,9 +4,9 @@ import { ArrowRight, Check } from 'lucide-vue-next'
 import { gsap } from 'gsap'
 
 const heroCenterRef = ref(null)
-const titleWordsLine1 = ['Все', 'инвестиции']
+const titleWordsLine1 = ['Учёт', 'инвестиций']
 const titleWordsLine2 = ['в', 'одном', 'месте']
-const leadWords = 'Объединяйте брокерские счета, следите за доходностью и дивидендами — в одном спокойном интерфейсе, без таблиц и ручных пересчётов.'.split(' ')
+const leadWords = 'Объединяйте брокерские счета, отслеживайте доходность портфеля и дивиденды — трекер инвестиций с автоимпортом из Т-Инвестиции, без таблиц и ручных пересчётов.'.split(' ')
 let introTl = null
 
 onMounted(() => {

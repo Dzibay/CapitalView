@@ -1,11 +1,11 @@
 <script setup></script>
 
 <template>
-  <footer class="footer snap-section">
+  <footer class="footer snap-section" role="contentinfo">
     <div class="container footer-inner">
       <div class="footer-brand">
-        <router-link to="/" class="logo">Capital<span>View</span></router-link>
-        <p>Учёт и аналитика инвестиционного портфеля</p>
+        <router-link to="/" class="logo" aria-label="CapitalView — учёт инвестиций">Capital<span>View</span></router-link>
+        <p>Онлайн-сервис для учёта инвестиций, аналитики портфеля и отслеживания дивидендов</p>
       </div>
       <div class="footer-links">
         <div class="footer-col">
