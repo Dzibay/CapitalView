@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Teleport } from 'vue'
 import CustomSelect from './CustomSelect.vue'
+import DateInput from './DateInput.vue'
 import { normalizeDateToString } from '../../utils/date'
 import { Calendar } from 'lucide-vue-next'
 
@@ -26,8 +27,6 @@ const PRESET_OPTIONS = [
 ]
 
 const MONTHS_SHORT = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек']
-const MONTHS_FULL = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь']
-const DAY_NAMES = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']
 const MS_PER_DAY = 86400000
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
@@ -91,10 +90,12 @@ const expandTimer = ref(null)
 const noTransition = ref(false)
 
 const calendarTarget = ref(null)
-const _t0 = startOfToday()
-const calYear = ref(_t0.getFullYear())
-const calMonth = ref(_t0.getMonth())
 const calendarStyle = ref({})
+/** После повторного клика по чипу — ввод даты с клавиатуры ('left' | 'right') */
+const inlineEditThumb = ref(null)
+const editDraft = ref('')
+const editInputLeftRef = ref(null)
+const editInputRightRef = ref(null)
 
 let lastAppliedPreset = null
 
@@ -116,6 +117,77 @@ const fracToDate = (frac) => {
 const fmtCompact = (d) => {
   if (!d || isNaN(d.getTime())) return '—'
   return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getFullYear()).slice(2)}`
+}
+
+const fmtEditDraft = (d) => {
+  if (!d || isNaN(d.getTime())) return ''
+  return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth() + 1).padStart(2,'0')}.${d.getFullYear()}`
+}
+
+/** Календарный день: день, месяц (1–12), полный год. Без new Date(string) — он даёт MM.DD для «01.11.2025». */
+const buildValidCalendarDate = (day, month, year) => {
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null
+  const d = new Date(year, month - 1, day)
+  d.setHours(0, 0, 0, 0)
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null
+  return d
+}
+
+/**
+ * ДД.ММ.ГГГГ / ДД.ММ.ГГ / ДД/ММ/ГГГГ (европейский порядок),
+ * только цифры: 8 = ДДММГГГГ, 6 = ДДММГГ (год 20xx),
+ * YYYY-MM-DD.
+ */
+const parseTypedDate = (str) => {
+  const t = str.trim()
+  if (!t) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) {
+    const d = parseDate(t)
+    return d && !isNaN(d.getTime()) ? d : null
+  }
+  const m = t.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2}|\d{4})$/)
+  if (m) {
+    const day = parseInt(m[1], 10)
+    const month = parseInt(m[2], 10)
+    let year = parseInt(m[3], 10)
+    if (m[3].length === 2) year += 2000
+    return buildValidCalendarDate(day, month, year)
+  }
+  const digits = t.replace(/\D/g, '')
+  if (digits.length === 8) {
+    const day = parseInt(digits.slice(0, 2), 10)
+    const month = parseInt(digits.slice(2, 4), 10)
+    const year = parseInt(digits.slice(4, 8), 10)
+    return buildValidCalendarDate(day, month, year)
+  }
+  if (digits.length === 6) {
+    const day = parseInt(digits.slice(0, 2), 10)
+    const month = parseInt(digits.slice(2, 4), 10)
+    const yy = parseInt(digits.slice(4, 6), 10)
+    return buildValidCalendarDate(day, month, 2000 + yy)
+  }
+  return null
+}
+
+/** Из ввода оставляем до 8 цифр и показываем ДД.ММ.ГГГГ без необходимости вводить точки */
+const digitsToDraftDisplay = (digits) => {
+  const d = digits.slice(0, 8)
+  if (d.length === 0) return ''
+  if (d.length <= 2) return d
+  if (d.length <= 4) return `${d.slice(0, 2)}.${d.slice(2)}`
+  return `${d.slice(0, 2)}.${d.slice(2, 4)}.${d.slice(4)}`
+}
+
+const onEditDraftInput = (e) => {
+  const digits = e.target.value.replace(/\D/g, '').slice(0, 8)
+  editDraft.value = digitsToDraftDisplay(digits)
+  nextTick(() => {
+    const el = e.target
+    if (el && document.activeElement === el) {
+      const pos = editDraft.value.length
+      el.setSelectionRange(pos, pos)
+    }
+  })
 }
 
 const fmtShort = (d) => `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`
@@ -249,6 +321,7 @@ const startDrag = (e, thumb) => {
   dragStartTime.value = Date.now()
   lastClientX.value = cx
   calendarTarget.value = null
+  inlineEditThumb.value = null
 
   document.addEventListener('mousemove', onDrag)
   document.addEventListener('mouseup', endDrag)
@@ -343,6 +416,12 @@ const settleVisibleRange = () => {
 const onTrackClick = (e) => {
   if (isDragging.value || activeThumb.value) return
   if (calendarTarget.value) { calendarTarget.value = null; return }
+  if (inlineEditThumb.value) {
+    const ae = document.activeElement
+    if (ae instanceof HTMLElement && ae.classList.contains('pf-date-chip-input')) {
+      ae.blur()
+    }
+  }
 
   noTransition.value = false
   const frac = getTrackFrac(e.clientX)
@@ -412,10 +491,8 @@ const attachCalendarReposition = () => {
 }
 
 const showCalendar = (thumb) => {
+  inlineEditThumb.value = null
   calendarTarget.value = thumb
-  const targetDate = thumb === 'left' ? selStart.value : selEnd.value
-  calYear.value = targetDate.getFullYear()
-  calMonth.value = targetDate.getMonth()
   nextTick(() => {
     positionCalendar()
     attachCalendarReposition()
@@ -423,37 +500,68 @@ const showCalendar = (thumb) => {
   })
 }
 
-watch(calendarTarget, (v) => {
-  if (!v) detachCalendarReposition()
+const onDateChipClick = (thumb) => {
+  if (inlineEditThumb.value === thumb) return
+  if (calendarTarget.value === thumb) {
+    calendarTarget.value = null
+    inlineEditThumb.value = thumb
+    editDraft.value = fmtEditDraft(thumb === 'left' ? selStart.value : selEnd.value)
+    nextTick(() => {
+      const el = thumb === 'left' ? editInputLeftRef.value : editInputRightRef.value
+      el?.focus()
+      el?.select()
+    })
+    return
+  }
+  showCalendar(thumb)
+}
+
+const commitDateEdit = (thumb) => {
+  if (inlineEditThumb.value !== thumb) return
+  const raw = editDraft.value.trim()
+  inlineEditThumb.value = null
+  if (!raw) return
+  const parsed = parseTypedDate(raw)
+  if (!parsed) return
+  const day = clampDayToTrack(parsed)
+  if (thumb === 'left') {
+    if (day.getTime() > selEnd.value.getTime()) {
+      selStart.value = new Date(selEnd.value)
+    } else {
+      selStart.value = day
+    }
+    emit('update:startDate', normalizeDateToString(selStart.value))
+  } else {
+    if (day.getTime() < selStart.value.getTime()) {
+      selEnd.value = new Date(selStart.value)
+    } else {
+      selEnd.value = day
+    }
+    emit('update:endDate', normalizeDateToString(selEnd.value))
+  }
+  emit('update:preset', 'custom')
+  settleVisibleRange()
+}
+
+const cancelDateEdit = () => {
+  inlineEditThumb.value = null
+}
+
+const gridModelValue = computed(() => {
+  if (!calendarTarget.value) return ''
+  return calendarTarget.value === 'left'
+    ? normalizeDateToString(selStart.value)
+    : normalizeDateToString(selEnd.value)
 })
 
-const calDays = computed(() => {
-  const y = calYear.value, m = calMonth.value
-  const first = new Date(y, m, 1)
-  let dow = first.getDay(); if (dow === 0) dow = 7; dow--
-  const dim = new Date(y, m + 1, 0).getDate()
-  const prevDim = new Date(y, m, 0).getDate()
-  const days = []
-  for (let i = dow - 1; i >= 0; i--) days.push({ day: prevDim - i, cur: false, date: new Date(y, m - 1, prevDim - i) })
-  for (let d = 1; d <= dim; d++) days.push({ day: d, cur: true, date: new Date(y, m, d) })
-  const rem = (7 - days.length % 7) % 7
-  for (let d = 1; d <= rem; d++) days.push({ day: d, cur: false, date: new Date(y, m + 1, d) })
-  return days
-})
-
-const isInRange = (d) => d >= selStart.value && d <= selEnd.value
-const isStart = (d) => normalizeDateToString(d) === normalizeDateToString(selStart.value)
-const isEnd = (d) => normalizeDateToString(d) === normalizeDateToString(selEnd.value)
-
-const pickDate = (date) => {
-  const raw = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  const day = clampDayToTrack(raw)
+const onDateGridPick = (ymd) => {
+  const day = clampDayToTrack(parseDate(ymd))
   if (calendarTarget.value === 'left') {
     if (day.getTime() <= selEnd.value.getTime()) {
       selStart.value = new Date(day)
       emit('update:startDate', normalizeDateToString(day))
     }
-  } else {
+  } else if (calendarTarget.value === 'right') {
     if (day.getTime() >= selStart.value.getTime()) {
       selEnd.value = new Date(day)
       emit('update:endDate', normalizeDateToString(day))
@@ -464,28 +572,12 @@ const pickDate = (date) => {
   settleVisibleRange()
 }
 
-const isCalDayDisabled = (d, cur) => {
-  if (!cur) return true
-  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  day.setHours(0, 0, 0, 0)
-  if (day.getTime() < trackMin.value.getTime() || day.getTime() > trackMax.value.getTime()) return true
-  if (calendarTarget.value === 'left' && day.getTime() > selEnd.value.getTime()) return true
-  if (calendarTarget.value === 'right' && day.getTime() < selStart.value.getTime()) return true
-  return false
-}
-
-const calPrev = () => {
-  calMonth.value--
-  if (calMonth.value < 0) { calMonth.value = 11; calYear.value-- }
-  nextTick(() => positionCalendar())
-}
-const calNext = () => {
-  calMonth.value++
-  if (calMonth.value > 11) { calMonth.value = 0; calYear.value++ }
-  nextTick(() => positionCalendar())
-}
+watch(calendarTarget, (v) => {
+  if (!v) detachCalendarReposition()
+})
 
 watch(() => props.preset, (val) => {
+  inlineEditThumb.value = null
   if (val === lastAppliedPreset) { lastAppliedPreset = null; return }
   if (val && val !== 'custom') applyPreset(val)
   if (val === 'custom') {
@@ -536,11 +628,14 @@ watch([() => props.startDate, () => props.endDate], ([ns, ne]) => {
 })
 
 const handleDocClick = (e) => {
-  if (!calendarTarget.value) return
-  const cal = document.querySelector('.pf-period-calendar-popover')
-  if (cal?.contains(e.target)) return
-  if (datesAnchorRef.value?.contains(e.target)) return
-  calendarTarget.value = null
+  const t = e.target
+  if (calendarTarget.value) {
+    if (t instanceof Element && t.closest('.custom-select-dropdown')) return
+    const cal = document.querySelector('.pf-period-calendar-popover')
+    if (cal?.contains(t)) return
+    if (datesAnchorRef.value?.contains(t)) return
+    calendarTarget.value = null
+  }
 }
 
 onMounted(() => {
@@ -579,21 +674,55 @@ onUnmounted(() => {
       <div ref="datesAnchorRef" class="pf-dates" :class="{ 'pf-dates--all': preset === 'all' }">
         <span class="pf-dates-label">Даты</span>
         <div ref="datesInnerRef" class="pf-dates-inner">
+          <input
+            v-if="inlineEditThumb === 'left'"
+            ref="editInputLeftRef"
+            :value="editDraft"
+            type="text"
+            class="pf-date-chip pf-date-chip-input"
+            placeholder="ДДММГГГГ"
+            title="Только цифры: день, месяц, год (точки подставятся сами) или ДД.ММ.ГГГГ"
+            inputmode="numeric"
+            autocomplete="off"
+            aria-label="Дата начала периода"
+            @input="onEditDraftInput"
+            @blur="commitDateEdit('left')"
+            @keydown.enter.prevent="commitDateEdit('left')"
+            @keydown.escape.prevent="cancelDateEdit"
+          >
           <button
+            v-else
             type="button"
             class="pf-date-chip"
             :class="{ active: calendarTarget === 'left' }"
-            @click.stop="showCalendar('left')"
+            @click.stop="onDateChipClick('left')"
           >
             <Calendar class="pf-date-chip-icon" :size="15" stroke-width="2" aria-hidden="true" />
             <span class="pf-date-chip-text">{{ dateLeftDisplay }}</span>
           </button>
           <span class="pf-dates-divider" aria-hidden="true" />
+          <input
+            v-if="inlineEditThumb === 'right'"
+            ref="editInputRightRef"
+            :value="editDraft"
+            type="text"
+            class="pf-date-chip pf-date-chip-input"
+            placeholder="ДДММГГГГ"
+            title="Только цифры: день, месяц, год (точки подставятся сами) или ДД.ММ.ГГГГ"
+            inputmode="numeric"
+            autocomplete="off"
+            aria-label="Дата конца периода"
+            @input="onEditDraftInput"
+            @blur="commitDateEdit('right')"
+            @keydown.enter.prevent="commitDateEdit('right')"
+            @keydown.escape.prevent="cancelDateEdit"
+          >
           <button
+            v-else
             type="button"
             class="pf-date-chip"
             :class="{ active: calendarTarget === 'right' }"
-            @click.stop="showCalendar('right')"
+            @click.stop="onDateChipClick('right')"
           >
             <Calendar class="pf-date-chip-icon" :size="15" stroke-width="2" aria-hidden="true" />
             <span class="pf-date-chip-text">{{ dateRightDisplay }}</span>
@@ -649,35 +778,21 @@ onUnmounted(() => {
     </div>
 
     <Teleport to="body">
-      <div
+      <DateInput
         v-if="calendarTarget"
-        class="pf-calendar pf-period-calendar-popover"
+        inline-panel
+        class="pf-period-calendar-popover"
         :style="calendarStyle"
-        @click.stop
-        @mousedown.stop
-      >
-        <div class="pf-cal-header">
-          <button class="pf-cal-nav" @click="calPrev">&#8249;</button>
-          <span class="pf-cal-title">{{ MONTHS_FULL[calMonth] }} {{ calYear }}</span>
-          <button class="pf-cal-nav" @click="calNext">&#8250;</button>
-        </div>
-        <div class="pf-cal-grid">
-          <span v-for="dn in DAY_NAMES" :key="dn" class="pf-cal-dn">{{ dn }}</span>
-          <span
-            v-for="(d, i) in calDays"
-            :key="i"
-            class="pf-cal-day"
-            :class="{
-              'other': !d.cur,
-              'disabled': isCalDayDisabled(d.date, d.cur),
-              'in-range': d.cur && !isCalDayDisabled(d.date, d.cur) && isInRange(d.date),
-              'range-start': d.cur && !isCalDayDisabled(d.date, d.cur) && isStart(d.date),
-              'range-end': d.cur && !isCalDayDisabled(d.date, d.cur) && isEnd(d.date),
-            }"
-            @click="d.cur && !isCalDayDisabled(d.date, d.cur) && pickDate(d.date)"
-          >{{ d.day }}</span>
-        </div>
-      </div>
+        :model-value="gridModelValue"
+        :min="normalizeDateToString(trackMin)"
+        :max="normalizeDateToString(trackMax)"
+        :range-start="normalizeDateToString(selStart)"
+        :range-end="normalizeDateToString(selEnd)"
+        :select-bound-max="calendarTarget === 'left' ? normalizeDateToString(selEnd) : ''"
+        :select-bound-min="calendarTarget === 'right' ? normalizeDateToString(selStart) : ''"
+        @update:model-value="onDateGridPick"
+        @layout-change="positionCalendar"
+      />
     </Teleport>
   </div>
 </template>
@@ -810,6 +925,29 @@ onUnmounted(() => {
   color: #2563eb;
 }
 
+.pf-date-chip-input {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: #111827;
+  outline: none;
+  box-sizing: border-box;
+  cursor: text;
+}
+
+.pf-date-chip-input::placeholder {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
 .pf-dates--all .pf-date-chip-text {
   font-weight: 600;
   color: #6b7280;
@@ -924,91 +1062,6 @@ onUnmounted(() => {
 </style>
 
 <style>
-.pf-calendar {
-  background: #fff;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
-  padding: 14px;
-  z-index: 10001;
-  animation: pfCalIn 0.15s ease;
-}
-@keyframes pfCalIn {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.pf-cal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.pf-cal-nav {
-  background: none;
-  border: none;
-  font-size: 20px;
-  color: #6b7280;
-  cursor: pointer;
-  padding: 4px 10px;
-  border-radius: 6px;
-  line-height: 1;
-  transition: all 0.15s;
-  font-family: inherit;
-}
-.pf-cal-nav:hover { background: #f3f4f6; color: #374151; }
-
-.pf-cal-title {
-  font-weight: 600;
-  font-size: 14px;
-  color: #111827;
-}
-
-.pf-cal-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 1px;
-  text-align: center;
-}
-
-.pf-cal-dn {
-  font-size: 11px;
-  color: #9ca3af;
-  font-weight: 600;
-  padding: 4px 0;
-}
-
-.pf-cal-day {
-  font-size: 13px;
-  padding: 5px 0;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.12s;
-  color: #374151;
-  user-select: none;
-}
-.pf-cal-day:hover { background: #f3f4f6; }
-.pf-cal-day.other { color: #d1d5db; cursor: default; }
-.pf-cal-day.other:hover { background: transparent; }
-.pf-cal-day.disabled {
-  color: #e5e7eb;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-.pf-cal-day.disabled:hover { background: transparent; }
-.pf-cal-day.in-range { background: #eff6ff; color: #2563eb; }
-.pf-cal-day.range-start,
-.pf-cal-day.range-end {
-  background: #2563eb;
-  color: #fff;
-  font-weight: 600;
-}
-.pf-cal-day.range-start:hover,
-.pf-cal-day.range-end:hover {
-  background: #1d4ed8;
-}
-
 @media (max-width: 600px) {
   .period-filter .pf-controls { gap: 8px; }
   .period-filter .pf-date-chip {

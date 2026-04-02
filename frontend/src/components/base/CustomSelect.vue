@@ -3,7 +3,7 @@
     <span v-if="label" class="select-label">{{ label }}</span>
     <div 
       class="custom-select" 
-      :class="{ 'is-open': isOpen }" 
+      :class="{ 'is-open': isOpen, 'custom-select--compact': compact }" 
       @click="toggleDropdown"
     >
       <span class="custom-select-value" :class="{ 'placeholder': !hasSelection }">
@@ -18,7 +18,8 @@
         class="custom-select-dropdown" 
         :class="{ 
           'dropdown-top': dropdownPosition === 'top',
-          'dropdown-positioned': isDropdownPositioned
+          'dropdown-positioned': isDropdownPositioned,
+          'dropdown-compact': compact
         }"
         :style="dropdownStyle"
         @click.stop
@@ -50,6 +51,9 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Teleport } from 'vue'
+
+const compactOptionRowPx = 34
+const defaultOptionRowPx = 48
 
 const props = defineProps({
   modelValue: {
@@ -96,7 +100,17 @@ const props = defineProps({
   flex: {
     type: String,
     default: '1'
-  }
+  },
+  /** Уменьшенная высота триггера и пунктов списка */
+  compact: {
+    type: Boolean,
+    default: false,
+  },
+  /** z-index выпадающего списка (например выше вложенного календаря) */
+  dropdownZIndex: {
+    type: Number,
+    default: 10000,
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
@@ -272,7 +286,8 @@ const calculateDropdownPosition = (isInitial = false) => {
     
     // Предполагаемая высота выпадающего списка (максимум 300px или меньше)
     const optionCount = props.showEmptyOption ? props.options.length + 1 : props.options.length
-    const estimatedDropdownHeight = Math.min(300, optionCount * 48 + 20)
+    const rowH = props.compact ? compactOptionRowPx : defaultOptionRowPx
+    const estimatedDropdownHeight = Math.min(300, optionCount * rowH + 16)
     
     // Вычисляем доступное пространство снизу и сверху
     const spaceBelow = viewportHeight - wrapperRect.bottom - 20 // 20px отступ от края
@@ -312,7 +327,8 @@ const calculateDropdownPosition = (isInitial = false) => {
       top: `${finalTop}px`,
       left: `${finalLeft}px`,
       width: `${width}px`,
-      maxHeight: `${maxHeight}px`
+      maxHeight: `${maxHeight}px`,
+      zIndex: props.dropdownZIndex,
     }
     
     // Помечаем, что позиция вычислена и элемент можно показывать
@@ -421,6 +437,22 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.custom-select.custom-select--compact {
+  padding: 5px 30px 5px 10px;
+  min-height: 32px;
+  border-radius: 8px;
+}
+
+.custom-select.custom-select--compact .custom-select-value {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.custom-select.custom-select--compact .custom-select-arrow {
+  right: 10px;
+  font-size: 10px;
+}
+
 .custom-select:hover {
   border-color: #d1d5db;
   background: #fafafa;
@@ -475,7 +507,6 @@ onUnmounted(() => {
   border: 1.5px solid #e5e7eb !important;
   border-radius: 8px !important;
   box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05) !important;
-  z-index: 10000 !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
   box-sizing: border-box !important;
@@ -604,5 +635,18 @@ onUnmounted(() => {
   background: rgba(37,99,235,0.1);
   border-radius: 50%;
   line-height: 1;
+}
+
+.custom-select-dropdown.dropdown-compact .custom-select-option {
+  padding: 6px 12px;
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.custom-select-dropdown.dropdown-compact .check-icon {
+  font-size: 14px;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
 }
 </style>
