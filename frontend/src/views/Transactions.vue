@@ -1055,7 +1055,6 @@ const showSumsSummary = ref(false)
             <template v-else>
               <h3 class="sums-block-title">Суммы по операциям</h3>
               <div class="operations-sums">
-                <div class="sums-label">Суммы по типам:</div>
                 <div class="sums-list">
                   <div
                     v-for="opType in operationTypes"
