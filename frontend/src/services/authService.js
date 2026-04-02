@@ -1,5 +1,6 @@
 import apiClient from '../utils/apiClient';
 import { API_ENDPOINTS } from '../config/api';
+import { LAST_APP_PATH_KEY } from '../constants/lastAppPath';
 
 export const authService = {
     async register(email, password) {
@@ -69,5 +70,6 @@ export const authService = {
 
     logout() {
         localStorage.removeItem('access_token');
+        localStorage.removeItem(LAST_APP_PATH_KEY);
     },
 };

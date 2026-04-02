@@ -1,4 +1,45 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { LAST_APP_PATH_KEY } from '../constants/lastAppPath';
+
+const LAST_APP_PATH_REGEXES = [
+  /^\/dashboard$/,
+  /^\/analitics$/,
+  /^\/transactions$/,
+  /^\/dividends$/,
+  /^\/settings$/,
+  /^\/assets$/,
+  /^\/assets\/[^/]+$/
+]
+
+function isAllowedLastAppPath(path) {
+  if (!path || typeof path !== 'string' || !path.startsWith('/')) return false
+  const normalized = path.split('?')[0].split('#')[0]
+  return LAST_APP_PATH_REGEXES.some((re) => re.test(normalized))
+}
+
+function getSavedAppPathOrDefault() {
+  if (typeof localStorage === 'undefined') return '/dashboard'
+  const raw = localStorage.getItem(LAST_APP_PATH_KEY)
+  if (!raw) return '/dashboard'
+  const pathOnly = raw.split('?')[0].split('#')[0]
+  return isAllowedLastAppPath(pathOnly) ? pathOnly : '/dashboard'
+}
+
+function persistLastAppPathIfNeeded(to) {
+  if (typeof localStorage === 'undefined') return
+  if (!to.matched.some((r) => r.meta?.requiresAuth)) return
+  if (!isAllowedLastAppPath(to.path)) return
+  localStorage.setItem(LAST_APP_PATH_KEY, to.path)
+}
+
+function beforeEnterHomeAuthed(to, from, next) {
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('access_token') : null
+  if (!token) {
+    next()
+    return
+  }
+  next({ path: getSavedAppPathOrDefault(), replace: true })
+}
 
 // Lazy loading: главная и логин — eager (быстрая первая загрузка)
 const Home = () => import('../views/Home.vue');
@@ -22,6 +63,7 @@ const routes = [
   {
     path: '/',
     component: Home,
+    beforeEnter: beforeEnterHomeAuthed,
     meta: {
       title: 'CapitalView — учёт инвестиций, аналитика портфеля и дивидендный календарь',
       robots: 'index, follow'
@@ -210,6 +252,8 @@ function setMetaRobots(content) {
 }
 
 router.afterEach((to) => {
+  persistLastAppPathIfNeeded(to)
+
   const pageTitle = to.meta?.title || to.matched.find(r => r.meta?.title)?.meta?.title || DEFAULT_TITLE
   document.title = pageTitle
 

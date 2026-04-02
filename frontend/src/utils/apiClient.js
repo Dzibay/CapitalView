@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { LAST_APP_PATH_KEY } from '../constants/lastAppPath';
 
 /**
  * Оптимизированное получение базового URL.
@@ -54,6 +55,7 @@ apiClient.interceptors.response.use(
       
       if (!isAuthRoute) {
         localStorage.removeItem('access_token');
+        localStorage.removeItem(LAST_APP_PATH_KEY);
         // Используем router.push, если есть доступ к роутеру, 
         // но window.location тоже рабочий вариант для жесткого ресета состояния
         if (window.location.pathname !== '/login') {
