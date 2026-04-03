@@ -116,7 +116,7 @@ BEGIN
         v_portfolio_asset_ids := ARRAY[]::bigint[];
     END IF;
     
-    -- Сначала транзакции: операции с transaction_id уходят каскадом (1:1 с Buy/Sell/Redemption).
+    -- Сначала транзакции: операции с transaction_id уходят каскадом (1:1 с Buy/Sell/Amortization).
     -- Затем — только операции без транзакции (дивиденды, комиссии и т.д.).
     IF array_length(v_transaction_ids, 1) > 0 THEN
         DELETE FROM transactions WHERE id = ANY(v_transaction_ids);

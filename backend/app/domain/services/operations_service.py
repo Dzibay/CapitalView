@@ -77,7 +77,7 @@ def apply_operations(
     Универсальная сборка payload под SQL `apply_operations_batch`.
     Поддерживает:
     - cash операции (Dividend/Coupon/Commission/Tax/Deposit/Withdraw/Other)
-    - transaction операции (Buy/Sell/Redemption)
+    - transaction операции (Buy/Sell/Amortization)
     - опцию create_deposit_operation для Buy, Commission, Tax (добавляет Deposit в тот же apply-оперант).
     """
     if not operations:
@@ -111,7 +111,7 @@ def apply_operations(
                     f"operations[{idx}] требует portfolio_id или portfolio_asset_id (чтобы вывести portfolio_id)"
                 )
 
-        # transaction: Buy/Sell/Redemption
+        # transaction: Buy/Sell/Amortization
         if operation_type in (1, 2, 9):
             if not portfolio_asset_id:
                 raise ValueError(f"operations[{idx}]: portfolio_asset_id обязателен для transaction")

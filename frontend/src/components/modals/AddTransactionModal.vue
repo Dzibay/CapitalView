@@ -54,7 +54,7 @@ const operationTypes = [
   { value: 8, label: 'Налог', category: 'expense' },
   { value: 5, label: 'Пополнение', category: 'cash' },
   { value: 6, label: 'Вывод', category: 'cash' },
-  { value: 9, label: 'Погашение', category: 'transaction' },  // Ammortization/Redemption - обрабатывается как транзакция
+  { value: 9, label: 'Амортизация', category: 'transaction' },
   { value: 10, label: 'Другое', category: 'other' }
 ]
 
@@ -154,7 +154,7 @@ onMounted(async () => {
 
 // Вычисляемые свойства (определяем до watch, которые их используют)
 const isTransaction = computed(() => {
-  return operationType.value === 1 || operationType.value === 2 || operationType.value === 9  // Buy, Sell, Redemption
+  return operationType.value === 1 || operationType.value === 2 || operationType.value === 9  // Buy, Sell, Amortization
 })
 
 const isPayout = computed(() => {
@@ -1049,9 +1049,9 @@ function generateRecurringDates(startDate, endDate, dayOfMonth) {
 const handleSubmit = async () => {
   error.value = ''
   
-  // Валидация для транзакций (Buy/Sell/Redemption) - не поддерживаются в режиме повторения
+  // Валидация для транзакций (Buy/Sell/Amortization) - не поддерживаются в режиме повторения
   if (isTransaction.value && mode.value === 'recurring') {
-    error.value = 'Повторяющиеся операции не поддерживаются для транзакций (Покупка/Продажа/Погашение)'
+    error.value = 'Повторяющиеся операции не поддерживаются для транзакций (Покупка/Продажа/Амортизация)'
     return
   }
   
@@ -1157,12 +1157,12 @@ const handleSubmit = async () => {
   saving.value = true
 
   try {
-    // Для Buy/Sell/Redemption используем старый метод через onSubmit
+    // Для Buy/Sell/Amortization используем старый метод через onSubmit
     if (isTransaction.value) {
-      // Маппинг типов: Buy=1, Sell=2, Ammortization=9 -> Redemption=3
+      // Маппинг типов: Buy=1, Sell=2, Amortization=9 -> 3
       let transactionType = operationType.value
       if (operationType.value === 9) {
-        transactionType = 3  // Redemption
+        transactionType = 3  // Amortization
       }
       
       // Создаем транзакцию с флагом создания операции пополнения (если нужно)

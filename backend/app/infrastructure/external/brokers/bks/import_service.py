@@ -31,8 +31,8 @@ OPERATION_CLASSIFICATION = {
     "COMMISSION": "Commission",
     "FEE": "Commission",
     "TAX": "Tax",
-    "REDEMPTION": "Redemption",
-    "BOND_REPAYMENT": "Redemption",
+    "REDEMPTION": "Amortization",
+    "BOND_REPAYMENT": "Amortization",
 }
 
 # БКС Trade API (импорт портфеля)
@@ -112,7 +112,7 @@ def _normalize_trade_to_transaction(trade: dict) -> dict | None:
         "currency": trade.get("currency", "RUB"),
     }
     
-    if classified in ("Buy", "Sell", "Redemption"):
+    if classified in ("Buy", "Sell", "Amortization"):
         if classified in ("Buy", "Sell") and qty <= 0:
             return None
         tx["price"] = price

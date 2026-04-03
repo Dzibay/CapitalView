@@ -205,7 +205,7 @@ async def import_broker_portfolio(
             payment = float(tx.get("payment") or 0)
             asset_id = isin_to_asset.get(isin) if isin else None
 
-            if tx_type in ("Buy", "Sell", "Redemption"):
+            if tx_type in ("Buy", "Sell", "Amortization"):
                 if not asset_id:
                     continue
 
@@ -219,16 +219,16 @@ async def import_broker_portfolio(
                     if not tx_date_normalized:
                         continue
 
-                if tx_type == "Redemption":
+                if tx_type == "Amortization":
                     op_quantity = float(tx.get("quantity") or 0)
 
                     if op_quantity <= 0:
                         tx_date_sql = normalize_date_to_sql_date(tx_date_normalized) or ""
-                        calculated_qty = _calculate_redemption_quantity(
+                        calculated_qty = _calculate_amortization_quantity(
                             pa_id, tx_date_sql, new_tx, broker_positions_map, asset_id,
                         )
                         if calculated_qty <= 0:
-                            logger.warning(f"Redemption: qty=0, пропускаем: {tx}")
+                            logger.warning(f"Amortization: qty=0, пропускаем: {tx}")
                             continue
                         op_quantity = calculated_qty
 
@@ -251,7 +251,7 @@ async def import_broker_portfolio(
                             price = round(price / rate, 6)
                             payment = round(payment / rate, 2)
 
-                tx_type_id = {"Buy": 1, "Sell": 2, "Redemption": 3}[tx_type]
+                tx_type_id = {"Buy": 1, "Sell": 2, "Amortization": 3}[tx_type]
 
                 new_tx.append({
                     "portfolio_id": portfolio_id,
@@ -345,10 +345,10 @@ async def import_broker_portfolio(
     return {"success": True, "imported_portfolio_ids": imported_portfolio_ids}
 
 
-def _calculate_redemption_quantity(
+def _calculate_amortization_quantity(
     pa_id, tx_date_sql, new_tx_list, broker_positions_map, asset_id,
 ):
-    """Рассчитывает количество бумаг для погашения на дату по списку новых транзакций."""
+    """Рассчитывает количество бумаг для амортизации на дату по списку новых транзакций."""
     calculated_qty = 0.0
 
     for ntx in new_tx_list:
@@ -378,7 +378,7 @@ def _build_operations_batch(new_tx: list, new_ops: list, op_type_map: dict) -> l
     for tx in new_tx:
         tx_type_id = tx.get("transaction_type")
         op_type_id = op_type_map.get(
-            "buy" if tx_type_id == 1 else ("sell" if tx_type_id == 2 else "redemption")
+            "buy" if tx_type_id == 1 else ("sell" if tx_type_id == 2 else "amortization")
         )
         if not op_type_id:
             continue

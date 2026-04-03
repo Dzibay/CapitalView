@@ -315,12 +315,12 @@ const quantityByDate = computed(() => {
       // Сравниваем даты как строки
       if (txDateStr > priceDateStr) break
       
-      // transaction_type: 1 = buy (плюс), 2 = sell (минус), 3 = redemption (минус)
+      // transaction_type: 1 = buy (плюс), 2 = sell (минус), 3 = amortization (минус)
       const txQuantity = Number(tx.quantity) || 0
       if (tx.transaction_type === 1 || (typeof tx.transaction_type === 'string' && tx.transaction_type.toLowerCase() === 'buy')) {
         cumulativeQuantity += txQuantity
       } else if (tx.transaction_type === 2 || tx.transaction_type === 3 || 
-                 (typeof tx.transaction_type === 'string' && (tx.transaction_type.toLowerCase() === 'sell' || tx.transaction_type.toLowerCase().includes('redemption') || tx.transaction_type.toLowerCase().includes('погаш')))) {
+                 (typeof tx.transaction_type === 'string' && (tx.transaction_type.toLowerCase() === 'sell' || tx.transaction_type.toLowerCase().includes('amortization') || tx.transaction_type.toLowerCase().includes('аморт')))) {
         cumulativeQuantity -= txQuantity
       }
       
@@ -1133,8 +1133,8 @@ const allOperations = computed(() => {
       operationType = 5 // Пополнение
     } else if (opType.includes('вывод') || opType.includes('withdraw')) {
       operationType = 6 // Вывод
-    } else if (opType.includes('погаш') || opType.includes('redemption') || opType.includes('амортиз') || opType.includes('amortization') || opType.includes('ammortization')) {
-      operationType = 9 // Погашение (Ammortization/Redemption)
+    } else if (opType.includes('аморт') || opType.includes('amortization') || opType.includes('погаш')) {
+      operationType = 9 // Амортизация
     } else if (opType.includes('другое') || opType.includes('other')) {
       operationType = 10 // Другое
     }
@@ -1239,7 +1239,7 @@ const normalizeType = (type, opType = null) => {
   if (opType === 'transaction') {
     if (type === 1) return 'buy'
     if (type === 2) return 'sell'
-    if (type === 3) return 'redemption'
+    if (type === 3) return 'amortization'
   }
   
   // Для всех операций (по числовому типу)
@@ -1252,7 +1252,7 @@ const normalizeType = (type, opType = null) => {
     if (type === 6) return 'withdraw'
     if (type === 7) return 'commission'
     if (type === 8) return 'tax'
-    if (type === 9) return 'redemption'  // Ammortization/Redemption
+    if (type === 9) return 'amortization'
     if (type === 10) return 'other'
   }
   
@@ -1261,7 +1261,7 @@ const normalizeType = (type, opType = null) => {
     const t = type.toLowerCase()
     if (t.includes('покуп') || t.includes('buy')) return 'buy'
     if (t.includes('прод') || t.includes('sell')) return 'sell'
-    if (t.includes('погаш') || t.includes('redemption') || t.includes('амортиз') || t.includes('amortization') || t.includes('ammortization')) return 'redemption'
+    if (t.includes('аморт') || t.includes('amortization') || t.includes('погаш')) return 'amortization'
     if (t.includes('див') || t.includes('div')) return 'dividend'
     if (t.includes('купон') || t.includes('coupon')) return 'coupon'
     if (t.includes('пополн') || t.includes('deposit')) return 'deposit'
@@ -1308,7 +1308,7 @@ const getOperationTypeLabel = (op) => {
   if (operationType === 6) return 'Вывод'
   if (operationType === 7) return 'Комиссия'
   if (operationType === 8) return 'Налог'
-  if (operationType === 9) return 'Погашение'  // Ammortization/Redemption
+  if (operationType === 9) return 'Амортизация'
   if (operationType === 10) return 'Другое'
   
   // Fallback: пытаемся определить по строковому типу

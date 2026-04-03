@@ -1,12 +1,13 @@
 """
-Обновление купонов облигаций с MOEX.
+Обновление купонов и амортизаций облигаций с MOEX.
 Перенесено из supabase_data/update_coupons.py
 """
-import asyncio
-from app.infrastructure.database.postgres_async import db_select, table_insert_async
+from datetime import date, datetime
+
+from app.infrastructure.database.postgres_async import db_select, get_connection_pool
 from tqdm.asyncio import tqdm_asyncio
 from app.infrastructure.external.moex.client import create_moex_session, fetch_json
-from app.utils.date import parse_date as normalize_date, normalize_date_to_string as format_date
+from app.utils.date import parse_date as normalize_date
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -14,9 +15,65 @@ logger = get_logger(__name__)
 MOEX_BONDIZATION_URL = "https://iss.moex.com/iss/securities/{ticker}/bondization.json"
 BATCH_SIZE = 1000
 
+# Совпадает с idx_asset_payouts_unique_coupon: (asset_id, payment_date, type) без value
+INSERT_COUPON_SQL = """
+INSERT INTO asset_payouts (asset_id, value, dividend_yield, record_date, payment_date, type)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (asset_id, payment_date, type) WHERE type = 'coupon' AND payment_date IS NOT NULL
+DO NOTHING
+"""
+
+INSERT_AMORTIZATION_SQL = """
+INSERT INTO asset_payouts (asset_id, value, dividend_yield, record_date, payment_date, type)
+VALUES ($1, $2, $3, $4, $5, $6)
+"""
+
+
+def _payout_dedup_key(asset_id, payment_date, record_date, p_type: str):
+    """Ключ дедупликации как в БД: (asset_id, дата выплаты, type), без value."""
+    d = payment_date or record_date
+    if not d:
+        return None
+    if isinstance(d, str):
+        d = normalize_date(d)
+    if not d:
+        return None
+    if isinstance(d, datetime):
+        ds = d.date().isoformat()
+    elif isinstance(d, date):
+        ds = d.isoformat()
+    else:
+        ds = str(d)
+    return (asset_id, ds, p_type)
+
+
+def _payout_row_args(r: dict):
+    return (
+        r["asset_id"],
+        r["value"],
+        r["dividend_yield"],
+        normalize_date(r["record_date"]) if r.get("record_date") else None,
+        normalize_date(r["payment_date"]) if r.get("payment_date") else None,
+        r["type"],
+    )
+
+
+async def _insert_asset_payouts_batch(rows: list) -> None:
+    """Вставка батча: купоны с ON CONFLICT DO NOTHING (без ERROR в логах), амортизации — обычный INSERT."""
+    if not rows:
+        return
+    coupons = [r for r in rows if r.get("type") == "coupon"]
+    amorts = [r for r in rows if r.get("type") == "amortization"]
+    pool = await get_connection_pool()
+    async with pool.acquire() as conn:
+        if coupons:
+            await conn.executemany(INSERT_COUPON_SQL, [_payout_row_args(r) for r in coupons])
+        if amorts:
+            await conn.executemany(INSERT_AMORTIZATION_SQL, [_payout_row_args(r) for r in amorts])
+
 
 async def fetch_bond_payouts_from_moex(session, ticker: str):
-    """Получает данные о купонах облигации с MOEX."""
+    """Получает данные о купонах и амортизациях облигации с MOEX."""
     url = MOEX_BONDIZATION_URL.format(ticker=ticker)
     data = await fetch_json(session, url)
     if not data:
@@ -30,16 +87,29 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
             rec = dict(zip(cols, row))
             results.append({
                 "record_date": rec.get("recorddate"),
-                "payment_date": rec.get("coupondate"),  # coupondate - дата выплаты купона
+                "payment_date": rec.get("coupondate"),
                 "value": rec.get("value"),
                 "type": "coupon"
+            })
+
+    if "amortizations" in data and "data" in data["amortizations"]:
+        cols = data["amortizations"]["columns"]
+        for row in data["amortizations"]["data"]:
+            rec = dict(zip(cols, row))
+            if rec.get("data_source") == "maturity":
+                continue
+            results.append({
+                "record_date": None,
+                "payment_date": rec.get("amortdate"),
+                "value": rec.get("value"),
+                "type": "amortization"
             })
 
     return results
 
 
 async def update_all_coupons():
-    """Обновляет купоны для всех облигаций с batch вставками и проверкой на дубликаты."""
+    """Обновляет купоны и амортизации для всех облигаций с batch вставками и проверкой на дубликаты."""
     print("📥 Загрузка облигаций из БД...")
     bonds = await db_select(
         "assets",
@@ -54,38 +124,31 @@ async def update_all_coupons():
     
     print(f"✅ Найдено {len(bonds)} облигаций")
     
-    # Загружаем все существующие купоны одним запросом для проверки дубликатов
-    print("📥 Загрузка существующих купонов из БД...")
+    print("📥 Загрузка существующих купонов и амортизаций из БД...")
     existing_payouts = await db_select(
         "asset_payouts",
         "asset_id, record_date, payment_date, value, type",
-        filters={"type": "coupon"},
+        in_filters={"type": ["coupon", "amortization"]},
         limit=None
     )
     
-    # Ключ: (asset_id, payment_date, value, type) — payment_date (coupondate) уникален для каждого купона
-    # record_date может совпадать у разных купонов, payment_date — надёжный идентификатор
     existing_keys = set()
     for payout in existing_payouts:
-        payment_date = payout.get("payment_date") or payout.get("record_date")
-        if not payment_date:
-            continue
-        if isinstance(payment_date, str):
-            payment_date = normalize_date(payment_date)
-        if payment_date:
-            value = round(float(payout.get("value") or 0), 2)
-            p_type = payout.get("type") or "coupon"
-            date_str = payment_date.isoformat() if hasattr(payment_date, "isoformat") else str(payment_date)
-            existing_keys.add((payout["asset_id"], date_str, value, p_type))
+        p_type = payout.get("type") or "coupon"
+        pd = payout.get("payment_date")
+        rd = payout.get("record_date")
+        if isinstance(pd, str):
+            pd = normalize_date(pd)
+        if isinstance(rd, str):
+            rd = normalize_date(rd)
+        key = _payout_dedup_key(payout["asset_id"], pd, rd, p_type)
+        if key:
+            existing_keys.add(key)
     
-    print(f"✅ Загружено {len(existing_keys)} существующих купонов")
+    print(f"✅ Загружено {len(existing_keys)} существующих записей (купоны + амортизации)")
     
-    # Создаем словарь тикер -> asset_id
-    ticker_map = {bond["ticker"].upper(): bond["id"] for bond in bonds if bond.get("ticker")}
+    print(f"\n📥 Загрузка данных о купонах и амортизациях с MOEX...")
     
-    print(f"\n📥 Загрузка данных о купонах с MOEX...")
-    
-    # Собираем все купоны для всех облигаций
     all_new_payouts = []
     
     async with create_moex_session() as session:
@@ -95,27 +158,23 @@ async def update_all_coupons():
             if bond.get("ticker")
         ]
         
-        results = await tqdm_asyncio.gather(*tasks, desc="Загрузка купонов")
+        results = await tqdm_asyncio.gather(*tasks, desc="Загрузка купонов и амортизаций")
         
-        # Обрабатываем результаты
         for bond, payouts in zip(bonds, results):
             if not payouts or not bond.get("ticker"):
                 continue
             
             asset_id = bond["id"]
-            ticker = bond["ticker"]
             
             for payout in payouts:
                 payment_date = normalize_date(payout.get("payment_date"))
                 record_date = normalize_date(payout.get("record_date"))
                 if not payment_date and not record_date:
                     continue
-                # payment_date (coupondate) — основной идентификатор купона
-                date_for_key = payment_date or record_date
                 value = round(float(payout.get("value") or 0), 2)
-                p_type = "coupon"
-                key = (asset_id, date_for_key.isoformat(), value, p_type)
-                if key in existing_keys:
+                p_type = payout.get("type", "coupon")
+                key = _payout_dedup_key(asset_id, payment_date, record_date, p_type)
+                if not key or key in existing_keys:
                     continue
                 existing_keys.add(key)
                 
@@ -131,48 +190,31 @@ async def update_all_coupons():
                 all_new_payouts.append(new_payout)
     
     if not all_new_payouts:
-        print("📭 Новых купонов для вставки не найдено")
+        print("📭 Новых купонов/амортизаций для вставки не найдено")
         return
     
-    print(f"\n📦 Найдено {len(all_new_payouts)} новых купонов для вставки")
+    new_coupons = sum(1 for p in all_new_payouts if p["type"] == "coupon")
+    new_amortizations = sum(1 for p in all_new_payouts if p["type"] == "amortization")
+    print(f"\n📦 Найдено {len(all_new_payouts)} новых записей (купонов: {new_coupons}, амортизаций: {new_amortizations})")
     print(f"📦 Начинаем пакетную вставку батчами по {BATCH_SIZE}...")
     
-    added_count = 0
-    skipped_count = 0
     total_batches = (len(all_new_payouts) + BATCH_SIZE - 1) // BATCH_SIZE
+    processed = 0
     
     for i in range(0, len(all_new_payouts), BATCH_SIZE):
         batch = all_new_payouts[i:i + BATCH_SIZE]
         batch_num = i // BATCH_SIZE + 1
-        
         try:
-            await table_insert_async("asset_payouts", batch)
-            added_count += len(batch)
+            await _insert_asset_payouts_batch(batch)
+            processed += len(batch)
             if batch_num % 10 == 0 or batch_num == total_batches:
-                print(f"   ✅ Вставлен батч {batch_num}/{total_batches} ({len(batch)} записей, всего: {added_count})")
+                print(f"   ✅ Батч {batch_num}/{total_batches} ({len(batch)} строк, всего отправлено: {processed})")
         except Exception as e:
-            error_str = str(e)
-            if "23505" in error_str or "duplicate" in error_str.lower() or "unique" in error_str.lower():
-                # Если есть дубликаты в батче, вставляем по одной
-                print(f"   ⚠️ Обнаружены дубликаты в батче {batch_num}, вставляем по одной...")
-                for record in batch:
-                    try:
-                        await table_insert_async("asset_payouts", record)
-                        added_count += 1
-                    except Exception as inner_e:
-                        inner_error_str = str(inner_e)
-                        if "23505" not in inner_error_str and "duplicate" not in inner_error_str.lower() and "unique" not in inner_error_str.lower():
-                            logger.error(f"      ⚠️ Ошибка вставки записи: {inner_e}")
-                        else:
-                            skipped_count += 1
-            else:
-                logger.error(f"   ❌ Ошибка вставки батча {batch_num}: {e}")
-                skipped_count += len(batch)
+            logger.error(f"   ❌ Ошибка вставки батча {batch_num}: {e}")
+            raise
     
     print(f"\n🎯 Готово!")
-    print(f"   ➕ Добавлено купонов: {added_count}")
-    if skipped_count > 0:
-        print(f"   ⏭️ Пропущено дубликатов: {skipped_count}")
+    print(f"   ➕ Обработано строк: {processed} (дубликаты купонов по дате отброшены в БД без ошибок)")
 
 
 if __name__ == "__main__":

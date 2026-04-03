@@ -1,6 +1,6 @@
 """
 Pydantic модели для операций по активам.
-Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Redemption, Other.
+Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Amortization, Other.
 """
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Union, List
@@ -12,7 +12,7 @@ class CreateOperationRequest(BaseModel):
     portfolio_asset_id: Optional[int] = Field(None, ge=1, description="ID портфельного актива (обязателен для Buy/Sell)")
     asset_id: Optional[int] = Field(None, ge=1, description="ID актива (обязателен для Buy/Sell/Dividend/Coupon, опционален для Commission/Tax)")
     portfolio_id: Optional[int] = Field(None, ge=1, description="ID портфеля (опционален, если передан portfolio_asset_id)")
-    operation_type: Union[int, str] = Field(..., description="Тип операции: 1=Buy, 2=Sell, 3=Dividend, 4=Coupon, 5=Deposit, 6=Withdraw, 7=Commission, 8=Tax, 9=Redemption, 10=Other")
+    operation_type: Union[int, str] = Field(..., description="Тип операции: 1=Buy, 2=Sell, 3=Dividend, 4=Coupon, 5=Deposit, 6=Withdraw, 7=Commission, 8=Tax, 9=Amortization, 10=Other")
     amount: float = Field(
         ...,
         description="Сумма операции; при apply нормализуется: дивиденд/купон/пополнение — положительно, вывод/комиссия/налог — отрицательно (можно передать комиссию без минуса)",
@@ -43,7 +43,7 @@ class CreateOperationRequest(BaseModel):
             'withdraw': 6, 'вывод': 6, 'снятие': 6, '6': 6,
             'commission': 7, 'комиссия': 7, '7': 7,
             'tax': 8, 'налог': 8, 'налоги': 8, '8': 8,
-            'redemption': 9, 'ammortization': 9, 'амортизация': 9, 'погашение': 9, '9': 9,
+            'amortization': 9, 'амортизация': 9, 'погашение': 9, '9': 9,
             'other': 10, 'другое': 10, 'прочее': 10, '10': 10
         }
         
@@ -56,7 +56,7 @@ class CreateOperationRequest(BaseModel):
             v_lower = v.lower().strip()
             if v_lower in type_map:
                 return type_map[v_lower]
-            raise ValueError(f"Некорректный тип операции: {v}. Ожидается: Buy, Sell, Dividend, Coupon, Deposit, Withdraw, Commission, Tax, Redemption, Other")
+            raise ValueError(f"Некорректный тип операции: {v}. Ожидается: Buy, Sell, Dividend, Coupon, Deposit, Withdraw, Commission, Tax, Amortization, Other")
         
         raise ValueError(f"operation_type должен быть строкой или числом, получен: {type(v)}")
     
@@ -91,7 +91,7 @@ class CreateOperationRequest(BaseModel):
         if not self.portfolio_id and not self.portfolio_asset_id:
             raise ValueError("Необходимо указать либо portfolio_id, либо portfolio_asset_id")
         
-        # Buy/Sell/Redemption требуют portfolio_asset_id, asset_id, quantity, price
+        # Buy/Sell/Amortization требуют portfolio_asset_id, asset_id, quantity, price
         if op_type in [1, 2, 9]:
             if not self.portfolio_asset_id:
                 raise ValueError("portfolio_asset_id обязателен для Buy/Sell")
@@ -111,8 +111,6 @@ class CreateOperationRequest(BaseModel):
         if op_type in [5, 6]:
             if not self.portfolio_id and not self.portfolio_asset_id:
                 raise ValueError("portfolio_id обязателен для Deposit/Withdraw")
-        
-        # Commission/Tax могут иметь asset_id (опционально)
 
 
 class BatchCreateOperationRequest(BaseModel):
@@ -120,7 +118,7 @@ class BatchCreateOperationRequest(BaseModel):
     portfolio_asset_id: Optional[int] = Field(None, ge=1, description="ID портфельного актива (обязателен для Buy/Sell)")
     asset_id: Optional[int] = Field(None, ge=1, description="ID актива (обязателен для Buy/Sell/Dividend/Coupon, опционален для Commission/Tax)")
     portfolio_id: Optional[int] = Field(None, ge=1, description="ID портфеля (опционален, если передан portfolio_asset_id)")
-    operation_type: Union[int, str] = Field(..., description="Тип операции: 1=Buy, 2=Sell, 3=Dividend, 4=Coupon, 5=Deposit, 6=Withdraw, 7=Commission, 8=Tax, 9=Redemption, 10=Other")
+    operation_type: Union[int, str] = Field(..., description="Тип операции: 1=Buy, 2=Sell, 3=Dividend, 4=Coupon, 5=Deposit, 6=Withdraw, 7=Commission, 8=Tax, 9=Amortization, 10=Other")
     amount: float = Field(
         ...,
         description="Сумма операции; при apply нормализуется: дивиденд/купон/пополнение — положительно, вывод/комиссия/налог — отрицательно (можно передать комиссию без минуса)",
@@ -150,7 +148,7 @@ class BatchCreateOperationRequest(BaseModel):
             'withdraw': 6, 'вывод': 6, 'снятие': 6, '6': 6,
             'commission': 7, 'комиссия': 7, '7': 7,
             'tax': 8, 'налог': 8, 'налоги': 8, '8': 8,
-            'redemption': 9, 'погашение': 9, '9': 9,
+            'amortization': 9, 'амортизация': 9, 'погашение': 9, '9': 9,
             'other': 10, 'другое': 10, 'прочее': 10, '10': 10
         }
         
@@ -203,7 +201,7 @@ class BatchCreateOperationRequest(BaseModel):
         if end < start:
             raise ValueError("end_date должна быть позже или равна start_date")
         
-        # Buy/Sell/Redemption требуют portfolio_asset_id, asset_id, quantity, price
+        # Buy/Sell/Amortization требуют portfolio_asset_id, asset_id, quantity, price
         if op_type in [1, 2, 9]:
             if not self.portfolio_asset_id:
                 raise ValueError("portfolio_asset_id обязателен для Buy/Sell")
@@ -231,8 +229,8 @@ class UpdateOperationItem(BaseModel):
     operation_id: int = Field(..., description="ID операции")
     operation_date: Optional[str] = Field(None, description="Новая дата операции")
     amount: Optional[float] = Field(None, description="Новая сумма операции")
-    quantity: Optional[float] = Field(None, description="Новое количество (для buy/sell/redemption, если нужно)")
-    price: Optional[float] = Field(None, description="Новая цена за единицу (для buy/sell/redemption, если нужно)")
+    quantity: Optional[float] = Field(None, description="Новое количество (для buy/sell/amortization, если нужно)")
+    price: Optional[float] = Field(None, description="Новая цена за единицу (для buy/sell/amortization, если нужно)")
 
 
 class UpdateOperationsBatchRequest(BaseModel):
@@ -256,17 +254,17 @@ class ApplyOperationItem(BaseModel):
 
     # Общие поля
     portfolio_id: Optional[int] = Field(None, ge=1, description="ID портфеля (может быть выведен из portfolio_asset_id)")
-    portfolio_asset_id: Optional[int] = Field(None, ge=1, description="ID portfolio_asset (для buy/sell/redemption и для привязки cash-операций)")
-    asset_id: Optional[int] = Field(None, ge=1, description="ID актива (для buy/sell/redemption и для dividend/coupon)")
+    portfolio_asset_id: Optional[int] = Field(None, ge=1, description="ID portfolio_asset (для buy/sell/amortization и для привязки cash-операций)")
+    asset_id: Optional[int] = Field(None, ge=1, description="ID актива (для buy/sell/amortization и для dividend/coupon)")
 
     # Cash-поля
-    amount: Optional[float] = Field(None, description="Сумма cash-операции (для buy/sell/redemption будет вычислена)")
+    amount: Optional[float] = Field(None, description="Сумма cash-операции (для buy/sell/amortization будет вычислена)")
     currency_id: Optional[int] = Field(1, ge=1, description="ID валюты для cash-операций")
     dividend_yield: Optional[float] = Field(None, description="Не используется в расчетах прямо сейчас, но передается для совместимости")
 
     # Transaction-поля
-    quantity: Optional[float] = Field(None, gt=0, description="Количество для buy/sell/redemption")
-    price: Optional[float] = Field(None, gt=0, description="Цена за единицу для buy/sell/redemption")
+    quantity: Optional[float] = Field(None, gt=0, description="Количество для buy/sell/amortization")
+    price: Optional[float] = Field(None, gt=0, description="Цена за единицу для buy/sell/amortization")
 
     # Автоматически создает Deposit-операцию в этом же apply-запросе
     create_deposit_operation: bool = Field(

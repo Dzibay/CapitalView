@@ -25,7 +25,7 @@ const txLineTotal = (tx) => {
         </div>
         <div class="tx-info-right">
           <span class="tx-date">{{ formatDateTimeForDisplay(tx.transaction_date) }}</span>
-          <span class="tx-amount" :class="tx.transaction_type == 'Покупка' ? 'buy' : (tx.transaction_type === 'Погашение' ? 'redemption' : 'sell')">
+          <span class="tx-amount" :class="tx.transaction_type == 'Покупка' ? 'buy' : (tx.transaction_type === 'Амортизация' ? 'amortization' : 'sell')">
             {{ tx.transaction_type === 'Покупка' ? '-' : '+' }}
             {{ txLineTotal(tx).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}
             {{ getCurrencySymbol(tx.currency_ticker || 'RUB') }}
