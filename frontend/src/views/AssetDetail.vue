@@ -10,6 +10,7 @@ import {
   WidgetContainer, 
   MetricsWidget, 
   ValueChangePill, 
+  ChartPeriodSummary,
   Widget 
 } from '../components/widgets/base'
 import { AssetPortfolioStatsWidget } from '../components/widgets/composite'
@@ -18,6 +19,7 @@ import {
   AssetPayoutsListWidget 
 } from '../components/widgets/lists'
 import CustomSelect from '../components/base/CustomSelect.vue'
+import ChartVariantSelect from '../components/base/ChartVariantSelect.vue'
 import ChartOptionsMenu from '../components/base/ChartOptionsMenu.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import assetsService from '../services/assetsService'
@@ -59,33 +61,17 @@ const assetChartMenuOptions = computed(() => [
   { id: 'minmax', label: 'Min / Max', modelValue: showMinMax.value }
 ])
 
+const analyticsChartVariants = [
+  { value: 'position', label: 'Стоимость позиции' },
+  { value: 'quantity', label: 'Количество' }
+]
+
 const analyticsChartMenuOptions = computed(() => [
-  { type: 'sectionTitle', label: 'Показатель графика' },
-  {
-    type: 'radio',
-    group: 'metric',
-    id: 'position',
-    label: 'Стоимость позиции',
-    selected: analyticsChartMetric.value === 'position'
-  },
-  {
-    type: 'radio',
-    group: 'metric',
-    id: 'quantity',
-    label: 'Количество',
-    selected: analyticsChartMetric.value === 'quantity'
-  },
   { id: 'minmax', label: 'Min / Max', modelValue: showMinMax.value }
 ])
 
 function onAssetChartOptionToggle(id, val) {
   if (id === 'minmax') showMinMax.value = val
-}
-
-function onAnalyticsChartMenuRadio(group, id) {
-  if (group === 'metric' && (id === 'position' || id === 'quantity')) {
-    analyticsChartMetric.value = id
-  }
 }
 
 function onAnalyticsChartMenuToggle(id, val) {
@@ -703,7 +689,6 @@ const analyticsChartFormatter = computed(() =>
 // Форматирование для графика количества (без валюты)
 const formatQuantity = (value) => {
   if (typeof value !== 'number') return value
-  // Используем больше знаков после запятой для малых значений (например, 0.0015)
   return value.toLocaleString('ru-RU', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 8
@@ -714,6 +699,73 @@ const formatQuantity = (value) => {
 const formatPositionCurrency = (value) => {
   return formatOperationAmount(value || 0, 'RUB')
 }
+
+// --- Period summary для графиков ---
+function getPeriodStartDateByKey(period) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (period === '7D') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7)
+  if (period === '1M') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30)
+  if (period === '3M') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 90)
+  if (period === '6M') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 180)
+  if (period === 'YTD') return new Date(today.getFullYear(), 0, 1)
+  if (period === '1Y') return new Date(today.getFullYear(), today.getMonth() - 11, 1)
+  if (period === '5Y') return new Date(today.getFullYear() - 5, today.getMonth(), today.getDate())
+  return null
+}
+
+function computePeriodStats(chartData, period) {
+  const labels = chartData?.labels
+  const data = chartData?.datasets?.[0]?.data
+  if (!labels?.length || !data?.length) return { changeValue: 0, changePercent: 0, startDate: null, endDate: null }
+
+  const today = new Date()
+  today.setHours(23, 59, 59, 999)
+  const points = labels.map((label, i) => ({
+    date: new Date(label),
+    value: Number(data[i]) || 0
+  })).sort((a, b) => a.date - b.date)
+  if (!points.length) return { changeValue: 0, changePercent: 0, startDate: null, endDate: null }
+
+  const start = getPeriodStartDateByKey(period)
+  let filtered = points
+  if (start) {
+    start.setHours(0, 0, 0, 0)
+    filtered = points.filter(p => {
+      const pd = new Date(p.date)
+      pd.setHours(0, 0, 0, 0)
+      return pd >= start && pd <= today
+    })
+    if (!filtered.length) {
+      const before = points.filter(p => p.date <= today)
+      filtered = before.length ? [before[before.length - 1]] : [points[0]]
+    }
+  }
+
+  const first = filtered[0].value
+  const last = filtered[filtered.length - 1].value
+  const changeValue = last - first
+  const changePercent = first === 0 ? 0 : (changeValue / Math.abs(first)) * 100
+  return {
+    changeValue,
+    changePercent,
+    startDate: filtered[0].date,
+    endDate: filtered[filtered.length - 1].date
+  }
+}
+
+const priceChartPeriodStats = computed(() => computePeriodStats(priceChartData.value, selectedPeriod.value))
+const analyticsChartPeriodStats = computed(() => computePeriodStats(analyticsChartData.value, selectedPeriod.value))
+
+const formatPriceChangeValue = computed(() => {
+  const currency = assetQuoteCurrency.value
+  return (v) => formatOperationAmount(v || 0, currency)
+})
+
+const formatAnalyticsChangeValue = computed(() => {
+  if (analyticsChartMetric.value === 'quantity') return (v) => formatQuantity(v)
+  return (v) => formatOperationAmount(v || 0, 'RUB')
+})
 
 // Определяем валюту актива для графика цены единицы (computed для реактивности)
 // Используем ту же логику, что и в basicInfoItems
@@ -1746,16 +1798,23 @@ async function handlePortfolioChange(portfolioId) {
           <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-large)">
             <Widget title="История цены" :icon="LineChart">
               <template #header>
-                <div class="asset-chart-header-row">
-                  <PeriodFilters
-                    :modelValue="selectedPeriod"
-                    @update:modelValue="selectedPeriod = $event"
-                  />
-                  <ChartOptionsMenu
-                    :options="assetChartMenuOptions"
-                    @toggle="onAssetChartOptionToggle"
-                  />
-                </div>
+                <ChartOptionsMenu
+                  :options="assetChartMenuOptions"
+                  @toggle="onAssetChartOptionToggle"
+                />
+              </template>
+              <template #subheader>
+                <PeriodFilters
+                  :modelValue="selectedPeriod"
+                  @update:modelValue="selectedPeriod = $event"
+                />
+                <ChartPeriodSummary
+                  :startDate="priceChartPeriodStats.startDate"
+                  :endDate="priceChartPeriodStats.endDate"
+                  :changeValue="priceChartPeriodStats.changeValue"
+                  :changePercent="priceChartPeriodStats.changePercent"
+                  :formatValue="formatPriceChangeValue"
+                />
               </template>
               <div class="asset-chart-body">
                 <div class="chart-container">
@@ -1839,17 +1898,27 @@ async function handlePortfolioChange(portfolioId) {
           <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-large)">
             <Widget :title="analyticsChartTitle" :icon="LineChart">
               <template #header>
-                <div class="asset-chart-header-row">
-                  <PeriodFilters
-                    :modelValue="selectedPeriod"
-                    @update:modelValue="selectedPeriod = $event"
-                  />
-                  <ChartOptionsMenu
-                    :options="analyticsChartMenuOptions"
-                    @toggle="onAnalyticsChartMenuToggle"
-                    @radio="onAnalyticsChartMenuRadio"
-                  />
-                </div>
+                <ChartVariantSelect
+                  v-model="analyticsChartMetric"
+                  :options="analyticsChartVariants"
+                />
+                <ChartOptionsMenu
+                  :options="analyticsChartMenuOptions"
+                  @toggle="onAnalyticsChartMenuToggle"
+                />
+              </template>
+              <template #subheader>
+                <PeriodFilters
+                  :modelValue="selectedPeriod"
+                  @update:modelValue="selectedPeriod = $event"
+                />
+                <ChartPeriodSummary
+                  :startDate="analyticsChartPeriodStats.startDate"
+                  :endDate="analyticsChartPeriodStats.endDate"
+                  :changeValue="analyticsChartPeriodStats.changeValue"
+                  :changePercent="analyticsChartPeriodStats.changePercent"
+                  :formatValue="formatAnalyticsChangeValue"
+                />
               </template>
               <div class="asset-chart-body">
                 <div class="chart-container">

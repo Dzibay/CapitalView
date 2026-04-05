@@ -627,10 +627,20 @@ function aggregateData(dataObj, period, chartType, zeroAtStart, aggregationEnd =
   const needsZero = (zeroAtStart !== undefined) ? zeroAtStart : (chartType !== 'price')
 
   let start
-  if (period === '1M') {
+  if (period === '7D') {
+    start = norm(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7))
+  } else if (period === '1M') {
     start = norm(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30))
+  } else if (period === '3M') {
+    start = norm(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 90))
+  } else if (period === '6M') {
+    start = norm(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 180))
+  } else if (period === 'YTD') {
+    start = norm(new Date(today.getFullYear(), 0, 1))
   } else if (period === '1Y') {
     start = norm(new Date(today.getFullYear(), today.getMonth() - 11, 1))
+  } else if (period === '5Y') {
+    start = norm(new Date(today.getFullYear() - 5, today.getMonth(), today.getDate()))
   } else {
     start = new Date(firstPt)
     if (needsZero) start.setDate(start.getDate() - 1)

@@ -3,8 +3,8 @@ import { ref, computed, onMounted, onUnmounted, watch, inject, nextTick, unref }
 import { LineChart } from 'lucide-vue-next'
 import MultiLineChart from '../../charts/MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
-import ValueChangePill from '../base/ValueChangePill.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
+import ChartPeriodSummary from '../base/ChartPeriodSummary.vue'
 import ChartOptionsMenu from '../../base/ChartOptionsMenu.vue'
 import { LANDING_DASH_REVEAL_KEY } from '../../../constants/landingDashboardReveal'
 
@@ -141,97 +141,65 @@ const formatCurrency = (value) => {
 // --------------------------
 // Статистика по капиталу
 // --------------------------
-const startValue = ref(0)
-const endValue = ref(0)
 const growthAmount = ref(0)
 const growthPercent = ref(0)
+const periodStartDate = ref(null)
+const periodEndDate = ref(null)
 
-// Функция для получения первого и последнего значения за период
-function getPeriodValues(labels, data, period) {
-  if (!labels || !labels.length || !data || !data.length) return [null, null]
-  
+function getPeriodStartDate(period) {
   const today = new Date()
-  today.setHours(23, 59, 59, 999) // Устанавливаем конец дня
-  const parseDate = d => new Date(d)
-  
-  // Создаем массив точек с датами и значениями, сортируем по дате
-  const points = labels.map((label, index) => ({
-    date: parseDate(label),
-    value: Number(data[index]) || 0
+  today.setHours(0, 0, 0, 0)
+  if (period === '7D') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7)
+  if (period === '1M') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30)
+  if (period === '3M') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 90)
+  if (period === '6M') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 180)
+  if (period === 'YTD') return new Date(today.getFullYear(), 0, 1)
+  if (period === '1Y') return new Date(today.getFullYear(), today.getMonth() - 11, 1)
+  if (period === '5Y') return new Date(today.getFullYear() - 5, today.getMonth(), today.getDate())
+  return null
+}
+
+function filterPointsByPeriod(labels, data, period) {
+  if (!labels?.length || !data?.length) return []
+  const today = new Date()
+  today.setHours(23, 59, 59, 999)
+  const points = labels.map((label, i) => ({
+    date: new Date(label),
+    value: Number(data[i]) || 0
   })).sort((a, b) => a.date - b.date)
-  
-  if (!points.length) return [null, null]
-  
-  // Определяем начальную дату периода
-  let periodStartDate
-  if (period === '1M') {
-    periodStartDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30)
-    periodStartDate.setHours(0, 0, 0, 0)
-  } else if (period === '1Y') {
-    periodStartDate = new Date(today.getFullYear(), today.getMonth() - 11, 1)
-    periodStartDate.setHours(0, 0, 0, 0)
-  } else {
-    // Для периода "All" используем первую доступную дату
-    periodStartDate = points[0].date
-  }
-  
-  // Фильтруем точки, которые попадают в период
-  const pointsInPeriod = points.filter(p => {
-    const pointDate = new Date(p.date)
-    pointDate.setHours(0, 0, 0, 0)
-    const startDate = new Date(periodStartDate)
-    startDate.setHours(0, 0, 0, 0)
-    const endDate = new Date(today)
-    endDate.setHours(0, 0, 0, 0)
-    return pointDate >= startDate && pointDate <= endDate
+  if (!points.length) return []
+
+  const start = getPeriodStartDate(period)
+  if (!start) return points
+
+  start.setHours(0, 0, 0, 0)
+  const filtered = points.filter(p => {
+    const pd = new Date(p.date)
+    pd.setHours(0, 0, 0, 0)
+    return pd >= start && pd <= today
   })
-  
-  // Если нет точек в периоде, но есть точки до периода, используем последнюю доступную
-  if (pointsInPeriod.length === 0) {
-    const pointsBeforePeriod = points.filter(p => {
-      const pointDate = new Date(p.date)
-      pointDate.setHours(0, 0, 0, 0)
-      const endDate = new Date(today)
-      endDate.setHours(0, 0, 0, 0)
-      return pointDate <= endDate
-    })
-    
-    if (pointsBeforePeriod.length > 0) {
-      const lastPoint = pointsBeforePeriod[pointsBeforePeriod.length - 1]
-      return [lastPoint.value, lastPoint.value]
-    }
-    
-    // Если вообще нет точек, используем первую и последнюю из всех
-    return [points[0].value, points[points.length - 1].value]
-  }
-  
-  // Возвращаем первое и последнее значение из отфильтрованных точек
-  return [pointsInPeriod[0].value, pointsInPeriod[pointsInPeriod.length - 1].value]
+  if (filtered.length) return filtered
+
+  const before = points.filter(p => p.date <= today)
+  if (before.length) return [before[before.length - 1]]
+  return points.length ? [points[0], points[points.length - 1]] : []
 }
 
 const updateStats = (labels, values, period) => {
-  const [firstVal, lastVal] = getPeriodValues(labels, values, period)
-  
-  if (firstVal === null || lastVal === null) {
-    startValue.value = 0
-    endValue.value = 0
+  const pts = filterPointsByPeriod(labels, values, period)
+  if (!pts.length) {
     growthAmount.value = 0
     growthPercent.value = 0
+    periodStartDate.value = null
+    periodEndDate.value = null
     return
   }
-  
-  const start = Number(firstVal) || 0
-  const end = Number(lastVal) || 0
-  
-  startValue.value = start
-  endValue.value = end
-  growthAmount.value = end - start
-  
-  if (start === 0) {
-    growthPercent.value = 0
-  } else {
-    growthPercent.value = ((growthAmount.value / start) * 100).toFixed(1)
-  }
+  const first = pts[0].value
+  const last = pts[pts.length - 1].value
+  growthAmount.value = last - first
+  growthPercent.value = first === 0 ? 0 : ((growthAmount.value / Math.abs(first)) * 100)
+  periodStartDate.value = pts[0].date
+  periodEndDate.value = pts[pts.length - 1].date
 }
 
 // --------------------------
@@ -310,41 +278,33 @@ onMounted(() => {
   nextTick(() => syncChartReveal())
 })
 
-const displayStartValue = computed(() => Math.round(startValue.value * summaryT.value))
-const displayEndValue = computed(() => Math.round(endValue.value * summaryT.value))
-const displayGrowthAmount = computed(() => Math.round((endValue.value - startValue.value) * summaryT.value))
-const displayGrowthPercent = computed(() => (Number(growthPercent.value) || 0) * summaryT.value)
+const formatChangeValue = (v) => {
+  if (typeof v !== 'number') return v
+  return v.toLocaleString('ru-RU', { maximumFractionDigits: 0 })
+}
 
 </script>
 
 <template>
   <Widget title="Динамика капитала" :icon="LineChart">
     <template #header>
-      <div class="header-controls">
-        <PeriodFilters v-model="selectedPeriod" />
-        <ChartOptionsMenu
-          :options="chartMenuOptions"
-          @toggle="onChartOptionToggle"
-        />
-      </div>
+      <ChartOptionsMenu
+        :options="chartMenuOptions"
+        @toggle="onChartOptionToggle"
+      />
     </template>
 
-    <div class="capital-info">
-      <p class="capital-values" style="margin-top: 0;">
-        {{ formatCurrency(displayStartValue) }} → {{ formatCurrency(displayEndValue) }}
-      </p>
+    <template #subheader>
+      <PeriodFilters v-model="selectedPeriod" />
+      <ChartPeriodSummary
+        :startDate="periodStartDate"
+        :endDate="periodEndDate"
+        :changeValue="growthAmount"
+        :changePercent="growthPercent"
+        :formatValue="formatChangeValue"
+      />
+    </template>
 
-      <div class="capital-growth">
-        <p class="capital-growth-label">Прирост: {{ formatCurrency(displayGrowthAmount) }}</p>
-        <ValueChangePill
-          :value="displayGrowthPercent"
-          :is-positive="growthAmount >= 0"
-          format="percent"
-        />
-      </div>
-    </div>
-
-    <!-- График -->
     <div class="chart-wrapper">
       <MultiLineChart
         :chartData="formattedChartData"
@@ -359,27 +319,6 @@ const displayGrowthPercent = computed(() => (Number(growthPercent.value) || 0) *
 </template>
 
 <style scoped>
-.capital-info {
-  margin-bottom: 0.75rem;
-  min-width: 0;
-}
-.capital-info :deep(.capital-values) {
-  font-size: var(--widget-font-main, 1.5rem);
-}
-.capital-growth {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.capital-growth-label {
-  margin: 0;
-  font-size: var(--text-caption-size, 0.8125rem);
-  font-weight: 500;
-  color: var(--text-tertiary, #6b7280);
-  line-height: 1.25;
-}
 .chart-wrapper {
   flex: 1;
   display: flex;
@@ -390,12 +329,6 @@ const displayGrowthPercent = computed(() => (Number(growthPercent.value) || 0) *
   width: 100%;
   overflow: hidden;
 }
-.header-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: nowrap;
-}
 
 @media (max-width: 1200px) {
   .chart-wrapper {
@@ -404,13 +337,6 @@ const displayGrowthPercent = computed(() => (Number(growthPercent.value) || 0) *
 }
 
 @media (max-width: 768px) {
-  .header-controls {
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-  .capital-growth-label {
-    font-size: var(--widget-font-secondary, 0.9375rem);
-  }
   .chart-wrapper {
     min-height: 200px;
   }
