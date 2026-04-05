@@ -31,7 +31,7 @@ const absChangeText = computed(() => {
   const abs = Math.abs(props.changeValue)
   const sign = props.changeValue >= 0 ? '+' : '−'
   const formatted = props.formatValue ? props.formatValue(abs) : abs.toLocaleString('ru-RU')
-  return `${sign}${formatted}`
+  return `${sign}${formatted} ₽`
 })
 
 const percentText = computed(() => {
