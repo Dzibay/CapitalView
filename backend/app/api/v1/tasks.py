@@ -25,20 +25,20 @@ async def get_task_route(
     user: dict = Depends(get_current_user)
 ):
     """Получение информации о задаче."""
-    task = get_task(task_id)
-    
+    task = await get_task(task_id)
+
     if not task:
         raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND,
             detail="Задача не найдена"
         )
-    
-    if not import_task_belongs_to_user(task, user["id"]):
+
+    if not await import_task_belongs_to_user(task, user["id"]):
         raise HTTPException(
             status_code=HTTPStatus.FORBIDDEN,
             detail="Доступ запрещен"
         )
-    
+
     return success_response(data={"task": task})
 
 
@@ -47,21 +47,21 @@ async def get_task_status_route(
     task_id: int,
     user: dict = Depends(get_current_user)
 ):
-    """Получение статуса задачи (упрощенный endpoint для polling)."""
-    task = get_task(task_id)
-    
+    """Получение статуса задачи."""
+    task = await get_task(task_id)
+
     if not task:
         raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND,
             detail="Задача не найдена"
         )
-    
-    if not import_task_belongs_to_user(task, user["id"]):
+
+    if not await import_task_belongs_to_user(task, user["id"]):
         raise HTTPException(
             status_code=HTTPStatus.FORBIDDEN,
             detail="Доступ запрещен"
         )
-    
+
     return success_response(
         data={
             "status": task["status"],
@@ -80,8 +80,8 @@ async def get_user_tasks_route(
     limit: int = Query(50, ge=1)
 ):
     """Получение списка задач пользователя."""
-    tasks = get_user_tasks(user["id"], limit=limit)
-    
+    tasks = await get_user_tasks(user["id"], limit=limit)
+
     return success_response(data={"tasks": tasks})
 
 
@@ -91,12 +91,12 @@ async def cancel_task_route(
     user: dict = Depends(get_current_user)
 ):
     """Отмена задачи."""
-    success = cancel_task(task_id, user["id"])
-    
+    success = await cancel_task(task_id, user["id"])
+
     if not success:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="Не удалось отменить задачу"
         )
-    
+
     return success_response(message="Задача отменена")

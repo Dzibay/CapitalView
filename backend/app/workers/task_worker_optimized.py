@@ -1,16 +1,8 @@
 """
 Оптимизированный воркер для обработки задач импорта портфелей в фоновом режиме.
-
-Основные оптимизации:
-1. Все синхронные вызовы БД обернуты в asyncio.to_thread() для неблокирующей работы
-2. Убраны двойные задержки в цикле
-3. Оптимизирован цикл опроса задач
-4. Обновления статуса выполняются асинхронно
-5. Внешние API вызовы выполняются в отдельном потоке
 """
 import asyncio
 from typing import Optional
-from concurrent.futures import ThreadPoolExecutor
 
 from app.domain.services.task_service import (
     get_next_pending_task,
@@ -19,7 +11,6 @@ from app.domain.services.task_service import (
 )
 from app.domain.services.portfolio_import_service import import_broker_portfolio
 from app.domain.services.user_service import get_user_by_id
-from app.domain.services.broker_connections_service import upsert_broker_connection
 from app.constants import BrokerID
 from app.infrastructure.database.postgres_async import table_update_async
 from app.core.logging import get_logger
@@ -29,279 +20,167 @@ from app.infrastructure.cache import invalidate_cache
 
 logger = get_logger(__name__)
 
-# Настройки воркера
-POLL_INTERVAL = 10  # Интервал опроса очереди когда нет задач (секунды)
-POLL_INTERVAL_WHEN_BUSY = 2  # Интервал опроса когда есть активные задачи (секунды)
-MAX_CONCURRENT_TASKS = 3  # Максимальное количество одновременных задач
-MAX_RETRIES = 3  # Максимальное количество попыток
-
-# Пул потоков для синхронных операций (внешние API, синхронные БД вызовы)
-executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="task_worker")
-
-
-async def get_next_pending_task_async() -> Optional[dict]:
-    """Асинхронная обертка для get_next_pending_task."""
-    return await asyncio.to_thread(get_next_pending_task)
-
-
-async def update_task_status_async(
-    task_id: int,
-    status: TaskStatus,
-    progress: Optional[int] = None,
-    progress_message: Optional[str] = None,
-    error_message: Optional[str] = None,
-    result: Optional[dict] = None
-) -> bool:
-    """Асинхронная обертка для update_task_status."""
-    return await asyncio.to_thread(
-        update_task_status,
-        task_id,
-        status,
-        progress,
-        progress_message,
-        error_message,
-        result
-    )
-
-
-async def get_user_by_id_async(user_id) -> Optional[dict]:
-    """Асинхронная обертка для get_user_by_id."""
-    return await asyncio.to_thread(get_user_by_id, user_id)
-
-
-async def upsert_broker_connection_async(user_id, broker_id: int, portfolio_id: int, api_key: str):
-    """Асинхронная обертка для upsert_broker_connection."""
-    return await asyncio.to_thread(
-        upsert_broker_connection,
-        user_id,
-        broker_id,
-        portfolio_id,
-        api_key
-    )
+POLL_INTERVAL = 10
+POLL_INTERVAL_WHEN_BUSY = 2
+MAX_CONCURRENT_TASKS = 3
+MAX_RETRIES = 3
 
 
 async def get_tinkoff_portfolio_async(token: str) -> dict:
-    """Асинхронная обертка для get_tinkoff_portfolio (может быть очень медленным)."""
+    """Broker API calls are synchronous I/O — offload to a thread."""
     from app.infrastructure.external.brokers.tinkoff import get_tinkoff_portfolio
     return await asyncio.to_thread(get_tinkoff_portfolio, token)
 
 
 async def get_bks_portfolio_async(token: str) -> dict:
-    """Асинхронная обертка для get_bks_portfolio."""
     from app.infrastructure.external.brokers.bks import get_bks_portfolio
     return await asyncio.to_thread(get_bks_portfolio, token)
 
 
 async def process_import_task(task: dict) -> bool:
-    """
-    Обрабатывает задачу импорта портфеля.
-    Все синхронные операции выполняются асинхронно через asyncio.to_thread().
-    """
+    """Обрабатывает задачу импорта портфеля."""
     task_id = task["task_id"]
     user_id = task["user_id"]
     portfolio_id = task.get("portfolio_id")
     broker_id = task["broker_id"]
     broker_token = task["broker_token"]
     retry_count = task.get("retry_count", 0)
-    
+
     try:
         logger.info(f"Начало обработки задачи {task_id}: user_id={user_id}, broker_id={broker_id}")
-        
-        # Статус уже обновлен на processing в worker_loop, обновляем прогресс
-        await update_task_status_async(
-            task_id,
-            TaskStatus.PROCESSING,
-            progress=10,
-            progress_message="Получение данных от брокера..."
+
+        await update_task_status(
+            task_id, TaskStatus.PROCESSING,
+            progress=10, progress_message="Получение данных от брокера...",
         )
-        
-        # Получаем пользователя (асинхронно)
-        user = await get_user_by_id_async(user_id)
+
+        user = await get_user_by_id(user_id)
         if not user:
             raise Exception(f"Пользователь {user_id} не найден")
-        
+
         user_email = user["email"]
-        
-        # Получаем данные от брокера (асинхронно, может быть долго)
-        await update_task_status_async(
-            task_id,
-            TaskStatus.PROCESSING,
-            progress=20,
-            progress_message=f"Импорт данных от брокера {broker_id}..."
+
+        await update_task_status(
+            task_id, TaskStatus.PROCESSING,
+            progress=20, progress_message=f"Импорт данных от брокера {broker_id}...",
         )
-        
-        # Преобразуем broker_id в int, если это строка
+
         broker_id_int = int(broker_id) if isinstance(broker_id, str) else broker_id
-        
+
         if broker_id_int == BrokerID.TINKOFF:
             broker_data = await get_tinkoff_portfolio_async(broker_token)
         elif broker_id_int == BrokerID.BKS:
             broker_data = await get_bks_portfolio_async(broker_token)
         else:
             raise Exception(f"Импорт для брокера {broker_id_int} не реализован")
-        
+
         if not broker_data:
             raise Exception("Не удалось получить данные от брокера")
-
         if not portfolio_id:
             raise Exception("Задача импорта без portfolio_id — некорректные данные")
 
-        await update_task_status_async(
-            task_id,
-            TaskStatus.PROCESSING,
-            progress=40,
-            progress_message="Обновление портфеля..."
+        await update_task_status(
+            task_id, TaskStatus.PROCESSING,
+            progress=40, progress_message="Обновление портфеля...",
         )
-        
-        # Импортируем данные
-        await update_task_status_async(
-            task_id,
-            TaskStatus.PROCESSING,
-            progress=60,
-            progress_message="Импорт транзакций и операций..."
+        await update_task_status(
+            task_id, TaskStatus.PROCESSING,
+            progress=60, progress_message="Импорт транзакций и операций...",
         )
-        
+
         result = await import_broker_portfolio(user_email, portfolio_id, broker_data, broker_id_int, api_key=broker_token)
-        
-        # Данные портфеля меняются в фоновой задаче, поэтому инвалидируем кэш ДАШБОРДА
-        # после фактического обновления БД.
+
         await invalidate_cache("dashboard:{user_id}", user_id=user_id)
-        
-        # upsert_broker_connection уже вызывается внутри import_broker_portfolio
-        
-        # Завершаем задачу
-        await update_task_status_async(
-            task_id,
-            TaskStatus.COMPLETED,
-            progress=100,
-            progress_message="Импорт завершен успешно",
-            result={
-                "portfolio_id": portfolio_id,
-                "import_result": result
-            }
+
+        await update_task_status(
+            task_id, TaskStatus.COMPLETED,
+            progress=100, progress_message="Импорт завершен успешно",
+            result={"portfolio_id": portfolio_id, "import_result": result},
         )
-        
+
         logger.info(f"Задача {task_id} успешно завершена")
         return True
-        
+
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Ошибка при обработке задачи {task_id}: {error_msg}", exc_info=True)
-        
-        # Проверяем, нужно ли повторить попытку
+
         if retry_count < MAX_RETRIES:
             new_retry_count = retry_count + 1
             logger.info(f"Повторная попытка {new_retry_count}/{MAX_RETRIES} для задачи {task_id}")
-            
-            # Обновляем retry_count и возвращаем задачу в pending (асинхронно)
             await table_update_async(
                 "import_tasks",
                 {"retry_count": new_retry_count, "status": TaskStatus.PENDING.value},
                 filters={"id": task_id}
             )
         else:
-            # Превышено количество попыток
-            await update_task_status_async(
-                task_id,
-                TaskStatus.FAILED,
-                progress=0,
-                error_message=error_msg
+            await update_task_status(
+                task_id, TaskStatus.FAILED,
+                progress=0, error_message=error_msg,
             )
-        
+
         return False
 
 
 async def worker_loop():
-    """
-    Оптимизированный основной цикл воркера.
-    
-    Улучшения:
-    - Синхронные вызовы БД выполняются асинхронно
-    - Убраны двойные задержки
-    - Оптимизирована проверка завершенных задач
-    """
+    """Основной цикл воркера."""
     logger.info("Воркер задач запущен")
-    active_tasks = {}  # task_id -> asyncio.Task
-    
+    active_tasks = {}
+
     while True:
         try:
-            # Проверяем завершенные задачи (неблокирующая операция)
             completed_tasks = [
                 task_id for task_id, task in active_tasks.items()
                 if task.done()
             ]
             for task_id in completed_tasks:
                 del active_tasks[task_id]
-            
-            # Если есть свободные слоты, берем новую задачу
+
             if len(active_tasks) < MAX_CONCURRENT_TASKS:
-                # Асинхронный вызов вместо синхронного - не блокирует цикл!
-                task_result = await get_next_pending_task_async()
-                
+                task_result = await get_next_pending_task()
+
                 if task_result:
                     task = task_result[0] if isinstance(task_result, list) else task_result
                     logger.debug(f"Найдена задача: {task}")
                     task_id = task["task_id"]
-                    
-                    # Проверяем, не обрабатывается ли уже эта задача
-                    # Это может произойти, если задача была получена несколько раз до обновления статуса
+
                     if task_id in active_tasks:
-                        logger.debug(f"Задача {task_id} уже в обработке в этом воркере, пропускаем")
-                        # Делаем небольшую задержку перед следующей попыткой
+                        logger.debug(f"Задача {task_id} уже в обработке, пропускаем")
                         await asyncio.sleep(1)
                         continue
-                    
-                    # КРИТИЧНО: Обновляем статус на processing СРАЗУ после получения задачи
-                    # Это предотвращает получение одной и той же задачи дважды
-                    # (между получением и обновлением статуса есть окно для race condition)
-                    status_updated = await update_task_status_async(
-                        task_id,
-                        TaskStatus.PROCESSING,
-                        progress=0,
-                        progress_message="Задача взята в обработку..."
+
+                    status_updated = await update_task_status(
+                        task_id, TaskStatus.PROCESSING,
+                        progress=0, progress_message="Задача взята в обработку...",
                     )
-                    
+
                     if not status_updated:
-                        # Не удалось обновить статус - возможно, задача уже обрабатывается другим воркером
-                        # Это нормальная ситуация при параллельной работе нескольких воркеров
-                        logger.debug(f"Не удалось обновить статус задачи {task_id}, возможно уже обрабатывается другим воркером, пропускаем")
-                        # Делаем небольшую задержку перед следующей попыткой
+                        logger.debug(f"Не удалось обновить статус задачи {task_id}, пропускаем")
                         await asyncio.sleep(1)
                         continue
-                    
-                    logger.info(f"Найдена задача {task_id}, статус обновлен на processing, начинаем обработку")
-                    
-                    # Запускаем обработку в фоне
+
+                    logger.info(f"Найдена задача {task_id}, начинаем обработку")
                     active_tasks[task_id] = asyncio.create_task(
                         process_import_task(task)
                     )
                 else:
-                    # Нет задач, ждем перед следующей проверкой
-                    # Используем больший интервал, если нет активных задач
                     interval = POLL_INTERVAL_WHEN_BUSY if len(active_tasks) > 0 else POLL_INTERVAL
                     await asyncio.sleep(interval)
             else:
-                # Все слоты заняты, ждем перед следующей проверкой
-                # Используем меньший интервал, так как есть активные задачи
                 await asyncio.sleep(POLL_INTERVAL_WHEN_BUSY)
-            
-            # Убрана дополнительная задержка - она уже есть в if/else выше
-            
+
         except Exception as e:
             logger.error(f"Ошибка в цикле воркера: {e}", exc_info=True)
             await asyncio.sleep(POLL_INTERVAL)
 
 
 def run_worker():
-    """
-    Запускает воркер (точка входа для отдельного процесса).
-    """
+    """Запускает воркер."""
     from app.core.logging import init_logging
     init_logging()
-    
+
     try:
         async def _runner():
-            # Инициализируем Redis в воркере, чтобы invalidate_cache работал.
             from app.infrastructure.cache import init_redis, close_redis
             from app.infrastructure.cache.redis_client_sync import init_redis_sync, close_redis_sync
 
@@ -318,9 +197,6 @@ def run_worker():
         logger.info("Воркер остановлен пользователем")
     except Exception as e:
         logger.error(f"Критическая ошибка воркера: {e}", exc_info=True)
-    finally:
-        # Закрываем пул потоков при завершении
-        executor.shutdown(wait=True)
 
 
 if __name__ == "__main__":

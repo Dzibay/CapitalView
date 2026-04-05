@@ -1,4 +1,3 @@
-import asyncio
 from collections import defaultdict
 from copy import deepcopy
 from app.infrastructure.database.database_service import rpc_async
@@ -35,10 +34,7 @@ async def get_user_portfolios_analytics(user_id: str):
             portfolios_analytics = []
 
         # === 2️⃣ Получаем структуру портфелей (id, parent_id, name) ===
-        # Используем синхронный метод через asyncio.to_thread для совместимости
-        portfolios = await asyncio.to_thread(
-            _portfolio_repository.get_user_portfolios_sync, user_id
-        ) or []
+        portfolios = await _portfolio_repository.get_user_portfolios(user_id) or []
         
         # Фильтруем только нужные поля
         portfolios = [

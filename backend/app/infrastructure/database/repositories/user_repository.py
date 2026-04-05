@@ -3,7 +3,7 @@
 """
 from typing import Optional, Dict, Any
 from app.infrastructure.database.repositories.base import BaseRepository
-from app.infrastructure.database.database_service import table_select
+from app.infrastructure.database.database_service import table_select_async
 
 
 class UserRepository(BaseRepository):
@@ -15,8 +15,8 @@ class UserRepository(BaseRepository):
     def _id_filter(self, id: Any) -> dict:
         return {self.id_column: str(id)}
 
-    def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        result = table_select(
+    async def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        result = await table_select_async(
             "users", select="*",
             filters={"email": email},
             limit=1,

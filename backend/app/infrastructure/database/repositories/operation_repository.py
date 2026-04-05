@@ -4,10 +4,9 @@
 from typing import List, Optional, Dict, Any
 from app.infrastructure.database.repositories.base import BaseRepository
 from app.infrastructure.database.database_service import (
-    table_select,
     table_select_async,
     table_insert_async,
-    rpc,
+    rpc_async,
 )
 
 
@@ -18,7 +17,7 @@ class OperationRepository(BaseRepository):
 
     # ─── RPC-методы ────────────────────────────────────────────
 
-    def get_user_operations(
+    async def get_user_operations(
         self,
         user_id: str,
         portfolio_id: Optional[int] = None,
@@ -34,7 +33,7 @@ class OperationRepository(BaseRepository):
             "p_limit": limit,
         }
         params = {k: v for k, v in params.items() if v is not None}
-        return rpc("get_cash_operations", params) or []
+        return await rpc_async("get_cash_operations", params) or []
 
     # ─── Bulk ──────────────────────────────────────────────────
 
@@ -48,14 +47,6 @@ class OperationRepository(BaseRepository):
 
     async def get_portfolio_operations(self, portfolio_id: int) -> List[Dict[str, Any]]:
         result = await table_select_async(
-            "cash_operations", select="*",
-            filters={"portfolio_id": portfolio_id},
-            order={"column": "date", "desc": True},
-        )
-        return result or []
-
-    def get_portfolio_operations_sync(self, portfolio_id: int) -> List[Dict[str, Any]]:
-        result = table_select(
             "cash_operations", select="*",
             filters={"portfolio_id": portfolio_id},
             order={"column": "date", "desc": True},
@@ -77,27 +68,8 @@ class OperationRepository(BaseRepository):
         )
         return result or []
 
-    def get_by_portfolio_and_asset_sync(
-        self,
-        portfolio_id: int,
-        asset_id: int,
-        operation_types: Optional[List[int]] = None,
-    ) -> List[Dict[str, Any]]:
-        filters = {"portfolio_id": portfolio_id, "asset_id": asset_id}
-        in_filters = {"type": operation_types} if operation_types else None
-        result = table_select(
-            "cash_operations", select="*",
-            filters=filters, in_filters=in_filters,
-            order={"column": "date", "desc": True},
-        )
-        return result or []
-
-    def get_by_transaction_id_sync(self, transaction_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Возвращает первую денежную операцию, связанную с указанной транзакцией.
-        Используется при обновлении транзакции, чтобы найти связанную cash_operation.
-        """
-        result = table_select(
+    async def get_by_transaction_id(self, transaction_id: int) -> Optional[Dict[str, Any]]:
+        result = await table_select_async(
             "cash_operations",
             select="*",
             filters={"transaction_id": transaction_id},
@@ -105,7 +77,7 @@ class OperationRepository(BaseRepository):
         )
         return result[0] if result else None
 
-    async def get_by_portfolio_async(
+    async def get_by_portfolio(
         self, portfolio_id: int, select_fields: str = "*",
     ) -> List[Dict[str, Any]]:
         result = await table_select_async(

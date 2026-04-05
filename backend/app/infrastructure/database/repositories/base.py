@@ -4,20 +4,16 @@
 """
 from typing import List, Optional, Dict, Any
 from app.infrastructure.database.database_service import (
-    table_select,
     table_select_async,
-    table_insert,
     table_insert_async,
-    table_update,
     table_update_async,
-    table_delete,
     table_delete_async,
 )
 
 
 class BaseRepository:
     """
-    Generic CRUD-репозиторий.
+    Generic CRUD-репозиторий (async-only).
 
     Наследники ДОЛЖНЫ определить:
         table_name: str  — имя таблицы в PostgreSQL
@@ -56,24 +52,4 @@ class BaseRepository:
 
     async def delete(self, id: Any) -> bool:
         result = await table_delete_async(self.table_name, filters=self._id_filter(id))
-        return bool(result)
-
-    # ─── sync CRUD ─────────────────────────────────────────────
-
-    def get_by_id_sync(self, id: Any) -> Optional[Dict[str, Any]]:
-        result = table_select(
-            self.table_name, "*", filters=self._id_filter(id), limit=1,
-        )
-        return self._first_or_none(result)
-
-    def create_sync(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        result = table_insert(self.table_name, data)
-        return self._first_or_none(result)
-
-    def update_sync(self, id: Any, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        table_update(self.table_name, data, filters=self._id_filter(id))
-        return self.get_by_id_sync(id)
-
-    def delete_sync(self, id: Any) -> bool:
-        result = table_delete(self.table_name, filters=self._id_filter(id))
         return bool(result)

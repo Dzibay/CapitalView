@@ -36,11 +36,10 @@ const {
   showPeriodTrack,
 } = storeToRefs(transactionsStore)
 
-// Загружаем полные списки транзакций и операций при открытии страницы
+// Полные списки транзакций и операций: всегда запрашиваем при входе на страницу,
+// чтобы не показывать пустую вкладку «Операции» после сбоя одного из запросов или устаревший кэш.
 onMounted(() => {
-  if (!dashboardStore.fullListsLoaded) {
-    dashboardStore.fetchTransactionsAndOperationsInBackground()
-  }
+  dashboardStore.fetchTransactionsAndOperationsInBackground()
 })
 
 // Транзакции и операции — единственный источник: dashboard store
@@ -206,7 +205,8 @@ const normalizeType = (type) => {
   if (t.includes('прод') || t.includes('sell')) return 'sell'
   if (t.includes('див') || t.includes('div')) return 'dividend'
   if (t.includes('купон') || t.includes('coupon')) return 'coupon'
-  if (t.includes('аморт') || t.includes('amort')) return 'amortization'
+  // SQL: Amortization → «Амортизация»; виджет выплат раньше подставлял «Погашение»
+  if (t.includes('аморт') || t.includes('amort') || t.includes('погаш')) return 'amortization'
   if (t.includes('налог') || t.includes('tax')) return 'tax'
   if (t.includes('комисс') || t.includes('commission') || t.includes('commision')) return 'commission'
   if (t.includes('ввод') || t.includes('депозит') || t.includes('deposit')) return 'deposit'
@@ -384,6 +384,13 @@ const normalizeFilterList = (v) => {
   return [v]
 }
 
+/** Совпадение по типу: одна и та же суть на русском/англ. и разные подписи (Амортизация vs Погашение). */
+const matchesAnyTypeFilter = (itemType, typeFilters) => {
+  if (!typeFilters.length) return true
+  const slug = normalizeType(itemType)
+  return typeFilters.some((f) => normalizeType(f) === slug)
+}
+
 // --- ГЛАВНЫЙ ФИЛЬТР ---
 // Оптимизировано: ранний выход из проверок для лучшей производительности
 const applyFilter = () => {
@@ -414,7 +421,7 @@ const applyFilter = () => {
     // Быстрые проверки с ранним выходом
     if (assetFilter && tx.asset_name !== assetFilter) return false
     if (portfolioNames.length > 0 && !portfolioNames.includes(tx.portfolio_name)) return false
-    if (typeFilters.length > 0 && !typeFilters.includes(tx.transaction_type)) return false
+    if (!matchesAnyTypeFilter(tx.transaction_type, typeFilters)) return false
 
     // Период (только если заданы даты)
     if (start || end) {
@@ -439,7 +446,7 @@ const applyFilter = () => {
     filteredOperations.value = opsList.filter(op => {
       if (portfolioNames.length > 0 && !portfolioNames.includes(op.portfolio_name)) return false
 
-      if (typeFilters.length > 0 && !typeFilters.includes(op.operation_type)) return false
+      if (!matchesAnyTypeFilter(op.operation_type, typeFilters)) return false
       
       // Фильтр по активу (если указан)
       if (assetFilter && op.asset_name && op.asset_name !== assetFilter) return false

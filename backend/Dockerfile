@@ -3,10 +3,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Системные зависимости для psycopg2
+# Системные зависимости для asyncpg
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
-    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем зависимости

@@ -19,16 +19,3 @@ class PasswordHasher:
 
 
 bcrypt = PasswordHasher()
-
-
-def init_extensions():
-    """Инициализирует все расширения для FastAPI."""
-    from app.infrastructure.database.postgres_service import get_connection_pool
-    try:
-        get_connection_pool()
-        print("PostgreSQL пул соединений инициализирован")
-    except Exception as e:
-        print(f"Ошибка инициализации PostgreSQL: {e}")
-
-
-init_extensions()

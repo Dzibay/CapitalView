@@ -34,14 +34,13 @@ async def get_transactions_route(
     limit: Optional[int] = Query(None)
 ):
     """Получение списка транзакций пользователя."""
-    # Проверяем доступ к портфелю, если указан
     if portfolio_id:
         from app.domain.services.access_control_service import check_portfolio_access
-        check_portfolio_access(portfolio_id, user["id"])
-    
+        await check_portfolio_access(portfolio_id, user["id"])
+
     start_date_parsed, end_date_parsed = parse_date_range(start_date, end_date)
 
-    data = get_transactions(
+    data = await get_transactions(
         user["id"],
         portfolio_id,
         asset_name,
@@ -61,28 +60,26 @@ async def delete_transactions_route(
 ):
     """Batch удаление транзакций с пересчетом FIFO."""
     ids = request.ids
-    
+
     if not ids or not isinstance(ids, list):
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="ids must be a non-empty array"
         )
-    
-    # Проверяем доступ ко всем транзакциям
-    check_multiple_transactions_access(ids, user["id"])
-    
+
+    await check_multiple_transactions_access(ids, user["id"])
+
     try:
-        # Используем batch удаление для оптимизации
-        result = delete_transactions_batch(ids)
-        
+        result = await delete_transactions_batch(ids)
+
         if result.get("success") is False:
             raise HTTPException(
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=result.get("error", "Ошибка при удалении транзакций")
             )
-        
+
         deleted_count = result.get("deleted_count", 0)
-        
+
         return success_response(
             data=result,
             message=f"Удалено транзакций: {deleted_count}/{len(ids)}"

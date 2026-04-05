@@ -1,50 +1,33 @@
 """
 Работа с базой данных.
-Использует локальную PostgreSQL.
+Использует локальную PostgreSQL (asyncpg).
 """
 from app.infrastructure.database.database_service import (
-    rpc,
     rpc_async,
-    table_select,
     table_select_async,
-    table_insert,
     table_insert_async,
-    table_update,
     table_update_async,
-    table_upsert,
     table_upsert_async,
-    table_delete,
     table_delete_async,
-    table_select_with_neq,
     table_select_with_neq_async,
     get_connection_pool,
-    get_connection_pool_async,
     close_connection_pool,
-    close_connection_pool_async,
     db_select,
     db_insert,
     db_update,
     db_rpc,
 )
-_all__ = [
-    'rpc',
+
+__all__ = [
     'rpc_async',
-    'table_select',
     'table_select_async',
-    'table_insert',
     'table_insert_async',
-    'table_update',
     'table_update_async',
-    'table_upsert',
     'table_upsert_async',
-    'table_delete',
     'table_delete_async',
-    'table_select_with_neq',
     'table_select_with_neq_async',
     'get_connection_pool',
-    'get_connection_pool_async',
     'close_connection_pool',
-    'close_connection_pool_async',
     'db_select',
     'db_insert',
     'db_update',

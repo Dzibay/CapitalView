@@ -2,7 +2,7 @@
 Доменный сервис для работы с денежными операциями.
 Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Other.
 """
-from app.infrastructure.database.database_service import rpc
+from app.infrastructure.database.database_service import rpc_async
 from app.utils.date import normalize_date_to_string
 from typing import List
 from app.core.logging import get_logger
@@ -17,8 +17,7 @@ def normalize_cash_operation_amount(operation_type: int, amount: float) -> float
     Приводит сумму cash-операции к каноническому знаку.
 
     Расходы (вывод, комиссия, налог) хранятся отрицательными; доходы (дивиденд,
-    купон, амортизация как денежная выплата, пополнение) — положительными. Пользователь может ввести комиссию 10000 —
-    будет сохранено -10000.
+    купон, амортизация как денежная выплата, пополнение) — положительными.
 
     Тип 10 (Other) не меняем — знак остаётся как ввёл пользователь.
     """
@@ -33,25 +32,12 @@ def normalize_cash_operation_amount(operation_type: int, amount: float) -> float
     return x
 
 
-# Создаем экземпляры репозиториев для использования во всех функциях
 _portfolio_asset_repository = PortfolioAssetRepository()
 _asset_repository = AssetRepository()
 
 
-def get_operations(user_id, portfolio_id=None, start_date=None, end_date=None, limit=1000):
-    """
-    Получает операции пользователя с опциональной фильтрацией.
-    
-    Args:
-        user_id: ID пользователя
-        portfolio_id: Фильтр по ID портфеля (опционально)
-        start_date: Начальная дата периода (опционально)
-        end_date: Конечная дата периода (опционально)
-        limit: Лимит записей (по умолчанию 1000)
-    
-    Returns:
-        Список операций с примененными фильтрами
-    """
+async def get_operations(user_id, portfolio_id=None, start_date=None, end_date=None, limit=1000):
+    """Получает операции пользователя с опциональной фильтрацией."""
     params = {
         "p_user_id": user_id,
         "p_portfolio_id": portfolio_id,
@@ -59,26 +45,17 @@ def get_operations(user_id, portfolio_id=None, start_date=None, end_date=None, l
         "p_end_date": end_date,
         "p_limit": limit
     }
-    
-    # Убираем None значения из параметров
     params = {k: v for k, v in params.items() if v is not None}
-    
-    operations = rpc("get_cash_operations", params) or []
-    
-    return operations
+    return await rpc_async("get_cash_operations", params) or []
 
 
-def apply_operations(
+async def apply_operations(
     *,
     user_id: str,
     operations: List[dict],
 ) -> dict:
     """
     Универсальная сборка payload под SQL `apply_operations_batch`.
-    Поддерживает:
-    - cash операции (Dividend/Coupon/Amortization без quantity/price/Commission/Tax/Deposit/Withdraw/Other)
-    - transaction операции (Buy/Sell; Amortization только если переданы quantity и price)
-    - опцию create_deposit_operation для Buy, Commission, Tax (добавляет Deposit в тот же apply-оперант).
     """
     if not operations:
         raise ValueError("operations не может быть пустым")
@@ -100,10 +77,9 @@ def apply_operations(
         portfolio_asset_id = op.get("portfolio_asset_id")
         asset_id = op.get("asset_id")
 
-        # Если portfolio_id не передан — достаем из portfolio_asset_id
         if not portfolio_id:
             if portfolio_asset_id:
-                pa_data = _portfolio_asset_repository.get_by_id_sync(portfolio_asset_id)
+                pa_data = await _portfolio_asset_repository.get_by_id(portfolio_asset_id)
                 if pa_data:
                     portfolio_id = pa_data.get("portfolio_id")
             if not portfolio_id:
@@ -111,7 +87,6 @@ def apply_operations(
                     f"operations[{idx}] требует portfolio_id или portfolio_asset_id (чтобы вывести portfolio_id)"
                 )
 
-        # transaction: Buy/Sell; Amortization (9) — только как транзакция при quantity+price (иначе cash-выплата)
         is_tx_amortization = operation_type == 9 and op.get("quantity") is not None and op.get("price") is not None
         if operation_type in (1, 2) or is_tx_amortization:
             if not portfolio_asset_id:
@@ -119,13 +94,8 @@ def apply_operations(
             if not asset_id:
                 raise ValueError(f"operations[{idx}]: asset_id обязателен для transaction")
 
-            quantity = op.get("quantity")
-            price = op.get("price")
-            if quantity is None or price is None:
-                raise ValueError(f"operations[{idx}]: quantity и price обязателены для transaction")
-
-            quantity = float(quantity)
-            price = float(price)
+            quantity = float(op.get("quantity"))
+            price = float(op.get("price"))
             payment = float(price * quantity)
 
             p_operations.append(
@@ -139,20 +109,19 @@ def apply_operations(
                     "quantity": quantity,
                     "price": price,
                     "payment": payment,
-                    "amount": payment,  # payment или amount одинаковые для buy/sell
+                    "amount": payment,
                 }
             )
 
-            # Deposit операция на сумму buy
             if op.get("create_deposit_operation") is True and operation_type == 1:
-                asset_row = _asset_repository.get_by_id_sync(asset_id) or {}
+                asset_row = await _asset_repository.get_by_id(asset_id) or {}
                 currency_id = asset_row.get("quote_asset_id") or 1
 
                 p_operations.append(
                     {
                         "user_id": str(user_id),
                         "portfolio_id": int(portfolio_id),
-                        "operation_type": 5,  # Deposit
+                        "operation_type": 5,
                         "operation_date": operation_date_str,
                         "amount": abs(payment),
                         "currency_id": int(currency_id),
@@ -163,7 +132,6 @@ def apply_operations(
                 )
 
         else:
-            # cash
             amount = op.get("amount")
             if amount is None:
                 raise ValueError(f"operations[{idx}]: amount обязателен для cash-операции")
@@ -189,16 +157,14 @@ def apply_operations(
                 }
             )
 
-            # Deposit-операция для Commission/Tax
             if op.get("create_deposit_operation") is True and operation_type in (7, 8):
                 if not portfolio_asset_id:
                     raise ValueError(
                         f"operations[{idx}]: portfolio_asset_id обязателен для create_deposit_operation (Commission/Tax)"
                     )
 
-                # Если asset_id не передан — получаем из portfolio_asset
                 if not asset_id:
-                    pa_data = _portfolio_asset_repository.get_by_id_sync(portfolio_asset_id) or {}
+                    pa_data = await _portfolio_asset_repository.get_by_id(portfolio_asset_id) or {}
                     asset_id_for_deposit = pa_data.get("asset_id")
                 else:
                     asset_id_for_deposit = asset_id
@@ -212,17 +178,17 @@ def apply_operations(
                     {
                         "user_id": str(user_id),
                         "portfolio_id": int(portfolio_id),
-                        "operation_type": 5,  # Deposit
+                        "operation_type": 5,
                         "operation_date": operation_date_str,
                         "amount": abs(amount),
-                        "currency_id": 1,  # Deposit для Commission/Tax всегда в RUB (чтобы не было конвертаций)
+                        "currency_id": 1,
                         "asset_id": int(asset_id_for_deposit),
                         "portfolio_asset_id": int(portfolio_asset_id),
                         "dividend_yield": None,
                     }
                 )
 
-    result = rpc("apply_operations_batch", {"p_operations": p_operations})
+    result = await rpc_async("apply_operations_batch", {"p_operations": p_operations})
     if not result or result.get("inserted_count", 0) == 0:
         failed = result.get("failed_operations", []) if result else []
         error_msg = failed[0].get("error", "Unknown error") if failed else "apply_operations_batch failed"
@@ -231,14 +197,8 @@ def apply_operations(
     return result
 
 
-def update_operations_batch(updates: List[dict]) -> dict:
-    """
-    Батчевое обновление операций (дата/сумма/quantity/price). В SQL пересчитываются
-    fifo_lots, portfolio_assets, portfolio_asset_daily_values, portfolio_daily_values
-    и синхронизируются связанные транзакции.
-    updates: список dict с ключами operation_id (обязательно),
-             date, amount, quantity, price (опционально).
-    """
+async def update_operations_batch(updates: List[dict]) -> dict:
+    """Батчевое обновление операций."""
     if not updates:
         return {"success": True, "updated_count": 0}
     payload = []
@@ -259,28 +219,22 @@ def update_operations_batch(updates: List[dict]) -> dict:
             payload.append(item)
     if not payload:
         return {"success": True, "updated_count": 0}
-    result = rpc("update_operations_batch", {"p_updates": payload})
+    result = await rpc_async("update_operations_batch", {"p_updates": payload})
     if not result or result.get("success") is False:
         error_msg = result.get("error", "Неизвестная ошибка") if result else "Ошибка при обновлении операций"
         raise Exception(f"Ошибка при batch обновлении операций: {error_msg}")
     return result
 
 
-def delete_operations_batch(operation_ids: list[int]):
-    """
-    Удаляет несколько операций батчем и пересчитывает историю портфелей.
-    SQL функция delete_operations_batch выполняет:
-    - Удаление операций из cash_operations
-    - Обновление истории портфелей с минимальной даты удаленных операций
-    """
+async def delete_operations_batch(operation_ids: list[int]):
+    """Удаляет несколько операций батчем и пересчитывает историю портфелей."""
     if not operation_ids:
         return {"success": False, "error": "Список ID операций пуст", "deleted_count": 0}
-    
-    # Вызываем RPC функцию для batch удаления
-    delete_result = rpc("delete_operations_batch", {"p_operation_ids": operation_ids})
-    
+
+    delete_result = await rpc_async("delete_operations_batch", {"p_operation_ids": operation_ids})
+
     if not delete_result or delete_result.get("success") is False:
         error_msg = delete_result.get("error", "Неизвестная ошибка") if delete_result else "Ошибка при удалении операций"
         raise Exception(f"Ошибка при batch удалении операций: {error_msg}")
-    
+
     return delete_result

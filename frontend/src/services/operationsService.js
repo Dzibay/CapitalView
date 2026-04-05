@@ -11,8 +11,9 @@ export default {
     if (limit) params.limit = limit;
 
     const res = await apiClient.get(API_ENDPOINTS.OPERATIONS.BASE, { params });
-    // API возвращает { success: true, data: { operations: [...] } }
-    return res.data?.data?.operations || res.data?.operations || res.data || [];
+    // success_response(data={ operations }) даёт { success, operations } на верхнем уровне
+    const raw = res.data?.data?.operations ?? res.data?.operations;
+    return Array.isArray(raw) ? raw : [];
   },
 
   async addOperation(operationData) {

@@ -112,6 +112,13 @@ async def startup_event():
 async def shutdown_event():
     """События при остановке приложения."""
     logger.info("🛑 CapitalView API shutting down...")
+
+    from app.infrastructure.database.database_service import close_connection_pool
+
+    try:
+        await close_connection_pool()
+    except Exception as e:
+        logger.warning("Закрытие async-пула PostgreSQL: %s", e)
     
     from app.infrastructure.cache import close_redis
     from app.infrastructure.cache.redis_client_sync import close_redis_sync
@@ -140,5 +147,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=int(os.getenv("PORT", "5000")),
         reload=not is_production,
-        workers=4 if is_production else 1,
+        workers=2 if is_production else 1,
     )

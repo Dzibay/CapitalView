@@ -23,8 +23,8 @@ from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.utils.response import success_response
 from app.utils.jwt import create_access_token
 from app.core.dependencies import get_current_user
-from app.infrastructure.database.postgres_service import (
-    table_insert, table_select, table_update,
+from app.infrastructure.database.database_service import (
+    table_insert_async, table_select_async, table_update_async,
 )
 from app.infrastructure.external.mail import send_verification_email
 from app.core.logging import get_logger
@@ -51,14 +51,14 @@ def _build_verify_link(token: str) -> str:
 
 async def _create_and_send_token(user_id: str, email: str) -> bool:
     """Инвалидирует старые токены, создаёт новый и отправляет письмо со ссылкой."""
-    table_update(
+    await table_update_async(
         "email_verification_tokens",
         {"used": True},
-        {"user_id": user_id},
+        filters={"user_id": user_id},
     )
 
     token = _generate_token()
-    table_insert("email_verification_tokens", {
+    await table_insert_async("email_verification_tokens", {
         "user_id": user_id,
         "token": token,
     })
@@ -73,13 +73,13 @@ async def _create_and_send_token(user_id: str, email: str) -> bool:
 @router.post("/register", status_code=HTTPStatus.CREATED)
 async def register(data: RegisterRequest):
     """Регистрация нового пользователя."""
-    if get_user_by_email(data.email):
+    if await get_user_by_email(data.email):
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail=ErrorMessages.USER_ALREADY_EXISTS,
         )
 
-    user = create_user(data.email, data.password)
+    user = await create_user(data.email, data.password)
     user_id = str(user["id"]) if isinstance(user, dict) else str(user[0]["id"])
 
     await _create_and_send_token(user_id, data.email)
@@ -93,13 +93,13 @@ async def register(data: RegisterRequest):
 
 @router.get("/verify-email")
 async def verify_email(token: str = ""):
-    """Подтверждение email по ссылке из письма. Редиректит на фронтенд."""
+    """Подтверждение email по ссылке из письма."""
     if not token:
         return RedirectResponse(
             url=f"{Config.FRONTEND_URL}/login?error=invalid_verification_token"
         )
 
-    rows = table_select(
+    rows = await table_select_async(
         "email_verification_tokens",
         filters={"token": token, "used": False},
         limit=1,
@@ -121,13 +121,11 @@ async def verify_email(token: str = ""):
             url=f"{Config.FRONTEND_URL}/login?error=verification_token_expired"
         )
 
-    table_update("email_verification_tokens", {"used": True}, {"id": row["id"]})
-    table_update("users", {"email_verified": True}, {"id": str(row["user_id"])})
+    await table_update_async("email_verification_tokens", {"used": True}, filters={"id": row["id"]})
+    await table_update_async("users", {"email_verified": True}, filters={"id": str(row["user_id"])})
 
-    user = None
-    users = table_select("users", filters={"id": str(row["user_id"])}, limit=1)
-    if users:
-        user = users[0]
+    users = await table_select_async("users", filters={"id": str(row["user_id"])}, limit=1)
+    user = users[0] if users else None
 
     if not user:
         return RedirectResponse(
@@ -142,15 +140,15 @@ async def verify_email(token: str = ""):
 
 @router.post("/resend-verification")
 async def resend_verification(data: ResendVerificationRequest):
-    """Повторная отправка письма с подтверждением (не чаще 1 раза в 60 с)."""
-    user = get_user_by_email(data.email)
+    """Повторная отправка письма с подтверждением."""
+    user = await get_user_by_email(data.email)
     if not user:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Пользователь не найден")
 
     if user.get("email_verified"):
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Email уже подтверждён")
 
-    last_tokens = table_select(
+    last_tokens = await table_select_async(
         "email_verification_tokens",
         filters={"user_id": str(user["id"])},
         order={"column": "created_at", "desc": True},
@@ -179,7 +177,7 @@ async def resend_verification(data: ResendVerificationRequest):
 @router.post("/login")
 async def login(data: LoginRequest):
     """Вход пользователя в систему."""
-    user = get_user_by_email(data.email)
+    user = await get_user_by_email(data.email)
     if not user or not user.get("password_hash"):
         raise HTTPException(
             status_code=HTTPStatus.UNAUTHORIZED,
@@ -231,7 +229,7 @@ async def update_profile(
 ):
     """Обновление профиля пользователя."""
     try:
-        updated_user = update_user(
+        updated_user = await update_user(
             user_id=user["id"],
             name=data.name,
             email=data.email,
@@ -339,10 +337,10 @@ async def google_callback(code: str = None, error: str = None, state: str = None
         )
 
     name = userinfo.get("name") or userinfo.get("given_name", "")
-    user = create_or_get_user_oauth(email=email, name=name)
+    user = await create_or_get_user_oauth(email=email, name=name)
 
     if not user.get("email_verified"):
-        table_update("users", {"email_verified": True}, {"id": str(user["id"])})
+        await table_update_async("users", {"email_verified": True}, filters={"id": str(user["id"])})
 
     jwt_token = create_access_token(identity=email)
 
@@ -360,7 +358,7 @@ async def change_password(
 ):
     """Смена пароля пользователя."""
     try:
-        update_user_password(
+        await update_user_password(
             user_id=user["id"],
             current_password=data.current_password,
             new_password=data.new_password,
