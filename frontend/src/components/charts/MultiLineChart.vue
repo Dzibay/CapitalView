@@ -61,12 +61,19 @@ const props = defineProps({
   drawProgress: {
     type: Number,
     default: 1
+  },
+  /** Горизонтали min/max и подписи справа (как на референсе) */
+  showMinMaxGuides: {
+    type: Boolean,
+    default: true
   }
 })
 
 const chartCanvas = ref(null)
 let chartInstance = null
 let chartResizeObserver = null
+/** Подхватывается плагином min/max до первого draw (в т.ч. при new Chart) */
+let mlMinMaxPayload = null
 
 function attachChartResizeObserver() {
   if (chartResizeObserver) {
@@ -107,6 +114,72 @@ const crosshairPlugin = {
     ctx.moveTo(x, chartArea.top)
     ctx.lineTo(x, chartArea.bottom)
     ctx.stroke()
+    ctx.restore()
+  }
+}
+
+const MIN_MAX_GUIDE_LINE = '#d1d5db'
+const MIN_MAX_GUIDE_TEXT = '#94a3b8'
+
+/** Линии на уровнях глобального min/max ряда и подписи «max: …» / «min: …» у правого края области графика */
+const minMaxGuidePlugin = {
+  id: 'minMaxGuides',
+  beforeDraw(chart) {
+    chart.$mlMinMax = mlMinMaxPayload
+  },
+  afterDraw(chart) {
+    const mm = chart.$mlMinMax
+    if (!mm?.format) return
+    const { min: vMin, max: vMax, format } = mm
+    if (typeof vMax !== 'number' || !Number.isFinite(vMax)) return
+
+    const hasMinGuide = typeof vMin === 'number' && Number.isFinite(vMin)
+    const { ctx, chartArea, scales } = chart
+    const yScale = scales.y
+    if (!chartArea || !yScale) return
+
+    const max = vMax
+    const maxP = yScale.getPixelForValue(max)
+    const { top, bottom, left, right } = chartArea
+
+    ctx.save()
+    ctx.strokeStyle = MIN_MAX_GUIDE_LINE
+    ctx.lineWidth = 1
+    ctx.setLineDash([4, 4])
+    ctx.font = `300 10px ${LABEL_FONT}`
+    ctx.fillStyle = MIN_MAX_GUIDE_TEXT
+    ctx.textAlign = 'right'
+
+    const drawOne = (y, label, baseline, dy) => {
+      const yy = Math.min(bottom, Math.max(top, y))
+      ctx.beginPath()
+      ctx.moveTo(left, yy)
+      ctx.lineTo(right, yy)
+      ctx.stroke()
+      ctx.textBaseline = baseline
+      ctx.fillText(label, right - 6, yy + dy)
+    }
+
+    if (!hasMinGuide) {
+      const off = 5
+      drawOne(maxP, `max: ${format(max)}`, 'bottom', -off)
+      ctx.restore()
+      return
+    }
+
+    const min = vMin
+    const minP = yScale.getPixelForValue(min)
+    const gap = Math.abs(maxP - minP)
+    const tight = min !== max && gap < 22
+    const off = tight ? 3 : 5
+
+    if (min === max) {
+      drawOne(maxP, `max: ${format(max)}`, 'bottom', -off)
+    } else {
+      drawOne(maxP, `max: ${format(max)}`, 'bottom', -off)
+      drawOne(minP, `min: ${format(min)}`, 'top', off)
+    }
+
     ctx.restore()
   }
 }
@@ -721,6 +794,24 @@ const renderChart = (aggr, boundsAggr = null) => {
   const maxValue = allValues.length ? Math.max(...allValues) : 100
   const range = maxValue - minValue
 
+  const positiveValues = allValues.filter((v) => v > 0)
+  const guideMinPositive = positiveValues.length ? Math.min(...positiveValues) : null
+
+  mlMinMaxPayload =
+    props.showMinMaxGuides && allValues.length
+      ? {
+          min: guideMinPositive,
+          max: maxValue,
+          format: (v) => {
+            try {
+              return props.formatCurrency(v)
+            } catch {
+              return String(v)
+            }
+          }
+        }
+      : null
+
   let yMin, yMax
 
   if (props.period === 'All') {
@@ -805,7 +896,7 @@ const renderChart = (aggr, boundsAggr = null) => {
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: { labels: aggr.labels, datasets },
-    plugins: [crosshairPlugin, xTickRelayoutPlugin],
+    plugins: [crosshairPlugin, xTickRelayoutPlugin, minMaxGuidePlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
