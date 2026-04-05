@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Building2, PieChart, TrendingDown, Hash, History, LineChart } from 'lucide-vue-next'
+import { Building2, PieChart, TrendingDown, Hash, History, LineChart, Coins } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import MultiLineChart from '../components/charts/MultiLineChart.vue'
@@ -14,10 +14,7 @@ import {
   Widget 
 } from '../components/widgets/base'
 import { AssetPortfolioStatsWidget } from '../components/widgets/composite'
-import { 
-  OperationsListWidget, 
-  AssetPayoutsListWidget 
-} from '../components/widgets/lists'
+import { OperationsListWidget } from '../components/widgets/lists'
 import CustomSelect from '../components/base/CustomSelect.vue'
 import ChartVariantSelect from '../components/base/ChartVariantSelect.vue'
 import ChartOptionsMenu from '../components/base/ChartOptionsMenu.vue'
@@ -1515,19 +1512,24 @@ const getPayoutTypeLabel = (type) => {
   return 'Выплата'
 }
 
-const getPayoutTypeClass = (type) => {
-  if (typeof type === 'string') {
-    const t = type.toLowerCase()
-    if (t.includes('див') || t.includes('dividend')) return 'dividend'
-    if (t.includes('купон') || t.includes('coupon')) return 'coupon'
-    if (t.includes('аморт') || t.includes('amortization')) return 'amortization'
-  }
-  return 'other'
+/** Статус строки выплаты: по дате выплаты относительно сегодняшнего дня */
+const getPayoutStatus = (p) => {
+  const payStr = normalizeDateToString(p.payment_date || p.date)
+  if (!payStr) return { key: 'unknown', label: '—' }
+  const todayStr = normalizeDateToString(new Date())
+  if (payStr > todayStr) return { key: 'forecast', label: 'Прогноз' }
+  return { key: 'paid', label: 'Выплачены' }
 }
 
-const formatPayoutDate = (date) => {
-  if (!date) return '-'
-  return formatDateForDisplay(date)
+const payoutTableRows = computed(() =>
+  sortedPayouts.value.map((p) => ({ p, status: getPayoutStatus(p) }))
+)
+
+const formatPayoutDividendYield = (y) => {
+  if (y == null || y === '') return '—'
+  const n = Number(y)
+  if (Number.isNaN(n)) return '—'
+  return `${n.toFixed(2)} %`
 }
 
 // Нормализация типа операции (как на странице Transactions)
@@ -2003,10 +2005,63 @@ async function handlePortfolioChange(portfolioId) {
       <template v-if="selectedTab === 'dividends'">
         <div class="widgets-grid">
           <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
-            <AssetPayoutsListWidget
-              :payouts="payouts?.history || []"
-              :currency="assetCurrency"
-            />
+            <Widget title="История выплат" :icon="Coins">
+              <div class="table-container">
+                <table class="transactions-table payouts-history-table">
+                  <thead>
+                    <tr>
+                      <th>Статус</th>
+                      <th>Дата выплаты</th>
+                      <th>Тип выплаты</th>
+                      <th>Дата последней покупки</th>
+                      <th>Дата отсечки</th>
+                      <th class="text-right">Сумма</th>
+                      <th class="text-right">Доходность, %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="({ p, status }, idx) in payoutTableRows"
+                      :key="p.id ?? `payout-${idx}`"
+                      class="tx-row"
+                    >
+                      <td>
+                        <span
+                          class="payout-status-badge"
+                          :class="{
+                            'payout-status-badge--paid': status.key === 'paid',
+                            'payout-status-badge--forecast': status.key === 'forecast',
+                            'payout-status-badge--unknown': status.key === 'unknown'
+                          }"
+                        >
+                          {{ status.label }}
+                        </span>
+                      </td>
+                      <td class="td-date">{{ formatDate(p.payment_date || p.date) }}</td>
+                      <td>
+                        <span :class="['badge', 'badge-' + normalizeType(p.type)]">
+                          {{ getPayoutTypeLabel(p.type) }}
+                        </span>
+                      </td>
+                      <td class="td-date">{{ p.last_buy_date ? formatDate(p.last_buy_date) : '—' }}</td>
+                      <td class="td-date">{{ p.record_date ? formatDate(p.record_date) : '—' }}</td>
+                      <td class="text-right num-font font-semibold text-green">
+                        {{ formatOperationAmount(Math.abs(Number(p.value) || 0), assetCurrency) }}
+                      </td>
+                      <td class="text-right num-font">{{ formatPayoutDividendYield(p.dividend_yield) }}</td>
+                    </tr>
+                    <tr v-if="payoutTableRows.length === 0">
+                      <td colspan="7" class="empty-cell">
+                        <div class="empty-state">
+                          <span class="empty-icon">🔍</span>
+                          <p>Нет данных о выплатах</p>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Widget>
           </WidgetContainer>
         </div>
       </template>
@@ -2533,6 +2588,30 @@ async function handlePortfolioChange(portfolioId) {
 .badge-amortization {
   background: rgba(251, 146, 60, 0.1);
   color: var(--payout-amortizations, #fb923c);
+}
+
+.payout-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.payout-status-badge--paid {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.payout-status-badge--forecast {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.payout-status-badge--unknown {
+  background: #f3f4f6;
+  color: #6b7280;
 }
 
 .badge-other {
