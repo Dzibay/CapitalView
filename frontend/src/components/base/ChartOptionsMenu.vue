@@ -1,15 +1,17 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 
-const props = defineProps({
+defineProps({
   options: {
     type: Array,
     required: true
-    // [{ id: string, label: string, modelValue: boolean }]
+    // Toggle (по умолчанию): { id, label, modelValue }
+    // Заголовок секции: { type: 'sectionTitle', label }
+    // Радио: { type: 'radio', group, id, label, selected }
   }
 })
 
-const emit = defineEmits(['toggle'])
+const emit = defineEmits(['toggle', 'radio'])
 
 const open = ref(false)
 const btnRef = ref(null)
@@ -19,8 +21,23 @@ function toggle() {
   open.value = !open.value
 }
 
+function optionRowKey(opt, idx) {
+  if (opt.type === 'radio') return `radio-${opt.group}-${opt.id}`
+  if (opt.type === 'sectionTitle') return `section-${idx}`
+  return String(opt.id)
+}
+
+function isToggleOption(opt) {
+  return opt.type !== 'radio' && opt.type !== 'sectionTitle'
+}
+
 function onToggle(id, current) {
   emit('toggle', id, !current)
+}
+
+function onRadioSelect(opt) {
+  emit('radio', opt.group, opt.id)
+  open.value = false
 }
 
 function onClickOutside(e) {
@@ -35,7 +52,6 @@ function adjustPosition() {
   if (!open.value || !menuRef.value || !btnRef.value) return
   const mr = menuRef.value.getBoundingClientRect()
   const br = btnRef.value.getBoundingClientRect()
-  const vw = window.innerWidth
 
   if (br.right - mr.width < 8) {
     menuRef.value.style.left = '0'
@@ -78,17 +94,37 @@ onBeforeUnmount(() => {
 
     <Transition name="chart-opts-dropdown">
       <div v-if="open" ref="menuRef" class="chart-options-dropdown">
-        <div
-          v-for="opt in options"
-          :key="opt.id"
-          class="chart-options-item"
-          @click="onToggle(opt.id, opt.modelValue)"
-        >
-          <span class="chart-options-item-track" :class="{ 'is-on': opt.modelValue }">
-            <span class="chart-options-item-thumb" />
-          </span>
-          <span class="chart-options-item-label">{{ opt.label }}</span>
-        </div>
+        <template v-for="(opt, idx) in options" :key="optionRowKey(opt, idx)">
+          <div
+            v-if="opt.type === 'sectionTitle'"
+            class="chart-options-section-title"
+          >
+            {{ opt.label }}
+          </div>
+          <div
+            v-else-if="opt.type === 'radio'"
+            class="chart-options-item chart-options-item--radio"
+            @click.stop="onRadioSelect(opt)"
+          >
+            <span
+              class="chart-options-radio-outer"
+              :class="{ 'is-selected': opt.selected }"
+            >
+              <span v-if="opt.selected" class="chart-options-radio-inner" />
+            </span>
+            <span class="chart-options-item-label">{{ opt.label }}</span>
+          </div>
+          <div
+            v-else-if="isToggleOption(opt)"
+            class="chart-options-item"
+            @click="onToggle(opt.id, opt.modelValue)"
+          >
+            <span class="chart-options-item-track" :class="{ 'is-on': opt.modelValue }">
+              <span class="chart-options-item-thumb" />
+            </span>
+            <span class="chart-options-item-label">{{ opt.label }}</span>
+          </div>
+        </template>
       </div>
     </Transition>
   </div>
@@ -147,6 +183,15 @@ onBeforeUnmount(() => {
   transform: scale(0.95) translateY(-4px);
 }
 
+.chart-options-section-title {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9ca3af;
+}
+
 .chart-options-item {
   display: flex;
   align-items: center;
@@ -158,6 +203,31 @@ onBeforeUnmount(() => {
 }
 .chart-options-item:hover {
   background: #f3f4f6;
+}
+
+.chart-options-item--radio {
+  gap: 10px;
+}
+
+.chart-options-radio-outer {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #d1d5db;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s ease;
+}
+.chart-options-radio-outer.is-selected {
+  border-color: #527de5;
+}
+.chart-options-radio-inner {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #527de5;
 }
 
 .chart-options-item-track {
