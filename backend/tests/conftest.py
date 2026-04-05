@@ -186,36 +186,36 @@ def mock_db_connection():
 
 @pytest.fixture
 def mock_table_select():
-    """Мок для table_select."""
-    with patch('app.infrastructure.database.postgres_service.table_select') as mock:
+    """Мок для table_select_async."""
+    with patch('app.infrastructure.database.postgres_async.table_select_async') as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_table_insert():
-    """Мок для table_insert."""
-    with patch('app.infrastructure.database.postgres_service.table_insert') as mock:
+    """Мок для table_insert_async."""
+    with patch('app.infrastructure.database.postgres_async.table_insert_async') as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_table_update():
-    """Мок для table_update."""
-    with patch('app.infrastructure.database.postgres_service.table_update') as mock:
+    """Мок для table_update_async."""
+    with patch('app.infrastructure.database.postgres_async.table_update_async') as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_table_delete():
-    """Мок для table_delete."""
-    with patch('app.infrastructure.database.postgres_service.table_delete') as mock:
+    """Мок для table_delete_async."""
+    with patch('app.infrastructure.database.postgres_async.table_delete_async') as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_rpc():
-    """Мок для rpc (stored procedures)."""
-    with patch('app.infrastructure.database.postgres_service.rpc') as mock:
+    """Мок для rpc_async."""
+    with patch('app.infrastructure.database.postgres_async.rpc_async') as mock:
         yield mock
 
 

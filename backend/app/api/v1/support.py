@@ -3,7 +3,7 @@ API endpoints для поддержки.
 """
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from app.infrastructure.database.postgres_service import table_insert
+from app.infrastructure.database.database_service import table_insert_async
 from app.utils.response import success_response
 from app.constants import HTTPStatus
 from app.core.dependencies import get_current_user
@@ -22,7 +22,7 @@ async def send_support_message(
     user: dict = Depends(get_current_user)
 ):
     """Отправка сообщения в поддержку."""
-    result = table_insert("support_messages", {
+    result = await table_insert_async("support_messages", {
         "user_id": str(user["id"]),
         "message": data.message.strip(),
     })

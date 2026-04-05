@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from app.core.dependencies import get_current_user
 from app.utils.response import success_response
 from app.infrastructure.database.repositories.missed_payout_repository import MissedPayoutRepository
-from app.domain.services.access_control_service import check_portfolio_asset_access
+from app.domain.services.access_control_service import check_portfolio_asset_access, check_portfolio_access
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
 from app.domain.services.operations_service import apply_operations
 from app.infrastructure.cache import invalidate
@@ -36,19 +36,13 @@ async def get_missed_payouts_route(
     portfolio_id: Optional[int] = None,
     user: dict = Depends(get_current_user)
 ):
-    """
-    Получает список неполученных выплат пользователя.
-    
-    Args:
-        portfolio_id: ID портфеля (опционально, если не указан - все портфели)
-        user: Текущий пользователь из токена
-    """
+    """Получает список неполученных выплат пользователя."""
     try:
-        payouts = await _missed_payout_repository.get_user_missed_payouts_async(
+        payouts = await _missed_payout_repository.get_user_missed_payouts(
             user_id=user["id"],
             portfolio_id=portfolio_id
         )
-        
+
         return success_response(data={"missed_payouts": payouts})
     except Exception as e:
         raise HTTPException(
@@ -63,23 +57,17 @@ async def delete_missed_payouts_batch_route(
     keys: List[MissedPayoutKey] = Body(...),
     user: dict = Depends(get_current_user)
 ):
-    """
-    Удаляет несколько неполученных выплат (игнорирует их).
-    
-    Args:
-        keys: Список пар (portfolio_asset_id, payout_id)
-        user: Текущий пользователь из токена
-    """
+    """Удаляет несколько неполученных выплат."""
     try:
         if not keys:
             raise HTTPException(
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail="Список не может быть пустым"
             )
-        
-        payouts = await _missed_payout_repository.get_user_missed_payouts_async(user_id=user["id"])
+
+        payouts = await _missed_payout_repository.get_user_missed_payouts(user_id=user["id"])
         allowed: Set[Tuple[int, int]] = {_missed_payout_row_key(p) for p in payouts}
-        
+
         requested = {(k.portfolio_asset_id, k.payout_id) for k in keys}
         invalid = requested - allowed
         if invalid:
@@ -87,9 +75,9 @@ async def delete_missed_payouts_batch_route(
                 status_code=HTTPStatus.FORBIDDEN,
                 detail=f"Некоторые выплаты не найдены или не принадлежат пользователю: {sorted(invalid)}"
             )
-        
+
         deleted_count = await _missed_payout_repository.delete_missed_payouts_batch(sorted(requested))
-        
+
         return success_response(
             data={"deleted_count": deleted_count},
             message=f"Успешно удалено {deleted_count} неполученных выплат"
@@ -107,32 +95,23 @@ async def check_missed_payouts_route(
     portfolio_asset_id: int,
     user: dict = Depends(get_current_user)
 ):
-    """
-    Вручную запускает проверку неполученных выплат для актива в портфеле.
-    
-    Args:
-        portfolio_asset_id: ID актива в портфеле
-        user: Текущий пользователь из токена
-    """
+    """Вручную запускает проверку неполученных выплат для актива."""
     try:
-        # Проверяем доступ к активу
-        check_portfolio_asset_access(portfolio_asset_id, user["id"])
-        
-        # Получаем информацию об активе
+        await check_portfolio_asset_access(portfolio_asset_id, user["id"])
+
         portfolio_asset_repo = PortfolioAssetRepository()
-        portfolio_asset = await portfolio_asset_repo.get_by_id_async(portfolio_asset_id)
-        
+        portfolio_asset = await portfolio_asset_repo.get_by_id(portfolio_asset_id)
+
         if not portfolio_asset:
             raise HTTPException(
                 status_code=HTTPStatus.NOT_FOUND,
                 detail="Актив в портфеле не найден"
             )
-        
-        # Запускаем проверку
+
         missed_count = await _missed_payout_repository.check_missed_payouts(
             portfolio_asset_id=portfolio_asset_id
         )
-        
+
         return success_response(
             data={"missed_count": missed_count},
             message=f"Проверка завершена. Найдено неполученных выплат: {missed_count}"
@@ -151,26 +130,15 @@ async def check_missed_payouts_for_portfolio_route(
     portfolio_id: int,
     user: dict = Depends(get_current_user)
 ):
-    """
-    Запускает проверку неполученных выплат для всех активов портфеля.
-    Вызывается после завершения импорта от брокера или вручную.
-    Выполняется в фоне, не блокирует выполнение.
-    
-    Args:
-        portfolio_id: ID портфеля
-        user: Текущий пользователь из токена
-    """
+    """Запускает проверку неполученных выплат для всех активов портфеля."""
     try:
-        # Проверяем доступ к портфелю
-        from app.domain.services.access_control_service import check_portfolio_access
-        check_portfolio_access(portfolio_id, user["id"])
-        
-        # Запускаем проверку в фоне (не ждем завершения)
+        await check_portfolio_access(portfolio_id, user["id"])
+
         import asyncio
         asyncio.create_task(
             _missed_payout_repository.check_missed_payouts_for_portfolio(portfolio_id)
         )
-        
+
         return success_response(
             message="Проверка неполученных выплат запущена в фоне"
         )
@@ -187,21 +155,13 @@ async def check_missed_payouts_for_portfolio_route(
 async def check_missed_payouts_for_user_route(
     user: dict = Depends(get_current_user)
 ):
-    """
-    Запускает проверку неполученных выплат для всех активов пользователя.
-    Вызывается после завершения импорта от брокера или вручную.
-    Выполняется в фоне, не блокирует выполнение.
-    
-    Args:
-        user: Текущий пользователь из токена
-    """
+    """Запускает проверку неполученных выплат для всех активов пользователя."""
     try:
-        # Запускаем проверку в фоне (не ждем завершения)
         import asyncio
         asyncio.create_task(
             _missed_payout_repository.check_missed_payouts_for_user(user["id"])
         )
-        
+
         return success_response(
             message="Проверка неполученных выплат запущена в фоне для всех портфелей"
         )
@@ -220,26 +180,18 @@ async def add_operations_from_missed_payouts_batch_route(
     keys: List[MissedPayoutKey] = Body(...),
     user: dict = Depends(get_current_user)
 ):
-    """
-    Создает операции выплат (дивиденды, купоны, амортизации) из списка неполученных выплат батчем.
-    Использует apply_operations_batch для эффективной обработки всех операций за один раз.
-    После успешного создания операций удаляет соответствующие записи из missed_payouts.
-    
-    Args:
-        keys: Список пар (portfolio_asset_id, payout_id) для создания операций
-        user: Текущий пользователь из токена
-    """
+    """Создает операции выплат из списка неполученных выплат батчем."""
     try:
         if not keys:
             raise HTTPException(
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail="Список не может быть пустым"
             )
-        
-        payouts = await _missed_payout_repository.get_user_missed_payouts_async(user_id=user["id"])
+
+        payouts = await _missed_payout_repository.get_user_missed_payouts(user_id=user["id"])
         payout_dict = {_missed_payout_row_key(p): p for p in payouts}
         allowed = set(payout_dict.keys())
-        
+
         ordered_keys: List[Tuple[int, int]] = []
         seen_req: Set[Tuple[int, int]] = set()
         for k in keys:
@@ -247,20 +199,19 @@ async def add_operations_from_missed_payouts_batch_route(
             if t not in seen_req:
                 seen_req.add(t)
                 ordered_keys.append(t)
-        
+
         invalid = seen_req - allowed
         if invalid:
             raise HTTPException(
                 status_code=HTTPStatus.FORBIDDEN,
                 detail=f"Некоторые выплаты не найдены или не принадлежат пользователю: {sorted(invalid)}"
             )
-        
+
         selected_payouts = [payout_dict[t] for t in ordered_keys]
-        
+
         operations_list = []
         for payout in selected_payouts:
             payout_type = (payout.get("payout_type") or "").lower()
-            # operations_type: Dividend=3, Coupon=4, Amortization=9 (init.sql)
             if payout_type == "coupon":
                 operation_type = 4
             elif payout_type == "amortization":
@@ -276,8 +227,6 @@ async def add_operations_from_missed_payouts_batch_route(
             if not operation_date:
                 continue
 
-            # Финальная амортизация (погашение) → транзакция с quantity+price,
-            # которая уменьшит количество актива через FIFO
             if payout_type == "amortization" and payout.get("is_last_amortization"):
                 quantity = float(payout.get("quantity_on_date") or 0)
                 price = float(payout.get("payout_value") or 0)
@@ -295,7 +244,6 @@ async def add_operations_from_missed_payouts_batch_route(
                     )
                     continue
 
-            # Обычная выплата (дивиденд, купон, частичная амортизация) → cash операция
             expected_amount = payout.get("expected_amount")
             if expected_amount is None or expected_amount == 0:
                 expected_amount = payout.get("payout_value") or 0
@@ -327,17 +275,13 @@ async def add_operations_from_missed_payouts_batch_route(
                 message=f"Платежи для создания операций не найдены"
             )
 
-        result = apply_operations(
+        result = await apply_operations(
             user_id=user["id"],
             operations=operations_list,
         )
-        
-        # Получаем уникальные portfolio_asset_id для проверки неполученных выплат
-        # check_missed_payouts автоматически обновит таблицу missed_payouts
+
         portfolio_asset_ids = set(p.get("portfolio_asset_id") for p in selected_payouts if p.get("portfolio_asset_id"))
-        
-        # Проверяем неполученные выплаты для всех затронутых активов
-        # Это автоматически обновит таблицу missed_payouts (удалит выплаты, для которых созданы операции)
+
         for portfolio_asset_id in portfolio_asset_ids:
             try:
                 await _missed_payout_repository.check_missed_payouts(portfolio_asset_id)
@@ -345,7 +289,7 @@ async def add_operations_from_missed_payouts_batch_route(
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Ошибка при проверке неполученных выплат для актива {portfolio_asset_id}: {e}", exc_info=True)
-        
+
         return success_response(
             data={
                 "inserted_count": result.get("inserted_count", 0),

@@ -7,7 +7,7 @@ from app.domain.services.portfolio_aggregation import (
     merge_analytics_arrays_into_maps,
     convert_analytics_maps_to_lists,
 )
-from app.infrastructure.database.database_service import rpc
+from app.infrastructure.database.database_service import rpc_async
 from app.infrastructure.cache import cache
 from app.core.logging import get_logger
 from app.utils.date import normalize_date_to_day_string
@@ -587,7 +587,7 @@ async def get_dashboard_data(user_id: int):
     """
     time1 = time()
 
-    data = rpc("get_dashboard_data_complete", {"p_user_id": user_id})
+    data = await rpc_async("get_dashboard_data_complete", {"p_user_id": user_id})
     logger.debug(f'SQL RPC (complete): {time() - time1:.2f} сек')
 
     if not data:

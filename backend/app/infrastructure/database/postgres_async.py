@@ -34,13 +34,16 @@ async def get_connection_pool():
     }
     
     try:
-        # Создаем пул соединений (min=2, max=10)
         _connection_pool = await asyncpg.create_pool(
-            min_size=2,
-            max_size=10,
-            **db_config
+            min_size=Config.DB_POOL_ASYNC_MIN,
+            max_size=Config.DB_POOL_ASYNC_MAX,
+            **db_config,
         )
-        logger.info("Пул асинхронных соединений PostgreSQL создан успешно")
+        logger.info(
+            "Пул асинхронных соединений PostgreSQL создан (asyncpg min=%s max=%s)",
+            Config.DB_POOL_ASYNC_MIN,
+            Config.DB_POOL_ASYNC_MAX,
+        )
         return _connection_pool
     except Exception as e:
         logger.error(f"Ошибка создания пула асинхронных соединений PostgreSQL: {e}")

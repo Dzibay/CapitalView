@@ -7,7 +7,7 @@
 import asyncio
 import hashlib
 import json
-from app.infrastructure.database.database_service import rpc
+from app.infrastructure.database.database_service import rpc_async, table_select_async
 from app.core.logging import get_logger
 from app.infrastructure.cache.redis_client_sync import (
     redis_sync_available,
@@ -161,8 +161,8 @@ def _reset_reference_after_load_failure() -> None:
     _reset_memory_reference()
 
 
-def _load_reference_into_cache() -> None:
-    raw = rpc("get_reference_cache_payload", {})
+async def _load_reference_into_cache() -> None:
+    raw = await rpc_async("get_reference_cache_payload", {})
     bundle = _parse_rpc_dict(raw)
     ref = bundle.get("reference") or {}
     if not isinstance(ref, dict):
@@ -195,17 +195,17 @@ def _reference_exists_in_store() -> bool:
     return _memory_fallback.get("reference") is not None
 
 
-def _ensure_assets_search_cache() -> None:
+async def _ensure_assets_search_cache() -> None:
     if redis_sync_available():
         if not redis_sync_get(REF_FINGERPRINT_KEY):
             try:
-                _load_reference_into_cache()
+                await _load_reference_into_cache()
             except Exception as e:
                 logger.error("get_reference_cache_payload: %s", e, exc_info=True)
             return
         if not _sync_worker_bundle_from_redis():
             try:
-                _load_reference_into_cache()
+                await _load_reference_into_cache()
             except Exception as e:
                 logger.error("Повторная загрузка справочника: %s", e, exc_info=True)
         return
@@ -213,16 +213,16 @@ def _ensure_assets_search_cache() -> None:
     if _memory_fallback.get("assets_search_list") is not None:
         return
     try:
-        _load_reference_into_cache()
+        await _load_reference_into_cache()
     except Exception as e:
         logger.error("get_reference_cache_payload: %s", e, exc_info=True)
 
 
-def search_reference_assets_sync(query: str, limit: int = 25) -> list:
+async def search_reference_assets(query: str, limit: int = 25) -> list:
     q = (query or "").strip()
     if len(q) < 2:
         return []
-    _ensure_assets_search_cache()
+    await _ensure_assets_search_cache()
     if redis_sync_available():
         items = _worker_bundle.get("assets_list") or []
     else:
@@ -252,11 +252,11 @@ def _parse_asset_meta_rpc(raw) -> dict | None:
     return None
 
 
-def get_reference_asset_meta_sync(asset_id: int) -> dict | None:
+async def get_reference_asset_meta(asset_id: int) -> dict | None:
     if not asset_id:
         return None
     aid = int(asset_id)
-    _ensure_assets_search_cache()
+    await _ensure_assets_search_cache()
     if redis_sync_available():
         by_id = _worker_bundle.get("assets_by_id") or {}
     else:
@@ -264,21 +264,21 @@ def get_reference_asset_meta_sync(asset_id: int) -> dict | None:
     cached = by_id.get(aid)
     if cached is not None:
         return dict(cached)
-    return _parse_asset_meta_rpc(rpc("get_reference_asset_meta", {"p_asset_id": aid}))
+    return _parse_asset_meta_rpc(await rpc_async("get_reference_asset_meta", {"p_asset_id": aid}))
 
 
-def get_reference_data_cached():
+async def get_reference_data_cached():
     if redis_sync_available():
         if not redis_sync_get(REF_FINGERPRINT_KEY):
             try:
-                _load_reference_into_cache()
+                await _load_reference_into_cache()
             except Exception as e:
                 logger.error("Failed to load reference on demand: %s", e, exc_info=True)
                 _reset_reference_after_load_failure()
             return _worker_bundle.get("reference") or {}
         if not _sync_worker_bundle_from_redis():
             try:
-                _load_reference_into_cache()
+                await _load_reference_into_cache()
             except Exception as e:
                 logger.error("Failed to sync reference from Redis: %s", e, exc_info=True)
                 _reset_reference_after_load_failure()
@@ -286,7 +286,7 @@ def get_reference_data_cached():
 
     if _memory_fallback["reference"] is None:
         try:
-            _load_reference_into_cache()
+            await _load_reference_into_cache()
         except Exception as e:
             logger.error("Failed to load reference on demand: %s", e, exc_info=True)
             _reset_reference_after_load_failure()
@@ -300,9 +300,8 @@ async def init_reference_data_async():
 
     try:
         logger.info("Loading reference data on server startup...")
-        loop = asyncio.get_running_loop()
         await asyncio.wait_for(
-            loop.run_in_executor(None, _load_reference_into_cache),
+            _load_reference_into_cache(),
             timeout=30.0,
         )
         logger.info("Reference data loaded successfully")
@@ -314,23 +313,11 @@ async def init_reference_data_async():
         _reset_reference_after_load_failure()
 
 
-def init_reference_data():
-    try:
-        logger.info("Loading reference data on server startup...")
-        _load_reference_into_cache()
-        logger.info("Reference data loaded successfully")
-    except Exception as e:
-        logger.error("Failed to load reference data on startup: %s", e, exc_info=True)
-        _reset_reference_after_load_failure()
+async def get_brokers():
+    return await table_select_async("brokers", select="id, name", order={"column": "id"})
 
 
-def get_brokers():
-    from app.infrastructure.database.database_service import table_select
-
-    return table_select("brokers", select="id, name", order={"column": "id"})
-
-
-def get_brokers_cached():
+async def get_brokers_cached():
     if redis_sync_available():
         s = redis_sync_get(REF_BROKERS_KEY)
         if s:
@@ -339,7 +326,7 @@ def get_brokers_cached():
             except json.JSONDecodeError:
                 redis_sync_delete(REF_BROKERS_KEY)
         try:
-            rows = get_brokers()
+            rows = await get_brokers()
         except Exception as e:
             logger.error("Failed to load brokers: %s", e, exc_info=True)
             return []
@@ -349,7 +336,7 @@ def get_brokers_cached():
     if _memory_fallback["brokers"] is None:
         logger.warning("Brokers cache is empty, loading on demand")
         try:
-            _memory_fallback["brokers"] = get_brokers()
+            _memory_fallback["brokers"] = await get_brokers()
         except Exception as e:
             logger.error("Failed to load brokers on demand: %s", e, exc_info=True)
             _memory_fallback["brokers"] = []
@@ -366,12 +353,7 @@ async def init_brokers_async():
 
     try:
         logger.info("Loading brokers on server startup...")
-        loop = asyncio.get_running_loop()
-        result = await asyncio.wait_for(
-            loop.run_in_executor(None, get_brokers),
-            timeout=10.0,
-        )
-        rows = result or []
+        rows = await asyncio.wait_for(get_brokers(), timeout=10.0) or []
         if redis_sync_available():
             redis_sync_set(REF_BROKERS_KEY, json.dumps(rows, default=str, ensure_ascii=False))
         else:

@@ -19,7 +19,7 @@ from app.infrastructure.database.database_service import (
     rpc_async,
     table_select_async,
     table_insert_async,
-    get_connection_pool_async,
+    get_connection_pool,
 )
 from app.utils.date import (
     normalize_date_to_day_string,
@@ -61,7 +61,7 @@ async def _load_currency_rates(currency_assets_map: dict):
         return {}
 
     currency_rates = {}
-    pool = await get_connection_pool_async()
+    pool = await get_connection_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """

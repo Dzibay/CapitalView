@@ -33,14 +33,14 @@ async def create_asset_route(
     user: dict = Depends(get_current_user)
 ):
     """Создание нового актива."""
-    res = create_asset(user["email"], data)
-    
+    res = await create_asset(user["email"], data)
+
     if res.get("success") is False:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail=res.get("error", "Ошибка при создании актива")
         )
-    
+
     return success_response(
         data=res,
         message="Актив успешно создан",
@@ -55,19 +55,18 @@ async def delete_asset_route(
     user: dict = Depends(get_current_user)
 ):
     """Удаление актива."""
-    # Проверяем доступ к портфельному активу
-    check_portfolio_asset_access(asset_id, user["id"])
-    
+    await check_portfolio_asset_access(asset_id, user["id"])
+
     logger.debug(f"Попытка удаления актива (portfolio_asset_id): {asset_id}")
-    
-    res = delete_asset(asset_id)
-    
+
+    res = await delete_asset(asset_id)
+
     if res.get("success") is False:
         error_msg = res.get("error", "Неизвестная ошибка")
         logger.warning(f"Ошибка при удалении актива {asset_id}: {error_msg}")
         status_code = res.get("status_code", HTTPStatus.BAD_REQUEST)
         raise HTTPException(status_code=status_code, detail=error_msg)
-    
+
     return success_response(
         data=res,
         message="Актив успешно удален"
@@ -81,33 +80,32 @@ async def add_asset_price_route(
     user: dict = Depends(get_current_user)
 ):
     """Добавление цены актива."""
-    # Проверяем доступ к активу (для кастомных активов)
-    check_asset_access(data.asset_id, user["id"])
-    
+    await check_asset_access(data.asset_id, user["id"])
+
     logger.debug(f"Получены данные для добавления цены: {data.model_dump()}")
-    
+
     if hasattr(data.date, 'isoformat'):
         date_str = data.date.isoformat()
     elif isinstance(data.date, str):
         date_str = data.date
     else:
         date_str = str(data.date)
-    
+
     price_data = {
         "asset_id": data.asset_id,
         "price": data.price,
         "date": date_str
     }
-    
-    res = add_asset_price(price_data)
-    
+
+    res = await add_asset_price(price_data)
+
     if res.get("success") is False:
         logger.warning(f"Ошибка при добавлении цены: {res.get('error')}")
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail=res.get("error", "Ошибка при добавлении цены")
         )
-    
+
     return success_response(
         data=res,
         message="Цена актива успешно добавлена",
@@ -122,20 +120,16 @@ async def add_asset_prices_batch_route(
     user: dict = Depends(get_current_user)
 ):
     """Массовое добавление цен актива."""
-    # Проверяем доступ к активу (для кастомных активов)
-    check_asset_access(data.asset_id, user["id"])
-    
-    logger.debug(f"Получены данные для массового добавления цен: asset_id={data.asset_id}, count={len(data.prices)}")
-    
-    res = add_asset_prices_batch(data.asset_id, data.prices)
-    
+    await check_asset_access(data.asset_id, user["id"])
+
+    res = await add_asset_prices_batch(data.asset_id, data.prices)
+
     if res.get("success") is False:
-        logger.warning(f"Ошибка при массовом добавлении цен: {res.get('error')}")
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail=res.get("error", "Ошибка при массовом добавлении цен")
         )
-    
+
     return success_response(
         data=res,
         message=f"Успешно добавлено {res.get('count', 0)} цен",
@@ -149,18 +143,17 @@ async def get_asset_info_route(
     user: dict = Depends(get_current_user)
 ):
     """Получение информации об активе."""
-    # Проверяем доступ к активу (для кастомных активов)
-    check_asset_access(asset_id, user["id"])
-    
-    result = get_asset_info(asset_id)
-    
+    await check_asset_access(asset_id, user["id"])
+
+    result = await get_asset_info(asset_id)
+
     if not result.get("success"):
         status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
         raise HTTPException(
             status_code=status_code,
             detail=result.get("error", "Ошибка при получении информации об активе")
         )
-    
+
     return success_response(data=result)
 
 
@@ -173,17 +166,16 @@ async def get_asset_price_history_route(
     limit: int = Query(100000, ge=1)
 ):
     """Получение истории цен актива."""
-    # Проверяем доступ к активу (для кастомных активов)
-    check_asset_access(asset_id, user["id"])
-    
-    result = get_asset_price_history(asset_id, start_date, end_date, limit)
-    
+    await check_asset_access(asset_id, user["id"])
+
+    result = await get_asset_price_history(asset_id, start_date, end_date, limit)
+
     if not result.get("success"):
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail=result.get("error", "Ошибка при получении истории цен")
         )
-    
+
     return success_response(data=result)
 
 
@@ -195,17 +187,16 @@ async def get_asset_daily_values_route(
     to_date: Optional[str] = Query(None)
 ):
     """Получение истории стоимости актива для графика."""
-    # Проверяем доступ к портфельному активу
-    check_portfolio_asset_access(portfolio_asset_id, user["id"])
-    
-    result = get_asset_daily_values(portfolio_asset_id, from_date, to_date)
-    
+    await check_portfolio_asset_access(portfolio_asset_id, user["id"])
+
+    result = await get_asset_daily_values(portfolio_asset_id, from_date, to_date)
+
     if not result.get("success"):
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail=result.get("error", "Ошибка при получении истории стоимости актива")
         )
-    
+
     return success_response(data=result)
 
 
@@ -214,19 +205,18 @@ async def get_portfolio_asset_info_route(
     portfolio_asset_id: int,
     user: dict = Depends(get_current_user)
 ):
-    """Получение информации о портфельном активе (оптимизированная версия)."""
-    # Проверяем доступ к портфельному активу
-    check_portfolio_asset_access(portfolio_asset_id, user["id"])
-    
-    result = get_portfolio_asset_info(portfolio_asset_id, user["id"])
-    
+    """Получение информации о портфельном активе."""
+    await check_portfolio_asset_access(portfolio_asset_id, user["id"])
+
+    result = await get_portfolio_asset_info(portfolio_asset_id, user["id"])
+
     if not result.get("success"):
         status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
         raise HTTPException(
             status_code=status_code,
             detail=result.get("error", "Ошибка при получении информации о портфельном активе")
         )
-    
+
     return success_response(data=result)
 
 
@@ -238,17 +228,15 @@ async def move_asset_route(
     user: dict = Depends(get_current_user)
 ):
     """Перемещение актива в другой портфель."""
-    # Проверяем доступ к портфельному активу
-    check_portfolio_asset_access(portfolio_asset_id, user["id"])
-    # Проверяем доступ к целевому портфелю
-    check_portfolio_access(data.target_portfolio_id, user["id"])
-    
-    result = move_asset_to_portfolio(
+    await check_portfolio_asset_access(portfolio_asset_id, user["id"])
+    await check_portfolio_access(data.target_portfolio_id, user["id"])
+
+    result = await move_asset_to_portfolio(
         portfolio_asset_id=portfolio_asset_id,
         target_portfolio_id=data.target_portfolio_id,
         user_id=user["id"]
     )
-    
+
     if not result.get("success"):
         error = result.get("error", "")
         if "не найден" in error:
@@ -259,9 +247,9 @@ async def move_asset_route(
             status_code = HTTPStatus.BAD_REQUEST
         else:
             status_code = HTTPStatus.BAD_REQUEST
-        
+
         raise HTTPException(status_code=status_code, detail=error)
-    
+
     return success_response(
         data=result,
         message="Актив успешно перемещен в другой портфель"
@@ -274,15 +262,14 @@ async def get_asset_in_all_portfolios_route(
     user: dict = Depends(get_current_user)
 ):
     """Получение информации об активе во всех портфелях пользователя."""
-    # Проверяем доступ к активу (для кастомных активов)
-    check_asset_access(asset_id, user["id"])
-    
-    result = get_asset_in_all_portfolios(asset_id, user["id"])
-    
+    await check_asset_access(asset_id, user["id"])
+
+    result = await get_asset_in_all_portfolios(asset_id, user["id"])
+
     if not result.get("success"):
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail=result.get("error", "Ошибка при получении информации об активе в портфелях")
         )
-    
+
     return success_response(data=result)

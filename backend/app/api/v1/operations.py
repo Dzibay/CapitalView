@@ -1,6 +1,5 @@
 """
 API endpoints для работы с операциями по активам.
-Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Other.
 """
 from fastapi import APIRouter, Query, HTTPException, Depends
 from app.domain.services.operations_service import (
@@ -40,13 +39,12 @@ async def get_operations_route(
     limit: Optional[int] = Query(None)
 ):
     """Получение списка операций пользователя."""
-    # Проверяем доступ к портфелю, если указан
     if portfolio_id:
-        check_portfolio_access(portfolio_id, user["id"])
-    
+        await check_portfolio_access(portfolio_id, user["id"])
+
     start_date_parsed, end_date_parsed = parse_date_range(start_date, end_date)
 
-    data = get_operations(
+    data = await get_operations(
         user["id"],
         portfolio_id,
         start_date_parsed,
@@ -63,21 +61,17 @@ async def apply_operations_route(
     data: ApplyOperationsRequest,
     user: dict = Depends(get_current_user),
 ):
-    """
-    Универсальное создание операций.
-    Передается список операций, внутри вызывается один SQL `apply_operations_batch`.
-    """
+    """Универсальное создание операций."""
     try:
-        # Доступы проверяем до SQL, чтобы не было частичных изменений.
         for i, op in enumerate(data.operations):
             if op.portfolio_id:
-                check_portfolio_access(op.portfolio_id, user["id"])
+                await check_portfolio_access(op.portfolio_id, user["id"])
             if op.portfolio_asset_id:
-                check_portfolio_asset_access(op.portfolio_asset_id, user["id"])
+                await check_portfolio_asset_access(op.portfolio_asset_id, user["id"])
             if op.asset_id:
-                check_asset_access(op.asset_id, user["id"])
+                await check_asset_access(op.asset_id, user["id"])
 
-        result = apply_operations(
+        result = await apply_operations(
             user_id=user["id"],
             operations=[op.model_dump() for op in data.operations],
         )
@@ -104,12 +98,9 @@ async def apply_operations_updates_route(
     request: UpdateOperationsBatchRequest,
     user: dict = Depends(get_current_user)
 ):
-    """
-    Универсальное обновление операций (одна или много).
-    Принимает список updates и вызывает один update_operations_batch.
-    """
+    """Универсальное обновление операций."""
     ids = [u.operation_id for u in request.updates]
-    check_multiple_operations_access(ids, user["id"])
+    await check_multiple_operations_access(ids, user["id"])
     try:
         payload = [
             {
@@ -121,7 +112,7 @@ async def apply_operations_updates_route(
             }
             for u in request.updates
         ]
-        result = update_operations_batch(payload)
+        result = await update_operations_batch(payload)
         return success_response(
             data=result,
             message=f"Обновлено операций: {result.get('updated_count', 0)}"
@@ -142,27 +133,26 @@ async def delete_operations_route(
 ):
     """Batch удаление операций с пересчетом аналитики."""
     ids = request.ids
-    
+
     if not ids or not isinstance(ids, list):
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="ids must be a non-empty array"
         )
-    
-    # Проверяем доступ ко всем операциям
-    check_multiple_operations_access(ids, user["id"])
-    
+
+    await check_multiple_operations_access(ids, user["id"])
+
     try:
-        result = delete_operations_batch(ids)
-        
+        result = await delete_operations_batch(ids)
+
         if result.get("success") is False:
             raise HTTPException(
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=result.get("error", "Ошибка при удалении операций")
             )
-        
+
         deleted_count = result.get("deleted_count", 0)
-        
+
         return success_response(
             data=result,
             message=f"Удалено операций: {deleted_count}/{len(ids)}"

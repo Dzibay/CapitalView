@@ -87,7 +87,7 @@ async def get_current_user(
         return cached
 
     try:
-        user = get_user_by_email(email)
+        user = await get_user_by_email(email)
         if not user:
             raise NotFoundError("Пользователь")
         _user_cache[email] = user
