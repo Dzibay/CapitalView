@@ -25,6 +25,11 @@ class OperationRepository(BaseRepository):
         end_date: Optional[str] = None,
         limit: int = 1000,
     ) -> List[Dict[str, Any]]:
+        if limit is None:
+            limit = 1000
+        # rpc_async подставляет аргументы позиционно ($1..$n) в порядке ключей словаря.
+        # Сигнатура get_cash_operations: user_id, portfolio_id, start_date, end_date, limit.
+        # Нельзя опускать NULL из середины — иначе limit окажется на месте portfolio_id.
         params = {
             "p_user_id": user_id,
             "p_portfolio_id": portfolio_id,
@@ -32,8 +37,16 @@ class OperationRepository(BaseRepository):
             "p_end_date": end_date,
             "p_limit": limit,
         }
-        params = {k: v for k, v in params.items() if v is not None}
         return await rpc_async("get_cash_operations", params) or []
+
+    async def apply_operations_batch(self, p_operations: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        return await rpc_async("apply_operations_batch", {"p_operations": p_operations})
+
+    async def update_operations_batch(self, p_updates: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        return await rpc_async("update_operations_batch", {"p_updates": p_updates})
+
+    async def delete_operations_batch(self, operation_ids: List[int]) -> Optional[Dict[str, Any]]:
+        return await rpc_async("delete_operations_batch", {"p_operation_ids": operation_ids})
 
     # ─── Bulk ──────────────────────────────────────────────────
 

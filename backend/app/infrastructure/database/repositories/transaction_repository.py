@@ -17,10 +17,31 @@ class TransactionRepository(BaseRepository):
 
     # ─── RPC-методы ────────────────────────────────────────────
 
+    async def get_transactions(
+        self,
+        user_id: str,
+        portfolio_id: Optional[int] = None,
+        asset_name: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        params = {"p_user_id": user_id, "p_limit": limit or 1000}
+        if portfolio_id:
+            params["p_portfolio_id"] = portfolio_id
+        if asset_name:
+            params["p_asset_name"] = asset_name
+        if start_date:
+            params["p_start_date"] = start_date
+        if end_date:
+            params["p_end_date"] = end_date
+        return await rpc_async("get_transactions", params) or []
+
     async def get_user_transactions(self, user_id: str, limit: int = 1000) -> List[Dict[str, Any]]:
-        return await rpc_async("get_transactions", {
-            "p_user_id": user_id, "p_limit": limit,
-        }) or []
+        return await self.get_transactions(user_id, limit=limit)
+
+    async def delete_transactions_batch(self, transaction_ids: List[int]) -> Optional[Dict[str, Any]]:
+        return await rpc_async("delete_transactions_batch", {"p_transaction_ids": transaction_ids})
 
     async def get_portfolio_transactions(self, portfolio_id: int) -> List[Dict[str, Any]]:
         return await rpc_async("get_portfolio_transactions", {
