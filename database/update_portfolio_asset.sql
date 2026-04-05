@@ -3,52 +3,39 @@ RETURNS void
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    total_quantity numeric := 0;
-    total_cost numeric := 0;
     first_tx_date date;
+    total_quantity numeric := 0;
     avg_price numeric := 0;
-    r RECORD;
 BEGIN
     SELECT MIN(t.transaction_date)::date
     INTO first_tx_date
     FROM transactions AS t
     WHERE t.portfolio_asset_id = pa_id;
 
-    FOR r IN
-        SELECT t.transaction_type, t.quantity::numeric AS q, t.price::numeric AS p
-        FROM transactions AS t
-        WHERE t.portfolio_asset_id = pa_id
-        ORDER BY t.transaction_date, t.id
-    LOOP
-        IF r.transaction_type = 1 THEN
-            total_cost := total_cost + r.q * r.p;
-            total_quantity := total_quantity + r.q;
+    PERFORM rebuild_fifo_for_portfolio_asset(pa_id);
 
-        ELSIF r.transaction_type IN (2, 3) THEN
-            IF total_quantity > 0 THEN
-                avg_price := total_cost / total_quantity;
+    SELECT COALESCE(SUM(fl.remaining_qty), 0)
+    INTO total_quantity
+    FROM fifo_lots fl
+    WHERE fl.portfolio_asset_id = pa_id;
 
-                total_quantity := total_quantity - r.q;
-                IF total_quantity < 0 THEN
-                    total_quantity := 0;
-                    total_cost := 0;
-                ELSE
-                    total_cost := total_cost - avg_price * r.q;
-                END IF;
-            END IF;
-        END IF;
-    END LOOP;
+    IF total_quantity > 0 THEN
+        SELECT SUM(fl.remaining_qty * fl.price) / SUM(fl.remaining_qty)
+        INTO avg_price
+        FROM fifo_lots fl
+        WHERE fl.portfolio_asset_id = pa_id
+          AND fl.remaining_qty > 0;
+    ELSE
+        avg_price := 0;
+    END IF;
 
     UPDATE portfolio_assets AS pa
     SET
         quantity = COALESCE(total_quantity, 0),
-        average_price = CASE
-            WHEN total_quantity = 0 THEN 0
-            ELSE total_cost / total_quantity
-        END,
+        average_price = COALESCE(avg_price, 0),
         created_at = COALESCE(first_tx_date, pa.created_at)
     WHERE pa.id = pa_id;
 END;
 $$;
 
-COMMENT ON FUNCTION update_portfolio_asset(bigint) IS 'Пересчитывает quantity и average_price для portfolio_asset на основе всех транзакций. Использует FIFO метод для расчета средней цены при продажах';
+COMMENT ON FUNCTION update_portfolio_asset(bigint) IS 'Пересчитывает quantity и average_price по открытым FIFO-лотам (fifo_lots); лоты синхронизируются с транзакциями через rebuild_fifo_for_portfolio_asset';
