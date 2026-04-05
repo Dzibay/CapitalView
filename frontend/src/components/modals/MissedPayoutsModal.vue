@@ -159,6 +159,21 @@ const formatAmount = (amount) => {
   }).format(amount || 0)
 }
 
+/** Сумма к показу: expected_amount с бэка (в т.ч. 0); не подменять на payout_value из-за falsy 0 */
+const displayPayoutAmount = (payout) => {
+  const exp = payout?.expected_amount
+  if (exp != null && exp !== '') return Number(exp)
+  return Number(payout?.payout_value ?? 0)
+}
+
+const payoutTypeLabel = (payoutType) => {
+  const t = (payoutType || '').toLowerCase().trim()
+  if (t === 'coupon') return 'Купон'
+  if (t === 'amortization') return 'Амортизация'
+  if (t === 'dividend') return 'Дивиденд'
+  return 'Дивиденд'
+}
+
 // Вычисляемые свойства
 const hasSelected = computed(() => selectedPayouts.value.length > 0)
 const allSelected = computed(() => {
@@ -254,9 +269,9 @@ watch(() => props.show, (newVal) => {
                   <span class="asset-name">{{ payout.asset_name || payout.asset_ticker }}</span>
                   <span class="asset-ticker">({{ payout.asset_ticker }})</span>
                 </div>
-                <div class="payout-type" :class="payout.payout_type?.toLowerCase()">
+                <div class="payout-type" :class="payout.payout_type?.toLowerCase() || 'dividend'">
                   <Coins :size="14" />
-                  <span>{{ payout.payout_type === 'coupon' ? 'Купон' : 'Дивиденд' }}</span>
+                  <span>{{ payoutTypeLabel(payout.payout_type) }}</span>
                 </div>
               </div>
 
@@ -267,7 +282,7 @@ watch(() => props.show, (newVal) => {
                 </div>
                 <div class="detail-item">
                   <span class="amount-label">Сумма выплаты:</span>
-                  <span class="amount-value">{{ formatAmount(payout.expected_amount || payout.payout_value) }}</span>
+                  <span class="amount-value">{{ formatAmount(displayPayoutAmount(payout)) }}</span>
                 </div>
                 <div class="detail-item" v-if="payout.portfolio_name">
                   <span>Портфель: {{ payout.portfolio_name }}</span>
@@ -519,14 +534,20 @@ watch(() => props.show, (newVal) => {
   flex-shrink: 0;
 }
 
+/* Цвета как у бейджей типов в Transactions.vue (.badge-dividend / .badge-coupon / .badge-amortization) */
 .payout-type.coupon {
-  background-color: #fef3c7;
-  color: #92400e;
+  background-color: #ecfeff;
+  color: #06b6d4;
 }
 
 .payout-type.dividend {
-  background-color: #dbeafe;
-  color: #1e40af;
+  background-color: #eff6ff;
+  color: #2563eb;
+}
+
+.payout-type.amortization {
+  background-color: #f5f3ff;
+  color: #7c3aed;
 }
 
 .payout-details {

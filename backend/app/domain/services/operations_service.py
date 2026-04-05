@@ -17,7 +17,7 @@ def normalize_cash_operation_amount(operation_type: int, amount: float) -> float
     Приводит сумму cash-операции к каноническому знаку.
 
     Расходы (вывод, комиссия, налог) хранятся отрицательными; доходы (дивиденд,
-    купон, пополнение) — положительными. Пользователь может ввести комиссию 10000 —
+    купон, амортизация как денежная выплата, пополнение) — положительными. Пользователь может ввести комиссию 10000 —
     будет сохранено -10000.
 
     Тип 10 (Other) не меняем — знак остаётся как ввёл пользователь.
@@ -28,7 +28,7 @@ def normalize_cash_operation_amount(operation_type: int, amount: float) -> float
         return x
     if t in (6, 7, 8):
         return -abs(x)
-    if t in (3, 4, 5):
+    if t in (3, 4, 5, 9):
         return abs(x)
     return x
 
@@ -76,8 +76,8 @@ def apply_operations(
     """
     Универсальная сборка payload под SQL `apply_operations_batch`.
     Поддерживает:
-    - cash операции (Dividend/Coupon/Commission/Tax/Deposit/Withdraw/Other)
-    - transaction операции (Buy/Sell/Amortization)
+    - cash операции (Dividend/Coupon/Amortization без quantity/price/Commission/Tax/Deposit/Withdraw/Other)
+    - transaction операции (Buy/Sell; Amortization только если переданы quantity и price)
     - опцию create_deposit_operation для Buy, Commission, Tax (добавляет Deposit в тот же apply-оперант).
     """
     if not operations:
@@ -111,8 +111,9 @@ def apply_operations(
                     f"operations[{idx}] требует portfolio_id или portfolio_asset_id (чтобы вывести portfolio_id)"
                 )
 
-        # transaction: Buy/Sell/Amortization
-        if operation_type in (1, 2, 9):
+        # transaction: Buy/Sell; Amortization (9) — только как транзакция при quantity+price (иначе cash-выплата)
+        is_tx_amortization = operation_type == 9 and op.get("quantity") is not None and op.get("price") is not None
+        if operation_type in (1, 2) or is_tx_amortization:
             if not portfolio_asset_id:
                 raise ValueError(f"operations[{idx}]: portfolio_asset_id обязателен для transaction")
             if not asset_id:

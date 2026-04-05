@@ -457,7 +457,13 @@ BEGIN
     -- ========== Денежные операции (Dividend, Coupon, Commission, Tax, Deposit, Withdraw) — после транзакций ==========
     FOR v_op_record IN SELECT * FROM temp_sorted_ops
     LOOP
-        IF v_op_record.operation_type IN (v_buy_op_type_id, v_sell_op_type_id, v_amortization_op_type_id) THEN
+        IF v_op_record.operation_type IN (v_buy_op_type_id, v_sell_op_type_id) THEN
+            CONTINUE;
+        END IF;
+        -- Амортизация: транзакция (уменьшение номинала) только при quantity+price; иначе денежная выплата как у дивиденда
+        IF v_op_record.operation_type = v_amortization_op_type_id
+           AND v_op_record.quantity IS NOT NULL
+           AND v_op_record.price IS NOT NULL THEN
             CONTINUE;
         END IF;
 
@@ -496,7 +502,7 @@ BEGIN
                 RAISE EXCEPTION 'Тип операции % не найден', v_operation_type;
             END IF;
             
-            IF v_asset_id IS NOT NULL AND v_operation_type IN (3, 4, 7, 8) THEN
+            IF v_asset_id IS NOT NULL AND v_operation_type IN (3, 4, 7, 8, v_amortization_op_type_id) THEN
                 SELECT min(t.transaction_date)
                 INTO v_first_buy_date
                 FROM transactions t
@@ -640,7 +646,8 @@ BEGIN
             SELECT pa.id AS pa_id, tso.operation_date::date AS d
             FROM temp_sorted_ops tso
             JOIN portfolio_assets pa ON pa.portfolio_id = tso.portfolio_id AND pa.asset_id = tso.asset_id
-            WHERE tso.portfolio_id IS NOT NULL AND tso.asset_id IS NOT NULL AND tso.operation_type IN (3, 4, 7, 8)
+            WHERE tso.portfolio_id IS NOT NULL AND tso.asset_id IS NOT NULL
+              AND (tso.operation_type IN (3, 4, 7, 8) OR tso.operation_type = v_amortization_op_type_id)
             UNION ALL
             SELECT t.portfolio_asset_id, t.transaction_date::date
             FROM transactions t
@@ -698,7 +705,11 @@ BEGIN
         SELECT DISTINCT tso.portfolio_asset_id
         FROM temp_sorted_ops tso
         WHERE tso.portfolio_asset_id IS NOT NULL
-          AND (tso.operation_type IN (3, 4) OR tso.operation_type IN (v_buy_op_type_id))
+          AND (
+              tso.operation_type IN (3, 4)
+              OR tso.operation_type = v_amortization_op_type_id
+              OR tso.operation_type IN (v_buy_op_type_id)
+          )
     LOOP
         BEGIN
             PERFORM check_missed_payouts(v_portfolio_asset_id);

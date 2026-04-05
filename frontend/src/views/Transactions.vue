@@ -206,6 +206,7 @@ const normalizeType = (type) => {
   if (t.includes('прод') || t.includes('sell')) return 'sell'
   if (t.includes('див') || t.includes('div')) return 'dividend'
   if (t.includes('купон') || t.includes('coupon')) return 'coupon'
+  if (t.includes('аморт') || t.includes('amort')) return 'amortization'
   if (t.includes('налог') || t.includes('tax')) return 'tax'
   if (t.includes('комисс') || t.includes('commission') || t.includes('commision')) return 'commission'
   if (t.includes('ввод') || t.includes('депозит') || t.includes('deposit')) return 'deposit'
@@ -1911,6 +1912,7 @@ const periodFilterLabel = computed(() => {
 .badge-sell { background: #fee2e2; color: #991b1b; }
 .badge-dividend { background: #eff6ff; color: #2563eb; }
 .badge-coupon { background: #ecfeff; color: #06b6d4; }
+.badge-amortization { background: #f5f3ff; color: #7c3aed; }
 .badge-deposit { background: #ccfbf1; color: #0f766e; }
 .badge-withdraw { background: #ffedd5; color: #9a3412; }
 .badge-tax, .badge-commission { background: #fef3c7; color: #92400e; }

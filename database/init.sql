@@ -315,5 +315,5 @@ ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 INSERT INTO transactions_type (id, name) OVERRIDING SYSTEM VALUE VALUES
   (1, 'Buy'),
   (2, 'Sell'),
-  (3, 'Amortization')
+  (3, 'Redemption')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
