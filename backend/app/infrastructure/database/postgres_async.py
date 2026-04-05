@@ -188,6 +188,7 @@ async def table_select_async(table: str, select="*", filters: dict = None,
                              order=None, limit=10000, offset=None):
     """
     Асинхронно выполняет SELECT запрос к таблице.
+    order: dict {'column': str, 'desc': bool} или строка для ORDER BY (например "asset_id, payment_date").
     """
     pool = await get_connection_pool()
     
@@ -229,10 +230,13 @@ async def table_select_async(table: str, select="*", filters: dict = None,
             if conditions:
                 query_parts.append("WHERE " + " AND ".join(conditions))
             
-            # Сортировка
+            # Сортировка: dict {"column": "col", "desc": bool} или строка "col1, col2" (ASC)
             if order:
-                desc = "DESC" if order.get('desc', False) else "ASC"
-                query_parts.append(f"ORDER BY {order['column']} {desc}")
+                if isinstance(order, str):
+                    query_parts.append(f"ORDER BY {order}")
+                else:
+                    desc = "DESC" if order.get('desc', False) else "ASC"
+                    query_parts.append(f"ORDER BY {order['column']} {desc}")
             
             # Лимит и смещение
             if limit is not None:

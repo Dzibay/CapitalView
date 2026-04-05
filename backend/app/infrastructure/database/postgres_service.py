@@ -228,7 +228,7 @@ def table_select(table: str, select="*", filters: dict = None, in_filters: dict 
         filters: Словарь фильтров равенства (field: value)
         in_filters: Словарь фильтров IN (field: [values])
         neq_filters: Словарь фильтров неравенства (field: value)
-        order: Словарь с ключами 'column' и 'desc' для сортировки
+        order: Словарь {'column': str, 'desc': bool} или строка ORDER BY (например "id ASC")
         limit: Максимальное количество записей
         offset: Смещение для пагинации
     """
@@ -275,10 +275,13 @@ def table_select(table: str, select="*", filters: dict = None, in_filters: dict 
                 if conditions:
                     query_parts.append("WHERE " + " AND ".join(conditions))
                 
-                # Сортировка
+                # Сортировка: dict или строка
                 if order:
-                    desc = "DESC" if order.get('desc', False) else "ASC"
-                    query_parts.append(f"ORDER BY {order['column']} {desc}")
+                    if isinstance(order, str):
+                        query_parts.append(f"ORDER BY {order}")
+                    else:
+                        desc = "DESC" if order.get('desc', False) else "ASC"
+                        query_parts.append(f"ORDER BY {order['column']} {desc}")
                 
                 # Лимит и смещение
                 if limit is not None:

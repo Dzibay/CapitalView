@@ -4,7 +4,7 @@
 """
 from datetime import date, datetime
 
-from app.infrastructure.database.postgres_async import db_select, get_connection_pool
+from app.infrastructure.database.postgres_async import db_select, db_update, get_connection_pool
 from tqdm.asyncio import tqdm_asyncio
 from app.infrastructure.external.moex.client import create_moex_session, fetch_json
 from app.utils.date import parse_date as normalize_date
@@ -73,18 +73,42 @@ async def _insert_asset_payouts_batch(rows: list) -> None:
 
 
 async def fetch_bond_payouts_from_moex(session, ticker: str):
-    """Получает данные о купонах и амортизациях облигации с MOEX."""
+    """
+    Получает данные о купонах и амортизациях облигации с MOEX.
+
+    Returns:
+        (payouts: list, initial_face_value: float | None, coupon_percent: float | None)
+    """
     url = MOEX_BONDIZATION_URL.format(ticker=ticker)
     data = await fetch_json(session, url)
     if not data:
-        return []
+        return [], None, None
 
     results = []
+    initial_face_value = None
+    coupon_percent = None
 
     if "coupons" in data and "data" in data["coupons"]:
         cols = data["coupons"]["columns"]
+        today_str = date.today().isoformat()
+        best_coupon_rec = None  # ближайший будущий купон или последний прошедший
         for row in data["coupons"]["data"]:
             rec = dict(zip(cols, row))
+            if initial_face_value is None and rec.get("initialfacevalue"):
+                try:
+                    initial_face_value = float(rec["initialfacevalue"])
+                except (ValueError, TypeError):
+                    pass
+            coupon_date = rec.get("coupondate") or ""
+            if best_coupon_rec is None:
+                best_coupon_rec = rec
+            elif coupon_date >= today_str and (best_coupon_rec.get("coupondate", "") < today_str or coupon_date < best_coupon_rec.get("coupondate", "")):
+                # предпочитаем ближайший будущий
+                best_coupon_rec = rec
+            elif coupon_date < today_str and best_coupon_rec.get("coupondate", "") < today_str and coupon_date > best_coupon_rec.get("coupondate", ""):
+                # из прошлых — самый последний
+                best_coupon_rec = rec
+
             results.append({
                 "record_date": rec.get("recorddate"),
                 "payment_date": rec.get("coupondate"),
@@ -92,10 +116,21 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
                 "type": "coupon"
             })
 
+        if best_coupon_rec and best_coupon_rec.get("valueprc") is not None:
+            try:
+                coupon_percent = float(best_coupon_rec["valueprc"])
+            except (ValueError, TypeError):
+                pass
+
     if "amortizations" in data and "data" in data["amortizations"]:
         cols = data["amortizations"]["columns"]
         for row in data["amortizations"]["data"]:
             rec = dict(zip(cols, row))
+            if initial_face_value is None and rec.get("initialfacevalue"):
+                try:
+                    initial_face_value = float(rec["initialfacevalue"])
+                except (ValueError, TypeError):
+                    pass
             if rec.get("data_source") == "maturity":
                 continue
             results.append({
@@ -105,7 +140,67 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
                 "type": "amortization"
             })
 
-    return results
+    return results, initial_face_value, coupon_percent
+
+
+async def _update_bond_properties(
+    bonds_with_ticker: list,
+    initial_fv_map: dict,
+    coupon_percent_map: dict,
+):
+    """
+    Обновляет assets.properties для облигаций:
+    - initial_face_value: для всех облигаций, у которых он ещё не задан
+    - coupon_percent: только если отсутствует в текущих properties (исправляет пропущенные данные)
+    """
+    all_update_ids = set(initial_fv_map.keys()) | set(coupon_percent_map.keys())
+    if not all_update_ids:
+        return 0
+
+    bond_ids = [b["id"] for b in bonds_with_ticker if b["id"] in all_update_ids]
+    if not bond_ids:
+        return 0
+
+    assets_rows = await db_select(
+        "assets", "id, properties",
+        in_filters={"id": bond_ids}, limit=None,
+    )
+
+    import json as _json
+
+    updated = 0
+    for row in assets_rows:
+        asset_id = row["id"]
+
+        props = row.get("properties") or {}
+        if isinstance(props, str):
+            try:
+                props = _json.loads(props)
+            except (ValueError, TypeError):
+                props = {}
+
+        changed = False
+
+        ifv = initial_fv_map.get(asset_id)
+        if ifv and props.get("initial_face_value") != ifv:
+            props["initial_face_value"] = ifv
+            changed = True
+
+        cp = coupon_percent_map.get(asset_id)
+        if cp is not None and props.get("coupon_percent") is None:
+            props["coupon_percent"] = cp
+            changed = True
+
+        if not changed:
+            continue
+
+        try:
+            await db_update("assets", {"properties": props}, {"id": asset_id})
+            updated += 1
+        except Exception as e:
+            logger.error(f"Ошибка обновления properties для asset_id={asset_id}: {e}")
+
+    return updated
 
 
 async def update_all_coupons():
@@ -150,21 +245,28 @@ async def update_all_coupons():
     print(f"\n📥 Загрузка данных о купонах и амортизациях с MOEX...")
     
     all_new_payouts = []
+    initial_fv_map = {}      # {asset_id: initial_face_value}
+    coupon_percent_map = {}  # {asset_id: coupon_percent}
+    bonds_with_ticker = [b for b in bonds if b.get("ticker")]
     
     async with create_moex_session() as session:
         tasks = [
             fetch_bond_payouts_from_moex(session, bond["ticker"])
-            for bond in bonds
-            if bond.get("ticker")
+            for bond in bonds_with_ticker
         ]
         
         results = await tqdm_asyncio.gather(*tasks, desc="Загрузка купонов и амортизаций")
         
-        for bond, payouts in zip(bonds, results):
-            if not payouts or not bond.get("ticker"):
-                continue
-            
+        for bond, (payouts, initial_fv, coupon_pct) in zip(bonds_with_ticker, results):
             asset_id = bond["id"]
+
+            if initial_fv and initial_fv > 0:
+                initial_fv_map[asset_id] = initial_fv
+            if coupon_pct is not None:
+                coupon_percent_map[asset_id] = coupon_pct
+
+            if not payouts:
+                continue
             
             for payout in payouts:
                 payment_date = normalize_date(payout.get("payment_date"))
@@ -189,6 +291,12 @@ async def update_all_coupons():
                 
                 all_new_payouts.append(new_payout)
     
+    # Обновляем properties: initial_face_value для всех облигаций + coupon_percent для тех, у кого отсутствует
+    if initial_fv_map or coupon_percent_map:
+        print(f"\n📦 Обновление properties: initial_face_value ({len(initial_fv_map)} шт.), coupon_percent ({len(coupon_percent_map)} шт.)...")
+        props_updated = await _update_bond_properties(bonds_with_ticker, initial_fv_map, coupon_percent_map)
+        print(f"   ✅ Обновлено облигаций: {props_updated}")
+
     if not all_new_payouts:
         print("📭 Новых купонов/амортизаций для вставки не найдено")
         return

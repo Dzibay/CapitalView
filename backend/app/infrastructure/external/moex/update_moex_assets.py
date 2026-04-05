@@ -56,13 +56,18 @@ def normalize_properties(props, asset_type_name):
             if val and (val.strip() if isinstance(val, str) else val):
                 normalized[key] = val
 
-        for key in ("face_value", "mat_date", "coupon_value", "coupon_percent",
-                     "coupon_period", "coupon_frequency", "issue_size"):
+        # coupon_percent — displayed in UI; initial_face_value — used by price worker
+        for key in ("coupon_percent", "initial_face_value"):
             val = props.get(key)
             if val is not None:
                 if isinstance(val, str) and not val.strip():
                     continue
                 normalized[key] = val
+
+        # Preserve currency (needed for multi-currency bonds)
+        currency = props.get("currency")
+        if currency and (currency.strip() if isinstance(currency, str) else currency):
+            normalized["currency"] = currency
 
     return normalized
 
@@ -494,32 +499,23 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
                 currency = bond_currency
                 props["currency"] = currency
 
-            face_value = None
+            coupon_percent = None
             if active_bonds_data and ticker in active_bonds_data:
-                face_value = active_bonds_data[ticker].get("face_value")
-            if face_value is None and existing_bond:
-                ep = parse_json_properties(existing_bond.get("properties"))
-                face_value = ep.get("face_value")
-            if face_value is not None:
-                props["face_value"] = face_value
-
-            coupon_percent = coupon_value = None
-            if active_bonds_data and ticker in active_bonds_data:
-                bd = active_bonds_data[ticker]
-                coupon_percent = bd.get("coupon_percent")
-                coupon_value = bd.get("coupon_value")
+                coupon_percent = active_bonds_data[ticker].get("coupon_percent")
             elif historical_bonds_data and ticker in historical_bonds_data:
-                bd = historical_bonds_data[ticker]
-                coupon_percent = bd.get("coupon_percent")
-                coupon_value = bd.get("coupon_value")
-            if existing_bond and (coupon_percent is None or coupon_value is None):
+                coupon_percent = historical_bonds_data[ticker].get("coupon_percent")
+            if coupon_percent is None and existing_bond:
                 ep = parse_json_properties(existing_bond.get("properties"))
-                coupon_percent = coupon_percent if coupon_percent is not None else ep.get("coupon_percent")
-                coupon_value = coupon_value if coupon_value is not None else ep.get("coupon_value")
+                coupon_percent = ep.get("coupon_percent")
             if coupon_percent is not None:
                 props["coupon_percent"] = coupon_percent
-            if coupon_value is not None:
-                props["coupon_value"] = coupon_value
+
+            # Preserve initial_face_value set by update_coupons (do not overwrite)
+            if existing_bond:
+                ep = parse_json_properties(existing_bond.get("properties"))
+                ifv = ep.get("initial_face_value")
+                if ifv is not None:
+                    props["initial_face_value"] = ifv
 
         props = normalize_properties(props, actual_type_name)
 
