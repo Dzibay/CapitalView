@@ -29,6 +29,7 @@ BEGIN
                 'leverage', COALESCE(pa.leverage, 1.0),
                 'average_price', COALESCE(pa.average_price, 0),
                 'last_price', COALESCE(apf.curr_price, 0),
+                'accrued_coupon', COALESCE(apf.curr_accrued, 0),
                 'daily_change', CASE
                     WHEN apf.today_price IS NOT NULL OR apf.yesterday_price IS NOT NULL THEN
                         (COALESCE(apf.curr_price, 0) - COALESCE(apf.prev_price, 0))
@@ -114,6 +115,7 @@ BEGIN
                     'leverage', COALESCE(pa2.leverage, 1.0),
                     'average_price', COALESCE(pa2.average_price, 0),
                     'last_price', COALESCE(apf2.curr_price, 0),
+                    'accrued_coupon', COALESCE(apf2.curr_accrued, 0),
                     'daily_change', CASE
                         WHEN apf2.today_price IS NOT NULL OR apf2.yesterday_price IS NOT NULL THEN
                             (COALESCE(apf2.curr_price, 0) - COALESCE(apf2.prev_price, 0))
@@ -167,12 +169,13 @@ BEGIN
                 SELECT COALESCE(jsonb_agg(
                     jsonb_build_object(
                         'price', ap.price,
+                        'accrued_coupon', COALESCE(ap.accrued_coupon, 0),
                         'trade_date', ap.trade_date
                     )
                     ORDER BY ap.trade_date DESC
                 ), '[]'::jsonb)
                 FROM (
-                    SELECT ap.price, ap.trade_date
+                    SELECT ap.price, ap.accrued_coupon, ap.trade_date
                     FROM asset_prices ap
                     WHERE ap.asset_id = v_asset_id
                     ORDER BY ap.trade_date DESC

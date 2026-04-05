@@ -1,3 +1,5 @@
+import { effectiveUnitPriceInCurrency } from './effectiveAssetPrice'
+
 /**
  * Распределение по типам активов из списка позиций (как в dashboard.assets).
  */
@@ -13,7 +15,7 @@ export function assetAllocationFromPositions(assets) {
     const atype = asset.type
     if (!atype) continue
     const quantity = Number(asset.quantity || 0)
-    const price = Number(asset.last_price || 0)
+    const price = effectiveUnitPriceInCurrency(asset)
     const currencyMultiplier = Number(asset.currency_rate_to_rub || 1)
     const lev = Number(asset.leverage || 1) || 1
     allocation[atype] =

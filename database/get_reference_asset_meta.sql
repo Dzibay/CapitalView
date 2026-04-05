@@ -13,7 +13,8 @@ SELECT jsonb_build_object(
     'asset_type_id', a.asset_type_id,
     'user_id', a.user_id,
     'is_custom', (a.user_id IS NOT NULL),
-    'last_price', COALESCE(ap.curr_price, 0)
+    'last_price', COALESCE(ap.curr_price, 0),
+    'accrued_coupon', COALESCE(ap.curr_accrued, 0)
 )
 FROM assets a
 LEFT JOIN assets qa ON qa.id = a.quote_asset_id

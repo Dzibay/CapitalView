@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
 import ValueChangePill from '../base/ValueChangePill.vue'
 import { formatCurrency } from '../../../utils/formatCurrency'
+import { effectiveUnitPriceInCurrency } from '../../../utils/effectiveAssetPrice'
 
 const props = defineProps({
   asset: {
@@ -87,7 +88,12 @@ const props = defineProps({
           </div>
           <div class="detail-item">
             <span class="detail-label">Текущая цена:</span>
-            <span class="detail-value">{{ asset.last_price?.toFixed(2) || '-' }}</span>
+            <span class="detail-value">
+              {{ effectiveUnitPriceInCurrency(asset) ? effectiveUnitPriceInCurrency(asset).toFixed(2) : '-' }}
+              <template v-if="Number(asset.accrued_coupon) > 0">
+                <span class="detail-sub">(в т.ч. НКД {{ Number(asset.accrued_coupon).toFixed(2) }})</span>
+              </template>
+            </span>
           </div>
           <div class="detail-item" v-if="asset.leverage && asset.leverage > 1">
             <span class="detail-label">Плечо:</span>
@@ -199,6 +205,14 @@ const props = defineProps({
   font-size: var(--text-body-secondary-size);
   font-weight: var(--text-value-weight);
   color: var(--text-primary);
+}
+
+.detail-sub {
+  display: block;
+  font-size: var(--text-caption-size);
+  font-weight: normal;
+  color: var(--text-tertiary);
+  margin-top: 0.15rem;
 }
 
 @media (max-width: 768px) {

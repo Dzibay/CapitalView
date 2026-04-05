@@ -69,9 +69,8 @@ BEGIN
     ),
 
     ------------------------------------------------------------------
-    -- УПРОЩЕНО: Агрегируем данные напрямую из portfolio_asset_daily_values по датам
-    -- portfolio_asset_daily_values уже содержит данные на каждую дату (заполняется в update_portfolio_asset_positions_from_date)
-    -- Поэтому можно просто агрегировать без сложных JOIN'ов
+    -- Агрегация по датам из portfolio_asset_daily_values (update_portfolio_asset_positions_from_date).
+    -- position_value уже в рублях с учётом НКД облигаций (чистая + accrued_coupon из asset_prices).
     ------------------------------------------------------------------
     positions_aggregated AS (
         SELECT
@@ -155,4 +154,4 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION update_portfolio_values_from_date(bigint, date) IS 'Обновляет portfolio_daily_values инкрементально с указанной даты';
+COMMENT ON FUNCTION update_portfolio_values_from_date(bigint, date) IS 'Обновляет portfolio_daily_values инкрементально с указанной даты; total_value = сумма position_value по лотам (в т.ч. НКД облигаций)';

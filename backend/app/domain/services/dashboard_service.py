@@ -14,6 +14,26 @@ from app.utils.date import normalize_date_to_day_string
 
 logger = get_logger(__name__)
 
+
+def _asset_unit_dirty_price(asset: dict) -> float:
+    """Чистая котировка + НКД (для облигаций accrued_coupon с бэкенда, иначе 0)."""
+    return float(asset.get("last_price") or 0) + float(asset.get("accrued_coupon") or 0)
+
+
+def _portfolio_accrued_coupon_rub(assets: list) -> float:
+    """Сумма НКД по открытым позициям в ₽ (та же логика, что в оценке стоимости позиций)."""
+    return round(
+        sum(
+            float(a.get("quantity") or 0)
+            * float(a.get("accrued_coupon") or 0)
+            * float(a.get("currency_rate_to_rub") or 1)
+            / float(a.get("leverage") or 1)
+            for a in assets or []
+        ),
+        2,
+    )
+
+
 def _get_aggregated_history(portfolio_map, portfolio_id, fallback_history=None):
     """Получает агрегированную историю из портфеля или возвращает fallback"""
     portfolio = portfolio_map.get(portfolio_id)
@@ -273,6 +293,8 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
                 # Обновляем только если данные изменились
                 if ca_copy.get("last_price") and not old.get("last_price"):
                     old["last_price"] = ca_copy["last_price"]
+                if ca_copy.get("accrued_coupon") is not None and old.get("accrued_coupon") is None:
+                    old["accrued_coupon"] = ca_copy["accrued_coupon"]
             else:
                 # Новый актив (с другим portfolio_asset_id) - добавляем как отдельную запись
                 # Это позволяет иметь один и тот же asset_id в разных портфелях с разными количествами
@@ -308,7 +330,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
     # total_value = стоимость активов + баланс (total_capital)
     total_value = sum(
         float(a.get("quantity") or 0)
-        * float(a.get("last_price") or 0)
+        * _asset_unit_dirty_price(a)
         * float(a.get("currency_rate_to_rub") or 1)
         / float(a.get("leverage") or 1)
         for a in combined_assets
@@ -452,6 +474,12 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
 
     analytics_lists = convert_analytics_maps_to_lists(maps)
 
+    # Нереализованная по открытым позициям должна совпадать с отображаемым капиталом:
+    # total_value = стоимость позиций + balance, total_invested — только позиции (без кэша).
+    _bal = float(combined_analytics.get("balance") or 0)
+    implied_unrealized_pl = round(float(total_value) - float(total_invested) - _bal, 2)
+    accrued_coupon_rub = _portfolio_accrued_coupon_rub(combined_assets)
+
     # Сохраняем аналитику из SQL (полная структура с totals, monthly_flow, etc.)
     # Если аналитика уже есть в портфеле (из get_user_portfolios_analytics), используем её
     # Иначе создаем базовую структуру
@@ -463,7 +491,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
             "total_value": total_value,
             "total_invested": total_invested,
             "realized_pl": combined_analytics["realized_pl"],
-            "unrealized_pl": combined_analytics["unrealized_pl"],
+            "unrealized_pl": implied_unrealized_pl,
             "dividends": combined_analytics["dividends"],
             "coupons": combined_analytics["coupons"],
             "commissions": combined_analytics["commissions"],
@@ -474,6 +502,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
             "inflow": combined_analytics["inflow"],
             "outflow": combined_analytics["outflow"],
             "balance": combined_analytics["balance"],
+            "accrued_coupon_rub": accrued_coupon_rub,
         })
         
         portfolio["analytics"]["operations_breakdown"] = analytics_lists["operations_breakdown"]
@@ -489,7 +518,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
                 "total_value": total_value,
                 "total_invested": total_invested,
                 "realized_pl": combined_analytics["realized_pl"],
-                "unrealized_pl": combined_analytics["unrealized_pl"],
+                "unrealized_pl": implied_unrealized_pl,
                 "dividends": combined_analytics["dividends"],
                 "coupons": combined_analytics["coupons"],
                 "commissions": combined_analytics["commissions"],
@@ -500,6 +529,7 @@ def sum_portfolio_totals_bottom_up(portfolio_id, portfolio_map):
                 "inflow": combined_analytics["inflow"],
                 "outflow": combined_analytics["outflow"],
                 "balance": combined_analytics["balance"],
+                "accrued_coupon_rub": accrued_coupon_rub,
             },
             "monthly_flow": analytics_lists["monthly_flow"],
             "monthly_payouts": analytics_lists["monthly_payouts"],

@@ -98,15 +98,16 @@ portfolio_assets_data AS (
                 'leverage', COALESCE(pa.leverage, 1.0),
                 'average_price', COALESCE(pa.average_price, 0),
                 'last_price', COALESCE(apf.curr_price, 0),
+                'accrued_coupon', COALESCE(apf.curr_accrued, 0),
                 'daily_change', CASE
                     WHEN apf.today_price IS NOT NULL OR apf.yesterday_price IS NOT NULL THEN
                         (COALESCE(apf.curr_price, 0) - COALESCE(apf.prev_price, 0))
                     ELSE 0
                 END,
-                'profit', ((COALESCE(apf.curr_price, 0) - COALESCE(pa.average_price, 0)) * COALESCE(pa.quantity, 0)),
+                'profit', (((COALESCE(apf.curr_price, 0) + COALESCE(apf.curr_accrued, 0)) - COALESCE(pa.average_price, 0)) * COALESCE(pa.quantity, 0)),
                 'currency_ticker', qa.ticker,
                 'currency_rate_to_rub', COALESCE(curr.curr_price, 1),
-                'profit_rub', ((COALESCE(apf.curr_price, 0) - COALESCE(pa.average_price, 0))
+                'profit_rub', (((COALESCE(apf.curr_price, 0) + COALESCE(apf.curr_accrued, 0)) - COALESCE(pa.average_price, 0))
                     * COALESCE(pa.quantity, 0) * COALESCE(curr.curr_price, 1)),
                 'first_purchase_date', fpd.first_purchase_date,
                 'first_purchase_price', COALESCE(fpd.first_purchase_price, 0),

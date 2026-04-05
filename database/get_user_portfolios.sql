@@ -21,7 +21,7 @@ BEGIN
         p.parent_portfolio_id,
         p.description,
         -- total_value включает баланс портфеля (total_capital = стоимость активов + баланс)
-        COALESCE(SUM(pa.quantity * COALESCE(lp.curr_price, 0) / pa.leverage * COALESCE(lqp.curr_price, 1))::numeric(20,2), 0) 
+        COALESCE(SUM(pa.quantity * (COALESCE(lp.curr_price, 0) + COALESCE(lp.curr_accrued, 0)) / pa.leverage * COALESCE(lqp.curr_price, 1))::numeric(20,2), 0) 
         + COALESCE((
             SELECT pdv.balance 
             FROM portfolio_daily_values pdv 

@@ -259,18 +259,6 @@ BEGIN
         LEFT JOIN commissions_daily cd ON cd.report_date = d.report_date
         LEFT JOIN taxes_daily td ON td.report_date = d.report_date
     ),
-    -- Цены актива
-    price_ranges AS (
-        SELECT
-            price::numeric,
-            trade_date AS valid_from,
-            COALESCE(
-                LEAD(trade_date) OVER (ORDER BY trade_date),
-                CURRENT_DATE + 1
-            ) AS valid_to
-        FROM asset_prices
-        WHERE asset_id = v_asset_id
-    ),
     -- Курсы валют
     currency_rates AS (
         SELECT
@@ -317,12 +305,11 @@ BEGIN
         -- Округляем денежные значения до 2 знаков после запятой
         ROUND(dp.cumulative_invested, 2) AS cumulative_invested,
         ROUND(dp.average_price, 2) AS average_price,
-        -- Рассчитываем position_value: (quantity * asset_price / leverage) * currency_rate_to_rub
-        -- Округляем до 2 знаков после запятой
+        -- position_value: quantity * (чистая цена + НКД) * курс / leverage; на сегодня — fallback на asset_latest_prices
         ROUND(
             (
                 dp.quantity
-                * COALESCE(cp.price, 0)
+                * ud.unit_dirty
                 * COALESCE(cr.rate_to_rub, 1)
                 / NULLIF(v_leverage, 0)
             ),
@@ -333,11 +320,10 @@ BEGIN
         ROUND(COALESCE(ac.payouts, v_base_payouts), 2) AS payouts,
         ROUND(COALESCE(ac.commissions, v_base_commissions), 2) AS commissions,
         ROUND(COALESCE(ac.taxes, v_base_taxes), 2) AS taxes,
-        -- Итоговая прибыль: position_value - cumulative_invested + realized_pnl + payouts - commissions - taxes
-        -- Округляем до 2 знаков после запятой
+        -- total_pnl: position_value - cumulative_invested + realized_pnl + payouts - commissions - taxes
         ROUND(
             (
-                ROUND(dp.quantity * COALESCE(cp.price, 0) * COALESCE(cr.rate_to_rub, 1) / NULLIF(v_leverage, 0), 2)
+                ROUND(dp.quantity * ud.unit_dirty * COALESCE(cr.rate_to_rub, 1) / NULLIF(v_leverage, 0), 2)
                 - ROUND(dp.cumulative_invested, 2)
                 + ROUND(COALESCE(ac.realized_pnl, v_base_realized), 2)
                 + ROUND(COALESCE(ac.payouts, v_base_payouts), 2)
@@ -348,13 +334,32 @@ BEGIN
         ) AS total_pnl
     FROM daily_positions dp
     LEFT JOIN analytics_cum ac ON ac.report_date = dp.report_date
-    LEFT JOIN price_ranges cp
-      ON dp.report_date >= cp.valid_from
-     AND dp.report_date < cp.valid_to
-    LEFT JOIN currency_rates cr ON cr.report_date = dp.report_date;
+    LEFT JOIN currency_rates cr ON cr.report_date = dp.report_date
+    CROSS JOIN LATERAL (
+        SELECT COALESCE(
+            (
+                SELECT ap.price::numeric + COALESCE(ap.accrued_coupon, 0)::numeric
+                FROM asset_prices ap
+                WHERE ap.asset_id = v_asset_id
+                  AND ap.trade_date <= dp.report_date
+                ORDER BY ap.trade_date DESC
+                LIMIT 1
+            ),
+            CASE
+                WHEN dp.report_date = CURRENT_DATE THEN
+                    (
+                        SELECT COALESCE(alp.curr_price, 0)::numeric + COALESCE(alp.curr_accrued, 0)::numeric
+                        FROM asset_latest_prices alp
+                        WHERE alp.asset_id = v_asset_id
+                    )
+                ELSE NULL::numeric
+            END,
+            0::numeric
+        ) AS unit_dirty
+    ) ud;
     
     RETURN true;
 END;
 $$;
 
-COMMENT ON FUNCTION update_portfolio_asset_positions_from_date(bigint, date) IS 'Пересчитывает позиции portfolio_asset с указанной даты';
+COMMENT ON FUNCTION update_portfolio_asset_positions_from_date(bigint, date) IS 'Пересчитывает portfolio_asset_daily_values с указанной даты; стоимость позиции = qty * (цена из asset_prices + НКД) в валюте актива * курс; portfolio_daily_values агрегирует эти position_value в update_portfolio_values_from_date';

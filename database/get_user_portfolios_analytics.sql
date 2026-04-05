@@ -211,12 +211,12 @@ future_payouts AS (
 asset_price_snapshots AS (
   SELECT
     a.id AS asset_id,
-    COALESCE(apf.curr_price, 0) AS current_price,
+    COALESCE(apf.curr_price, 0) + COALESCE(apf.curr_accrued, 0) AS current_price,
     COALESCE(curr.curr_price, 1) AS currency_rate,
-    (SELECT ap1.price FROM asset_prices ap1
+    (SELECT ap1.price + COALESCE(ap1.accrued_coupon, 0) FROM asset_prices ap1
      WHERE ap1.asset_id = a.id AND ap1.trade_date <= CURRENT_DATE - INTERVAL '1 month'
      ORDER BY ap1.trade_date DESC LIMIT 1) AS price_month_ago,
-    (SELECT ap2.price FROM asset_prices ap2
+    (SELECT ap2.price + COALESCE(ap2.accrued_coupon, 0) FROM asset_prices ap2
      WHERE ap2.asset_id = a.id AND ap2.trade_date <= CURRENT_DATE - INTERVAL '1 year'
      ORDER BY ap2.trade_date DESC LIMIT 1) AS price_year_ago
   FROM (

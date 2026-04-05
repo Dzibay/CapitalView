@@ -56,7 +56,8 @@ const profitBreakdown = computed(() => {
   const commissions = Math.abs(totals.commissions ?? analytics.commissions ?? 0)
   // Налоги - это расходы, берем абсолютное значение (на случай если они отрицательные)
   const taxes = Math.abs(totals.taxes ?? analytics.taxes ?? 0)
-  
+  const accruedCouponRub = totals.accrued_coupon_rub ?? analytics.accrued_coupon_rub ?? 0
+
   return {
     realized,
     unrealized,
@@ -64,6 +65,7 @@ const profitBreakdown = computed(() => {
     coupons,
     commissions,
     taxes,
+    accruedCouponRub,
     total: props.totalProfit
   }
 })
@@ -74,6 +76,9 @@ const profitBreakdownTooltip = computed(() => {
   
   if (b.realized !== 0) parts.push(`Реализованная прибыль: ${formatCurrency(b.realized)}`)
   if (b.unrealized !== 0) parts.push(`Нереализованная прибыль: ${formatCurrency(b.unrealized)}`)
+  if (b.accruedCouponRub !== 0) {
+    parts.push(`НКД по облигациям (в оценке): ${formatCurrency(b.accruedCouponRub)}`)
+  }
   if (b.dividends !== 0) parts.push(`Дивиденды: ${formatCurrency(b.dividends)}`)
   if (b.coupons !== 0) parts.push(`Купоны: ${formatCurrency(b.coupons)}`)
   // Комиссии показываем как отрицательные
@@ -88,7 +93,7 @@ const profitBreakdownTooltip = computed(() => {
   }
   
   if (parts.length === 0) return 'Прибыль: 0 ₽'
-  
+
   return `Состав прибыли:\n${parts.join('\n')}\n\nИтого: ${formatCurrency(b.total)}`
 })
 </script>

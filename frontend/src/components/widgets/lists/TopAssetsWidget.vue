@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import Widget from '../base/Widget.vue'
 import ValueChangePill from '../base/ValueChangePill.vue'
+import { effectiveUnitPriceInCurrency } from '../../../utils/effectiveAssetPrice'
 
 const props = defineProps({
   assets: { type: Array, required: true },
@@ -13,6 +14,12 @@ const topAssets = computed(() =>
     .sort((a, b) => b.profit_rub - a.profit_rub)
     .slice(0, 4)
 );
+
+function positionValueRub(asset) {
+  const q = Number(asset.quantity) || 0
+  const rate = Number(asset.currency_rate_to_rub) || 1
+  return effectiveUnitPriceInCurrency(asset) * q * rate
+}
 </script>
 
 <template>
@@ -27,7 +34,7 @@ const topAssets = computed(() =>
 
         <div class="asset-value">
           <span class="value">
-            {{ (asset.last_price * asset.quantity).toFixed(2) }} ₽
+            {{ positionValueRub(asset).toFixed(2) }} ₽
           </span>
           <ValueChangePill 
             :value="asset.profit_rub" 

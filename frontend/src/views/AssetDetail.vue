@@ -25,6 +25,7 @@ import PageLayout from '../layouts/PageLayout.vue'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
 import { getCurrencySymbol } from '../utils/currencySymbols'
+import { effectiveUnitPriceInCurrency } from '../utils/effectiveAssetPrice'
 
 const route = useRoute()
 const router = useRouter()
@@ -862,12 +863,23 @@ const aggregatedPortfolioMetrics = computed(() => {
   }
 })
 
+/** Цена в шапке (чистая + НКД), для отображения */
+const headerUnitPriceDisplay = computed(() => {
+  const pa = selectedPortfolioAsset.value
+  const a = portfolioAsset.value?.asset
+  const src = pa || a
+  if (!src) return '-'
+  const u = effectiveUnitPriceInCurrency(src)
+  if (u === 0 && src.last_price == null && !(Number(src.accrued_coupon) > 0)) return '-'
+  return u.toFixed(2)
+})
+
 // Расчет роста цены для выбранного портфеля
 const selectedPriceGrowth = computed(() => {
   if (!selectedPortfolioAsset.value) return null
   
   const asset = selectedPortfolioAsset.value
-  const currentPrice = asset.last_price || 0
+  const currentPrice = effectiveUnitPriceInCurrency(asset)
   const averagePrice = asset.average_price || 0
   
   if (averagePrice === 0) return null
@@ -1043,7 +1055,7 @@ const basicInfoItems = computed(() => {
     },
     { 
       label: 'Текущая цена', 
-      value: selectedPortfolioAsset.value?.last_price || 0, 
+      value: effectiveUnitPriceInCurrency(selectedPortfolioAsset.value), 
       format: 'currency',
       formatter: (v) => formatOperationAmount(v, assetQuoteCurrency)
     }
@@ -1218,7 +1230,7 @@ const selectedProfitLoss = computed(() => {
   
   const profit = currentValue - invested
   const averagePrice = asset.average_price || 0
-  const currentPrice = asset.last_price || 0
+  const currentPrice = effectiveUnitPriceInCurrency(asset)
   const profitPercent = averagePrice > 0 ? ((currentPrice - averagePrice) / averagePrice) * 100 : 0
 
   return {
@@ -1288,7 +1300,7 @@ const priceGrowth = computed(() => {
   if (!portfolioAsset.value) return null
   
   const asset = portfolioAsset.value.asset
-  const currentPrice = asset.last_price || 0
+  const currentPrice = effectiveUnitPriceInCurrency(asset)
   const averagePrice = asset.average_price || 0
   
   if (averagePrice === 0) return null
@@ -1733,7 +1745,7 @@ async function handlePortfolioChange(portfolioId) {
           </div>
           <div class="asset-price-info">
             <div class="price-main">
-              {{ selectedPortfolioAsset?.last_price != null ? selectedPortfolioAsset.last_price.toFixed(2) : (portfolioAsset.asset?.last_price != null ? portfolioAsset.asset.last_price.toFixed(2) : '-') }}
+              {{ headerUnitPriceDisplay }}
               <span v-if="assetCurrency" class="price-currency"> {{ getCurrencySymbol(assetCurrency) }}</span>
             </div>
             <div v-if="selectedPortfolioAsset?.daily_change !== undefined && selectedPortfolioAsset.daily_change !== 0" class="price-change">

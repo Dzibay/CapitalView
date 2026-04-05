@@ -4,6 +4,7 @@ import { fetchReferenceData } from '../services/referenceService'
 import operationsService from '../services/operationsService'
 import transactionsService from '../services/transactionsService'
 import { useUIStore } from './ui.store'
+import { effectiveUnitPriceInCurrency } from '../utils/effectiveAssetPrice'
 
 /** Один общий Promise на параллельные fetchDashboard (Strict Mode / двойной mount). */
 let dashboardFetchInFlight = null
@@ -162,16 +163,19 @@ export const useDashboardStore = defineStore('dashboard', {
         )
         
         if (existingAsset) {
+          const unit = effectiveUnitPriceInCurrency(asset)
           Object.assign(existingAsset, {
             quantity: asset.quantity,
             average_price: asset.average_price,
             last_price: asset.last_price,
-            total_value: Math.round(asset.quantity * asset.last_price * 100) / 100
+            accrued_coupon: asset.accrued_coupon,
+            total_value: Math.round(asset.quantity * unit * 100) / 100
           })
         } else {
+          const unit = effectiveUnitPriceInCurrency(asset)
           portfolio.assets.push({
             ...asset,
-            total_value: Math.round(asset.quantity * asset.last_price * 100) / 100
+            total_value: Math.round(asset.quantity * unit * 100) / 100
           })
         }
       }

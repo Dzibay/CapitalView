@@ -3,6 +3,7 @@ import { computed, unref, ref, onMounted, onUnmounted } from "vue";
 import { useRouter } from 'vue-router';
 import { useContextMenu } from '../composables/useContextMenu';
 import { getCurrencySymbol } from '../utils/currencySymbols';
+import { effectiveUnitPriceInCurrency } from '../utils/effectiveAssetPrice';
 
 const router = useRouter();
 
@@ -50,8 +51,9 @@ const { openMenu } = useContextMenu();
 // 📊 === Функция сортировки активов по стоимости ===
 // Вынесена вычисление стоимости для мемоизации
 const calculateAssetValue = (asset) => {
-  return (asset.quantity * (asset.last_price || 0) / (asset.leverage || 1)) * (asset.currency_rate_to_rub || 1);
-};
+  const unit = effectiveUnitPriceInCurrency(asset)
+  return (asset.quantity * unit / (asset.leverage || 1)) * (asset.currency_rate_to_rub || 1)
+}
 
 const sortAssets = (assets) => {
   if (!assets || assets.length === 0) return [];
@@ -209,9 +211,9 @@ const getDividendYield5Y = (asset) => {
                   </td>
                   <td class="col-right">{{ asset.quantity }}</td>
                   <td class="col-right num-font">{{ asset.average_price.toFixed(2) }} {{ getCurrencySymbol(asset.currency_ticker) }}</td>
-                  <td class="col-right num-font">{{ asset.last_price ? asset.last_price + ' ' + getCurrencySymbol(asset.currency_ticker) : '-' }}</td>
+                  <td class="col-right num-font">{{ effectiveUnitPriceInCurrency(asset) ? effectiveUnitPriceInCurrency(asset) + ' ' + getCurrencySymbol(asset.currency_ticker) : '-' }}</td>
                   <td class="col-right num-font bold">
-                    {{ Math.max(0, (asset.quantity * asset.last_price / asset.leverage) * asset.currency_rate_to_rub).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽
+                    {{ Math.max(0, calculateAssetValue(asset)).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽
                   </td>
                   <td class="col-right num-font">
                     <span v-if="asset.type && (asset.type.toLowerCase().includes('bond') || asset.type.toLowerCase().includes('облига'))">
@@ -229,11 +231,11 @@ const getDividendYield5Y = (asset) => {
                       {{ getDividendYield5Y(asset).toFixed(2) }}%
                     </span>
                   </td>
-                  <td class="col-right num-font" :class="asset.last_price - asset.average_price >= 0 ? 'text-green' : 'text-red'">
-                    {{ ((asset.last_price - asset.average_price) / asset.average_price * 100).toFixed(2) }}%
+                  <td class="col-right num-font" :class="effectiveUnitPriceInCurrency(asset) - asset.average_price >= 0 ? 'text-green' : 'text-red'">
+                    {{ asset.average_price ? (((effectiveUnitPriceInCurrency(asset) - asset.average_price) / asset.average_price) * 100).toFixed(2) : '0.00' }}%
                   </td>
                   <td class="col-right num-font" :class="asset.daily_change >= 0 ? 'text-green' : 'text-red'">
-                    {{ (asset.daily_change / asset.last_price * 100).toFixed(2) }}%
+                    {{ asset.last_price ? (asset.daily_change / asset.last_price * 100).toFixed(2) : '0.00' }}%
                   </td>
                   <td class="col-actions center">
                     <button
@@ -272,15 +274,15 @@ const getDividendYield5Y = (asset) => {
                 </div>
                 <div class="asset-card-row">
                   <span class="asset-card-label">Цена</span>
-                  <span class="asset-card-value num-font">{{ asset.last_price ? asset.last_price + ' ' + getCurrencySymbol(asset.currency_ticker) : '–' }}</span>
+                  <span class="asset-card-value num-font">{{ effectiveUnitPriceInCurrency(asset) ? effectiveUnitPriceInCurrency(asset) + ' ' + getCurrencySymbol(asset.currency_ticker) : '–' }}</span>
                 </div>
                 <div class="asset-card-row">
                   <span class="asset-card-label">Стоимость</span>
-                  <span class="asset-card-value num-font bold">{{ Math.max(0, (asset.quantity * asset.last_price / (asset.leverage || 1)) * (asset.currency_rate_to_rub || 1)).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽</span>
+                  <span class="asset-card-value num-font bold">{{ Math.max(0, calculateAssetValue(asset)).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽</span>
                 </div>
                 <div class="asset-card-row">
                   <span class="asset-card-label">P&L</span>
-                  <span class="asset-card-value num-font" :class="(asset.last_price - asset.average_price) >= 0 ? 'text-green' : 'text-red'">{{ ((asset.last_price - asset.average_price) / asset.average_price * 100).toFixed(2) }}%</span>
+                  <span class="asset-card-value num-font" :class="(effectiveUnitPriceInCurrency(asset) - asset.average_price) >= 0 ? 'text-green' : 'text-red'">{{ asset.average_price ? (((effectiveUnitPriceInCurrency(asset) - asset.average_price) / asset.average_price) * 100).toFixed(2) : '0.00' }}%</span>
                 </div>
               </div>
               <div class="asset-card-actions">

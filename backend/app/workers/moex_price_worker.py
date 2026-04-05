@@ -46,9 +46,11 @@ def is_moex_trading_time() -> bool:
     return time(10, 0) <= now <= time(19, 0)
 
 
-async def load_amortization_schedules(bond_asset_ids: List[int]) -> Dict[int, List[Tuple[date, float]]]:
+async def _load_payout_schedules(
+    bond_asset_ids: List[int], payout_type: str,
+) -> Dict[int, List[Tuple[date, float]]]:
     """
-    Загружает расписание амортизаций из asset_payouts для облигаций.
+    Загружает расписание выплат (купонов или амортизаций) из asset_payouts.
 
     Returns:
         {asset_id: [(payment_date, value), ...]} отсортировано по дате
@@ -60,7 +62,7 @@ async def load_amortization_schedules(bond_asset_ids: List[int]) -> Dict[int, Li
         rows = await db_select(
             "asset_payouts",
             "asset_id, payment_date, value",
-            filters={"type": "amortization"},
+            filters={"type": payout_type},
             in_filters={"asset_id": bond_asset_ids},
             order="asset_id, payment_date",
             limit=None,
@@ -82,6 +84,47 @@ async def load_amortization_schedules(bond_asset_ids: List[int]) -> Dict[int, Li
         schedules.setdefault(aid, []).append((pd, float(val)))
 
     return schedules
+
+
+async def load_amortization_schedules(bond_asset_ids: List[int]) -> Dict[int, List[Tuple[date, float]]]:
+    return await _load_payout_schedules(bond_asset_ids, "amortization")
+
+
+async def load_coupon_schedules(bond_asset_ids: List[int]) -> Dict[int, List[Tuple[date, float]]]:
+    return await _load_payout_schedules(bond_asset_ids, "coupon")
+
+
+def calculate_accrued_coupon(
+    coupon_schedule: List[Tuple[date, float]],
+    trade_date: date,
+) -> float:
+    """
+    Рассчитывает НКД на конкретную дату по линейной интерполяции
+    между двумя соседними купонными выплатами.
+
+    coupon_schedule должен быть отсортирован по дате.
+    Возвращает НКД на одну облигацию в валюте актива.
+    """
+    if not coupon_schedule or len(coupon_schedule) < 2:
+        return 0.0
+
+    dates = [c[0] for c in coupon_schedule]
+    idx = bisect_right(dates, trade_date)
+
+    # prev = последний купон с payment_date <= trade_date
+    # next = первый купон с payment_date > trade_date
+    if idx == 0 or idx >= len(coupon_schedule):
+        return 0.0
+
+    prev_date, _ = coupon_schedule[idx - 1]
+    next_date, next_value = coupon_schedule[idx]
+
+    period_days = (next_date - prev_date).days
+    if period_days <= 0:
+        return 0.0
+
+    elapsed_days = (trade_date - prev_date).days
+    return round(next_value * elapsed_days / period_days, 6)
 
 
 def get_effective_face_value(
@@ -110,6 +153,7 @@ async def update_asset_history(
     asset: Dict,
     last_date_map: Dict[int, str],
     amort_schedules: Dict[int, List[Tuple[date, float]]],
+    coupon_schedules: Optional[Dict[int, List[Tuple[date, float]]]] = None,
 ) -> Tuple[bool, Optional[str], List[Dict]]:
     """
     Получает историю цен актива и возвращает новые цены для вставки.
@@ -203,6 +247,16 @@ async def update_asset_history(
 
     if not new_prices_data:
         return True, None, []
+
+    if asset_type_id == 2 and coupon_schedules:
+        coupons = coupon_schedules.get(asset_id, [])
+        if coupons:
+            for price_row in new_prices_data:
+                td = normalize_date(price_row["trade_date"])
+                if isinstance(td, datetime):
+                    td = td.date()
+                if isinstance(td, date):
+                    price_row["accrued_coupon"] = calculate_accrued_coupon(coupons, td)
 
     min_date = min(normalize_date_to_sql_date(price["trade_date"]) or "" for price in new_prices_data)
 
@@ -309,9 +363,10 @@ async def update_history_prices() -> int:
         if date_str:
             last_date_map[asset_id] = date_str
 
-    # Загружаем расписание амортизаций для облигаций
+    # Загружаем расписание амортизаций и купонов для облигаций
     bond_ids = [a["id"] for a in assets if a.get("asset_type_id") == 2]
     amort_schedules = await load_amortization_schedules(bond_ids)
+    coupon_schedules = await load_coupon_schedules(bond_ids)
 
     # Словарь для отслеживания обновленных активов и их минимальных дат
     updated_assets = {}  # {asset_id: min_date}
@@ -321,7 +376,7 @@ async def update_history_prices() -> int:
     all_new_prices = []
     
     async with create_moex_session() as session:
-        tasks = [update_asset_history(session, a, last_date_map, amort_schedules) for a in assets]
+        tasks = [update_asset_history(session, a, last_date_map, amort_schedules, coupon_schedules) for a in assets]
         results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="История")
 
     # Собираем информацию об обновленных активах и все новые цены
@@ -459,7 +514,8 @@ async def process_today_prices_batch(
     today: str,
     trading: bool,
     last_map: Dict[int, Dict],
-    now_msk: datetime
+    now_msk: datetime,
+    coupon_schedules: Optional[Dict[int, List[Tuple[date, float]]]] = None,
 ) -> List[Dict]:
     """
     Обрабатывает текущие цены активов используя массовые эндпойнты MOEX.
@@ -558,7 +614,6 @@ async def process_today_prices_batch(
             last = last_map.get(asset_id)
             prev_price = last.get("price") if last else None
             if prev_price:
-                # Приводим к float для корректного сравнения (prev_price может быть Decimal из БД)
                 prev_price_float = float(prev_price)
                 price_float = float(price)
                 if abs(price_float - prev_price_float) / prev_price_float > 0.1:
@@ -579,16 +634,25 @@ async def process_today_prices_batch(
                 if prev_dt and prev_dt < yesterday:
                     insert_date = normalize_date_to_sql_date(yesterday)
                 elif prev_dt == yesterday:
-                    continue  # вчера уже есть
+                    continue
                 else:
                     insert_date = today
             
-            updates_batch.append({
+            row = {
                 "asset_id": asset_id,
                 "price": price,
                 "trade_date": insert_date,
-                "ticker": ticker
-            })
+                "ticker": ticker,
+            }
+            if coupon_schedules:
+                coupons = coupon_schedules.get(asset_id, [])
+                if coupons:
+                    td = normalize_date(insert_date)
+                    if isinstance(td, datetime):
+                        td = td.date()
+                    if isinstance(td, date):
+                        row["accrued_coupon"] = calculate_accrued_coupon(coupons, td)
+            updates_batch.append(row)
     
     return updates_batch
 
@@ -637,8 +701,12 @@ async def update_today_prices() -> int:
     asset_ids = [a["id"] for a in assets]
     last_map = await get_last_prices_from_latest_prices(asset_ids)
 
+    # Загружаем купонные расписания для облигаций
+    bond_ids = [a["id"] for a in assets if a.get("asset_type_id") == 2]
+    coupon_schedules = await load_coupon_schedules(bond_ids)
+
     async with create_moex_session() as session:
-        updates_batch = await process_today_prices_batch(session, assets, today, trading, last_map, now)
+        updates_batch = await process_today_prices_batch(session, assets, today, trading, last_map, now, coupon_schedules)
     # получаем список изменившихся активов
     updated_ids = list({row["asset_id"] for row in updates_batch})
 
@@ -676,11 +744,14 @@ async def update_today_prices() -> int:
         
         pack = []
         for row in valid_updates:
-            pack.append({
+            item = {
                 "asset_id": row["asset_id"],
                 "price": row["price"],
-                "trade_date": row["trade_date"]
-            })
+                "trade_date": row["trade_date"],
+            }
+            if "accrued_coupon" in row:
+                item["accrued_coupon"] = row["accrued_coupon"]
+            pack.append(item)
             if len(pack) == 200:
                 # 👇 ВАЖНО: вставляем последовательно с ограничением параллелизма
                 async with db_sem:

@@ -34,6 +34,7 @@ BEGIN
             a.asset_type_id,
             a.user_id,
             COALESCE(ap.curr_price, 0)::numeric AS last_price,
+            COALESCE(ap.curr_accrued, 0)::numeric AS accrued_coupon,
             (a.user_id IS NOT NULL) AS is_custom
         FROM assets a
         INNER JOIN asset_types t ON t.id = a.asset_type_id AND t.is_custom = false
