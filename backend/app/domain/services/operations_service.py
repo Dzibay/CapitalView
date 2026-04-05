@@ -2,12 +2,12 @@
 Доменный сервис для работы с денежными операциями.
 Поддерживает все типы операций: Buy, Sell, Dividend, Coupon, Commission, Tax, Deposit, Withdraw, Other.
 """
-from app.infrastructure.database.database_service import rpc_async
 from app.utils.date import normalize_date_to_string
 from typing import List
 from app.core.logging import get_logger
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
 from app.infrastructure.database.repositories.asset_repository import AssetRepository
+from app.infrastructure.database.repositories.operation_repository import OperationRepository
 
 logger = get_logger(__name__)
 
@@ -34,19 +34,14 @@ def normalize_cash_operation_amount(operation_type: int, amount: float) -> float
 
 _portfolio_asset_repository = PortfolioAssetRepository()
 _asset_repository = AssetRepository()
+_operation_repository = OperationRepository()
 
 
 async def get_operations(user_id, portfolio_id=None, start_date=None, end_date=None, limit=1000):
     """Получает операции пользователя с опциональной фильтрацией."""
-    params = {
-        "p_user_id": user_id,
-        "p_portfolio_id": portfolio_id,
-        "p_start_date": start_date,
-        "p_end_date": end_date,
-        "p_limit": limit
-    }
-    params = {k: v for k, v in params.items() if v is not None}
-    return await rpc_async("get_cash_operations", params) or []
+    return await _operation_repository.get_user_operations(
+        user_id, portfolio_id, start_date, end_date, limit,
+    )
 
 
 async def apply_operations(
@@ -188,7 +183,7 @@ async def apply_operations(
                     }
                 )
 
-    result = await rpc_async("apply_operations_batch", {"p_operations": p_operations})
+    result = await _operation_repository.apply_operations_batch(p_operations)
     if not result or result.get("inserted_count", 0) == 0:
         failed = result.get("failed_operations", []) if result else []
         error_msg = failed[0].get("error", "Unknown error") if failed else "apply_operations_batch failed"
@@ -219,7 +214,7 @@ async def update_operations_batch(updates: List[dict]) -> dict:
             payload.append(item)
     if not payload:
         return {"success": True, "updated_count": 0}
-    result = await rpc_async("update_operations_batch", {"p_updates": payload})
+    result = await _operation_repository.update_operations_batch(payload)
     if not result or result.get("success") is False:
         error_msg = result.get("error", "Неизвестная ошибка") if result else "Ошибка при обновлении операций"
         raise Exception(f"Ошибка при batch обновлении операций: {error_msg}")
@@ -231,7 +226,7 @@ async def delete_operations_batch(operation_ids: list[int]):
     if not operation_ids:
         return {"success": False, "error": "Список ID операций пуст", "deleted_count": 0}
 
-    delete_result = await rpc_async("delete_operations_batch", {"p_operation_ids": operation_ids})
+    delete_result = await _operation_repository.delete_operations_batch(operation_ids)
 
     if not delete_result or delete_result.get("success") is False:
         error_msg = delete_result.get("error", "Неизвестная ошибка") if delete_result else "Ошибка при удалении операций"

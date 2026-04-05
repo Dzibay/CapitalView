@@ -2,8 +2,6 @@ from app.infrastructure.database.database_service import rpc_async, table_insert
 from app.domain.services.user_service import get_user_by_email
 from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
-from app.infrastructure.database.repositories.transaction_repository import TransactionRepository
-from app.infrastructure.database.repositories.operation_repository import OperationRepository
 from time import time
 from typing import Dict, Optional
 from datetime import datetime
@@ -14,8 +12,6 @@ logger = get_logger(__name__)
 
 _portfolio_repository = PortfolioRepository()
 _portfolio_asset_repository = PortfolioAssetRepository()
-_transaction_repository = TransactionRepository()
-_operation_repository = OperationRepository()
 
 
 async def get_user_portfolios(user_email: str):

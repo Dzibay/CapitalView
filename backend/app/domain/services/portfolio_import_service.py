@@ -21,6 +21,7 @@ from app.infrastructure.database.database_service import (
     table_insert_async,
     get_connection_pool,
 )
+from app.infrastructure.database.repositories.operation_repository import OperationRepository
 from app.utils.date import (
     normalize_date_to_day_string,
     normalize_date_to_string,
@@ -30,6 +31,8 @@ from app.utils.date import (
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+_operation_repository = OperationRepository()
 
 
 async def _load_reference_data():
@@ -315,7 +318,7 @@ async def import_broker_portfolio(
             ) or datetime.min)
 
             try:
-                result = await rpc_async("apply_operations_batch", {"p_operations": operations_batch})
+                result = await _operation_repository.apply_operations_batch(operations_batch)
                 inserted = (result or {}).get("inserted_count", 0)
                 failed = (result or {}).get("failed_count", 0)
                 logger.info(
