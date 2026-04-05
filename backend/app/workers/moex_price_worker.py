@@ -157,7 +157,7 @@ async def update_asset_history(
         if last_date:
             return True, None, []
         else:
-            logger.warning(f"⚠️ Не удалось получить цены для {ticker} (asset_id: {asset_id})")
+            logger.debug(f"⚠️ Не удалось получить цены для {ticker} (asset_id: {asset_id})")
             return False, None, []
 
     if asset_type_id == 2:  # Облигация
