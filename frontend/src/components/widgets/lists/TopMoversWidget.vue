@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { getCurrencySymbol } from '../../../utils/currencySymbols.js'
+import { effectiveUnitPriceInCurrency } from '../../../utils/effectiveAssetPrice.js'
 import Widget from '../base/Widget.vue'
 import ValueChangePill from '../base/ValueChangePill.vue'
 import DisplayModeToggle from '../base/DisplayModeToggle.vue'
@@ -37,8 +38,9 @@ const topAssets = computed(() => {
       }
     })
     .map(a => {
-      const total_value = a.last_price * a.quantity
-      const change_percent = (a.daily_change / a.last_price) * 100
+      const unit = effectiveUnitPriceInCurrency(a)
+      const total_value = unit * a.quantity
+      const change_percent = a.last_price ? (a.daily_change / a.last_price) * 100 : 0
       const change_value = a.daily_change * a.quantity
       return { ...a, total_value, change_percent, change_value }
     })

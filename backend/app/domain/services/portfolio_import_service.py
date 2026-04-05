@@ -118,7 +118,9 @@ async def import_broker_portfolio(
     clear_before_import: bool = False,
     api_key: str = "",
 ):
-    user = get_user_by_email(email)
+    user = await get_user_by_email(email)
+    if not user:
+        raise ValueError(f"Пользователь с email {email} не найден")
     user_id = user["id"]
 
     op_type_map, all_assets, isin_to_asset, currency_assets_map = await _load_reference_data()

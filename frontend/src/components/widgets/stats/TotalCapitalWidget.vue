@@ -28,7 +28,7 @@ const formattedProfitAmount = computed(() => {
 })
 
 const tooltipText = computed(() => {
-  return `Разница между текущей стоимостью активов и суммой инвестиций составляет ${Math.abs(profitPercent.value).toFixed(2)}% (${formattedProfitAmount.value})`
+  return `Разница между капиталом и инвестициями составляет ${Math.abs(profitPercent.value).toFixed(2)}% (${formattedProfitAmount.value})`
 })
 </script>
 

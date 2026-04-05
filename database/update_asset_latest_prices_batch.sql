@@ -11,12 +11,14 @@ BEGIN
         curr_date,
         prev_price,
         prev_date,
+        curr_accrued,
         updated_at
     )
     WITH ranked_prices AS (
         SELECT 
             asset_id,
             price,
+            accrued_coupon,
             trade_date,
             trade_date AS price_date,
             ROW_NUMBER() OVER (PARTITION BY asset_id, trade_date ORDER BY trade_date DESC) AS date_rank,
@@ -37,10 +39,12 @@ BEGIN
             MAX(CASE WHEN price_date = CURRENT_DATE - 1 AND date_rank = 1 THEN price_date END) AS yesterday_date,
             MAX(CASE WHEN recent_rank = 1 THEN price END) AS recent_price,
             MAX(CASE WHEN recent_rank = 1 THEN price_date END) AS recent_date,
+            MAX(CASE WHEN recent_rank = 1 THEN accrued_coupon END) AS recent_accrued,
             MAX(CASE WHEN all_rank = 1 THEN price END) AS latest_price,
             MAX(CASE WHEN all_rank = 1 THEN price_date END) AS latest_date,
             MAX(CASE WHEN all_rank = 2 THEN price END) AS prev_price,
-            MAX(CASE WHEN all_rank = 2 THEN price_date END) AS prev_date
+            MAX(CASE WHEN all_rank = 2 THEN price_date END) AS prev_date,
+            MAX(CASE WHEN all_rank = 1 THEN accrued_coupon END) AS latest_accrued
         FROM ranked_prices
         GROUP BY asset_id
     )
@@ -54,6 +58,7 @@ BEGIN
         COALESCE(ag.recent_date, ag.latest_date) AS curr_date,
         ag.prev_price,
         ag.prev_date,
+        COALESCE(ag.recent_accrued, ag.latest_accrued, 0) AS curr_accrued,
         CURRENT_TIMESTAMP AS updated_at
     FROM assets a
     LEFT JOIN aggregated ag ON ag.asset_id = a.id
@@ -67,6 +72,7 @@ BEGIN
         curr_date = EXCLUDED.curr_date,
         prev_price = EXCLUDED.prev_price,
         prev_date = EXCLUDED.prev_date,
+        curr_accrued = EXCLUDED.curr_accrued,
         updated_at = EXCLUDED.updated_at;
 END;
 $$ LANGUAGE plpgsql;

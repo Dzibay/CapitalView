@@ -110,7 +110,7 @@ const capitalProfitAmount = computed(() => props.totalAmount - props.investedAmo
 
 const capitalTooltip = computed(() => {
   const fmt = formatCurrency(capitalProfitAmount.value)
-  return `Разница между текущей стоимостью активов и суммой инвестиций составляет ${Math.abs(capitalProfitPercent.value).toFixed(2)}% (${fmt})`
+  return `Разница между капиталом и нетто вводом средств (пополнения минус выводы) составляет ${Math.abs(capitalProfitPercent.value).toFixed(2)}% (${fmt})`
 })
 
 const profitToInvestedPercent = computed(() => {
@@ -131,6 +131,7 @@ const profitBreakdown = computed(() => {
     coupons: t.coupons ?? a.coupons ?? 0,
     commissions: Math.abs(t.commissions ?? a.commissions ?? 0),
     taxes: Math.abs(t.taxes ?? a.taxes ?? 0),
+    accruedCouponRub: t.accrued_coupon_rub ?? a.accrued_coupon_rub ?? 0,
     total: props.totalProfit
   }
 })
@@ -140,6 +141,9 @@ const profitBreakdownTooltip = computed(() => {
   const parts = []
   if (b.realized !== 0) parts.push(`Реализованная прибыль: ${formatForTooltip(b.realized)}`)
   if (b.unrealized !== 0) parts.push(`Нереализованная прибыль: ${formatForTooltip(b.unrealized)}`)
+  if (b.accruedCouponRub !== 0) {
+    parts.push(`НКД по облигациям (в оценке): ${formatForTooltip(b.accruedCouponRub)}`)
+  }
   if (b.dividends !== 0) parts.push(`Дивиденды: ${formatForTooltip(b.dividends)}`)
   if (b.coupons !== 0) parts.push(`Купоны: ${formatForTooltip(b.coupons)}`)
   if (b.commissions !== 0) parts.push(`Комиссии: ${formatForTooltip(-b.commissions)}`)

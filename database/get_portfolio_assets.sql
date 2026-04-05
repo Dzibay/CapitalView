@@ -12,6 +12,7 @@ RETURNS TABLE (
     leverage numeric(20,2),
     average_price numeric(20,6),
     last_price numeric(20,6),
+    accrued_coupon numeric(20,6),
     daily_change numeric(20,6),
     profit numeric(20,2),
     currency_ticker text,
@@ -35,6 +36,7 @@ BEGIN
         COALESCE(pa.leverage,1.0)::numeric(20,2) AS leverage,
         COALESCE(pa.average_price,0)::numeric(20,6) AS average_price,
         COALESCE(apf.curr_price,0)::numeric(20,6) AS last_price,
+        COALESCE(apf.curr_accrued,0)::numeric(20,6) AS accrued_coupon,
 
         -- 💹 daily_change: если нет цены ни за сегодня, ни за вчера → 0
         CASE
@@ -44,14 +46,14 @@ BEGIN
                 0
         END::numeric(20,6) AS daily_change,
 
-        -- 💰 прибыль в валюте актива
-        ((COALESCE(apf.curr_price,0) - COALESCE(pa.average_price,0)) * COALESCE(pa.quantity,0))::numeric(20,2) AS profit,
+        -- 💰 прибыль в валюте актива (чистая цена + НКД для облигаций)
+        (((COALESCE(apf.curr_price,0) + COALESCE(apf.curr_accrued,0)) - COALESCE(pa.average_price,0)) * COALESCE(pa.quantity,0))::numeric(20,2) AS profit,
 
         qa.ticker AS currency_ticker,
         COALESCE(curr.curr_price,1)::numeric(20,6) AS currency_rate_to_rub,
 
         -- 💰 прибыль в рублях
-        ((COALESCE(apf.curr_price,0) - COALESCE(pa.average_price,0))
+        (((COALESCE(apf.curr_price,0) + COALESCE(apf.curr_accrued,0)) - COALESCE(pa.average_price,0))
          * COALESCE(pa.quantity,0)
          * COALESCE(curr.curr_price,1))::numeric(20,2) AS profit_rub,
 

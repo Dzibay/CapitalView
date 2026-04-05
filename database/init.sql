@@ -136,6 +136,7 @@ CREATE TABLE IF NOT EXISTS asset_prices (
   asset_id bigint NOT NULL,
   price numeric(20,6) NOT NULL,
   trade_date date NOT NULL,
+  accrued_coupon numeric(20,6) NOT NULL DEFAULT 0,
   CONSTRAINT asset_prices_pkey PRIMARY KEY (asset_id, trade_date),
   CONSTRAINT asset_prices_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
 );
@@ -163,6 +164,7 @@ CREATE TABLE IF NOT EXISTS asset_latest_prices (
   curr_date date,
   prev_price numeric(20,6),
   prev_date date,
+  curr_accrued numeric(20,6) DEFAULT 0,
   updated_at timestamp(0) without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT asset_latest_prices_pkey PRIMARY KEY (asset_id),
   CONSTRAINT asset_latest_prices_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE

@@ -5,6 +5,19 @@ import { useUIStore } from '../stores/ui.store'
 import { expandPortfolioHistoryForCharts } from '../utils/portfolioHistory'
 
 /**
+ * Нетто ввод средств: сумма пополнений + сумма выводов (выводы в БД с минусом).
+ * Используется для строки «Инвестировано» в виджете общего капитала.
+ */
+function netCashInvestedFromTotals(totals) {
+  if (!totals || typeof totals !== 'object') return null
+  if (totals.inflow == null && totals.outflow == null) return null
+  const inflow = Number(totals.inflow ?? 0)
+  const outflow = Number(totals.outflow ?? 0)
+  if (!Number.isFinite(inflow) || !Number.isFinite(outflow)) return null
+  return inflow + outflow
+}
+
+/**
  * Composable для работы с аналитикой портфеля
  * Используется на страницах Dashboard и Analytics
  */
@@ -101,19 +114,24 @@ export function usePortfolioAnalytics() {
 
   // Данные для TotalCapitalWidget
   const totalCapitalWidgetData = computed(() => {
-    // Приоритет: selectedPortfolioAnalytics > selectedPortfolio
-    if (selectedPortfolioAnalytics.value?.totals) {
-      const totalInvested = selectedPortfolioAnalytics.value.totals.total_invested || 0
+    const p = selectedPortfolio.value
+    const t =
+      selectedPortfolioAnalytics.value?.totals ||
+      p?.analytics?.totals ||
+      null
+    const netCash = netCashInvestedFromTotals(t)
+
+    if (p && t && netCash !== null) {
       return {
-        totalAmount: selectedPortfolioAnalytics.value.totals.total_value || 0,
-        investedAmount: totalInvested + balance.value
+        totalAmount: (t.total_value != null ? t.total_value : p.total_value) || 0,
+        investedAmount: netCash
       }
     }
-    
-    if (selectedPortfolio.value) {
-      const totalInvested = selectedPortfolio.value.total_invested || 0
+
+    if (p) {
+      const totalInvested = p.total_invested || 0
       return {
-        totalAmount: selectedPortfolio.value.total_value || 0,
+        totalAmount: p.total_value || 0,
         investedAmount: totalInvested + balance.value
       }
     }
@@ -169,11 +187,13 @@ export function usePortfolioAnalytics() {
   const returnData = computed(() => {
     // Используем данные из аналитики, если доступны
     if (selectedPortfolioAnalytics.value?.totals) {
+      const t = selectedPortfolioAnalytics.value.totals
+      const bal = t.balance != null ? t.balance : balance.value
       return {
-        returnPercent: selectedPortfolioAnalytics.value.totals.return_percent || 0,
-        returnPercentOnInvested: selectedPortfolioAnalytics.value.totals.return_percent_on_invested || 0,
-        totalValue: selectedPortfolioAnalytics.value.totals.total_value || 0,
-        totalInvested: selectedPortfolioAnalytics.value.totals.total_invested || 0
+        returnPercent: t.return_percent || 0,
+        returnPercentOnInvested: t.return_percent_on_invested || 0,
+        totalValue: t.total_value || 0,
+        totalInvested: (t.total_invested || 0) + bal
       }
     }
     // Иначе используем данные из selectedPortfolio.analytics
