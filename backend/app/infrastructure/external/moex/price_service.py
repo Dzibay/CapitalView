@@ -206,11 +206,12 @@ async def get_price_moex(session: aiohttp.ClientSession, ticker: str) -> Optiona
 
 
 def _asset_type_to_market(asset_type_id: Optional[int]) -> Optional[str]:
-    """Определяет рынок MOEX по asset_type_id (None = пробовать оба)."""
+    """Определяет рынок MOEX по asset_type_id (None = пробовать оба). См. init.sql asset_types."""
     mapping = {
         1: "shares",   # Акция
-        10: "shares",  # Фонд
-        11: "shares",  # Фьючерс (торгуются на shares в ISS candles)
+        3: "shares",   # Фонд
+        4: "shares",   # Опцион
+        5: "shares",   # Фьючерс
         2: "bonds",    # Облигация
     }
     return mapping.get(asset_type_id)
@@ -235,7 +236,7 @@ async def get_price_moex_history(
         ticker: Тикер актива
         start_date: Начальная дата (если None, с 2000 года)
         days: Не используется (совместимость)
-        asset_type_id: Тип актива для выбора рынка (1,10,11→shares, 2→bonds).
+        asset_type_id: Тип актива для выбора рынка (1,3,4,5→shares, 2→bonds).
                        Если None — пробует оба.
     
     Returns:

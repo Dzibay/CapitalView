@@ -64,10 +64,15 @@ def get_asset_type_name(asset_type_id: Optional[int]) -> str:
     Returns:
         Название типа актива
     """
-    if asset_type_id == 1:
+    names = {
+        1: "Акция",
+        2: "Облигация",
+        3: "Фонд",
+        4: "Опцион",
+        5: "Фьючерс",
+        6: "Криптовалюта",
+        7: "Валюта",
+    }
+    if asset_type_id is None:
         return "Акция"
-    elif asset_type_id == 2:
-        return "Облигация"
-    elif asset_type_id == 10:
-        return "Фонд"
-    return "Акция"  # По умолчанию
+    return names.get(asset_type_id, "Акция")

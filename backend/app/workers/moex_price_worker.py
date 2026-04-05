@@ -269,10 +269,9 @@ async def update_history_prices() -> int:
     Returns:
         Количество успешно обновленных активов
     """
-    # Получаем MOEX активы с фильтром по asset_type_id (1=Акция, 2=Облигация, 10=Фонд, 11=Фьючерс)
-    # Это эффективнее, чем загружать все активы и фильтровать в Python
-    # Убираем лимит для получения всех активов
-    moex_asset_types = [1, 2, 10, 11]  # Акция, Облигация, Фонд, Фьючерс
+    # Типы как в init.sql / update_moex_assets: 1 акция, 2 облигация, 3 фонд, 4 опцион, 5 фьючерс
+    # (раньше ошибочно стояли 10/11 — в справочнике это «Вклад» и «Другое», фонды не попадали в выборку)
+    moex_asset_types = [1, 2, 3, 4, 5]
     async with db_sem:
         all_assets = await db_select(
             "assets",
@@ -484,7 +483,7 @@ async def process_today_prices_batch(
     
     for asset in assets:
         asset_type_id = asset.get("asset_type_id")
-        if asset_type_id in [1, 10, 11]:  # Акция, Фонд, Фьючерс
+        if asset_type_id in [1, 3, 4, 5]:  # Акция, Фонд, Опцион, Фьючерс (рынок shares в ISS)
             shares_assets.append(asset)
         elif asset_type_id == 2:  # Облигация
             bonds_assets.append(asset)
@@ -609,9 +608,7 @@ async def update_today_prices() -> int:
         logger.info(f"Торговая сессия MOEX закрыта (МСК: {now.strftime('%H:%M')}), обновление пропущено")
         return 0
 
-    # Получаем MOEX активы с фильтром по asset_type_id
-    # Убираем лимит для получения всех активов
-    moex_asset_types = [1, 2, 10, 11]  # Акция, Облигация, Фонд, Фьючерс
+    moex_asset_types = [1, 2, 3, 4, 5]
     async with db_sem:
         all_assets = await db_select(
             "assets",

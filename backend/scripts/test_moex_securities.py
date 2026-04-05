@@ -102,7 +102,7 @@ async def get_db_assets():
     print("   📥 Загрузка активов из базы данных...")
     
     # Получаем все активы с типом акция, облигация, фонд, фьючерс
-    moex_asset_types = [1, 2, 10, 11]  # Акция, Облигация, Фонд, Фьючерс
+    moex_asset_types = [1, 2, 3, 4, 5]  # как в init.sql / moex_price_worker
     
     raw_assets = await table_select_async(
         "assets",
@@ -163,12 +163,13 @@ async def compare_securities():
     
     # Группируем активы из БД по типу
     db_shares = {t: a for t, a in db_assets.items() if a["asset_type_id"] == 1}
-    db_funds = {t: a for t, a in db_assets.items() if a["asset_type_id"] == 10}
+    db_funds = {t: a for t, a in db_assets.items() if a["asset_type_id"] == 3}
     db_bonds = {t: a for t, a in db_assets.items() if a["asset_type_id"] == 2}
-    db_futures = {t: a for t, a in db_assets.items() if a["asset_type_id"] == 11}
+    db_futures = {t: a for t, a in db_assets.items() if a["asset_type_id"] == 5}
     
     # Объединяем акции и фонды для сравнения с MOEX shares
-    db_shares_all = db_shares | db_funds | db_futures
+    db_options = {t: a for t, a in db_assets.items() if a["asset_type_id"] == 4}
+    db_shares_all = db_shares | db_funds | db_futures | db_options
     
     print(f"\n   ✅ Всего в базе данных:")
     print(f"      Акции: {len(db_shares)}")
@@ -205,7 +206,9 @@ async def compare_securities():
         print(f"\n🔍 Тикеры только в базе данных (первые 20):")
         for ticker in sorted(list(only_in_db_shares))[:20]:
             asset = db_shares_all[ticker]
-            asset_type = {1: "Акция", 10: "Фонд", 11: "Фьючерс"}.get(asset["asset_type_id"], "Неизвестно")
+            asset_type = {1: "Акция", 3: "Фонд", 4: "Опцион", 5: "Фьючерс"}.get(
+                asset["asset_type_id"], "Неизвестно"
+            )
             print(f"   {ticker:<15} ({asset_type})")
         if len(only_in_db_shares) > 20:
             print(f"   ... и еще {len(only_in_db_shares) - 20}")
