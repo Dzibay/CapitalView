@@ -77,7 +77,8 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
     Получает данные о купонах и амортизациях облигации с MOEX.
 
     Returns:
-        (payouts: list, initial_face_value: float | None, coupon_percent: float | None)
+        (payouts: list, initial_face_value: float | None, coupon_percent: float | None).
+        Если в ответе нет initialfacevalue, но есть строки купонов/амортизаций, подставляется 1000.
     """
     url = MOEX_BONDIZATION_URL.format(ticker=ticker)
     data = await fetch_json(session, url)
@@ -139,6 +140,9 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
                 "value": rec.get("value"),
                 "type": "amortization"
             })
+
+    if initial_face_value is None and results:
+        initial_face_value = 1000.0
 
     return results, initial_face_value, coupon_percent
 
