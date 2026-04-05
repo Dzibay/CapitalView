@@ -7,7 +7,9 @@ Worker для обновления цен MOEX.
 import asyncio
 import aiohttp
 import pytz
+import json
 import logging
+from bisect import bisect_right
 from datetime import datetime, timedelta, time, date
 from typing import Optional, Dict, List, Tuple
 from tqdm.asyncio import tqdm_asyncio
@@ -44,10 +46,70 @@ def is_moex_trading_time() -> bool:
     return time(10, 0) <= now <= time(19, 0)
 
 
+async def load_amortization_schedules(bond_asset_ids: List[int]) -> Dict[int, List[Tuple[date, float]]]:
+    """
+    Загружает расписание амортизаций из asset_payouts для облигаций.
+
+    Returns:
+        {asset_id: [(payment_date, value), ...]} отсортировано по дате
+    """
+    if not bond_asset_ids:
+        return {}
+
+    async with db_sem:
+        rows = await db_select(
+            "asset_payouts",
+            "asset_id, payment_date, value",
+            filters={"type": "amortization"},
+            in_filters={"asset_id": bond_asset_ids},
+            order="asset_id, payment_date",
+            limit=None,
+        )
+
+    schedules: Dict[int, List[Tuple[date, float]]] = {}
+    for r in rows:
+        aid = r["asset_id"]
+        pd = r.get("payment_date")
+        val = r.get("value")
+        if pd is None or val is None:
+            continue
+        if isinstance(pd, str):
+            pd = normalize_date(pd)
+        if isinstance(pd, datetime):
+            pd = pd.date()
+        if pd is None:
+            continue
+        schedules.setdefault(aid, []).append((pd, float(val)))
+
+    return schedules
+
+
+def get_effective_face_value(
+    initial_fv: float,
+    amort_schedule: List[Tuple[date, float]],
+    trade_date: date,
+) -> float:
+    """
+    Рассчитывает номинал облигации на конкретную дату с учётом амортизаций.
+
+    amort_schedule должен быть отсортирован по дате.
+    Используем bisect_right: все амортизации с датой <= trade_date считаются выплаченными.
+    """
+    if not amort_schedule:
+        return initial_fv
+
+    dates = [a[0] for a in amort_schedule]
+    idx = bisect_right(dates, trade_date)
+    cum = sum(a[1] for a in amort_schedule[:idx])
+    effective = initial_fv - cum
+    return max(effective, 0.0)
+
+
 async def update_asset_history(
     session: aiohttp.ClientSession,
     asset: Dict,
-    last_date_map: Dict[int, str]
+    last_date_map: Dict[int, str],
+    amort_schedules: Dict[int, List[Tuple[date, float]]],
 ) -> Tuple[bool, Optional[str], List[Dict]]:
     """
     Получает историю цен актива и возвращает новые цены для вставки.
@@ -56,6 +118,7 @@ async def update_asset_history(
         session: HTTP сессия
         asset: Словарь с данными актива (id, ticker)
         last_date_map: Словарь последних дат {asset_id: date}
+        amort_schedules: Расписание амортизаций {asset_id: [(date, value), ...]}
         
     Returns:
         (success: bool, min_date: str или None, new_prices: List[Dict]) - результат и новые цены
@@ -63,24 +126,18 @@ async def update_asset_history(
     asset_id = asset["id"]
     ticker = asset["ticker"].upper().strip()
 
-    # Получаем последнюю известную дату из предзагруженного словаря
-    # Если записи нет в asset_latest_prices, last_date будет None
-    # и будет запрошена вся история с 2000 года (первое обновление)
     last_date = last_date_map.get(asset_id)
 
-    # Преобразуем last_date в date для передачи в функцию
     start_date_for_query = None
     if last_date:
         parsed_date = normalize_date(last_date)
         if parsed_date:
-            # Убеждаемся, что это date объект, а не datetime
             if isinstance(parsed_date, datetime):
                 parsed_date = parsed_date.date()
             elif not isinstance(parsed_date, date):
                 parsed_date = None
             
             if parsed_date:
-                # Запрашиваем цены начиная с последней даты (чтобы заменить последнюю цену и вставить новые)
                 start_date_for_query = parsed_date
 
     asset_type_id = asset.get("asset_type_id")
@@ -97,41 +154,56 @@ async def update_asset_history(
             )
 
     if not prices:
-        # Если есть last_date, то отсутствие новых цен - это нормально (все цены уже в базе)
         if last_date:
             return True, None, []
         else:
-            # Для активов без last_date отсутствие цен - это ошибка
             logger.warning(f"⚠️ Не удалось получить цены для {ticker} (asset_id: {asset_id})")
             return False, None, []
 
-    # Для облигаций конвертируем цены из процентов в абсолютные значения
-    # Получаем face_value из properties актива
-    face_value = None
-    asset_type_id = asset.get("asset_type_id")
     if asset_type_id == 2:  # Облигация
         props = asset.get("properties") or {}
         if isinstance(props, str):
             try:
-                import json
                 props = json.loads(props)
-            except:
+            except (ValueError, TypeError):
                 props = {}
-        face_value = props.get("face_value")
-        
-        # Конвертируем цены из процентов в абсолютные значения
-        if face_value and face_value > 0:
-            prices = [
-                (trade_date, (close_price / 100) * float(face_value))
-                for trade_date, close_price in prices
-            ]
+
+        schedule = amort_schedules.get(asset_id, [])
+
+        if schedule:
+            initial_fv = props.get("initial_face_value")
+            if not initial_fv:
+                # Fallback: face_value + сумма уже прошедших амортизаций
+                current_fv = props.get("face_value")
+                if current_fv:
+                    today = date.today()
+                    past_amort_sum = sum(v for d, v in schedule if d <= today)
+                    initial_fv = float(current_fv) + past_amort_sum
+            if initial_fv and initial_fv > 0:
+                converted = []
+                for trade_date_str, close_price in prices:
+                    td = normalize_date(trade_date_str)
+                    if isinstance(td, datetime):
+                        td = td.date()
+                    if td:
+                        eff_fv = get_effective_face_value(float(initial_fv), schedule, td)
+                    else:
+                        eff_fv = float(initial_fv)
+                    converted.append((trade_date_str, (close_price / 100) * eff_fv))
+                prices = converted
+        else:
+            initial_face_value = props.get("initial_face_value")
+            if initial_face_value and float(initial_face_value) > 0:
+                prices = [
+                    (td, (p / 100) * float(initial_face_value))
+                    for td, p in prices
+                ]
 
     new_prices_data = filter_new_prices(prices, asset_id, last_date)
 
     if not new_prices_data:
         return True, None, []
 
-    # Находим минимальную дату обновления
     min_date = min(normalize_date_to_sql_date(price["trade_date"]) or "" for price in new_prices_data)
 
     return True, min_date, new_prices_data
@@ -238,6 +310,10 @@ async def update_history_prices() -> int:
         if date_str:
             last_date_map[asset_id] = date_str
 
+    # Загружаем расписание амортизаций для облигаций
+    bond_ids = [a["id"] for a in assets if a.get("asset_type_id") == 2]
+    amort_schedules = await load_amortization_schedules(bond_ids)
+
     # Словарь для отслеживания обновленных активов и их минимальных дат
     updated_assets = {}  # {asset_id: min_date}
     updated_asset_ids = []
@@ -246,7 +322,7 @@ async def update_history_prices() -> int:
     all_new_prices = []
     
     async with create_moex_session() as session:
-        tasks = [update_asset_history(session, a, last_date_map) for a in assets]
+        tasks = [update_asset_history(session, a, last_date_map, amort_schedules) for a in assets]
         results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="История")
 
     # Собираем информацию об обновленных активах и все новые цены

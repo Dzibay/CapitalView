@@ -20,6 +20,10 @@ const props = defineProps({
         <slot name="header" />
       </div>
     </div>
+
+    <div v-if="$slots.subheader" class="widget-subheader">
+      <slot name="subheader" />
+    </div>
     
     <div class="widget-content" :class="{ 'widget-content--compact': compact }">
       <slot />
@@ -96,6 +100,15 @@ const props = defineProps({
   color: var(--text-heading-3-color);
   letter-spacing: 0.3px;
   margin: 0;
+}
+
+.widget-subheader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .widget-content {

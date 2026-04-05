@@ -33,13 +33,13 @@ const props = defineProps({
         if (type === 2) return 'Продажа'
         if (type === 3) return 'Дивиденды'
         if (type === 4) return 'Купоны'
-        if (type === 9) return 'Погашение'  // Ammortization/Redemption
+        if (type === 9) return 'Амортизация'
       }
       if (typeof type === 'string') {
         const t = type.toLowerCase()
         if (t.includes('покуп') || t.includes('buy')) return 'Покупка'
         if (t.includes('прод') || t.includes('sell')) return 'Продажа'
-        if (t.includes('погаш') || t.includes('redemption') || t.includes('амортиз') || t.includes('amortization') || t.includes('ammortization')) return 'Погашение'
+        if (t.includes('аморт') || t.includes('amortization') || t.includes('погаш')) return 'Амортизация'
         if (t.includes('див') || t.includes('div')) return 'Дивиденды'
         if (t.includes('купон') || t.includes('coupon')) return 'Купоны'
       }
@@ -56,7 +56,7 @@ const props = defineProps({
         if (type === 2) return 'sell'
         if (type === 3) return 'dividend'
         if (type === 4) return 'coupon'
-        if (type === 9) return 'redemption'  // Ammortization/Redemption
+        if (type === 9) return 'amortization'
       }
       if (typeof type === 'string') {
         const t = type.toLowerCase()

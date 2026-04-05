@@ -308,7 +308,7 @@ INSERT INTO operations_type (id, name) OVERRIDING SYSTEM VALUE VALUES
   (6, 'Withdraw'),
   (7, 'Commission'),
   (8, 'Tax'),
-  (9, 'Redemption'),
+  (9, 'Amortization'),
   (10, 'Other')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 

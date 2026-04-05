@@ -10,7 +10,7 @@ class CreateTransactionRequest(BaseModel):
     """Модель запроса создания транзакции."""
     portfolio_asset_id: int = Field(..., ge=1, description="ID портфельного актива")
     asset_id: int = Field(..., ge=1, description="ID актива")
-    transaction_type: int = Field(..., description="Тип транзакции (1 = buy, 2 = sell, 3 = redemption/amortization)")
+    transaction_type: int = Field(..., description="Тип транзакции (1 = buy, 2 = sell, 3 = amortization)")
     quantity: float = Field(..., gt=0, description="Количество")
     price: float = Field(..., gt=0, description="Цена за единицу")
     transaction_date: Union[datetime, str] = Field(..., description="Дата транзакции")
@@ -19,21 +19,21 @@ class CreateTransactionRequest(BaseModel):
     @field_validator('transaction_type', mode='before')
     @classmethod
     def parse_transaction_type(cls, v):
-        """Преобразует тип транзакции в число: buy/1 -> 1, sell/2 -> 2, redemption/3 -> 3."""
+        """Преобразует тип транзакции в число: buy/1 -> 1, sell/2 -> 2, amortization/3 -> 3."""
         if isinstance(v, int):
             if v in [1, 2, 3]:
                 return v
-            raise ValueError("transaction_type должен быть 1 (buy), 2 (sell) или 3 (redemption)")
+            raise ValueError("transaction_type должен быть 1 (buy), 2 (sell) или 3 (amortization)")
         if isinstance(v, str):
             v_lower = v.lower()
             if v_lower in ['buy', 'покупка', '1']:
                 return 1
             elif v_lower in ['sell', 'продажа', '2']:
                 return 2
-            elif v_lower in ['redemption', 'redempt', 'погашение', 'амортизация', 'amortization', 'ammortization', '3']:
+            elif v_lower in ['amortization', 'амортизация', 'погашение', '3']:
                 return 3
             else:
-                raise ValueError(f"Некорректный тип транзакции: {v}. Ожидается 'buy'/'sell'/'redemption' или 1/2/3")
+                raise ValueError(f"Некорректный тип транзакции: {v}. Ожидается 'buy'/'sell'/'amortization' или 1/2/3")
         raise ValueError(f"transaction_type должен быть строкой или числом, получен: {type(v)}")
     
     @field_validator('transaction_date', mode='before')

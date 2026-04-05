@@ -30,10 +30,10 @@ DECLARE
     v_op_record RECORD;
     v_first_buy_date timestamp without time zone;
     v_min_date date;
-    -- Для операций покупки/продажи/погашения (транзакции)
+    -- Для операций покупки/продажи/амортизации (транзакции)
     v_buy_op_type_id bigint;
     v_sell_op_type_id bigint;
-    v_redemption_op_type_id bigint;
+    v_amortization_op_type_id bigint;
     v_tx_id bigint;
     v_remaining numeric;
     v_realized numeric := 0;
@@ -64,16 +64,16 @@ BEGIN
         v_rub_currency_id := 1;
     END IF;
 
-    -- ID типов операций Buy/Sell/Redemption одним запросом
+    -- ID типов операций Buy/Sell/Amortization одним запросом
     SELECT
         MAX(id) FILTER (WHERE name = 'Buy'),
         MAX(id) FILTER (WHERE name = 'Sell'),
-        COALESCE(MAX(id) FILTER (WHERE name = 'Redemption'), MAX(id) FILTER (WHERE name = 'ammortization'))
-    INTO v_buy_op_type_id, v_sell_op_type_id, v_redemption_op_type_id
+        MAX(id) FILTER (WHERE name = 'Amortization')
+    INTO v_buy_op_type_id, v_sell_op_type_id, v_amortization_op_type_id
     FROM operations_type
-    WHERE name IN ('Buy', 'Sell', 'Redemption', 'ammortization');
+    WHERE name IN ('Buy', 'Sell', 'Amortization');
 
-    -- Сортируем операции по дате (включая поля для Buy/Sell/Redemption: quantity, price, payment)
+    -- Сортируем операции по дате (включая поля для Buy/Sell/Amortization: quantity, price, payment)
     CREATE TEMP TABLE temp_sorted_ops AS
     SELECT 
         (op->>'user_id')::uuid as user_id,
@@ -113,11 +113,11 @@ BEGIN
         currency_id bigint
     );
 
-    -- ========== СНАЧАЛА: Buy/Sell/Redemption (чтобы покупки были в БД до проверки «первая покупка» для Dividend/Coupon) ==========
-    IF v_buy_op_type_id IS NOT NULL AND v_sell_op_type_id IS NOT NULL AND v_redemption_op_type_id IS NOT NULL THEN
+    -- ========== СНАЧАЛА: Buy/Sell/Amortization (чтобы покупки были в БД до проверки «первая покупка» для Dividend/Coupon) ==========
+    IF v_buy_op_type_id IS NOT NULL AND v_sell_op_type_id IS NOT NULL AND v_amortization_op_type_id IS NOT NULL THEN
         IF EXISTS (
             SELECT 1 FROM temp_sorted_ops 
-            WHERE operation_type IN (v_buy_op_type_id, v_sell_op_type_id, v_redemption_op_type_id)
+            WHERE operation_type IN (v_buy_op_type_id, v_sell_op_type_id, v_amortization_op_type_id)
         ) THEN
             -- Батч-вставка покупок (transaction_type = 1)
             IF EXISTS (SELECT 1 FROM temp_sorted_ops WHERE operation_type = v_buy_op_type_id) THEN
@@ -267,11 +267,11 @@ BEGIN
                     t.original_json,
                     CASE 
                         WHEN t.operation_type = v_sell_op_type_id THEN 2
-                        WHEN t.operation_type = v_redemption_op_type_id THEN 3
+                        WHEN t.operation_type = v_amortization_op_type_id THEN 3
                         ELSE 2
                     END AS transaction_type
                 FROM temp_sorted_ops t
-                WHERE t.operation_type IN (v_sell_op_type_id, v_redemption_op_type_id)
+                WHERE t.operation_type IN (v_sell_op_type_id, v_amortization_op_type_id)
                   AND t.portfolio_asset_id IS NOT NULL
                   AND t.quantity IS NOT NULL
                   AND t.price IS NOT NULL
@@ -401,7 +401,7 @@ BEGIN
                 END;
             END LOOP;
 
-            -- Батч-создание cash_operations для всех вставленных транзакций (Buy/Sell/Redemption)
+            -- Батч-создание cash_operations для всех вставленных транзакций (Buy/Sell/Amortization)
             -- currency из переданных данных или из актива (quote_asset_id); amount_rub по курсу на дату операции
             IF array_length(v_tx_ids, 1) > 0 THEN
                 INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id, amount_rub)
@@ -411,7 +411,7 @@ BEGIN
                     CASE 
                         WHEN t.transaction_type = 1 THEN v_buy_op_type_id
                         WHEN t.transaction_type = 2 THEN v_sell_op_type_id
-                        WHEN t.transaction_type = 3 THEN v_redemption_op_type_id
+                        WHEN t.transaction_type = 3 THEN v_amortization_op_type_id
                     END,
                     CASE 
                         WHEN t.transaction_type = 1 THEN -ABS(COALESCE(tpm.payment, 0))
@@ -423,7 +423,7 @@ BEGIN
                     t.transaction_date,
                     t.id,
                     pa.asset_id,
-                    -- amount_rub с тем же знаком, что и amount (Buy — отрицательный, Sell/Redemption — положительный)
+                    -- amount_rub с тем же знаком, что и amount (Buy — отрицательный, Sell/Amortization — положительный)
                     (CASE WHEN t.transaction_type = 1 THEN -1 ELSE 1 END)
                     * (CASE
                         WHEN COALESCE(tpm.currency_id, 1) IN (1, v_rub_currency_id) THEN ABS(COALESCE(tpm.payment, 0))
@@ -457,7 +457,13 @@ BEGIN
     -- ========== Денежные операции (Dividend, Coupon, Commission, Tax, Deposit, Withdraw) — после транзакций ==========
     FOR v_op_record IN SELECT * FROM temp_sorted_ops
     LOOP
-        IF v_op_record.operation_type IN (v_buy_op_type_id, v_sell_op_type_id, v_redemption_op_type_id) THEN
+        IF v_op_record.operation_type IN (v_buy_op_type_id, v_sell_op_type_id) THEN
+            CONTINUE;
+        END IF;
+        -- Амортизация: транзакция (уменьшение номинала) только при quantity+price; иначе денежная выплата как у дивиденда
+        IF v_op_record.operation_type = v_amortization_op_type_id
+           AND v_op_record.quantity IS NOT NULL
+           AND v_op_record.price IS NOT NULL THEN
             CONTINUE;
         END IF;
 
@@ -496,7 +502,7 @@ BEGIN
                 RAISE EXCEPTION 'Тип операции % не найден', v_operation_type;
             END IF;
             
-            IF v_asset_id IS NOT NULL AND v_operation_type IN (3, 4, 7, 8) THEN
+            IF v_asset_id IS NOT NULL AND v_operation_type IN (3, 4, 7, 8, v_amortization_op_type_id) THEN
                 SELECT min(t.transaction_date)
                 INTO v_first_buy_date
                 FROM transactions t
@@ -640,7 +646,8 @@ BEGIN
             SELECT pa.id AS pa_id, tso.operation_date::date AS d
             FROM temp_sorted_ops tso
             JOIN portfolio_assets pa ON pa.portfolio_id = tso.portfolio_id AND pa.asset_id = tso.asset_id
-            WHERE tso.portfolio_id IS NOT NULL AND tso.asset_id IS NOT NULL AND tso.operation_type IN (3, 4, 7, 8)
+            WHERE tso.portfolio_id IS NOT NULL AND tso.asset_id IS NOT NULL
+              AND (tso.operation_type IN (3, 4, 7, 8) OR tso.operation_type = v_amortization_op_type_id)
             UNION ALL
             SELECT t.portfolio_asset_id, t.transaction_date::date
             FROM transactions t
@@ -698,7 +705,11 @@ BEGIN
         SELECT DISTINCT tso.portfolio_asset_id
         FROM temp_sorted_ops tso
         WHERE tso.portfolio_asset_id IS NOT NULL
-          AND (tso.operation_type IN (3, 4) OR tso.operation_type IN (v_buy_op_type_id))
+          AND (
+              tso.operation_type IN (3, 4)
+              OR tso.operation_type = v_amortization_op_type_id
+              OR tso.operation_type IN (v_buy_op_type_id)
+          )
     LOOP
         BEGIN
             PERFORM check_missed_payouts(v_portfolio_asset_id);

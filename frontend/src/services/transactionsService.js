@@ -4,8 +4,8 @@ import operationsService from './operationsService';
 
 export default {
   async addTransaction(asset_id, portfolio_asset_id, transaction_type, quantity, price, transaction_date, create_deposit_operation = false) {
-    // transaction_type: 1=Buy, 2=Sell, 3=Redemption (UI-level)
-    // SQL operations_type ids: 1=Buy, 2=Sell, 9=Redemption
+    // transaction_type: 1=Buy, 2=Sell, 3=Amortization (UI-level)
+    // SQL operations_type ids: 1=Buy, 2=Sell, 9=Amortization
     const operation_type_map = {
       1: 1,
       2: 2,

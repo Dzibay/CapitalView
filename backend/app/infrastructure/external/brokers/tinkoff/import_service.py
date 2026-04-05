@@ -29,8 +29,8 @@ OPERATION_CLASSIFICATION = {
     "OPERATION_TYPE_TAX_BACK": "Tax",
     "OPERATION_TYPE_TAX": "Tax",
     "OPERATION_TYPE_BENEFIT_TAX": "Tax",
-    "OPERATION_TYPE_BOND_REPAYMENT_FULL": "Redemption",
-    "OPERATION_TYPE_BOND_REPAYMENT": "Redemption"
+    "OPERATION_TYPE_BOND_REPAYMENT_FULL": "Amortization",
+    "OPERATION_TYPE_BOND_REPAYMENT": "Amortization"
 }
 
 
@@ -160,15 +160,15 @@ def get_tinkoff_portfolio(token):
                         "type": classified
                     }
 
-                    # BUY / SELL / REDEMPTION (транзакции, которые изменяют количество актива)
-                    if classified in ("Buy", "Sell", "Redemption"):
+                    # BUY / SELL / AMORTIZATION (транзакции, которые изменяют количество актива)
+                    if classified in ("Buy", "Sell", "Amortization"):
                         op_quantity = (quantity or 0) - (quantity_rest or 0)
                         
                         # Пропускаем операции с quantity = 0 (неисполненные заявки)
                         if classified in ("Buy", "Sell") and op_quantity == 0:
                             continue
                         
-                        if classified == "Redemption":
+                        if classified == "Amortization":
                             # Для операций погашения облигаций quantity может быть 0,
                             # но есть payment (сумма выплаты).
                             # Количество будет рассчитано в portfolio_service из позиций портфеля на момент погашения

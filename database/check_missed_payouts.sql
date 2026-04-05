@@ -92,8 +92,8 @@ BEGIN
         ELSIF v_payout_type = 'dividend' THEN
             v_check_date := v_payout.last_buy_date;
         ELSE
-            -- Для других типов используем record_date, если есть, иначе last_buy_date
-            v_check_date := COALESCE(v_payout.record_date, v_payout.last_buy_date);
+            -- Амортизации с MOEX без record_date/last_buy_date; остальные нестандартные типы — тот же fallback
+            v_check_date := COALESCE(v_payout.record_date, v_payout.last_buy_date, v_payout.payment_date);
         END IF;
         
         -- Пропускаем выплаты без даты проверки
@@ -144,8 +144,7 @@ BEGIN
         ELSIF v_payout_type = 'dividend' THEN
             SELECT id INTO v_operation_type_id FROM operations_type WHERE name = 'Dividend' LIMIT 1;
         ELSE
-            -- Для других типов используем Dividend по умолчанию
-            SELECT id INTO v_operation_type_id FROM operations_type WHERE name = 'Dividend' LIMIT 1;
+            SELECT id INTO v_operation_type_id FROM operations_type WHERE name = 'Amortization' LIMIT 1;
         END IF;
         
         -- Получаем курс валюты выплаты к RUB на дату выплаты (нужен для операций, пришедших в RUB)

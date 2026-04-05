@@ -4,6 +4,7 @@ import { Hash } from 'lucide-vue-next'
 import EditGoalModal from '../../modals/EditGoalModal.vue'
 import MultiLineChart from '../../charts/MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
+import ChartOptionsMenu from '../../base/ChartOptionsMenu.vue'
 
 const props = defineProps({
   goalData: { type: Object, required: true },
@@ -12,6 +13,15 @@ const props = defineProps({
 })
 
 const showModal = ref(false)
+const showMinMax = ref(false)
+
+const chartMenuOptions = computed(() => [
+  { id: 'minmax', label: 'Min / Max', modelValue: showMinMax.value }
+])
+
+function onChartOptionToggle(id, val) {
+  if (id === 'minmax') showMinMax.value = val
+}
 
 function openModal() {
   showModal.value = true
@@ -435,13 +445,19 @@ const formatAmountShort = (value) => {
 <template>
   <Widget title="Прогноз достижения цели" :icon="Hash">
     <template #header>
-      <button @click="openModal" class="edit-button">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-        </svg>
-        Изменить цель
-      </button>
+      <div class="header-controls">
+        <button @click="openModal" class="edit-button">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+          </svg>
+          Изменить цель
+        </button>
+        <ChartOptionsMenu
+          :options="chartMenuOptions"
+          @toggle="onChartOptionToggle"
+        />
+      </div>
     </template>
 
     <template v-if="hasGoal">
@@ -505,6 +521,7 @@ const formatAmountShort = (value) => {
           :zeroAtStart="false"
           :formatCurrency="formatCurrency"
           :tooltipCallbacks="goalChartTooltipCallbacks"
+          :showMinMaxGuides="showMinMax"
         />
       </div>
     </template>
@@ -523,7 +540,12 @@ const formatAmountShort = (value) => {
 </template>
 
 <style scoped>
-/* Убраны стили .widget, .widget-title - теперь используется компонент Widget */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: nowrap;
+}
 
 .edit-button {
   background: var(--bg-tertiary);

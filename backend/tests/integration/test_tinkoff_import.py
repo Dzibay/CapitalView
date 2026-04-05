@@ -114,7 +114,7 @@ class TestTinkoffImport:
             assert len(operation_types) > 0, "Должны быть найдены операции"
     
     def test_payment_for_transactions(self, tinkoff_portfolio_data):
-        """Тест проверки payment для транзакций Buy/Sell/Redemption."""
+        """Тест проверки payment для транзакций Buy/Sell/Amortization."""
         result = tinkoff_portfolio_data
         
         transactions_without_payment = []
@@ -123,7 +123,7 @@ class TestTinkoffImport:
         for account_name, account_data in result.items():
             for tx in account_data.get("transactions", []):
                 tx_type = tx.get("type")
-                if tx_type in ("Buy", "Sell", "Redemption"):
+                if tx_type in ("Buy", "Sell", "Amortization"):
                     payment = tx.get("payment")
                     price = tx.get("price")
                     quantity = tx.get("quantity")
@@ -176,7 +176,7 @@ class TestTinkoffImport:
             print("   но payment не должен быть равен 0, если price и quantity не равны 0")
         
         if not transactions_without_payment and not transactions_with_zero_payment:
-            print("\n✅ Все транзакции Buy/Sell/Redemption имеют корректный payment")
+            print("\n✅ Все транзакции Buy/Sell/Amortization имеют корректный payment")
         
         print("="*80 + "\n")
         

@@ -40,9 +40,7 @@ BEGIN
             WHEN 'Tax' THEN 'Налог'
             WHEN 'Buy' THEN 'Покупка'
             WHEN 'Sell' THEN 'Продажа'
-            WHEN 'Redemption' THEN 'Погашение'
-            WHEN 'ammortization' THEN 'Погашение'
-            WHEN 'Ammortization' THEN 'Погашение'
+            WHEN 'Amortization' THEN 'Амортизация'
             ELSE ot.name
         END AS operation_type,
         ot.id AS operation_type_id,
@@ -55,7 +53,7 @@ BEGIN
         a.name AS asset_name,
         co.date::timestamp AS operation_date,
         co.transaction_id AS transaction_id,
-        -- Для cash_operations, которые привязаны к транзакциям (Buy/Sell/Redemption),
+        -- Для cash_operations, которые привязаны к транзакциям (Buy/Sell/Amortization),
         -- portfolio_asset_id берём из transactions. Для cash_operations без transaction_id
         -- (например, Deposit/Commission/Tax) резолвим portfolio_asset_id через (portfolio_id, asset_id).
         COALESCE(

@@ -221,7 +221,7 @@ async def add_operations_from_missed_payouts_batch_route(
     user: dict = Depends(get_current_user)
 ):
     """
-    Создает операции выплат (дивиденды/купоны) из списка неполученных выплат батчем.
+    Создает операции выплат (дивиденды, купоны, амортизации) из списка неполученных выплат батчем.
     Использует apply_operations_batch для эффективной обработки всех операций за один раз.
     После успешного создания операций удаляет соответствующие записи из missed_payouts.
     
@@ -257,11 +257,16 @@ async def add_operations_from_missed_payouts_batch_route(
         
         selected_payouts = [payout_dict[t] for t in ordered_keys]
         
-        # Создаем операции через универсальный apply_operations/apply_operations_batch
         operations_list = []
         for payout in selected_payouts:
             payout_type = (payout.get("payout_type") or "").lower()
-            operation_type = 4 if payout_type == "coupon" else 3  # Dividend=3, Coupon=4
+            # operations_type: Dividend=3, Coupon=4, Amortization=9 (init.sql)
+            if payout_type == "coupon":
+                operation_type = 4
+            elif payout_type == "amortization":
+                operation_type = 9
+            else:
+                operation_type = 3
 
             payment_date = payout.get("payment_date") or payout.get("payout_payment_date")
             if not payment_date:
@@ -271,7 +276,30 @@ async def add_operations_from_missed_payouts_batch_route(
             if not operation_date:
                 continue
 
-            expected_amount = payout.get("expected_amount") or payout.get("payout_value") or 0
+            # Финальная амортизация (погашение) → транзакция с quantity+price,
+            # которая уменьшит количество актива через FIFO
+            if payout_type == "amortization" and payout.get("is_last_amortization"):
+                quantity = float(payout.get("quantity_on_date") or 0)
+                price = float(payout.get("payout_value") or 0)
+                if quantity > 0 and price > 0:
+                    operations_list.append(
+                        {
+                            "operation_type": operation_type,
+                            "operation_date": operation_date,
+                            "quantity": quantity,
+                            "price": price,
+                            "asset_id": payout.get("asset_id"),
+                            "portfolio_asset_id": payout.get("portfolio_asset_id"),
+                            "portfolio_id": payout.get("portfolio_id"),
+                        }
+                    )
+                    continue
+
+            # Обычная выплата (дивиденд, купон, частичная амортизация) → cash операция
+            expected_amount = payout.get("expected_amount")
+            if expected_amount is None or expected_amount == 0:
+                expected_amount = payout.get("payout_value") or 0
+            expected_amount = float(expected_amount)
             if expected_amount <= 0:
                 continue
 
@@ -279,7 +307,7 @@ async def add_operations_from_missed_payouts_batch_route(
                 {
                     "operation_type": operation_type,
                     "operation_date": operation_date,
-                    "amount": float(expected_amount),
+                    "amount": expected_amount,
                     "currency_id": payout.get("currency_id", 1),
                     "asset_id": payout.get("asset_id"),
                     "portfolio_asset_id": payout.get("portfolio_asset_id"),

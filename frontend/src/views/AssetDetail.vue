@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Building2, PieChart, TrendingDown, Hash, History } from 'lucide-vue-next'
+import { Building2, PieChart, TrendingDown, Hash, History, LineChart, Coins } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import MultiLineChart from '../components/charts/MultiLineChart.vue'
@@ -10,14 +10,14 @@ import {
   WidgetContainer, 
   MetricsWidget, 
   ValueChangePill, 
+  ChartPeriodSummary,
   Widget 
 } from '../components/widgets/base'
 import { AssetPortfolioStatsWidget } from '../components/widgets/composite'
-import { 
-  OperationsListWidget, 
-  AssetPayoutsListWidget 
-} from '../components/widgets/lists'
+import { OperationsListWidget } from '../components/widgets/lists'
 import CustomSelect from '../components/base/CustomSelect.vue'
+import ChartVariantSelect from '../components/base/ChartVariantSelect.vue'
+import ChartOptionsMenu from '../components/base/ChartOptionsMenu.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import assetsService from '../services/assetsService'
 import operationsService from '../services/operationsService'
@@ -43,6 +43,37 @@ const assetInAllPortfolios = ref([])
 const selectedPortfolioId = ref(null)
 const selectedPeriod = ref('All')
 const selectedChartType = ref('position') // 'position' | 'quantity' | 'price'
+const showMinMax = ref(false)
+const selectedTab = ref('general') // 'general' | 'analytics' | 'dividends'
+
+const tabs = [
+  { id: 'general', label: 'Общее' },
+  { id: 'analytics', label: 'Аналитика' },
+  { id: 'dividends', label: 'Дивиденды' }
+]
+
+const analyticsChartMetric = ref('position') // 'position' | 'quantity'
+
+const assetChartMenuOptions = computed(() => [
+  { id: 'minmax', label: 'Min / Max', modelValue: showMinMax.value }
+])
+
+const analyticsChartVariants = [
+  { value: 'position', label: 'Стоимость позиции' },
+  { value: 'quantity', label: 'Количество' }
+]
+
+const analyticsChartMenuOptions = computed(() => [
+  { id: 'minmax', label: 'Min / Max', modelValue: showMinMax.value }
+])
+
+function onAssetChartOptionToggle(id, val) {
+  if (id === 'minmax') showMinMax.value = val
+}
+
+function onAnalyticsChartMenuToggle(id, val) {
+  if (id === 'minmax') showMinMax.value = val
+}
 const cashOperations = ref([]) // Все операции из cash_operations (выплаты, комиссии, налоги и т.д.)
 const portfolioTransactions = ref({}) // Транзакции для каждого portfolio_asset_id
 
@@ -315,12 +346,12 @@ const quantityByDate = computed(() => {
       // Сравниваем даты как строки
       if (txDateStr > priceDateStr) break
       
-      // transaction_type: 1 = buy (плюс), 2 = sell (минус), 3 = redemption (минус)
+      // transaction_type: 1 = buy (плюс), 2 = sell (минус), 3 = amortization (минус)
       const txQuantity = Number(tx.quantity) || 0
       if (tx.transaction_type === 1 || (typeof tx.transaction_type === 'string' && tx.transaction_type.toLowerCase() === 'buy')) {
         cumulativeQuantity += txQuantity
       } else if (tx.transaction_type === 2 || tx.transaction_type === 3 || 
-                 (typeof tx.transaction_type === 'string' && (tx.transaction_type.toLowerCase() === 'sell' || tx.transaction_type.toLowerCase().includes('redemption') || tx.transaction_type.toLowerCase().includes('погаш')))) {
+                 (typeof tx.transaction_type === 'string' && (tx.transaction_type.toLowerCase() === 'sell' || tx.transaction_type.toLowerCase().includes('amortization') || tx.transaction_type.toLowerCase().includes('аморт')))) {
         cumulativeQuantity -= txQuantity
       }
       
@@ -490,10 +521,171 @@ const chartData = computed(() => {
   }
 })
 
+// Данные для графика цены единицы (вкладка "Общее")
+const priceChartData = computed(() => {
+  if (!priceHistory.value || !priceHistory.value.length) {
+    return { labels: [], datasets: [] }
+  }
+
+  const priceMap = new Map()
+  for (const p of priceHistory.value) {
+    priceMap.set(p.trade_date, p.price)
+  }
+  const labels = [...priceMap.keys()].sort()
+  const data = labels.map(date => priceMap.get(date) || 0)
+
+  return {
+    labels,
+    datasets: [{
+      label: 'Цена единицы актива',
+      data,
+      color: '#f59e0b',
+      fill: true
+    }]
+  }
+})
+
+// Данные для графика стоимости позиции (вкладка "Аналитика")
+const positionChartData = computed(() => {
+  if (!selectedPortfolioAsset.value) return { labels: [], datasets: [] }
+
+  if (assetDailyValues.value && assetDailyValues.value.length > 0) {
+    let filteredValues = [...assetDailyValues.value]
+
+    if (firstTransactionDate.value) {
+      filteredValues = filteredValues.filter(v => {
+        const valueDate = new Date(v.report_date)
+        valueDate.setHours(0, 0, 0, 0)
+        const firstDate = new Date(firstTransactionDate.value)
+        firstDate.setHours(0, 0, 0, 0)
+        return valueDate >= firstDate
+      })
+    }
+
+    filteredValues.sort((a, b) => new Date(a.report_date) - new Date(b.report_date))
+
+    if (filteredValues.length > 0) {
+      return {
+        labels: filteredValues.map(v => v.report_date),
+        datasets: [{
+          label: 'Стоимость позиции',
+          data: filteredValues.map(v => Number(v.position_value ?? 0)),
+          color: '#3b82f6',
+          fill: true
+        }]
+      }
+    }
+  }
+
+  if (!priceHistory.value?.length) return { labels: [], datasets: [] }
+
+  const asset = selectedPortfolioAsset.value
+  const leverage = asset.leverage || 1
+  const currencyRate = asset.currency_rate_to_rub || portfolioAsset.value?.asset.currency_rate_to_rub || 1
+
+  let filteredPrices = priceHistory.value
+  if (firstTransactionDate.value) {
+    const firstDateStr = typeof firstTransactionDate.value === 'string'
+      ? firstTransactionDate.value.split('T')[0]
+      : normalizeDateToString(new Date(firstTransactionDate.value)) || ''
+    filteredPrices = filteredPrices.filter(p => (p.trade_date || '').split('T')[0] >= firstDateStr)
+  }
+  if (!filteredPrices.length) return { labels: [], datasets: [] }
+
+  const priceMap = new Map()
+  for (const p of filteredPrices) priceMap.set(p.trade_date, p.price)
+  const labels = [...priceMap.keys()].sort()
+  const quantities = quantityByDate.value
+
+  return {
+    labels,
+    datasets: [{
+      label: 'Стоимость позиции',
+      data: labels.map(date => {
+        const qty = quantities[date.split('T')[0]] || 0
+        const price = priceMap.get(date) || 0
+        return (qty * price / leverage) * currencyRate
+      }),
+      color: '#3b82f6',
+      fill: true
+    }]
+  }
+})
+
+// Данные для графика количества (вкладка "Аналитика")
+const quantityChartData = computed(() => {
+  if (!selectedPortfolioAsset.value) return { labels: [], datasets: [] }
+
+  if (assetDailyValues.value && assetDailyValues.value.length > 0) {
+    let filteredValues = [...assetDailyValues.value]
+    if (firstTransactionDate.value) {
+      filteredValues = filteredValues.filter(v => {
+        const valueDate = new Date(v.report_date)
+        valueDate.setHours(0, 0, 0, 0)
+        const firstDate = new Date(firstTransactionDate.value)
+        firstDate.setHours(0, 0, 0, 0)
+        return valueDate >= firstDate
+      })
+    }
+    if (filteredValues.length > 0) {
+      return {
+        labels: filteredValues.map(v => v.report_date),
+        datasets: [{
+          label: 'Количество актива',
+          data: filteredValues.map(v => v.quantity || 0),
+          color: '#10b981',
+          fill: true
+        }]
+      }
+    }
+  }
+
+  if (!priceHistory.value?.length) return { labels: [], datasets: [] }
+
+  let filteredPrices = priceHistory.value
+  if (firstTransactionDate.value) {
+    const firstDateStr = typeof firstTransactionDate.value === 'string'
+      ? firstTransactionDate.value.split('T')[0]
+      : normalizeDateToString(new Date(firstTransactionDate.value)) || ''
+    filteredPrices = filteredPrices.filter(p => (p.trade_date || '').split('T')[0] >= firstDateStr)
+  }
+  if (!filteredPrices.length) return { labels: [], datasets: [] }
+
+  const priceMap = new Map()
+  for (const p of filteredPrices) priceMap.set(p.trade_date, p.price)
+  const labels = [...priceMap.keys()].sort()
+  const quantities = quantityByDate.value
+
+  return {
+    labels,
+    datasets: [{
+      label: 'Количество актива',
+      data: labels.map(date => quantities[date.split('T')[0]] || 0),
+      color: '#10b981',
+      fill: true
+    }]
+  }
+})
+
+const analyticsChartData = computed(() =>
+  analyticsChartMetric.value === 'position' ? positionChartData.value : quantityChartData.value
+)
+
+const analyticsChartYType = computed(() =>
+  analyticsChartMetric.value === 'position' ? 'position' : 'quantity'
+)
+
+const analyticsChartTitle = computed(() =>
+  analyticsChartMetric.value === 'position' ? 'Стоимость позиции' : 'Количество актива'
+)
+
+const analyticsChartFormatter = computed(() =>
+  analyticsChartMetric.value === 'position' ? formatPositionCurrency : formatQuantity
+)
+
 // Форматирование для графика количества (без валюты)
 const formatQuantity = (value) => {
   if (typeof value !== 'number') return value
-  // Используем больше знаков после запятой для малых значений (например, 0.0015)
   return value.toLocaleString('ru-RU', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 8
@@ -504,6 +696,73 @@ const formatQuantity = (value) => {
 const formatPositionCurrency = (value) => {
   return formatOperationAmount(value || 0, 'RUB')
 }
+
+// --- Period summary для графиков ---
+function getPeriodStartDateByKey(period) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (period === '7D') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7)
+  if (period === '1M') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30)
+  if (period === '3M') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 90)
+  if (period === '6M') return new Date(today.getFullYear(), today.getMonth(), today.getDate() - 180)
+  if (period === 'YTD') return new Date(today.getFullYear(), 0, 1)
+  if (period === '1Y') return new Date(today.getFullYear(), today.getMonth() - 11, 1)
+  if (period === '5Y') return new Date(today.getFullYear() - 5, today.getMonth(), today.getDate())
+  return null
+}
+
+function computePeriodStats(chartData, period) {
+  const labels = chartData?.labels
+  const data = chartData?.datasets?.[0]?.data
+  if (!labels?.length || !data?.length) return { changeValue: 0, changePercent: 0, startDate: null, endDate: null }
+
+  const today = new Date()
+  today.setHours(23, 59, 59, 999)
+  const points = labels.map((label, i) => ({
+    date: new Date(label),
+    value: Number(data[i]) || 0
+  })).sort((a, b) => a.date - b.date)
+  if (!points.length) return { changeValue: 0, changePercent: 0, startDate: null, endDate: null }
+
+  const start = getPeriodStartDateByKey(period)
+  let filtered = points
+  if (start) {
+    start.setHours(0, 0, 0, 0)
+    filtered = points.filter(p => {
+      const pd = new Date(p.date)
+      pd.setHours(0, 0, 0, 0)
+      return pd >= start && pd <= today
+    })
+    if (!filtered.length) {
+      const before = points.filter(p => p.date <= today)
+      filtered = before.length ? [before[before.length - 1]] : [points[0]]
+    }
+  }
+
+  const first = filtered[0].value
+  const last = filtered[filtered.length - 1].value
+  const changeValue = last - first
+  const changePercent = first === 0 ? 0 : (changeValue / Math.abs(first)) * 100
+  return {
+    changeValue,
+    changePercent,
+    startDate: filtered[0].date,
+    endDate: filtered[filtered.length - 1].date
+  }
+}
+
+const priceChartPeriodStats = computed(() => computePeriodStats(priceChartData.value, selectedPeriod.value))
+const analyticsChartPeriodStats = computed(() => computePeriodStats(analyticsChartData.value, selectedPeriod.value))
+
+const formatPriceChangeValue = computed(() => {
+  const currency = assetQuoteCurrency.value
+  return (v) => formatOperationAmount(v || 0, currency)
+})
+
+const formatAnalyticsChangeValue = computed(() => {
+  if (analyticsChartMetric.value === 'quantity') return (v) => formatQuantity(v)
+  return (v) => formatOperationAmount(v || 0, 'RUB')
+})
 
 // Определяем валюту актива для графика цены единицы (computed для реактивности)
 // Используем ту же логику, что и в basicInfoItems
@@ -574,6 +833,33 @@ const rootPortfolio = computed(() => {
   
   // Ищем портфель без parent_portfolio_id (корневой)
   return portfolios.value.find(p => !p.parent_portfolio_id) || null
+})
+
+// Сводка по всем портфелям, где есть этот актив (шапка страницы)
+const aggregatedPortfolioMetrics = computed(() => {
+  const list = assetInAllPortfolios.value
+  if (!list || !list.length) return null
+
+  let totalQuantity = 0
+  let totalValueRub = 0
+  let totalPnl = 0
+
+  for (const p of list) {
+    totalQuantity += Number(p.quantity) || 0
+    totalValueRub += Number(p.asset_value) || 0
+    totalPnl += Number(p.total_pnl) || 0
+  }
+
+  const rootVal = Number(rootPortfolio.value?.total_value) || 0
+  const shareInRootPercent = rootVal > 0 ? (totalValueRub / rootVal) * 100 : null
+
+  return {
+    totalQuantity,
+    totalValueRub,
+    shareInRootPercent,
+    totalPnl,
+    isProfit: totalPnl >= 0
+  }
 })
 
 // Расчет роста цены для выбранного портфеля
@@ -706,6 +992,14 @@ const assetCurrency = computed(() => {
   
   // Если ничего не найдено
   return 'RUB'
+})
+
+const assetHistoryTitle = computed(() => {
+  const cur = assetCurrency.value
+  if (cur && selectedChartType.value === 'price') {
+    return `История актива (цена в ${cur})`
+  }
+  return 'История актива'
 })
 
 // Расчет доли в корневом портфеле для выбранного портфеля
@@ -1133,8 +1427,8 @@ const allOperations = computed(() => {
       operationType = 5 // Пополнение
     } else if (opType.includes('вывод') || opType.includes('withdraw')) {
       operationType = 6 // Вывод
-    } else if (opType.includes('погаш') || opType.includes('redemption') || opType.includes('амортиз') || opType.includes('amortization') || opType.includes('ammortization')) {
-      operationType = 9 // Погашение (Ammortization/Redemption)
+    } else if (opType.includes('аморт') || opType.includes('amortization') || opType.includes('погаш')) {
+      operationType = 9 // Амортизация
     } else if (opType.includes('другое') || opType.includes('other')) {
       operationType = 10 // Другое
     }
@@ -1218,19 +1512,24 @@ const getPayoutTypeLabel = (type) => {
   return 'Выплата'
 }
 
-const getPayoutTypeClass = (type) => {
-  if (typeof type === 'string') {
-    const t = type.toLowerCase()
-    if (t.includes('див') || t.includes('dividend')) return 'dividend'
-    if (t.includes('купон') || t.includes('coupon')) return 'coupon'
-    if (t.includes('аморт') || t.includes('amortization')) return 'amortization'
-  }
-  return 'other'
+/** Статус строки выплаты: по дате выплаты относительно сегодняшнего дня */
+const getPayoutStatus = (p) => {
+  const payStr = normalizeDateToString(p.payment_date || p.date)
+  if (!payStr) return { key: 'unknown', label: '—' }
+  const todayStr = normalizeDateToString(new Date())
+  if (payStr > todayStr) return { key: 'forecast', label: 'Прогноз' }
+  return { key: 'paid', label: 'Выплачены' }
 }
 
-const formatPayoutDate = (date) => {
-  if (!date) return '-'
-  return formatDateForDisplay(date)
+const payoutTableRows = computed(() =>
+  sortedPayouts.value.map((p) => ({ p, status: getPayoutStatus(p) }))
+)
+
+const formatPayoutDividendYield = (y) => {
+  if (y == null || y === '') return '—'
+  const n = Number(y)
+  if (Number.isNaN(n)) return '—'
+  return `${n.toFixed(2)} %`
 }
 
 // Нормализация типа операции (как на странице Transactions)
@@ -1239,7 +1538,7 @@ const normalizeType = (type, opType = null) => {
   if (opType === 'transaction') {
     if (type === 1) return 'buy'
     if (type === 2) return 'sell'
-    if (type === 3) return 'redemption'
+    if (type === 3) return 'amortization'
   }
   
   // Для всех операций (по числовому типу)
@@ -1252,7 +1551,7 @@ const normalizeType = (type, opType = null) => {
     if (type === 6) return 'withdraw'
     if (type === 7) return 'commission'
     if (type === 8) return 'tax'
-    if (type === 9) return 'redemption'  // Ammortization/Redemption
+    if (type === 9) return 'amortization'
     if (type === 10) return 'other'
   }
   
@@ -1261,7 +1560,7 @@ const normalizeType = (type, opType = null) => {
     const t = type.toLowerCase()
     if (t.includes('покуп') || t.includes('buy')) return 'buy'
     if (t.includes('прод') || t.includes('sell')) return 'sell'
-    if (t.includes('погаш') || t.includes('redemption') || t.includes('амортиз') || t.includes('amortization') || t.includes('ammortization')) return 'redemption'
+    if (t.includes('аморт') || t.includes('amortization') || t.includes('погаш')) return 'amortization'
     if (t.includes('див') || t.includes('div')) return 'dividend'
     if (t.includes('купон') || t.includes('coupon')) return 'coupon'
     if (t.includes('пополн') || t.includes('deposit')) return 'deposit'
@@ -1308,7 +1607,7 @@ const getOperationTypeLabel = (op) => {
   if (operationType === 6) return 'Вывод'
   if (operationType === 7) return 'Комиссия'
   if (operationType === 8) return 'Налог'
-  if (operationType === 9) return 'Погашение'  // Ammortization/Redemption
+  if (operationType === 9) return 'Амортизация'
   if (operationType === 10) return 'Другое'
   
   // Fallback: пытаемся определить по строковому типу
@@ -1388,8 +1687,6 @@ watch(selectedPortfolioId, async (newPortfolioId, oldPortfolioId) => {
 // Обработчик изменения портфеля
 async function handlePortfolioChange(portfolioId) {
   selectedPortfolioId.value = portfolioId
-  // Загружаем выплаты для нового портфеля
-  await loadReceivedPayouts()
 }
 </script>
 
@@ -1422,157 +1719,352 @@ async function handlePortfolioChange(portfolioId) {
         </div>
       </div>
 
-      <!-- Длинный блок: название актива, тикер, стоимость и изменение -->
+      <!-- Блок с названием актива, ценой, ключевыми метриками и табами -->
       <div class="asset-overview-block">
-        <div class="asset-main-info">
-          <h1 class="asset-name">{{ portfolioAsset.asset.name }}</h1>
-          <div class="asset-meta">
-            <span class="meta-item">{{ portfolioAsset.asset.ticker }}</span>
-            <span v-if="portfolioAsset.asset.leverage && portfolioAsset.asset.leverage > 1" class="meta-item">
-              ×{{ portfolioAsset.asset.leverage }}
+        <div class="asset-overview-top">
+          <div class="asset-main-info">
+            <h1 class="asset-name">{{ portfolioAsset.asset.name }}</h1>
+            <div class="asset-meta">
+              <span class="meta-item ticker">{{ portfolioAsset.asset.ticker }}</span>
+              <span v-if="portfolioAsset.asset.leverage && portfolioAsset.asset.leverage > 1" class="meta-item">
+                ×{{ portfolioAsset.asset.leverage }}
+              </span>
+            </div>
+          </div>
+          <div class="asset-price-info">
+            <div class="price-main">
+              {{ selectedPortfolioAsset?.last_price != null ? selectedPortfolioAsset.last_price.toFixed(2) : (portfolioAsset.asset?.last_price != null ? portfolioAsset.asset.last_price.toFixed(2) : '-') }}
+              <span v-if="assetCurrency" class="price-currency"> {{ getCurrencySymbol(assetCurrency) }}</span>
+            </div>
+            <div v-if="selectedPortfolioAsset?.daily_change !== undefined && selectedPortfolioAsset.daily_change !== 0" class="price-change">
+              <ValueChangePill
+                :value="selectedPriceChangePercent"
+                :is-positive="selectedPortfolioAsset.daily_change >= 0"
+                format="percent"
+              />
+              <span class="price-change-currency">
+                ({{ selectedPortfolioAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(selectedPortfolioAsset.daily_change) }})
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ключевые метрики: сумма по всем портфелям с этим активом -->
+        <div class="asset-key-metrics" v-if="aggregatedPortfolioMetrics">
+          <div class="key-metric">
+            <span class="key-metric-label">Количество</span>
+            <span class="key-metric-value">{{ aggregatedPortfolioMetrics.totalQuantity }}</span>
+          </div>
+          <div class="key-metric">
+            <span class="key-metric-label">Стоимость</span>
+            <span class="key-metric-value">{{ formatOperationAmount(aggregatedPortfolioMetrics.totalValueRub, 'RUB') }}</span>
+          </div>
+          <div class="key-metric">
+            <span class="key-metric-label">Доля</span>
+            <span class="key-metric-value">
+              {{
+                aggregatedPortfolioMetrics.shareInRootPercent != null
+                  ? `${aggregatedPortfolioMetrics.shareInRootPercent.toFixed(2)}%`
+                  : '—'
+              }}
+            </span>
+          </div>
+          <div class="key-metric">
+            <span class="key-metric-label">Общая прибыль</span>
+            <span
+              class="key-metric-value"
+              :class="aggregatedPortfolioMetrics.isProfit ? 'text-green' : 'text-red'"
+            >
+              {{ formatOperationAmount(aggregatedPortfolioMetrics.totalPnl, 'RUB') }}
             </span>
           </div>
         </div>
-        <div class="asset-price-info">
-          <div class="price-main">
-            {{ selectedPortfolioAsset?.last_price != null ? selectedPortfolioAsset.last_price.toFixed(2) : (portfolioAsset.asset?.last_price != null ? portfolioAsset.asset.last_price.toFixed(2) : '-') }}
-            <span v-if="assetCurrency" class="price-currency"> {{ getCurrencySymbol(assetCurrency) }} ({{ assetCurrency }})</span>
-          </div>
-          <div v-if="selectedPortfolioAsset?.daily_change !== undefined && selectedPortfolioAsset.daily_change !== 0" class="price-change">
-            <ValueChangePill
-              :value="selectedPriceChangePercent"
-              :is-positive="selectedPortfolioAsset.daily_change >= 0"
-              format="percent"
-            />
-            <span class="price-change-currency">
-              ({{ selectedPortfolioAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(selectedPortfolioAsset.daily_change) }})
-            </span>
-          </div>
+
+        <!-- Табы навигации -->
+        <div class="asset-tabs">
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            :class="['asset-tab', { active: selectedTab === tab.id }]"
+            @click="selectedTab = tab.id"
+          >
+            {{ tab.label }}
+          </button>
         </div>
       </div>
 
-      <!-- График и описание актива -->
-      <div class="widgets-grid">
-        <!-- График -->
-        <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-large)">
-          <div class="chart-widget">
-            <div class="section-header">
-              <h2 class="section-title">История актива <span v-if="assetCurrency && selectedChartType === 'price'" class="chart-currency">(цена в {{ assetCurrency }})</span></h2>
-              <div class="chart-controls">
-                <CustomSelect
-                  :modelValue="selectedChartType"
-                  :options="chartTypeOptions"
-                  label="ТИП ГРАФИКА"
-                  placeholder="Выберите тип графика"
-                  :show-empty-option="false"
-                  option-label="label"
-                  option-value="value"
-                  :min-width="'200px'"
-                  :flex="'none'"
-                  @update:modelValue="selectedChartType = $event"
+      <!-- ===================== TAB: Общее ===================== -->
+      <template v-if="selectedTab === 'general'">
+        <!-- График цены и описание актива -->
+        <div class="widgets-grid">
+          <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-large)">
+            <Widget title="История цены" :icon="LineChart">
+              <template #header>
+                <ChartOptionsMenu
+                  :options="assetChartMenuOptions"
+                  @toggle="onAssetChartOptionToggle"
                 />
-                <PeriodFilters 
-                  :modelValue="selectedPeriod" 
+              </template>
+              <template #subheader>
+                <PeriodFilters
+                  :modelValue="selectedPeriod"
                   @update:modelValue="selectedPeriod = $event"
                 />
+                <ChartPeriodSummary
+                  :startDate="priceChartPeriodStats.startDate"
+                  :endDate="priceChartPeriodStats.endDate"
+                  :changeValue="priceChartPeriodStats.changeValue"
+                  :changePercent="priceChartPeriodStats.changePercent"
+                  :formatValue="formatPriceChangeValue"
+                />
+              </template>
+              <div class="asset-chart-body">
+                <div class="chart-container">
+                  <MultiLineChart
+                    v-if="priceChartData.labels.length"
+                    :chartData="priceChartData"
+                    :period="selectedPeriod"
+                    chartType="price"
+                    :formatCurrency="formatPriceCurrency"
+                    :showMinMaxGuides="showMinMax"
+                  />
+                  <div v-else class="no-chart-data">Нет данных для отображения графика</div>
+                </div>
               </div>
-            </div>
-            <div class="chart-container">
-              <MultiLineChart 
-                v-if="chartData.labels.length" 
-                :chartData="chartData" 
-                :period="selectedPeriod"
-                :chartType="selectedChartType"
-                :formatCurrency="chartFormatter"
-              />
-              <div v-else class="no-chart-data">Нет данных для отображения графика</div>
-            </div>
-          </div>
-        </WidgetContainer>
+            </Widget>
+          </WidgetContainer>
 
-        <!-- Описание актива (заглушка) -->
-        <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-large)">
-          <Widget title="Описание актива" :icon="Hash">
-            <div class="asset-description-placeholder">
-              <p>Описание актива будет здесь</p>
-            </div>
-          </Widget>
-        </WidgetContainer>
-      </div>
+          <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-large)">
+            <Widget title="Описание актива" :icon="Hash">
+              <div class="asset-description-placeholder">
+                <p>Описание актива будет здесь</p>
+              </div>
+            </Widget>
+          </WidgetContainer>
+        </div>
 
-      <!-- Блоки показателей (три отдельных виджета) -->
-      <div class="widgets-grid">
-        <!-- Основная информация -->
-        <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <MetricsWidget title="Основная информация" :icon="Building2" :items="basicInfoItems" />
-        </WidgetContainer>
+        <div class="widgets-grid">
+          <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+            <MetricsWidget title="Основная информация" :icon="Building2" :items="basicInfoItems" />
+          </WidgetContainer>
 
-        <!-- Вклад в портфель -->
-        <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <MetricsWidget title="Вклад в портфель" :icon="PieChart" :items="contributionItems" />
-        </WidgetContainer>
+          <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-medium)">
+            <Widget title="Операции" :icon="History">
+              <div class="table-container">
+                <table class="transactions-table">
+                  <thead>
+                    <tr>
+                      <th>Дата</th>
+                      <th>Тип</th>
+                      <th class="text-right">Кол-во</th>
+                      <th class="text-right">Цена</th>
+                      <th class="text-right">Сумма</th>
+                      <th class="text-right">Валюта</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="op in allOperations" :key="op.id" class="tx-row">
+                      <td class="td-date">{{ formatDate(op.date) }}</td>
+                      <td>
+                        <span :class="['badge', 'badge-' + normalizeType(op.operationType, op.type)]">
+                          {{ getOperationTypeLabel(op) }}
+                        </span>
+                      </td>
+                      <td class="text-right num-font">{{ op.quantity || '—' }}</td>
+                      <td class="text-right num-font">{{ op.price ? op.price.toLocaleString() : '—' }}</td>
+                      <td class="text-right num-font font-semibold" :class="op.amount >= 0 ? 'text-green' : 'text-red'">
+                        {{ formatOperationAmount(Math.abs(op.amount || 0), op.currency || 'RUB') }}
+                      </td>
+                      <td class="text-right num-font">{{ op.currency || 'RUB' }}</td>
+                    </tr>
+                    <tr v-if="allOperations.length === 0">
+                      <td colspan="6" class="empty-cell">
+                        <div class="empty-state">
+                          <span class="empty-icon">🔍</span>
+                          <p>Операции не найдены</p>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Widget>
+          </WidgetContainer>
+        </div>
+      </template>
 
-        <!-- Прибыль и убытки -->
-        <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-          <MetricsWidget title="Прибыль и убытки" :icon="TrendingDown" :items="profitLossItems" />
-        </WidgetContainer>
-      </div>
+      <!-- ===================== TAB: Аналитика ===================== -->
+      <template v-if="selectedTab === 'analytics'">
+        <!-- График: стоимость позиции или количество (переключение в меню ⋯) -->
+        <div class="widgets-grid">
+          <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-large)">
+            <Widget :title="analyticsChartTitle" :icon="LineChart">
+              <template #header>
+                <ChartVariantSelect
+                  v-model="analyticsChartMetric"
+                  :options="analyticsChartVariants"
+                />
+                <ChartOptionsMenu
+                  :options="analyticsChartMenuOptions"
+                  @toggle="onAnalyticsChartMenuToggle"
+                />
+              </template>
+              <template #subheader>
+                <PeriodFilters
+                  :modelValue="selectedPeriod"
+                  @update:modelValue="selectedPeriod = $event"
+                />
+                <ChartPeriodSummary
+                  :startDate="analyticsChartPeriodStats.startDate"
+                  :endDate="analyticsChartPeriodStats.endDate"
+                  :changeValue="analyticsChartPeriodStats.changeValue"
+                  :changePercent="analyticsChartPeriodStats.changePercent"
+                  :formatValue="formatAnalyticsChangeValue"
+                />
+              </template>
+              <div class="asset-chart-body">
+                <div class="chart-container">
+                  <MultiLineChart
+                    v-if="analyticsChartData.labels.length"
+                    :chartData="analyticsChartData"
+                    :period="selectedPeriod"
+                    :chartType="analyticsChartYType"
+                    :formatCurrency="analyticsChartFormatter"
+                    :showMinMaxGuides="analyticsChartMetric === 'position' && showMinMax"
+                  />
+                  <div v-else class="no-chart-data">Нет данных для отображения графика</div>
+                </div>
+              </div>
+            </Widget>
+          </WidgetContainer>
+        </div>
 
-      <!-- Операции (транзакции + все операции) -->
-      <div class="widgets-grid">
-        <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
-          <Widget title="Операции" :icon="History">
-            <div class="table-container">
-              <table class="transactions-table">
-                <thead>
-                  <tr>
-                    <th>Дата</th>
-                    <th>Тип</th>
-                    <th class="text-right">Кол-во</th>
-                    <th class="text-right">Цена</th>
-                    <th class="text-right">Сумма</th>
-                    <th class="text-right">Валюта</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="op in allOperations" :key="op.id" class="tx-row">
-                    <td class="td-date">{{ formatDate(op.date) }}</td>
-                    <td>
-                      <span :class="['badge', 'badge-' + normalizeType(op.operationType, op.type)]">
-                        {{ getOperationTypeLabel(op) }}
-                      </span>
-                    </td>
-                    <td class="text-right num-font">{{ op.quantity || '—' }}</td>
-                    <td class="text-right num-font">{{ op.price ? op.price.toLocaleString() : '—' }}</td>
-                    <td class="text-right num-font font-semibold" :class="op.amount >= 0 ? 'text-green' : 'text-red'">
-                      {{ formatOperationAmount(Math.abs(op.amount || 0), op.currency || 'RUB') }}
-                    </td>
-                    <td class="text-right num-font">{{ op.currency || 'RUB' }}</td>
-                  </tr>
-                  <tr v-if="allOperations.length === 0">
-                    <td colspan="6" class="empty-cell">
-                      <div class="empty-state">
-                        <span class="empty-icon">🔍</span>
-                        <p>Операции не найдены</p>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </Widget>
-        </WidgetContainer>
-      </div>
+        <!-- Показатели аналитики -->
+        <div class="widgets-grid">
+          <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+            <MetricsWidget title="Вклад в портфель" :icon="PieChart" :items="contributionItems" />
+          </WidgetContainer>
 
-      <!-- Полная история выплат -->
-      <div class="widgets-grid">
-        <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
-          <AssetPayoutsListWidget
-            :payouts="payouts?.history || []"
-            :currency="assetCurrency"
-          />
-        </WidgetContainer>
-      </div>
+          <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+            <MetricsWidget title="Прибыль и убытки" :icon="TrendingDown" :items="profitLossItems" />
+          </WidgetContainer>
+
+          <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
+            <MetricsWidget title="Основная информация" :icon="Building2" :items="basicInfoItems" />
+          </WidgetContainer>
+        </div>
+
+        <!-- Операции -->
+        <div class="widgets-grid">
+          <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
+            <Widget title="Операции" :icon="History">
+              <div class="table-container">
+                <table class="transactions-table">
+                  <thead>
+                    <tr>
+                      <th>Дата</th>
+                      <th>Тип</th>
+                      <th class="text-right">Кол-во</th>
+                      <th class="text-right">Цена</th>
+                      <th class="text-right">Сумма</th>
+                      <th class="text-right">Валюта</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="op in allOperations" :key="op.id" class="tx-row">
+                      <td class="td-date">{{ formatDate(op.date) }}</td>
+                      <td>
+                        <span :class="['badge', 'badge-' + normalizeType(op.operationType, op.type)]">
+                          {{ getOperationTypeLabel(op) }}
+                        </span>
+                      </td>
+                      <td class="text-right num-font">{{ op.quantity || '—' }}</td>
+                      <td class="text-right num-font">{{ op.price ? op.price.toLocaleString() : '—' }}</td>
+                      <td class="text-right num-font font-semibold" :class="op.amount >= 0 ? 'text-green' : 'text-red'">
+                        {{ formatOperationAmount(Math.abs(op.amount || 0), op.currency || 'RUB') }}
+                      </td>
+                      <td class="text-right num-font">{{ op.currency || 'RUB' }}</td>
+                    </tr>
+                    <tr v-if="allOperations.length === 0">
+                      <td colspan="6" class="empty-cell">
+                        <div class="empty-state">
+                          <span class="empty-icon">🔍</span>
+                          <p>Операции не найдены</p>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Widget>
+          </WidgetContainer>
+        </div>
+      </template>
+
+      <!-- ===================== TAB: Дивиденды ===================== -->
+      <template v-if="selectedTab === 'dividends'">
+        <div class="widgets-grid">
+          <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
+            <Widget title="История выплат" :icon="Coins">
+              <div class="table-container">
+                <table class="transactions-table payouts-history-table">
+                  <thead>
+                    <tr>
+                      <th>Статус</th>
+                      <th>Дата выплаты</th>
+                      <th>Тип выплаты</th>
+                      <th>Дата последней покупки</th>
+                      <th>Дата отсечки</th>
+                      <th class="text-right">Сумма</th>
+                      <th class="text-right">Доходность, %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="({ p, status }, idx) in payoutTableRows"
+                      :key="p.id ?? `payout-${idx}`"
+                      class="tx-row"
+                    >
+                      <td>
+                        <span
+                          class="payout-status-badge"
+                          :class="{
+                            'payout-status-badge--paid': status.key === 'paid',
+                            'payout-status-badge--forecast': status.key === 'forecast',
+                            'payout-status-badge--unknown': status.key === 'unknown'
+                          }"
+                        >
+                          {{ status.label }}
+                        </span>
+                      </td>
+                      <td class="td-date">{{ formatDate(p.payment_date || p.date) }}</td>
+                      <td>
+                        <span :class="['badge', 'badge-' + normalizeType(p.type)]">
+                          {{ getPayoutTypeLabel(p.type) }}
+                        </span>
+                      </td>
+                      <td class="td-date">{{ p.last_buy_date ? formatDate(p.last_buy_date) : '—' }}</td>
+                      <td class="td-date">{{ p.record_date ? formatDate(p.record_date) : '—' }}</td>
+                      <td class="text-right num-font font-semibold text-green">
+                        {{ formatOperationAmount(Math.abs(Number(p.value) || 0), assetCurrency) }}
+                      </td>
+                      <td class="text-right num-font">{{ formatPayoutDividendYield(p.dividend_yield) }}</td>
+                    </tr>
+                    <tr v-if="payoutTableRows.length === 0">
+                      <td colspan="7" class="empty-cell">
+                        <div class="empty-state">
+                          <span class="empty-icon">🔍</span>
+                          <p>Нет данных о выплатах</p>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Widget>
+          </WidgetContainer>
+        </div>
+      </template>
 
     </PageLayout>
 
@@ -1607,16 +2099,6 @@ async function handlePortfolioChange(portfolioId) {
   .widgets-grid {
     grid-template-columns: 1fr;
   }
-}
-
-.chart-widget {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-  display: flex;
-  flex-direction: column;
-  height: 100%;
 }
 
 .error-state {
@@ -1663,18 +2145,25 @@ async function handlePortfolioChange(portfolioId) {
   color: #111827;
 }
 
-/* Длинный блок: название актива, тикер, стоимость и изменение */
+/* Блок с названием актива, ценой, метриками и табами */
 .asset-overview-block {
   background: white;
-  padding: 1.5rem;
+  padding: 1.5rem 1.5rem 0;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-  margin-bottom: 2rem;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.asset-overview-top {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 2rem;
   flex-wrap: wrap;
+  padding-bottom: 1rem;
 }
 
 .asset-main-info {
@@ -1686,28 +2175,33 @@ async function handlePortfolioChange(portfolioId) {
   font-size: 1.5rem;
   font-weight: 600;
   color: #111827;
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 0.25rem 0;
   line-height: 1.3;
 }
 
 .asset-meta {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
   flex-wrap: wrap;
 }
 
 .meta-item {
-  font-size: 0.875rem;
-  color: #6b7280;
+  font-size: 0.8125rem;
+  color: #9ca3af;
   font-weight: 400;
+}
+
+.meta-item.ticker {
+  color: #6b7280;
+  font-weight: 500;
 }
 
 .asset-price-info {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.5rem;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .price-main {
@@ -1715,6 +2209,12 @@ async function handlePortfolioChange(portfolioId) {
   font-weight: 700;
   color: #111827;
   line-height: 1.2;
+}
+
+.price-currency {
+  font-size: 1.25rem;
+  color: #6b7280;
+  font-weight: 500;
 }
 
 .price-change {
@@ -1727,6 +2227,77 @@ async function handlePortfolioChange(portfolioId) {
 .price-change-currency {
   color: #6b7280;
   font-size: 0.75rem;
+}
+
+/* Ключевые метрики в overview */
+.asset-key-metrics {
+  display: flex;
+  gap: 2rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid #f3f4f6;
+  flex-wrap: wrap;
+}
+
+.key-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.key-metric-label {
+  font-size: 0.6875rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  font-weight: 500;
+}
+
+.key-metric-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* Табы навигации */
+.asset-tabs {
+  display: flex;
+  gap: 0;
+  border-top: 1px solid #f3f4f6;
+  margin: 0 -1.5rem;
+  padding: 0 1.5rem;
+}
+
+.asset-tab {
+  position: relative;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color 0.2s;
+  white-space: nowrap;
+}
+
+.asset-tab:hover {
+  color: #111827;
+}
+
+.asset-tab.active {
+  color: #111827;
+  font-weight: 600;
+}
+
+.asset-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 1rem;
+  right: 1rem;
+  height: 2px;
+  background: #3b82f6;
+  border-radius: 1px 1px 0 0;
 }
 
 .section-title {
@@ -1846,23 +2417,6 @@ async function handlePortfolioChange(portfolioId) {
   margin-top: 0;
 }
 
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.section-header h2,
-.section-header .section-title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 400;
-  color: #6B7280;
-}
-
 .transactions-section h2,
 .payouts-section h2 {
   margin: 0 0 1.5rem 0;
@@ -1871,16 +2425,36 @@ async function handlePortfolioChange(portfolioId) {
   color: #6B7280;
 }
 
-.chart-controls {
+.asset-chart-header-actions {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
 }
 
+.asset-chart-header-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.asset-chart-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0.75rem;
+}
+
+.asset-chart-period-row {
+  flex-shrink: 0;
+}
 
 .chart-container {
-  height: 400px;
+  flex: 1;
+  min-height: 360px;
   position: relative;
 }
 
@@ -2014,6 +2588,30 @@ async function handlePortfolioChange(portfolioId) {
 .badge-amortization {
   background: rgba(251, 146, 60, 0.1);
   color: var(--payout-amortizations, #fb923c);
+}
+
+.payout-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.payout-status-badge--paid {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.payout-status-badge--forecast {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.payout-status-badge--unknown {
+  background: #f3f4f6;
+  color: #6b7280;
 }
 
 .badge-other {
@@ -2158,13 +2756,8 @@ async function handlePortfolioChange(portfolioId) {
     grid-template-columns: 1fr;
   }
 
-  .section-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .chart-container {
-    height: 300px;
+    min-height: 280px;
   }
 }
 </style>
