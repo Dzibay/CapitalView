@@ -9,7 +9,7 @@ import Widget from '../base/Widget.vue'
 /** Совпадают с operation_type из get_cash_operations (CASE ot.name …) */
 const OP_TYPE_DIVIDENDS = 'Дивиденды'
 const OP_TYPE_COUPONS = 'Купоны'
-const OP_TYPE_AMORT = 'Погашение'
+const OP_TYPE_AMORT = 'Амортизация'
 
 const props = defineProps({
   title: {

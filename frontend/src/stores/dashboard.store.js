@@ -109,10 +109,8 @@ export const useDashboardStore = defineStore('dashboard', {
 
     async reloadDashboard(showLoading = true) {
       await this.fetchDashboard(true, showLoading)
-      // После мутаций всегда обновляем полные списки, если они были загружены
-      if (this.fullListsLoaded) {
-        this.fetchTransactionsAndOperationsInBackground()
-      }
+      // Всегда подтягиваем полные списки в фоне после мутаций (лёгкие GET).
+      this.fetchTransactionsAndOperationsInBackground()
     },
 
     /**
@@ -132,7 +130,8 @@ export const useDashboardStore = defineStore('dashboard', {
         })
       ]).then(([txResponse, opResponse]) => {
         if (txResponse != null) {
-          const list = txResponse?.transactions || txResponse || []
+          const raw = txResponse?.transactions ?? txResponse
+          const list = Array.isArray(raw) ? raw : []
           const normalized = list.map(tx => ({
             ...tx,
             id: tx.id || tx.transaction_id,
@@ -142,10 +141,13 @@ export const useDashboardStore = defineStore('dashboard', {
           this.addTransactions(normalized, true)
         }
         if (opResponse != null) {
-          const list = opResponse?.operations || opResponse || []
+          const raw = opResponse?.operations ?? opResponse
+          const list = Array.isArray(raw) ? raw : []
           this.addOperations(list, true)
         }
-        this.fullListsLoaded = true
+        // Не помечаем списки как «полностью загруженные», пока оба запроса не успешны —
+        // иначе при сбое /operations или /transactions страница транзакций больше не перезапросит данные.
+        this.fullListsLoaded = txResponse != null && opResponse != null
       })
     },
 
