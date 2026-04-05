@@ -4,6 +4,7 @@ import MultiLineChart from '../../charts/MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
 import ValueChangePill from '../base/ValueChangePill.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
+import ChartOptionsMenu from '../../base/ChartOptionsMenu.vue'
 import { TrendingUp } from 'lucide-vue-next'
 
 // --------------------------------------------------------------
@@ -17,6 +18,15 @@ const props = defineProps({
 })
 
 const selectedPeriod = ref("All")
+const showMinMax = ref(false)
+
+const chartMenuOptions = computed(() => [
+  { id: 'minmax', label: 'Min / Max', modelValue: showMinMax.value }
+])
+
+function onChartOptionToggle(id, val) {
+  if (id === 'minmax') showMinMax.value = val
+}
 
 // --------------------------------------------------------------
 // Формат валюты
@@ -169,7 +179,13 @@ watch(() => props.chartData, () => {
 <template>
   <Widget title="Динамика прибыли" :icon="TrendingUp">
     <template #header>
-      <PeriodFilters v-model="selectedPeriod" />
+      <div class="header-controls">
+        <PeriodFilters v-model="selectedPeriod" />
+        <ChartOptionsMenu
+          :options="chartMenuOptions"
+          @toggle="onChartOptionToggle"
+        />
+      </div>
     </template>
 
     <div class="capital-info">
@@ -193,13 +209,19 @@ watch(() => props.chartData, () => {
         :period="selectedPeriod"
         :zeroAtStart="false"
         :formatCurrency="formatCurrency"
+        :showMinMaxGuides="showMinMax"
       />
     </div>
   </Widget>
 </template>
 
 <style scoped>
-/* Убраны стили .widget, .capital-header - теперь используется компонент Widget */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: nowrap;
+}
 .capital-info {
   margin-bottom: 0.75rem;
 }

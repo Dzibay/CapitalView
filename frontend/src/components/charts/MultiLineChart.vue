@@ -65,7 +65,7 @@ const props = defineProps({
   /** Горизонтали min/max и подписи справа (как на референсе) */
   showMinMaxGuides: {
     type: Boolean,
-    default: true
+    default: false
   }
 })
 
@@ -1023,6 +1023,7 @@ watch(() => props.aggregationEnd, update)
 watch(() => props.skipAggregation, update)
 watch(() => props.minPxPerXTick, update)
 watch(() => props.drawProgress, update)
+watch(() => props.showMinMaxGuides, update)
 watch(() => props.tooltipCallbacks, update, { deep: true })
 
 onMounted(update)

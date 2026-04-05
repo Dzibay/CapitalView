@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Building2, PieChart, TrendingDown, Hash, History } from 'lucide-vue-next'
+import { Building2, PieChart, TrendingDown, Hash, History, LineChart } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import MultiLineChart from '../components/charts/MultiLineChart.vue'
@@ -18,6 +18,7 @@ import {
   AssetPayoutsListWidget 
 } from '../components/widgets/lists'
 import CustomSelect from '../components/base/CustomSelect.vue'
+import ChartOptionsMenu from '../components/base/ChartOptionsMenu.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import assetsService from '../services/assetsService'
 import operationsService from '../services/operationsService'
@@ -43,6 +44,15 @@ const assetInAllPortfolios = ref([])
 const selectedPortfolioId = ref(null)
 const selectedPeriod = ref('All')
 const selectedChartType = ref('position') // 'position' | 'quantity' | 'price'
+const showMinMax = ref(false)
+
+const assetChartMenuOptions = computed(() => [
+  { id: 'minmax', label: 'Min / Max', modelValue: showMinMax.value }
+])
+
+function onAssetChartOptionToggle(id, val) {
+  if (id === 'minmax') showMinMax.value = val
+}
 const cashOperations = ref([]) // Все операции из cash_operations (выплаты, комиссии, налоги и т.д.)
 const portfolioTransactions = ref({}) // Транзакции для каждого portfolio_asset_id
 
@@ -706,6 +716,14 @@ const assetCurrency = computed(() => {
   
   // Если ничего не найдено
   return 'RUB'
+})
+
+const assetHistoryTitle = computed(() => {
+  const cur = assetCurrency.value
+  if (cur && selectedChartType.value === 'price') {
+    return `История актива (цена в ${cur})`
+  }
+  return 'История актива'
 })
 
 // Расчет доли в корневом портфеле для выбранного портфеля
@@ -1455,10 +1473,9 @@ async function handlePortfolioChange(portfolioId) {
       <div class="widgets-grid">
         <!-- График -->
         <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-large)">
-          <div class="chart-widget">
-            <div class="section-header">
-              <h2 class="section-title">История актива <span v-if="assetCurrency && selectedChartType === 'price'" class="chart-currency">(цена в {{ assetCurrency }})</span></h2>
-              <div class="chart-controls">
+          <Widget :title="assetHistoryTitle" :icon="LineChart">
+            <template #header>
+              <div class="asset-chart-header-actions">
                 <CustomSelect
                   :modelValue="selectedChartType"
                   :options="chartTypeOptions"
@@ -1471,23 +1488,32 @@ async function handlePortfolioChange(portfolioId) {
                   :flex="'none'"
                   @update:modelValue="selectedChartType = $event"
                 />
-                <PeriodFilters 
-                  :modelValue="selectedPeriod" 
+                <ChartOptionsMenu
+                  :options="assetChartMenuOptions"
+                  @toggle="onAssetChartOptionToggle"
+                />
+              </div>
+            </template>
+            <div class="asset-chart-body">
+              <div class="asset-chart-period-row">
+                <PeriodFilters
+                  :modelValue="selectedPeriod"
                   @update:modelValue="selectedPeriod = $event"
                 />
               </div>
+              <div class="chart-container">
+                <MultiLineChart
+                  v-if="chartData.labels.length"
+                  :chartData="chartData"
+                  :period="selectedPeriod"
+                  :chartType="selectedChartType"
+                  :formatCurrency="chartFormatter"
+                  :showMinMaxGuides="showMinMax"
+                />
+                <div v-else class="no-chart-data">Нет данных для отображения графика</div>
+              </div>
             </div>
-            <div class="chart-container">
-              <MultiLineChart 
-                v-if="chartData.labels.length" 
-                :chartData="chartData" 
-                :period="selectedPeriod"
-                :chartType="selectedChartType"
-                :formatCurrency="chartFormatter"
-              />
-              <div v-else class="no-chart-data">Нет данных для отображения графика</div>
-            </div>
-          </div>
+          </Widget>
         </WidgetContainer>
 
         <!-- Описание актива (заглушка) -->
@@ -1607,16 +1633,6 @@ async function handlePortfolioChange(portfolioId) {
   .widgets-grid {
     grid-template-columns: 1fr;
   }
-}
-
-.chart-widget {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-  display: flex;
-  flex-direction: column;
-  height: 100%;
 }
 
 .error-state {
@@ -1846,23 +1862,6 @@ async function handlePortfolioChange(portfolioId) {
   margin-top: 0;
 }
 
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.section-header h2,
-.section-header .section-title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 400;
-  color: #6B7280;
-}
-
 .transactions-section h2,
 .payouts-section h2 {
   margin: 0 0 1.5rem 0;
@@ -1871,16 +1870,28 @@ async function handlePortfolioChange(portfolioId) {
   color: #6B7280;
 }
 
-.chart-controls {
+.asset-chart-header-actions {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
 }
 
+.asset-chart-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0.75rem;
+}
+
+.asset-chart-period-row {
+  flex-shrink: 0;
+}
 
 .chart-container {
-  height: 400px;
+  flex: 1;
+  min-height: 360px;
   position: relative;
 }
 
@@ -2158,13 +2169,8 @@ async function handlePortfolioChange(portfolioId) {
     grid-template-columns: 1fr;
   }
 
-  .section-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .chart-container {
-    height: 300px;
+    min-height: 280px;
   }
 }
 </style>

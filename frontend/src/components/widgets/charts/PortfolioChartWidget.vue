@@ -5,7 +5,7 @@ import MultiLineChart from '../../charts/MultiLineChart.vue'
 import Widget from '../base/Widget.vue'
 import ValueChangePill from '../base/ValueChangePill.vue'
 import PeriodFilters from '../base/PeriodFilters.vue'
-import ToggleSwitch from '../../base/ToggleSwitch.vue'
+import ChartOptionsMenu from '../../base/ChartOptionsMenu.vue'
 import { LANDING_DASH_REVEAL_KEY } from '../../../constants/landingDashboardReveal'
 
 const props = defineProps({
@@ -113,7 +113,18 @@ onUnmounted(() => {
 })
 
 const selectedPeriod = ref("All")
-const includeBalance = ref(true) // Переключатель: показывать ли стоимость с учетом баланса (по умолчанию включен)
+const includeBalance = ref(true)
+const showMinMax = ref(false)
+
+const chartMenuOptions = computed(() => [
+  { id: 'balance', label: 'С балансом', modelValue: includeBalance.value },
+  { id: 'minmax', label: 'Min / Max', modelValue: showMinMax.value }
+])
+
+function onChartOptionToggle(id, val) {
+  if (id === 'balance') includeBalance.value = val
+  else if (id === 'minmax') showMinMax.value = val
+}
 
 // --------------------------
 // Формат валюты
@@ -310,11 +321,11 @@ const displayGrowthPercent = computed(() => (Number(growthPercent.value) || 0) *
   <Widget title="Динамика капитала" :icon="LineChart">
     <template #header>
       <div class="header-controls">
-        <ToggleSwitch 
-          v-model="includeBalance"
-          label="С балансом"
-        />
         <PeriodFilters v-model="selectedPeriod" />
+        <ChartOptionsMenu
+          :options="chartMenuOptions"
+          @toggle="onChartOptionToggle"
+        />
       </div>
     </template>
 
@@ -341,6 +352,7 @@ const displayGrowthPercent = computed(() => (Number(growthPercent.value) || 0) *
         :formatCurrency="formatCurrency"
         :zeroAtStart="false"
         :draw-progress="drawProgress"
+        :showMinMaxGuides="showMinMax"
       />
     </div>
   </Widget>
