@@ -11,6 +11,7 @@ DECLARE
     asset_types JSONB;
     currencies JSONB;
     assets_index JSONB;
+    currency_rates_to_rub JSONB;
 BEGIN
     SELECT jsonb_agg(t) INTO asset_types
     FROM asset_types t;
@@ -43,11 +44,23 @@ BEGIN
         WHERE a.user_id IS NULL
     ) sq;
 
+    -- Курсы валют и крипто к рублю (как currency_rate_to_rub в get_portfolio_assets): curr_price инструмента валюты.
+    SELECT COALESCE(
+        (
+            SELECT jsonb_object_agg(a.ticker, COALESCE(ap.curr_price, 1)::numeric)
+            FROM assets a
+            LEFT JOIN asset_latest_prices ap ON ap.asset_id = a.id
+            WHERE a.user_id IS NULL AND a.asset_type_id = 7
+        ),
+        '{}'::jsonb
+    ) INTO currency_rates_to_rub;
+
     RETURN jsonb_build_object(
         'reference', jsonb_build_object(
             'asset_types', COALESCE(asset_types, '[]'::jsonb),
             'currencies', COALESCE(currencies, '[]'::jsonb),
-            'assets', '[]'::jsonb
+            'assets', '[]'::jsonb,
+            'currency_rates_to_rub', COALESCE(currency_rates_to_rub, '{}'::jsonb)
         ),
         'assets_index', COALESCE(assets_index, '[]'::jsonb)
     );
@@ -55,4 +68,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION get_reference_cache_payload() IS
-'Справочник для клиента (reference.assets пустой) + полный снимок системных активов для in-memory поиска на сервере';
+'Справочник для клиента (reference.assets пустой, currency_rates_to_rub — курсы валют/крипто к рублю) + полный снимок системных активов для in-memory поиска на сервере';

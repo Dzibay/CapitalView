@@ -70,6 +70,11 @@ const props = defineProps({
     type: String,
     default: null
   },
+  /** Подсказка только на значении (сумме), подпись слева без тултипа */
+  secondaryValueTooltip: {
+    type: String,
+    default: null
+  },
   mainValueSuffix: {
     type: String,
     default: null
@@ -354,8 +359,22 @@ const mainWrapperStyle = computed(() => {
       </div>
 
       <p v-if="secondaryText || formattedSecondaryValue" class="secondary-text">
+        <template
+          v-if="
+            secondaryValueTooltip &&
+            secondaryValue !== null &&
+            secondaryValue !== undefined &&
+            formattedSecondaryValue !== null
+          "
+        >
+          <span v-if="secondaryText && secondaryText.includes(':')">{{ secondaryText }}</span>
+          <Tooltip :content="secondaryValueTooltip" position="top">
+            <span :class="secondaryClass">{{ formattedSecondaryValue }}</span>
+          </Tooltip>
+          <span v-if="secondaryText && !secondaryText.includes(':')">{{ secondaryText }}</span>
+        </template>
         <Tooltip
-          v-if="secondaryValue !== null && secondaryValue !== undefined && secondaryTooltip"
+          v-else-if="secondaryValue !== null && secondaryValue !== undefined && secondaryTooltip"
           :content="secondaryTooltip"
           position="top"
         >

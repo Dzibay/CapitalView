@@ -15,10 +15,6 @@ defineProps({
     type: Boolean,
     default: false,
   },
-  mobileMenuOpen: {
-    type: Boolean,
-    default: false,
-  },
 });
 
 const emit = defineEmits(['toggle-sidebar'])
@@ -64,7 +60,7 @@ const hasNotifications = computed(() => missedPayoutsCount.value > 0)
       </svg>
     </button>
 
-    <div v-if="user" class="header-right">
+    <div v-if="user" class="header-user-cluster">
       <!-- Иконка уведомлений -->
       <button 
         @click="openMissedPayoutsModal" 
@@ -87,6 +83,9 @@ const hasNotifications = computed(() => missedPayoutsCount.value > 0)
         </div>
       </div>
     </div>
+
+    <!-- На мобильных сюда Teleport'ится PortfolioSelector (см. PortfolioSelector.vue) -->
+    <div id="app-header-mobile-end" class="header-mobile-end" />
 
     <!-- Модальное окно неполученных выплат -->
     <MissedPayoutsModal 
@@ -131,10 +130,19 @@ const hasNotifications = computed(() => missedPayoutsCount.value > 0)
 .burger-button:hover {
   background-color: #f3f4f6;
 }
-.header-right {
+.header-user-cluster {
   display: flex;
   gap: calc(var(--spacing) / 2);
   align-items: center;
+  min-width: 0;
+}
+
+.header-mobile-end {
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .notifications-button {
@@ -208,10 +216,47 @@ const hasNotifications = computed(() => missedPayoutsCount.value > 0)
     left: 0;
     padding-left: 12px;
     padding-right: 12px;
+    justify-content: space-between;
+    gap: 8px;
   }
 
   .header.header--sidebar-collapsed {
     left: 0;
+  }
+
+  .burger-button {
+    display: none;
+  }
+
+  /* Профиль слева от колокольчика */
+  .header-user-cluster {
+    flex-direction: row-reverse;
+  }
+
+  .header-mobile-end {
+    display: flex;
+    max-width: min(200px, calc(100vw - 132px));
+  }
+
+  .header-mobile-end :deep(.custom-select-wrapper) {
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+
+  .header-mobile-end :deep(.custom-select) {
+    min-height: 40px;
+    min-width: 140px;
+    padding: 0 10px;
+  }
+
+  .header-mobile-end :deep(.custom-select-value) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .user-info {
+    text-align: left;
   }
 
   .user-email {

@@ -110,13 +110,36 @@ const capitalProfitAmount = computed(() => props.totalAmount - props.investedAmo
 
 const capitalTooltip = computed(() => {
   const fmt = formatCurrency(capitalProfitAmount.value)
-  return `Разница между капиталом и нетто вводом средств (пополнения минус выводы) составляет ${Math.abs(capitalProfitPercent.value).toFixed(2)}% (${fmt})`
+  return `Нереализованная прибыль от оценки портфеля: ${Math.abs(capitalProfitPercent.value).toFixed(2)}% (${fmt}) относительно стоимости позиции и остатка на счёте`
 })
 
 const profitToInvestedPercent = computed(() => {
   if (!props.investedAmount || props.investedAmount === 0) return 0
   return (props.totalProfit / props.investedAmount) * 100
 })
+
+/** Как в PortfolioProfitWidget / StatCardWidget: пилюля у суммы прибыли — рост за месяц в % */
+const monthlyGrowthPercent = computed(() => {
+  if (!props.monthlyChange || props.monthlyChange === 0) return 0
+  const monthAgoPnl = props.totalProfit - props.monthlyChange
+  if (!monthAgoPnl || monthAgoPnl === 0) return 0
+  return (props.monthlyChange / Math.abs(monthAgoPnl)) * 100
+})
+
+const formattedMonthlyGrowthPercent = computed(() => {
+  const percent = monthlyGrowthPercent.value
+  return (
+    new Intl.NumberFormat('ru-RU', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(percent) + '%'
+  )
+})
+
+const profitChangeMonthTooltip = computed(
+  () =>
+    `Изменение прибыли за последний месяц составляет ${formattedMonthlyGrowthPercent.value}`
+)
 
 const formatForTooltip = (value) =>
   new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(value || 0)
@@ -162,6 +185,7 @@ const displayInvestedAmount = computed(() => Math.round(props.investedAmount * r
 const displayCapitalProfitPercent = computed(() => capitalProfitPercent.value * revealT.value)
 const displayTotalProfit = computed(() => props.totalProfit * revealT.value)
 const displayProfitToInvestedPercent = computed(() => profitToInvestedPercent.value * revealT.value)
+const displayMonthlyGrowthPercent = computed(() => monthlyGrowthPercent.value * revealT.value)
 const displayAnnualDividends = computed(() => Math.round(props.annualDividends * revealT.value))
 const displayDividendsMonthly = computed(() => Math.round(dividendsMonthly.value * revealT.value))
 const displayReturnPercent = computed(() => props.returnPercent * revealT.value)
@@ -177,7 +201,7 @@ const topSectionStyle = computed(() =>
 <template>
   <Widget title="Показатели" :icon="BarChart2" :compact="true">
     <div class="consolidated-content">
-      <!-- 1. Общий капитал: слева сумма и «Инвестировано», справа value-change по центру по высоте -->
+      <!-- 1. Общий капитал: слева сумма и вложения в позиции, справа нереализованная % -->
       <div class="top-section">
         <div class="top-section-left" :style="topSectionStyle">
           <Tooltip :content="capitalTooltip" position="top">
@@ -208,11 +232,13 @@ const topSectionStyle = computed(() =>
                 {{ totalProfit >= 0 ? '+' : '' }}{{ formatCurrency(displayTotalProfit, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
               </span>
             </Tooltip>
-            <ValueChangePill
-              :value="displayProfitToInvestedPercent"
-              :is-positive="profitToInvestedPercent >= 0"
-              format="percent"
-            />
+            <Tooltip :content="profitChangeMonthTooltip" position="top">
+              <ValueChangePill
+                :value="displayMonthlyGrowthPercent"
+                :is-positive="monthlyGrowthPercent >= 0"
+                format="percent"
+              />
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -318,6 +344,19 @@ const topSectionStyle = computed(() =>
 }
 .profit-value.negative {
   color: var(--negativeColor, #EF4444);
+}
+
+.profit-from-invested {
+  margin-top: 0.35rem;
+  text-align: right;
+}
+.profit-from-invested .positive {
+  color: var(--positiveColor, #1cbd88);
+  font-weight: var(--text-value-weight, 600);
+}
+.profit-from-invested .negative {
+  color: var(--negativeColor, #ef4444);
+  font-weight: var(--text-value-weight, 600);
 }
 
 .separator {

@@ -23,6 +23,7 @@ from app.workers.base_price_worker import (
     update_latest_and_portfolios,
     run_worker_loop,
 )
+from app.domain.services.reference_service import invalidate_reference_cache
 from app.utils.date import parse_date as normalize_date, normalize_date_to_sql_date
 from app.core.logging import get_logger
 
@@ -197,6 +198,11 @@ async def update_history_prices() -> int:
 
     if asset_date_map:
         await update_latest_and_portfolios(list(asset_date_map.keys()), asset_date_map)
+        try:
+            invalidate_reference_cache()
+            logger.debug("Справочник сброшен после догрузки истории курсов валют")
+        except Exception as e:
+            logger.warning("invalidate_reference_cache после истории курсов: %s", e)
 
     return success_count
 
@@ -248,6 +254,12 @@ async def update_today_prices() -> int:
     today_str = normalize_date_to_sql_date(date.today())
     asset_date_map = {aid: today_str for aid in updated_ids}
     await update_latest_and_portfolios(updated_ids, asset_date_map)
+
+    try:
+        invalidate_reference_cache()
+        logger.debug("Справочник сброшен после обновления курсов валют (currency_rates_to_rub)")
+    except Exception as e:
+        logger.warning("invalidate_reference_cache после курсов валют: %s", e)
 
     return len(updated_ids)
 

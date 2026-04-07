@@ -1,7 +1,7 @@
 /**
  * СТАТИЧНЫЕ ДАННЫЕ ДЛЯ DASHBOARD (ПОЛТОРА ГОДА)
- * Все расчеты синхронизированы:
- * Capital (498.5k) - Invested (438k) = Profit (60.5k)
+ * Синхронизация: Capital (498.5k) − (позиции + остаток) ≈ unrealized (58.64k);
+ * общий P&L (60.5k) = разложение по realized/unrealized/dividends/…
  * Yield: 13.81%
  * Div Yield: ~9.2% (45,862 руб/год)
  */
@@ -15,6 +15,9 @@ const profitData = {
 }
 const TOTAL_AMOUNT = 498500;
 const INVESTED_AMOUNT = 439860;
+/** Остаток на счёте в моке (0 — как в сценарии «всё в позициях») */
+const PORTFOLIO_BALANCE = 0;
+const INVESTED_WITH_BALANCE = INVESTED_AMOUNT + PORTFOLIO_BALANCE;
 const TOTAL_PROFIT = Object.values(profitData).reduce((acc, value) => acc + value, 0);
 const MONTHLY_PROFIT_CHANGE = 8400; // Условный плюс за последний месяц
 const RETURN_PERCENT = 15.18;
@@ -22,14 +25,19 @@ const RETURN_PERCENT_ON_INVESTED = 17.81;
 
 export const landingDashboardTotalCapital = {
   totalAmount: TOTAL_AMOUNT,
-  investedAmount: INVESTED_AMOUNT
-};
+  investedAmount: INVESTED_WITH_BALANCE,
+  unrealizedPl: profitData.unrealized_pl,
+  unrealizedPercent:
+    INVESTED_WITH_BALANCE > 0
+      ? (profitData.unrealized_pl / INVESTED_WITH_BALANCE) * 100
+      : 0,
+}
 
 export const landingDashboardProfit = {
   totalAmount: TOTAL_AMOUNT,
   totalProfit: TOTAL_PROFIT,
   monthlyChange: MONTHLY_PROFIT_CHANGE,
-  investedAmount: INVESTED_AMOUNT,
+  investedAmount: INVESTED_WITH_BALANCE,
   analytics: {
     totals: {
       // Сумма этих полей должна давать TOTAL_PROFIT (60500)
@@ -51,8 +59,8 @@ export const landingDashboardReturn = {
   returnPercent: RETURN_PERCENT,
   returnPercentOnInvested: RETURN_PERCENT_ON_INVESTED,
   totalValue: TOTAL_AMOUNT,
-  totalInvested: INVESTED_AMOUNT
-};
+  totalInvested: INVESTED_WITH_BALANCE,
+}
 
 export const landingDashboardPortfolioChart = {
   // 77 недель (Октябрь 2024 — Март 2026)

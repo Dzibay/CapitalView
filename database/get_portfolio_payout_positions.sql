@@ -38,11 +38,13 @@ positions AS (
         'name', a.name,
         'ticker', a.ticker,
         'quantity', COALESCE(pa.quantity, 0),
+        'currency_ticker', qa.ticker,
         'payouts', COALESCE(apd.payouts, '[]'::jsonb)
     ) AS elem
     FROM portfolio_assets pa
     INNER JOIN tree tr ON tr.id = pa.portfolio_id
     LEFT JOIN assets a ON a.id = pa.asset_id
+    LEFT JOIN assets qa ON qa.id = a.quote_asset_id
     LEFT JOIN asset_payouts_data apd ON apd.asset_id = pa.asset_id
 )
 SELECT json_build_object(

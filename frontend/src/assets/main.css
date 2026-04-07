@@ -6,6 +6,8 @@ html {
   --headerHeight: 100px;
   --sidebarWidth : 260px;
   --sidebarWidthCollapsed: 80px;
+  /* Нижняя навигация на мобильных (DashboardLayout + AppBottomNav) */
+  --bottomNavHeight: 76px;
   
   /* ============================================
      РАЗМЕРЫ ВИДЖЕТОВ - УДОБНОЕ РЕДАКТИРОВАНИЕ

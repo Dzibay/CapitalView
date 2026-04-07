@@ -5,19 +5,6 @@ import { useUIStore } from '../stores/ui.store'
 import { expandPortfolioHistoryForCharts } from '../utils/portfolioHistory'
 
 /**
- * Нетто ввод средств: сумма пополнений + сумма выводов (выводы в БД с минусом).
- * Используется для строки «Инвестировано» в виджете общего капитала.
- */
-function netCashInvestedFromTotals(totals) {
-  if (!totals || typeof totals !== 'object') return null
-  if (totals.inflow == null && totals.outflow == null) return null
-  const inflow = Number(totals.inflow ?? 0)
-  const outflow = Number(totals.outflow ?? 0)
-  if (!Number.isFinite(inflow) || !Number.isFinite(outflow)) return null
-  return inflow + outflow
-}
-
-/**
  * Composable для работы с аналитикой портфеля
  * Используется на страницах Dashboard и Analytics
  */
@@ -112,33 +99,55 @@ export function usePortfolioAnalytics() {
            0
   })
 
-  // Данные для TotalCapitalWidget
+  // Данные для TotalCapitalWidget: капитал = total_value; строка внизу = total_invested + balance; пилюля = нереализ. % к этой базе (total_value − база = unrealized_pl)
   const totalCapitalWidgetData = computed(() => {
     const p = selectedPortfolio.value
     const t =
       selectedPortfolioAnalytics.value?.totals ||
       p?.analytics?.totals ||
       null
-    const netCash = netCashInvestedFromTotals(t)
 
-    if (p && t && netCash !== null) {
-      return {
-        totalAmount: (t.total_value != null ? t.total_value : p.total_value) || 0,
-        investedAmount: netCash
-      }
+    const totalValue =
+      t?.total_value != null
+        ? Number(t.total_value) || 0
+        : Number(p?.total_value) || 0
+
+    const investedInPositions =
+      t?.total_invested != null
+        ? Number(t.total_invested) || 0
+        : Number(p?.total_invested) || 0
+
+    const bal =
+      t?.balance != null && Number.isFinite(Number(t.balance))
+        ? Number(t.balance)
+        : Number(balance.value) || 0
+
+    const investedWithBalance = investedInPositions + bal
+
+    let unrealizedPl = 0
+    if (t != null && t.unrealized_pl != null && Number.isFinite(Number(t.unrealized_pl))) {
+      unrealizedPl = Number(t.unrealized_pl)
+    } else {
+      unrealizedPl = totalValue - investedWithBalance
     }
 
-    if (p) {
-      const totalInvested = p.total_invested || 0
+    const unrealizedPercent =
+      investedWithBalance > 0 ? (unrealizedPl / investedWithBalance) * 100 : 0
+
+    if (p || t) {
       return {
-        totalAmount: p.total_value || 0,
-        investedAmount: totalInvested + balance.value
+        totalAmount: totalValue,
+        investedAmount: investedWithBalance,
+        unrealizedPl,
+        unrealizedPercent,
       }
     }
 
     return {
       totalAmount: 0,
-      investedAmount: 0
+      investedAmount: 0,
+      unrealizedPl: 0,
+      unrealizedPercent: 0,
     }
   })
 
@@ -154,6 +163,9 @@ export function usePortfolioAnalytics() {
       }
     }
 
+    // Та же база, что у строки «Инвестировано в активы» в TotalCapitalWidget (total_invested + balance)
+    const investedForProfitPercent = totalCapitalWidgetData.value.investedAmount
+
     return {
       totalAmount: selectedPortfolio.value.total_value || 0,
       totalProfit: selectedPortfolio.value.analytics?.totals?.total_profit || 
@@ -161,7 +173,7 @@ export function usePortfolioAnalytics() {
                    selectedPortfolioAnalytics.value?.totals?.total_profit || 
                    0,
       monthlyChange: selectedPortfolio.value.monthly_change || 0,
-      investedAmount: (selectedPortfolio.value.total_invested || 0) + balance.value,
+      investedAmount: investedForProfitPercent,
       analytics: selectedPortfolioAnalytics.value || selectedPortfolio.value.analytics || {}
     }
   })
