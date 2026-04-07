@@ -57,7 +57,7 @@ defineProps({
 }
 
 .page-header-title {
-  flex-shrink: 0;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -81,20 +81,42 @@ defineProps({
   display: flex;
   align-items: center;
   gap: 1rem;
-  flex-shrink: 1;
+  flex: 0 0 auto;
   margin-left: auto;
-  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
   flex-wrap: wrap;
 }
 
 @media (max-width: 768px) {
-  .page-header-actions {
-    min-width: 0;
-    max-width: 100%;
+  /* Одна строка: подзаголовок слева на всё свободное место, actions справа по содержимому */
+  .page-header-row1 {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.75rem;
   }
 
   .page-header-title {
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+  }
+
+  .page-header-actions {
+    flex: 0 0 auto;
+    width: fit-content;
+    max-width: 100%;
+    margin-left: auto;
+    justify-content: flex-end;
+  }
+
+  /* Крупный заголовок убираем, если есть подзаголовок — на мобильном виден только h2 */
+  .page-header-title:has(h2) h1 {
+    display: none;
+  }
+
+  .page-header-title:has(h2) h2 {
+    margin-top: 0;
   }
 }
 
