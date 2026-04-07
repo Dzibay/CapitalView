@@ -152,10 +152,15 @@ ON portfolio_asset_daily_values(portfolio_id);
 CREATE INDEX IF NOT EXISTS idx_portfolio_asset_daily_values_asset_date_desc 
 ON portfolio_asset_daily_values(portfolio_asset_id, report_date DESC);
 
--- НОВЫЙ: covering index для аналитических CTE
+-- Covering index для LATERAL-запросов в update_portfolio_values_from_date
+-- и аналитических CTE (все колонки включены для index-only scan)
 CREATE INDEX IF NOT EXISTS idx_portfolio_asset_daily_values_covering
 ON portfolio_asset_daily_values(portfolio_asset_id, report_date DESC)
-INCLUDE (payouts, commissions, realized_pnl, position_value, quantity, portfolio_id);
+INCLUDE (position_value, cumulative_invested, realized_pnl, payouts, commissions, taxes, quantity, portfolio_id);
+
+-- Покрытие portfolio_id + report_date для filtered_dates EXISTS
+CREATE INDEX IF NOT EXISTS idx_padv_portfolio_date
+ON portfolio_asset_daily_values(portfolio_id, report_date);
 
 -- ============================================================================
 -- ТАБЛИЦА: portfolio_daily_values
