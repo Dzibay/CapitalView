@@ -194,6 +194,8 @@ onUnmounted(() => {
               <TotalCapitalWidget
                 :total-amount="capital.totalAmount"
                 :invested-amount="capital.investedAmount"
+                :unrealized-pl="capital.unrealizedPl"
+                :unrealized-percent="capital.unrealizedPercent"
                 :scroll-reveal="revealAnimations"
                 :landing-reveal-ref="dashboardReveal"
               />

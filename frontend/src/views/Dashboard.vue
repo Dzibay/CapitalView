@@ -191,6 +191,8 @@ onMounted(() => {
           <TotalCapitalWidget 
             :total-amount="totalCapitalWidgetData.totalAmount"
             :invested-amount="totalCapitalWidgetData.investedAmount"
+            :unrealized-pl="totalCapitalWidgetData.unrealizedPl"
+            :unrealized-percent="totalCapitalWidgetData.unrealizedPercent"
           />
         </WidgetContainer>
         <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">

@@ -104,6 +104,8 @@ const blocks = [
               <TotalCapitalWidget
                 :total-amount="capital.totalAmount"
                 :invested-amount="capital.investedAmount"
+                :unrealized-pl="capital.unrealizedPl"
+                :unrealized-percent="capital.unrealizedPercent"
               />
             </WidgetContainer>
             <WidgetContainer min-height="112px">
