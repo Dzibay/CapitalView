@@ -545,34 +545,10 @@ watch(route, () => {
   transform: translateX(-10px);
 }
 
-/* Адаптив: мобильное меню (оверлей) */
+/* Мобильные: боковая панель отключена — навигация в нижней панели (AppBottomNav) */
 @media (max-width: 768px) {
   .sidebar {
-    width: 280px;
-    max-width: 85vw;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease-in-out;
-  }
-
-  .sidebar.sidebar--mobile-open {
-    transform: translateX(0);
-  }
-
-  .sidebar.sidebar--collapsed {
-    width: 280px;
-    max-width: 85vw;
-  }
-
-  .sidebar.sidebar--collapsed .sidebar__title,
-  .sidebar.sidebar--collapsed .sidebar__item-name,
-  .sidebar.sidebar--collapsed .sidebar__section-title,
-  .sidebar.sidebar--collapsed .sidebar__submenu-toggle,
-  .sidebar.sidebar--collapsed .sidebar__logout-icon,
-  .sidebar.sidebar--collapsed .sidebar__user-info {
-    opacity: 1;
-    pointer-events: auto;
-    width: auto;
-    overflow: visible;
+    display: none !important;
   }
 }
 </style>

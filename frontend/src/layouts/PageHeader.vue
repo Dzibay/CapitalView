@@ -92,8 +92,9 @@ defineProps({
     min-width: 0;
     max-width: 100%;
   }
+
   .page-header-title {
-    width: 40%;
+    width: 100%;
   }
 }
 

@@ -9,6 +9,7 @@ import { useTransactionsStore } from '../stores/transactions.store'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 import AppFooter from './AppFooter.vue'
+import AppBottomNav from './AppBottomNav.vue'
 
 const router = useRouter()
 
@@ -72,32 +73,24 @@ watch(() => dashboardStore.portfolios, (portfolios) => {
 
 function handleToggleSidebar() {
   if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-    uiStore.setMobileMenuOpen(!uiStore.isMobileMenuOpen)
-  } else {
-    uiStore.toggleSidebar()
+    return
   }
+  uiStore.toggleSidebar()
 }
 
 </script>
 
 <template>
   <div class="dashboard-layout">
-    <div
-      v-if="uiStore.isMobileMenuOpen"
-      class="sidebar-overlay"
-      aria-hidden="true"
-      @click="uiStore.setMobileMenuOpen(false)"
-    />
     <AppSidebar
       :user="authStore.user"
       :collapsed="uiStore.isSidebarCollapsed"
-      :mobile-open="uiStore.isMobileMenuOpen"
+      :mobile-open="false"
     />
     <main class="main-content" :class="{ 'full-width': uiStore.isSidebarCollapsed }">
       <AppHeader
         :user="authStore.user"
         :sidebar-collapsed="uiStore.isSidebarCollapsed"
-        :mobile-menu-open="uiStore.isMobileMenuOpen"
         @toggle-sidebar="handleToggleSidebar"
       />
       <div class="page-content">
@@ -105,6 +98,7 @@ function handleToggleSidebar() {
       </div>
       <AppFooter />
     </main>
+    <AppBottomNav />
   </div>
 </template>
 
@@ -147,24 +141,11 @@ function handleToggleSidebar() {
   .main-content,
   .main-content.full-width {
     margin-left: 0;
+    padding-bottom: calc(var(--bottomNavHeight) + env(safe-area-inset-bottom, 0px));
   }
 
   .page-content {
     padding: 10px 12px;
-  }
-}
-
-.sidebar-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 998;
-}
-
-@media (max-width: 768px) {
-  .sidebar-overlay {
-    display: block;
   }
 }
 </style>
