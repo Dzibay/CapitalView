@@ -7,6 +7,16 @@ import {
 
 const assetMetaCache = new Map()
 
+function logReferenceData(source, reference, referenceVersion) {
+  const verSuffix = referenceVersion ? ` (reference_version: ${referenceVersion})` : ''
+  if (source === 'cache') {
+    console.info(`[CapitalView] reference_data: кэш IndexedDB${verSuffix}`)
+  } else {
+    console.info(`[CapitalView] reference_data: с сервера${verSuffix}`)
+  }
+  console.log('reference_data', reference)
+}
+
 /**
  * Поиск системных активов (минимум 2 символа запроса; лимит на сервере).
  */
@@ -33,11 +43,14 @@ export async function fetchReferenceAssetMeta(assetId, options = {}) {
   return asset ?? null
 }
 
+/** Один Promise на параллельные fetchReferenceData (Strict Mode / layout + вид до конца загрузки). */
+let referenceFetchInFlight = null
+
 /**
  * Загрузка справочника с IndexedDB-кэшем по reference_version.
  * @param {{ bypassCache?: boolean }} options — при true всегда тянем полный ответ (после мутаций / force reload).
  */
-export async function fetchReferenceData(options = {}) {
+async function fetchReferenceDataImpl(options = {}) {
   const bypassCache = options.bypassCache === true
 
   if (!bypassCache && typeof indexedDB !== 'undefined') {
@@ -53,6 +66,7 @@ export async function fetchReferenceData(options = {}) {
           cached.reference &&
           typeof cached.reference === 'object'
         ) {
+          logReferenceData('cache', cached.reference, serverVer)
           return {
             success: verRes.data?.success !== false,
             reference: cached.reference,
@@ -74,5 +88,23 @@ export async function fetchReferenceData(options = {}) {
     await setCachedReferenceBundle({ version: serverVer, reference: ref })
   }
 
+  if (ref && typeof ref === 'object') {
+    logReferenceData('network', ref, serverVer)
+  }
+
   return body
+}
+
+export async function fetchReferenceData(options = {}) {
+  const bypassCache = options.bypassCache === true
+  if (bypassCache) {
+    return fetchReferenceDataImpl(options)
+  }
+  if (referenceFetchInFlight) {
+    return referenceFetchInFlight
+  }
+  referenceFetchInFlight = fetchReferenceDataImpl(options).finally(() => {
+    referenceFetchInFlight = null
+  })
+  return referenceFetchInFlight
 }

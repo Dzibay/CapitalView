@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { getCurrencySymbol } from '../utils/currencySymbols'
+import { payoutAmountToRub } from '../utils/currencyRatesToRub'
 import { useUIStore } from '../stores/ui.store'
 import portfolioService from '../services/portfolioService'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
@@ -115,21 +116,34 @@ const monthDividends = computed(() => {
   )
 })
 
-// 4. Итоговая сумма за выбранный период (RUB)
-// Если выбран день - сумма за день, иначе за весь месяц
+// 4. Итоговая сумма за выбранный период в ₽ (выплаты в валюте × курс из справочника)
 const totalMonthIncome = computed(() => {
-  const dividendsToSum = selectedDay.value 
-    ? selectedDay.value.events 
+  const dividendsToSum = selectedDay.value
+    ? selectedDay.value.events
     : monthDividends.value
-  
-  return dividendsToSum
-    .reduce((sum, item) => {
-      // Упрощенная логика: суммируем только RUB, либо можно добавить конвертацию
-      if (item.currency === 'RUB' || item.currency === 'SUR') return sum + item.totalAmount
-      return sum
-    }, 0)
-    .toFixed(2)
+
+  const ref = dashboardStore.referenceData
+  let sum = 0
+  for (const item of dividendsToSum) {
+    const rub = payoutAmountToRub(item.totalAmount, item.currency, ref)
+    if (rub != null) sum += rub
+  }
+  return sum.toFixed(2)
 })
+
+/** Есть выплаты в валюте, для которой в справочнике нет курса — рублёвая сумма занижена */
+const totalMonthIncomeIncomplete = computed(() => {
+  const dividendsToSum = selectedDay.value
+    ? selectedDay.value.events
+    : monthDividends.value
+  const ref = dashboardStore.referenceData
+  return dividendsToSum.some(
+    (item) => payoutAmountToRub(item.totalAmount, item.currency, ref) == null
+  )
+})
+
+// Справочник (в т.ч. currency_rates_to_rub) уже грузит DashboardLayout → fetchDashboard → fetchReferenceData.
+// Отдельный вызов здесь давал второй параллельный запрос: дочерний вид монтировался до заполнения store.
 
 // === COMPUTED: КАЛЕНДАРЬ ===
 
@@ -249,10 +263,17 @@ watch(() => uiStore.selectedPortfolioId, () => {
         
         <div class="month-summary">
           <span class="label">
-            {{ selectedDay ? `Ожидается за ${selectedDay.day} ${currentMonthName} (RUB):` : 'Ожидается за месяц (RUB):' }}
+            {{
+              selectedDay
+                ? `Ожидается за ${selectedDay.day} ${currentMonthName} (в ₽ по текущим курса валют):`
+                : 'Ожидается за месяц (в ₽ по текущим курсам валют):'
+            }}
           </span>
           <span class="value" :class="Number(totalMonthIncome) > 0 ? 'text-green' : ''">
             + {{ formatMoney(totalMonthIncome) }} ₽
+          </span>
+          <span v-if="totalMonthIncomeIncomplete" class="month-summary-note">
+            Часть выплат в валюте без курса в справочнике в сумму не входит
           </span>
         </div>
       </div>
@@ -434,6 +455,15 @@ watch(() => uiStore.selectedPortfolioId, () => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.month-summary-note {
+  display: block;
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 6px;
+  max-width: 22rem;
+  margin-left: auto;
+  line-height: 1.35;
+}
 .text-green { color: #10b981 !important; }
 .text-gray { color: #9ca3af !important; }
 
@@ -465,6 +495,10 @@ watch(() => uiStore.selectedPortfolioId, () => {
   }
   .month-summary {
     text-align: center;
+  }
+  .month-summary-note {
+    margin-left: auto;
+    margin-right: auto;
   }
 }
 

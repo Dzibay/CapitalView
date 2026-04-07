@@ -1,5 +1,5 @@
 """
-Справочник (типы, валюты; список активов клиенту пустой) и поиск/мета активов.
+Справочник (типы, валюты, currency_rates_to_rub; список активов клиенту пустой) и поиск/мета активов.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import ORJSONResponse
