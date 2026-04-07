@@ -85,6 +85,54 @@ BEGIN
 
     PERFORM pg_advisory_xact_lock(hashtext('fifo_pos_' || p_portfolio_asset_id::text));
 
+    v_series_start := GREATEST(p_from_date, v_first_tx_date);
+
+    ---------------------------------------------------------------------------
+    -- Собираем "даты событий" вместо generate_series на каждый день.
+    -- Запись создаётся ТОЛЬКО когда что-то меняется:
+    --   • транзакция (покупка/продажа)
+    --   • изменение цены актива (asset_prices)
+    --   • изменение курса валюты котировки (asset_prices для quote_asset)
+    --   • кэш-операция (дивиденды, купоны, комиссии, налоги)
+    --   • текущий день (CURRENT_DATE) — всегда
+    ---------------------------------------------------------------------------
+    DROP TABLE IF EXISTS _event_dates_pa;
+    CREATE TEMP TABLE _event_dates_pa (d date PRIMARY KEY);
+
+    INSERT INTO _event_dates_pa (d)
+    SELECT DISTINCT sub.d FROM (
+        SELECT t.transaction_date::date AS d
+        FROM transactions t
+        WHERE t.portfolio_asset_id = p_portfolio_asset_id
+          AND t.transaction_date::date >= v_series_start
+          AND t.transaction_date::date <= CURRENT_DATE
+        UNION
+        SELECT ap.trade_date AS d
+        FROM asset_prices ap
+        WHERE ap.asset_id = v_asset_id
+          AND ap.trade_date >= v_series_start
+          AND ap.trade_date <= CURRENT_DATE
+        UNION
+        SELECT ap.trade_date AS d
+        FROM asset_prices ap
+        WHERE v_quote_asset_id IS NOT NULL
+          AND v_quote_asset_id != 1
+          AND ap.asset_id = v_quote_asset_id
+          AND ap.trade_date >= v_series_start
+          AND ap.trade_date <= CURRENT_DATE
+        UNION
+        SELECT co.date::date AS d
+        FROM cash_operations co
+        WHERE co.portfolio_id = v_portfolio_id
+          AND co.asset_id = v_asset_id
+          AND co.type IN (3, 4, 7, 8)
+          AND co.date::date >= v_series_start
+          AND co.date::date <= CURRENT_DATE
+        UNION
+        SELECT CURRENT_DATE AS d
+    ) sub
+    WHERE sub.d >= v_series_start AND sub.d <= CURRENT_DATE;
+
     DROP TABLE IF EXISTS _fifo_work_pa;
     CREATE TEMP TABLE _fifo_work_pa (
         id bigserial PRIMARY KEY,
@@ -105,11 +153,9 @@ BEGIN
         SELECT 1 FROM transactions t WHERE t.portfolio_asset_id = p_portfolio_asset_id
     ) INTO v_has_tx;
 
-    v_series_start := GREATEST(p_from_date, v_first_tx_date);
-
     IF NOT v_has_tx THEN
         FOR v_d IN
-            SELECT generate_series(v_series_start, CURRENT_DATE, interval '1 day')::date AS d
+            SELECT d FROM _event_dates_pa ORDER BY d
         LOOP
             INSERT INTO _fifo_daily_pa (
                 report_date,
@@ -181,8 +227,13 @@ BEGIN
             END IF;
         END LOOP;
 
+        ---------------------------------------------------------------------------
+        -- Итерируем по датам событий (не по каждому дню).
+        -- FIFO-состояние переносится между датами автоматически,
+        -- т.к. _fifo_work_pa сохраняет лоты между итерациями.
+        ---------------------------------------------------------------------------
         FOR v_d IN
-            SELECT generate_series(v_series_start, CURRENT_DATE, interval '1 day')::date AS d
+            SELECT d FROM _event_dates_pa ORDER BY d
         LOOP
             FOR r_tx IN
                 SELECT
@@ -484,6 +535,7 @@ BEGIN
         ) AS unit_dirty
     ) ud;
 
+    DROP TABLE IF EXISTS _event_dates_pa;
     DROP TABLE IF EXISTS _fifo_work_pa;
     DROP TABLE IF EXISTS _fifo_daily_pa;
     DROP TABLE IF EXISTS _fifo_analytics_pa;
@@ -492,4 +544,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION update_portfolio_asset_positions_from_date(bigint, date) IS 'Пересчитывает portfolio_asset_daily_values; остаточная себестоимость и средняя цена — FIFO по транзакциям (как у брокера), в рублях по amount_rub покупок; стоимость позиции = qty * (цена+НКД) * курс / leverage';
+COMMENT ON FUNCTION update_portfolio_asset_positions_from_date(bigint, date) IS
+'Пересчитывает portfolio_asset_daily_values ТОЛЬКО на даты событий (транзакции, изменения цен, кэш-операции, сегодня). '
+'FIFO по транзакциям, стоимость = qty × (цена+НКД) × курс / leverage. '
+'Спарсивный режим: запись создаётся только при изменении данных, что устраняет дубликаты.';
