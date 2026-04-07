@@ -804,8 +804,9 @@ const renderChart = (aggr, boundsAggr = null) => {
   const maxValue = allValues.length ? Math.max(...allValues) : 100
   const range = maxValue - minValue
 
-  const positiveValues = allValues.filter((v) => v > 0)
-  const guideMinPositive = positiveValues.length ? Math.min(...positiveValues) : null
+  // const notZeroValues = allValues.filter((v) => v != 0)
+  // const guideMinPositive = notZeroValues.length ? Math.min(...notZeroValues) : null
+  const guideMinPositive = allValues.length ? Math.min(...allValues) : null
 
   mlMinMaxPayload =
     props.showMinMaxGuides && allValues.length
