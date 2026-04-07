@@ -649,7 +649,17 @@ function aggregateData(dataObj, period, chartType, zeroAtStart, aggregationEnd =
 
   const end =
     aggregationEnd === 'lastPoint' ? norm(lastDataDate) : norm(today)
-  const totalDays = Math.round((end - start) / 86400000)
+  const windowDays = Math.max(
+    1,
+    Math.round((end - start) / 86400000)
+  )
+  // Шаг сетки (день / неделя / месяц) — min(окно периода, фактический диапазон ряда).
+  // Иначе при «5Y» и 7 точках за неделю окно ≈ 1825 дн. → недельные бакеты и схлопывание.
+  const dataSpanDays = Math.max(
+    0,
+    Math.round((lastDataDate - firstPt) / 86400000)
+  )
+  const bucketSpanDays = Math.min(windowDays, Math.max(dataSpanDays, 1))
 
   const samples = []
 
@@ -659,14 +669,14 @@ function aggregateData(dataObj, period, chartType, zeroAtStart, aggregationEnd =
 
   const dataStart = norm(new Date(Math.max(start.getTime(), firstPt.getTime())))
 
-  if (totalDays <= 400) {
+  if (bucketSpanDays <= 400) {
     let d = new Date(dataStart)
     while (d <= end) {
       samples.push({ date: new Date(d), zero: false })
       d.setDate(d.getDate() + 1)
       d = norm(d)
     }
-  } else if (totalDays <= 3650) {
+  } else if (bucketSpanDays <= 3650) {
     let d = new Date(dataStart)
     while (d <= end) {
       samples.push({ date: new Date(d), zero: false })
