@@ -91,6 +91,14 @@ async def startup_event():
 
     await init_redis(Config.REDIS_URL)
     init_redis_sync(Config.REDIS_URL)
+
+    # Redis volume в Docker переживает рестарт контейнера: без сброса init_reference_data_async
+    # видит старый reference:fingerprint и не вызывает get_reference_cache_payload — клиенты
+    # получают устаревший справочник (например без currency_rates_to_rub после миграции SQL).
+    from app.domain.services.reference_service import invalidate_reference_cache
+
+    invalidate_reference_cache()
+    logger.info("Кэш справочника очищен при старте; загрузка из БД в init_reference_data_async")
     
     # Опциональное обновление справочников (MOEX, дивиденды, купоны, крипто)
     # Включается через RUN_REFERENCE_UPDATES=1
