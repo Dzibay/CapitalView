@@ -66,23 +66,7 @@ const saveProfile = async () => {
       return
     }
 
-    if (!settings.value.profile.email || !settings.value.profile.email.trim()) {
-      errorMessage.value = 'Email не может быть пустым'
-      isLoadingProfile.value = false
-      return
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(settings.value.profile.email)) {
-      errorMessage.value = 'Некорректный формат email'
-      isLoadingProfile.value = false
-      return
-    }
-
-    const response = await authService.updateProfile(
-      settings.value.profile.name.trim(),
-      settings.value.profile.email.trim()
-    )
+    const response = await authService.updateProfile(settings.value.profile.name.trim())
 
     const user = response?.user ?? response?.data?.user
     if (user) {
@@ -210,15 +194,10 @@ const sendSupportMessage = async () => {
           </div>
           
           <div class="form-group">
-            <label for="email">Email</label>
-            <input 
-              id="email"
-              type="email" 
-              v-model="settings.profile.email"
-              placeholder="Введите email"
-              class="form-input"
-              :disabled="isLoadingProfile"
-            />
+            <label for="profile-email">Email</label>
+            <p id="profile-email" class="profile-email-readonly" aria-readonly="true">
+              {{ settings.profile.email || '—' }}
+            </p>
           </div>
           
           <button 
@@ -473,6 +452,24 @@ const sendSupportMessage = async () => {
   background: rgba(28, 189, 136, 0.1);
   color: var(--success);
   border: 1px solid rgba(28, 189, 136, 0.3);
+}
+
+.profile-email-readonly {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--axis-border, #e5e7eb);
+  background: var(--bg-secondary, #f9fafb);
+  color: var(--text-secondary, #374151);
+  font-size: var(--text-caption-size, 0.875rem);
+  word-break: break-all;
+}
+
+.profile-email-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #6b7280);
+  line-height: 1.4;
 }
 
 @media (max-width: 768px) {

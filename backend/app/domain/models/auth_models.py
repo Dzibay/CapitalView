@@ -40,9 +40,16 @@ class AuthResponse(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    """Модель запроса обновления профиля."""
-    name: str = Field(None, description="Имя пользователя")
-    email: EmailStr = Field(None, description="Email пользователя")
+    """Модель запроса обновления профиля (email меняется только через поддержку)."""
+    name: str = Field(..., min_length=1, max_length=200, description="Имя пользователя")
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, v: str) -> str:
+        s = (v or "").strip()
+        if not s:
+            raise ValueError("Имя не может быть пустым")
+        return s
 
 
 class ChangePasswordRequest(BaseModel):

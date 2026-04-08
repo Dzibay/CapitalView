@@ -107,3 +107,9 @@ async def get_current_admin_user(user: dict = Depends(get_current_user)) -> dict
     return user
 
 
+def invalidate_cached_user(email: Optional[str]) -> None:
+    """Сброс записи пользователя в in-memory кэше (после смены имени и т.п.)."""
+    if email:
+        _user_cache.pop(email, None)
+
+

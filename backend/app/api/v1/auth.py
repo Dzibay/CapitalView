@@ -236,7 +236,6 @@ async def update_profile(
         updated_user = await update_user(
             user_id=user["id"],
             name=data.name,
-            email=data.email,
         )
 
         if not updated_user:
