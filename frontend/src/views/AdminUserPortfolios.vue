@@ -118,7 +118,10 @@ function backToAdmin() {
             <ChevronLeft :size="18" stroke-width="2.5" aria-hidden="true" />
             К списку пользователей
           </button>
-          <PageHeader title="Портфели пользователя" :subtitle="userLabel" />
+          <PageHeader title="Портфели пользователя" />
+          <p class="admin-page__subtitle-line admin-page__subtitle-line--wrap">
+            {{ userLabel }}
+          </p>
         </div>
       </header>
 
@@ -152,6 +155,10 @@ function backToAdmin() {
 <style scoped>
 .admin-page {
   padding-bottom: 0.5rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .admin-page__header {
@@ -163,9 +170,23 @@ function backToAdmin() {
   margin-bottom: 1.25rem;
 }
 
-.admin-page__header-text {
-  flex: 1 1 12rem;
-  min-width: 0;
+
+.admin-page__header-text :deep(.page-header) {
+  margin-bottom: 0.35rem;
+}
+
+.admin-page__subtitle-line {
+  margin: 0;
+  font-size: var(--text-heading-2-size, 1rem);
+  font-weight: var(--text-heading-2-weight, 400);
+  color: var(--text-heading-2-color, var(--text-tertiary));
+  line-height: var(--text-heading-2-line, 1.35);
+  max-width: 100%;
+}
+
+.admin-page__subtitle-line--wrap {
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .admin-back {
@@ -231,5 +252,50 @@ function backToAdmin() {
   color: var(--text-tertiary, #6b7280);
   line-height: 1.5;
   max-width: 48rem;
+}
+
+@media (max-width: 768px) {
+  .admin-page {
+    padding-bottom: calc(var(--bottomNavHeight, 76px) + env(safe-area-inset-bottom, 0px) + 0.75rem);
+  }
+
+  .admin-page__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .admin-back {
+    align-self: flex-start;
+    min-height: 44px;
+    padding: 0.5rem 0.75rem 0.5rem 0.2rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .admin-panel {
+    padding: 0.75rem 0.625rem 0.875rem;
+    border-radius: 14px;
+  }
+
+  .admin-ro-hint {
+    font-size: 0.8125rem;
+    margin-bottom: 0.75rem;
+    line-height: 1.45;
+  }
+
+  .admin-error,
+  .admin-empty {
+    padding: 1rem 0.875rem;
+    font-size: 0.875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-back {
+    width: 100%;
+    justify-content: flex-start;
+    box-sizing: border-box;
+  }
 }
 </style>

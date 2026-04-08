@@ -142,7 +142,8 @@ function openUserPortfolios(u) {
     <div class="admin-page">
       <header class="admin-page__header">
         <div class="admin-page__header-text">
-          <PageHeader title="Администрирование" subtitle="Сводка по сервису" />
+          <PageHeader title="Администрирование" />
+          <p class="admin-page__subtitle-line">Сводка по сервису</p>
         </div>
         <button type="button" class="admin-page__to-app" @click="goSettings">
           Настройки
@@ -326,6 +327,10 @@ function openUserPortfolios(u) {
 <style scoped>
 .admin-page {
   padding-bottom: 0.5rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .admin-page__header {
@@ -337,9 +342,18 @@ function openUserPortfolios(u) {
   margin-bottom: 1.25rem;
 }
 
-.admin-page__header-text {
-  flex: 1 1 12rem;
-  min-width: 0;
+
+.admin-page__header-text :deep(.page-header) {
+  margin-bottom: 0.35rem;
+}
+
+.admin-page__subtitle-line {
+  margin: 0;
+  font-size: var(--text-heading-2-size, 1rem);
+  font-weight: var(--text-heading-2-weight, 400);
+  color: var(--text-heading-2-color, var(--text-tertiary));
+  line-height: var(--text-heading-2-line, 1.3);
+  max-width: 100%;
 }
 
 .admin-page__to-app {
@@ -384,6 +398,8 @@ function openUserPortfolios(u) {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 @media (min-width: 769px) {
@@ -396,6 +412,8 @@ function openUserPortfolios(u) {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 @media (min-width: 640px) {
@@ -415,6 +433,8 @@ function openUserPortfolios(u) {
   border: 1px solid var(--axis-grid, #e5e7eb);
   border-left: 3px solid var(--primary, #527de5);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .stat-label {
@@ -440,6 +460,8 @@ function openUserPortfolios(u) {
   background: var(--bg-primary, #fff);
   border: 1px solid var(--axis-grid, #e5e7eb);
   box-shadow: 0 4px 24px -8px rgba(15, 23, 42, 0.08);
+  min-width: 0;
+  max-width: 100%;
 }
 
 @media (min-width: 769px) {
@@ -475,7 +497,9 @@ function openUserPortfolios(u) {
   font-size: var(--text-caption-size, 0.875rem);
   line-height: 1.5;
   color: var(--text-tertiary, #6b7280);
-  max-width: 48rem;
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .chart-empty {
@@ -495,12 +519,19 @@ function openUserPortfolios(u) {
   margin-bottom: 0.75rem;
   font-size: 0.8125rem;
   color: var(--text-secondary, #475569);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .chart-legend-item {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  max-width: 100%;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .chart-legend-swatch {
@@ -520,16 +551,12 @@ function openUserPortfolios(u) {
 
 .admin-chart-wrap {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 280px;
   height: 320px;
   position: relative;
-}
-
-@media (max-width: 768px) {
-  .admin-chart-wrap {
-    min-height: 240px;
-    height: 260px;
-  }
+  overflow: hidden;
 }
 
 .users-empty {
@@ -544,6 +571,8 @@ function openUserPortfolios(u) {
 
 .users-table-wrap {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   border-radius: 12px;
@@ -690,20 +719,158 @@ function openUserPortfolios(u) {
 
 @media (max-width: 768px) {
   .admin-page {
-    padding-bottom: calc(var(--bottomNavHeight, 76px) + 0.5rem);
+    padding-bottom: calc(var(--bottomNavHeight, 76px) + env(safe-area-inset-bottom, 0px) + 0.75rem);
+  }
+
+  .admin-body {
+    gap: 1.125rem;
   }
 
   .admin-page__header {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
   }
 
   .admin-page__to-app {
+    align-self: stretch;
     width: 100%;
+    display: flex;
+    align-items: center;
     justify-content: center;
     text-align: center;
     padding: 0.65rem 1rem;
     min-height: 44px;
+    box-sizing: border-box;
+  }
+
+  .admin-panel {
+    padding: 0.875rem 0.75rem 1rem;
+    border-radius: 14px;
+  }
+
+  .admin-section-title {
+    font-size: 1.0625rem;
+    padding-bottom: 0.4rem;
+  }
+
+  .admin-section-caption {
+    margin: 0.5rem 0 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+
+  .stats-grid {
+    gap: 0.5rem;
+  }
+
+  .stat-card {
+    padding: 0.75rem 0.875rem;
+    border-radius: 12px;
+    min-width: 0;
+  }
+
+  .stat-label {
+    font-size: 0.625rem;
+    letter-spacing: 0.05em;
+  }
+
+  .chart-legend {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.625rem;
+    font-size: 0.75rem;
+  }
+
+  .chart-empty,
+  .users-empty {
+    padding: 1.25rem 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  .admin-chart-wrap {
+    min-height: 240px;
+    height: 260px;
+  }
+
+  .users-table-wrap {
+    margin-left: -2px;
+    margin-right: -2px;
+    border-radius: 10px;
+  }
+
+  .users-table {
+    font-size: 0.8125rem;
+  }
+
+  .users-table thead th.users-table__th {
+    padding: 0.5rem 0.5rem;
+  }
+
+  .users-table td {
+    padding: 0.55rem 0.5rem;
+  }
+
+  .users-table__th-btn {
+    gap: 0.25rem;
+    min-height: 2.5rem;
+  }
+
+  .users-table__th-label {
+    min-height: 2.5rem;
+  }
+
+  .users-table__date {
+    font-size: 0.75rem;
+  }
+
+  .users-table__row--clickable:active td {
+    background: rgba(82, 125, 229, 0.08);
+  }
+
+  .admin-error {
+    padding: 0.875rem 1rem;
+    font-size: 0.9375rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-body {
+    gap: 1rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .stat-card {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .stat-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-right: 0.5rem;
+  }
+
+  .stat-value {
+    flex-shrink: 0;
+    font-size: 1.25rem;
+  }
+
+  .admin-section-title {
+    font-size: 1rem;
+  }
+
+  .admin-chart-wrap {
+    min-height: 220px;
+    height: 240px;
   }
 }
 </style>
