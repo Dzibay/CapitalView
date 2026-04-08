@@ -9,7 +9,8 @@ from jose import JWTError, jwt
 from cachetools import TTLCache
 from app.config import Config
 from app.core.logging import get_logger
-from app.core.exceptions import UnauthorizedError, NotFoundError
+from app.core.exceptions import UnauthorizedError, NotFoundError, ForbiddenError
+from app.core.platform_admin import is_platform_admin_user
 from app.domain.services.user_service import get_user_by_email
 from app.constants import ErrorMessages
 
@@ -97,5 +98,12 @@ async def get_current_user(
     except Exception as e:
         logger.error(f"Ошибка при получении пользователя: {e}", exc_info=True)
         raise NotFoundError("Пользователь")
+
+
+async def get_current_admin_user(user: dict = Depends(get_current_user)) -> dict:
+    """Текущий пользователь с правами platform admin (см. ADMIN_EMAILS)."""
+    if not is_platform_admin_user(user):
+        raise ForbiddenError("Доступ к администрированию запрещён")
+    return user
 
 

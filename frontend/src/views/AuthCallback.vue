@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.store'
+import { defaultAuthenticatedPath } from '../utils/defaultAppPath'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,7 +23,7 @@ onMounted(() => {
     authStore.checkToken().then(() => {
       const redirect = (route.query.redirect && String(route.query.redirect).startsWith('/'))
         ? route.query.redirect
-        : '/dashboard'
+        : defaultAuthenticatedPath(authStore.user)
       router.replace(redirect)
     }).catch(() => {
       router.replace('/login')

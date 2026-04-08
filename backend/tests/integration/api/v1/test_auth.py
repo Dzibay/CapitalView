@@ -76,25 +76,28 @@ class TestAuthLogin:
     
     def test_login_success(self, client, mock_user):
         """Тест успешного входа."""
-        from unittest.mock import patch
+        from unittest.mock import patch, AsyncMock
         from app.extensions import bcrypt
         
         # Мокаем проверку пароля
         mock_user_copy = mock_user.copy()
         mock_user_copy["password_hash"] = bcrypt.generate_password_hash("password123")
-        
+        mock_user_copy["email_verified"] = True
+
         with patch('app.api.v1.auth.get_user_by_email', return_value=mock_user_copy):
             with patch('app.api.v1.auth.bcrypt.check_password_hash', return_value=True):
-                response = client.post(
-                    "/api/v1/auth/login",
-                    json={
-                        "email": mock_user["email"],
-                        "password": "password123"
-                    }
-                )
-                data = get_response_data(response)
-                assert "access_token" in data
-                assert data["access_token"] is not None
+                with patch('app.api.v1.auth.record_user_last_login', new_callable=AsyncMock):
+                    response = client.post(
+                        "/api/v1/auth/login",
+                        json={
+                            "email": mock_user["email"],
+                            "password": "password123",
+                        },
+                    )
+                    data = get_response_data(response)
+                    assert "access_token" in data
+                    assert data["access_token"] is not None
+                    assert data["user"]["is_admin"] is False
     
     def test_login_invalid_credentials(self, client, mock_user):
         """Тест входа с неверными учетными данными."""
@@ -139,6 +142,7 @@ class TestAuthProfile:
         data = get_response_data(response)
         assert "user" in data
         assert data["user"]["email"] == mock_user["email"]
+        assert data["user"]["is_admin"] is False
     
     def test_get_profile_unauthorized(self, client):
         """Тест получения профиля без авторизации."""

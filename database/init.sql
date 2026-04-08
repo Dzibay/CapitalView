@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   email text NOT NULL UNIQUE,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  last_login_at timestamp with time zone,
   password_hash text,
   name text DEFAULT 'Профессиональный инвестор',
   email_verified boolean NOT NULL DEFAULT false,

@@ -1,8 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { LAST_APP_PATH_KEY } from '../constants/lastAppPath';
+import { defaultAuthenticatedPath } from '../utils/defaultAppPath';
 
 const LAST_APP_PATH_REGEXES = [
   /^\/dashboard$/,
+  /^\/admin$/,
   /^\/analitics$/,
   /^\/transactions$/,
   /^\/dividends$/,
@@ -56,6 +58,7 @@ const AssetDetail = () => import('../views/AssetDetail.vue');
 const Transactions = () => import('../views/Transactions.vue');
 const Dividends = () => import('../views/Dividends.vue');
 const Settings = () => import('../views/Settings.vue');
+const Admin = () => import('../views/Admin.vue');
 const ErrorStatus = () => import('../views/errors/ErrorStatus.vue');
 const NotFound404 = () => import('../views/errors/NotFound404.vue');
 
@@ -95,6 +98,11 @@ const routes = [
     meta: { requiresAuth: true, robots: 'noindex, follow' },
     children: [
       { path: '/dashboard', component: Dashboard, meta: { title: 'Дашборд — CapitalView' } },
+      {
+        path: '/admin',
+        component: Admin,
+        meta: { title: 'Администрирование — CapitalView', requiresAdmin: true },
+      },
       { path: '/analitics', component: Analitics, meta: { title: 'Аналитика портфеля — CapitalView' } },
       {
         path: '/assets',
@@ -182,6 +190,10 @@ router.beforeEach(async (to, from, next) => {
         next({ path: '/login', query: { redirect: to.fullPath } })
         return
       }
+      if (to.matched.some((r) => r.meta?.requiresAdmin) && !user.is_admin) {
+        next({ path: '/dashboard', replace: true })
+        return
+      }
       // Токен валиден, разрешаем доступ
       next()
     } catch (error) {
@@ -208,10 +220,13 @@ router.beforeEach(async (to, from, next) => {
         const authStore = useAuthStore()
         const user = await authStore.checkToken()
         if (user) {
-          // Токен валиден - перенаправляем на dashboard
-          const redirectPath = from.query.redirect || '/dashboard';
-          next(redirectPath);
-          return;
+          const raw = to.query.redirect
+          const redirectPath =
+            raw && String(raw).startsWith('/')
+              ? String(raw)
+              : defaultAuthenticatedPath(user)
+          next(redirectPath)
+          return
         }
       } catch (error) {
         // Токен недействителен или ошибка сети - очищаем и разрешаем доступ к логину

@@ -12,7 +12,12 @@ import httpx
 
 from app.config import Config
 from app.domain.services.user_service import (
-    create_user, get_user_by_email, update_user, update_user_password, create_or_get_user_oauth,
+    create_user,
+    get_user_by_email,
+    update_user,
+    update_user_password,
+    create_or_get_user_oauth,
+    record_user_last_login,
 )
 from app.extensions import bcrypt
 from app.domain.models.auth_models import (
@@ -23,6 +28,7 @@ from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.utils.response import success_response
 from app.utils.jwt import create_access_token
 from app.core.dependencies import get_current_user
+from app.core.platform_admin import auth_user_payload
 from app.infrastructure.database.database_service import (
     table_insert_async, table_select_async, table_update_async,
 )
@@ -132,6 +138,8 @@ async def verify_email(token: str = ""):
             url=f"{Config.FRONTEND_URL}/login?error=user_not_found"
         )
 
+    await record_user_last_login(str(user["id"]))
+
     jwt_token = create_access_token(identity=user["email"])
 
     callback_url = f"{Config.FRONTEND_URL}/auth/callback?{urlencode({'token': jwt_token})}"
@@ -195,13 +203,15 @@ async def login(data: LoginRequest):
             detail="email_not_verified",
         )
 
+    await record_user_last_login(str(user["id"]))
+
     access_token = create_access_token(identity=data.email)
 
     return success_response(
         data={
             "access_token": access_token,
             "token_type": "bearer",
-            "user": {"id": user["id"], "email": user["email"]},
+            "user": auth_user_payload(user),
         },
         message=SuccessMessages.LOGIN_SUCCESS,
     )
@@ -211,13 +221,7 @@ async def login(data: LoginRequest):
 async def check_token(user: dict = Depends(get_current_user)):
     """Проверка валидности JWT токена."""
     return success_response(
-        data={
-            "user": {
-                "id": user["id"],
-                "email": user["email"],
-                "name": user.get("name"),
-            }
-        },
+        data={"user": auth_user_payload(user)},
         message="Token valid",
     )
 
@@ -242,13 +246,7 @@ async def update_profile(
             )
 
         return success_response(
-            data={
-                "user": {
-                    "id": updated_user["id"],
-                    "email": updated_user["email"],
-                    "name": updated_user.get("name"),
-                }
-            },
+            data={"user": auth_user_payload(updated_user)},
             message="Профиль успешно обновлен",
         )
     except ValueError as e:
@@ -341,6 +339,8 @@ async def google_callback(code: str = None, error: str = None, state: str = None
 
     if not user.get("email_verified"):
         await table_update_async("users", {"email_verified": True}, filters={"id": str(user["id"])})
+
+    await record_user_last_login(str(user["id"]))
 
     jwt_token = create_access_token(identity=email)
 
