@@ -62,8 +62,10 @@ const hasNotifications = computed(() => missedPayoutsCount.value > 0)
 
     <div v-if="user" class="header-user-cluster">
       <!-- Иконка уведомлений -->
-      <button 
-        @click="openMissedPayoutsModal" 
+      <button
+        v-if="!user?.is_admin"
+        type="button"
+        @click="openMissedPayoutsModal"
         class="notifications-button"
         :class="{ 'has-notifications': hasNotifications }"
         title="Неполученные выплаты"

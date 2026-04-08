@@ -6,6 +6,8 @@ from unittest.mock import patch, AsyncMock
 
 from tests.helpers.client import get_response_data
 
+TARGET_USER_ID = "123e4567-e89b-12d3-a456-426614174000"
+
 
 @pytest.mark.integration
 @pytest.mark.api
@@ -52,3 +54,49 @@ class TestAdminData:
         assert data["overview"] == payload["overview"]
         assert data["users_registration_series"] == payload["users_registration_series"]
         assert data["users"] == payload["users"]
+
+
+@pytest.mark.integration
+@pytest.mark.api
+class TestAdminUserDashboard:
+    def test_user_dashboard_forbidden_for_regular_user(self, authenticated_client, mock_user):
+        response = authenticated_client.get(
+            f"/api/v1/admin/users/{TARGET_USER_ID}/dashboard"
+        )
+        assert response.status_code == 403
+
+    def test_user_dashboard_ok_for_platform_admin(self, authenticated_client, mock_user, monkeypatch):
+        monkeypatch.setenv("ADMIN_EMAILS", mock_user["email"])
+        dash = {
+            "portfolios": [],
+            "recent_transactions": [],
+            "missed_payouts_count": 0,
+        }
+        with patch(
+            "app.api.v1.admin.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ):
+            with patch(
+                "app.api.v1.admin.get_dashboard_data",
+                new_callable=AsyncMock,
+                return_value=dash,
+            ):
+                response = authenticated_client.get(
+                    f"/api/v1/admin/users/{mock_user['id']}/dashboard"
+                )
+        data = get_response_data(response)
+        assert data["dashboard"] == dash
+
+    def test_user_dashboard_not_found(self, authenticated_client, mock_user, monkeypatch):
+        monkeypatch.setenv("ADMIN_EMAILS", mock_user["email"])
+        missing_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        with patch(
+            "app.api.v1.admin.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            response = authenticated_client.get(
+                f"/api/v1/admin/users/{missing_id}/dashboard"
+            )
+        assert response.status_code == 404

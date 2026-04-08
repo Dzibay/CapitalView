@@ -5,6 +5,7 @@ import { defaultAuthenticatedPath } from '../utils/defaultAppPath';
 const LAST_APP_PATH_REGEXES = [
   /^\/dashboard$/,
   /^\/admin$/,
+  /^\/admin\/users\/[^/]+$/,
   /^\/analitics$/,
   /^\/transactions$/,
   /^\/dividends$/,
@@ -17,6 +18,14 @@ function isAllowedLastAppPath(path) {
   if (!path || typeof path !== 'string' || !path.startsWith('/')) return false
   const normalized = path.split('?')[0].split('#')[0]
   return LAST_APP_PATH_REGEXES.some((re) => re.test(normalized))
+}
+
+/** Для platform admin в авторизованной зоне доступны только админка и настройки. */
+function isAdminShellPath(path) {
+  const normalized = path.split('?')[0].split('#')[0]
+  if (normalized === '/settings' || normalized.startsWith('/settings/')) return true
+  if (normalized === '/admin' || normalized.startsWith('/admin/')) return true
+  return false
 }
 
 function getSavedAppPathOrDefault() {
@@ -59,6 +68,7 @@ const Transactions = () => import('../views/Transactions.vue');
 const Dividends = () => import('../views/Dividends.vue');
 const Settings = () => import('../views/Settings.vue');
 const Admin = () => import('../views/Admin.vue');
+const AdminUserPortfolios = () => import('../views/AdminUserPortfolios.vue');
 const ErrorStatus = () => import('../views/errors/ErrorStatus.vue');
 const NotFound404 = () => import('../views/errors/NotFound404.vue');
 
@@ -102,6 +112,12 @@ const routes = [
         path: '/admin',
         component: Admin,
         meta: { title: 'Администрирование — CapitalView', requiresAdmin: true },
+      },
+      {
+        path: '/admin/users/:userId',
+        component: AdminUserPortfolios,
+        props: true,
+        meta: { title: 'Портфели пользователя — CapitalView', requiresAdmin: true },
       },
       { path: '/analitics', component: Analitics, meta: { title: 'Аналитика портфеля — CapitalView' } },
       {
@@ -192,6 +208,14 @@ router.beforeEach(async (to, from, next) => {
       }
       if (to.matched.some((r) => r.meta?.requiresAdmin) && !user.is_admin) {
         next({ path: '/dashboard', replace: true })
+        return
+      }
+      if (
+        user.is_admin &&
+        to.matched.some((r) => r.meta?.requiresAuth) &&
+        !isAdminShellPath(to.path)
+      ) {
+        next({ path: '/admin', replace: true })
         return
       }
       // Токен валиден, разрешаем доступ

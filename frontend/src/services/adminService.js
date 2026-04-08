@@ -13,4 +13,10 @@ export const adminService = {
       users: Array.isArray(d?.users) ? d.users : [],
     }
   },
+
+  /** Дашборд выбранного пользователя (как GET /dashboard/ у него). Только admin. */
+  async fetchUserDashboard(userId) {
+    const res = await apiClient.get(API_ENDPOINTS.ADMIN.USER_DASHBOARD(userId))
+    return res.data?.dashboard ?? null
+  },
 }

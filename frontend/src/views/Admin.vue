@@ -122,8 +122,18 @@ onMounted(async () => {
   }
 })
 
-function goApp() {
-  router.push('/dashboard')
+function goSettings() {
+  router.push('/settings')
+}
+
+function openUserPortfolios(u) {
+  router.push({
+    path: `/admin/users/${u.id}`,
+    query: {
+      name: u.name != null ? String(u.name) : '',
+      email: u.email != null ? String(u.email) : '',
+    },
+  })
 }
 </script>
 
@@ -134,8 +144,8 @@ function goApp() {
         <div class="admin-page__header-text">
           <PageHeader title="Администрирование" subtitle="Сводка по сервису" />
         </div>
-        <button type="button" class="admin-page__to-app" @click="goApp">
-          В приложение
+        <button type="button" class="admin-page__to-app" @click="goSettings">
+          Настройки
         </button>
       </header>
 
@@ -207,7 +217,7 @@ function goApp() {
             Пользователи
           </h2>
           <p class="admin-section-caption">
-            Сортировка по столбцам «Регистрация» и «Последний вход». У без входа дата последнего входа не заполняется.
+            Сортировка по столбцам «Регистрация» и «Последний вход». У без входа дата последнего входа не заполняется. Строка — переход к просмотру портфелей пользователя.
           </p>
 
           <div v-if="adminUsers.length === 0" class="users-empty">
@@ -289,7 +299,16 @@ function goApp() {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="u in sortedAdminUsers" :key="u.id">
+                <tr
+                  v-for="u in sortedAdminUsers"
+                  :key="u.id"
+                  class="users-table__row users-table__row--clickable"
+                  tabindex="0"
+                  role="button"
+                  :aria-label="`Портфели пользователя ${u.email || u.name || u.id}`"
+                  @click="openUserPortfolios(u)"
+                  @keydown.enter.prevent="openUserPortfolios(u)"
+                >
                   <td class="users-table__name">{{ u.name || '—' }}</td>
                   <td class="users-table__email">{{ u.email }}</td>
                   <td class="users-table__date">{{ formatDateTime(u.created_at) }}</td>
@@ -641,6 +660,15 @@ function goApp() {
 
 .users-table tbody tr:hover td {
   background: rgba(82, 125, 229, 0.03);
+}
+
+.users-table__row--clickable {
+  cursor: pointer;
+}
+
+.users-table__row--clickable:focus-visible {
+  outline: 2px solid var(--primary, #527de5);
+  outline-offset: -2px;
 }
 
 .users-table__name {

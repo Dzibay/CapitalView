@@ -45,16 +45,19 @@ const hoveredItem = ref(null);
 const logoSrc = ref('/site-logo.webp');
 
 function buildMenuSections(user) {
-  const sections = [];
   if (user?.is_admin) {
-    sections.push({
-      title: 'АДМИН',
-      items: [
-        { name: 'Статистика', link: '/admin', icon: Shield },
-      ],
-    });
+    return [
+      {
+        title: 'АДМИН',
+        items: [{ name: 'Статистика', link: '/admin', icon: Shield }],
+      },
+      {
+        title: 'АККАУНТ',
+        items: [{ name: 'Настройки', link: '/settings', icon: Settings }],
+      },
+    ]
   }
-  sections.push(
+  return [
     {
       title: 'МЕНЮ',
       items: [
@@ -72,12 +75,9 @@ function buildMenuSections(user) {
     },
     {
       title: 'ДОПОЛНИТЕЛЬНО',
-      items: [
-        { name: 'Настройки', link: '/settings', icon: Settings },
-      ],
+      items: [{ name: 'Настройки', link: '/settings', icon: Settings }],
     },
-  );
-  return sections;
+  ]
 }
 
 const menuSections = ref(buildMenuSections(null));

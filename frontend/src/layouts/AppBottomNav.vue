@@ -1,5 +1,7 @@
 <script setup>
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '../stores/auth.store'
 import {
   LayoutDashboard,
   BarChart3,
@@ -7,18 +9,28 @@ import {
   Coins,
   ArrowLeftRight,
   Settings,
+  Shield,
 } from 'lucide-vue-next'
 
 const route = useRoute()
+const authStore = useAuthStore()
 
-const items = [
-  { to: '/dashboard', label: 'Дашборд', icon: LayoutDashboard },
-  { to: '/analitics', label: 'Аналитика', icon: BarChart3 },
-  { to: '/assets', label: 'Активы', icon: Briefcase },
-  { to: '/dividends', label: 'Дивиденды', icon: Coins },
-  { to: '/transactions', label: 'Операции', icon: ArrowLeftRight },
-  { to: '/settings', label: 'Настройки', icon: Settings },
-]
+const items = computed(() => {
+  if (authStore.user?.is_admin) {
+    return [
+      { to: '/admin', label: 'Админ', icon: Shield },
+      { to: '/settings', label: 'Настройки', icon: Settings },
+    ]
+  }
+  return [
+    { to: '/dashboard', label: 'Дашборд', icon: LayoutDashboard },
+    { to: '/analitics', label: 'Аналитика', icon: BarChart3 },
+    { to: '/assets', label: 'Активы', icon: Briefcase },
+    { to: '/dividends', label: 'Дивиденды', icon: Coins },
+    { to: '/transactions', label: 'Операции', icon: ArrowLeftRight },
+    { to: '/settings', label: 'Настройки', icon: Settings },
+  ]
+})
 
 function isActive(link) {
   return route.path === link || route.path.startsWith(`${link}/`)
