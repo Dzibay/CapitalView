@@ -34,6 +34,18 @@ class BaseRepository:
     def _first_or_none(rows: Optional[list]) -> Optional[dict]:
         return rows[0] if rows else None
 
+    async def count_rows(self, filters: Optional[Dict[str, Any]] = None) -> int:
+        """Количество строк в таблице репозитория с опциональными условиями равенства."""
+        rows = await table_select_async(
+            self.table_name,
+            select="COUNT(*)::bigint AS cnt",
+            filters=filters or {},
+            limit=1,
+        )
+        if not rows:
+            return 0
+        return int(rows[0]["cnt"])
+
     # ─── async CRUD ────────────────────────────────────────────
 
     async def get_by_id(self, id: Any) -> Optional[Dict[str, Any]]:

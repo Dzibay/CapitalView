@@ -31,9 +31,6 @@ function goApp() {
 <template>
   <PageLayout>
     <PageHeader title="Администрирование" subtitle="Сводка по сервису" />
-    <p class="admin-lead">
-      <button type="button" class="link-to-app" @click="goApp">Перейти в приложение</button>
-    </p>
 
     <LoadingState v-if="loading" message="Загрузка статистики…" />
 

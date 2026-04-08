@@ -2,21 +2,17 @@
 Агрегированные данные для админки (только для platform admin).
 """
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from app.infrastructure.database.database_service import table_select_async
+from app.infrastructure.database.repositories.user_repository import UserRepository
+from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
+from app.infrastructure.database.repositories.portfolio_asset_repository import (
+    PortfolioAssetRepository,
+)
 
-
-async def _count_rows(table: str, filters: Optional[Dict[str, Any]] = None) -> int:
-    rows = await table_select_async(
-        table,
-        select="COUNT(*)::bigint AS cnt",
-        filters=filters or {},
-        limit=1,
-    )
-    if not rows:
-        return 0
-    return int(rows[0]["cnt"])
+_user_repository = UserRepository()
+_portfolio_repository = PortfolioRepository()
+_portfolio_asset_repository = PortfolioAssetRepository()
 
 
 async def get_platform_stats_overview() -> Dict[str, Any]:
@@ -25,10 +21,10 @@ async def get_platform_stats_overview() -> Dict[str, Any]:
     фронт и отчёты могут опираться на стабильные имена полей.
     """
     users_total, users_verified, portfolios_total, portfolio_assets_total = await asyncio.gather(
-        _count_rows("users"),
-        _count_rows("users", {"email_verified": True}),
-        _count_rows("portfolios"),
-        _count_rows("portfolio_assets"),
+        _user_repository.count_rows(),
+        _user_repository.count_rows({"email_verified": True}),
+        _portfolio_repository.count_rows(),
+        _portfolio_asset_repository.count_rows(),
     )
     return {
         "users_total": users_total,
