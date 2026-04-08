@@ -342,9 +342,9 @@ async def import_broker_portfolio(
     # ======================================================================
     if imported_portfolio_ids:
         from app.domain.services.broker_connections_service import upsert_broker_connection
-        await asyncio.to_thread(
-            upsert_broker_connection, user_id, broker_id, parent_portfolio_id,
-            api_key,
+
+        await upsert_broker_connection(
+            user_id, broker_id, parent_portfolio_id, api_key,
         )
 
     return {"success": True, "imported_portfolio_ids": imported_portfolio_ids}
