@@ -26,6 +26,17 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
 );
 CREATE INDEX IF NOT EXISTS idx_evt_user_id ON email_verification_tokens(user_id);
 
+CREATE TABLE IF NOT EXISTS support_messages (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  message text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT support_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT support_messages_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_support_messages_user_id ON support_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_support_messages_created_at ON support_messages(created_at DESC);
+
 CREATE TABLE IF NOT EXISTS asset_types (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   name text,
