@@ -92,17 +92,28 @@ async def update_user(user_id: str, name: str = None, email: str = None):
     return result
 
 
-async def update_user_password(user_id: str, current_password: str, new_password: str) -> bool:
-    """Обновляет пароль пользователя."""
+async def update_user_password(
+    user_id: str,
+    current_password: str | None,
+    new_password: str,
+):
+    """Обновляет пароль; без текущего — только если пароль ещё не задан (OAuth)."""
     user = await get_user_by_id(user_id)
     if not user:
         raise ValueError("Пользователь не найден")
-    if not user.get("password_hash"):
-        raise ValueError("У этого аккаунта нет пароля (вход через Google)")
 
-    if not bcrypt.check_password_hash(user["password_hash"], current_password):
-        raise ValueError("Неверный текущий пароль")
+    if user.get("password_hash"):
+        if not current_password:
+            raise ValueError("Введите текущий пароль")
+        if not bcrypt.check_password_hash(user["password_hash"], current_password):
+            raise ValueError("Неверный текущий пароль")
+    # иначе: первичная установка пароля — проверка текущего не требуется
 
     hashed = bcrypt.generate_password_hash(new_password)
-    await _user_repository.update(user_id, {"password_hash": hashed})
-    return True
+    updated = await _user_repository.update(user_id, {"password_hash": hashed})
+    if not updated:
+        raise ValueError("Пользователь не найден")
+    from app.core.dependencies import invalidate_cached_user
+
+    invalidate_cached_user(user.get("email"))
+    return updated

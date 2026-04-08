@@ -357,12 +357,15 @@ async def change_password(
 ):
     """Смена пароля пользователя."""
     try:
-        await update_user_password(
+        updated = await update_user_password(
             user_id=user["id"],
             current_password=data.current_password,
             new_password=data.new_password,
         )
-        return success_response(message="Пароль успешно изменён")
+        return success_response(
+            data={"user": auth_user_payload(updated)},
+            message="Пароль успешно изменён",
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,

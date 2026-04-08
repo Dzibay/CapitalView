@@ -23,4 +23,5 @@ def auth_user_payload(user: Dict[str, Any]) -> Dict[str, Any]:
         "email": user["email"],
         "name": user.get("name"),
         "is_admin": is_platform_admin_user(user),
+        "has_password": bool(user.get("password_hash")),
     }

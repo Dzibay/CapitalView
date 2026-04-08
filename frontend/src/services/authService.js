@@ -51,10 +51,12 @@ export const authService = {
     },
 
     async changePassword(currentPassword, newPassword) {
-        const res = await apiClient.put(API_ENDPOINTS.AUTH.CHANGE_PASSWORD, {
-            current_password: currentPassword,
-            new_password: newPassword,
-        });
+        const body = { new_password: newPassword };
+        const cur = currentPassword != null ? String(currentPassword).trim() : '';
+        if (cur) {
+            body.current_password = cur;
+        }
+        const res = await apiClient.put(API_ENDPOINTS.AUTH.CHANGE_PASSWORD, body);
         return res.data;
     },
 

@@ -2,6 +2,8 @@
 Pydantic модели для аутентификации.
 """
 import re
+from typing import Optional
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -53,9 +55,21 @@ class UpdateProfileRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    """Модель запроса смены пароля."""
-    current_password: str = Field(..., description="Текущий пароль")
+    """Смена пароля; текущий не нужен, если у аккаунта ещё нет пароля (вход через Google)."""
+    current_password: Optional[str] = Field(
+        default=None,
+        description="Текущий пароль (обязателен, если пароль уже задан)",
+    )
     new_password: str = Field(..., min_length=8, description="Новый пароль (мин. 8 символов, буквы и цифры)")
+
+    @field_validator("current_password", mode="before")
+    @classmethod
+    def empty_current_to_none(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v.strip() if isinstance(v, str) else v
 
     @field_validator("new_password")
     @classmethod
