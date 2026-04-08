@@ -34,6 +34,11 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  /** Только просмотр: без меню действий и переходов в карточку актива. */
+  readOnly: {
+    type: Boolean,
+    default: false
+  },
 });
 
 const emit = defineEmits([
@@ -138,6 +143,11 @@ const getDividendYield5Y = (asset) => {
   const avgDividends = validYears.reduce((sum, y) => sum + yearly[y], 0) / validYears.length
   return (avgDividends / asset.last_price) * 100
 }
+
+function goToAsset(asset) {
+  if (props.readOnly) return
+  router.push(`/assets/${asset.portfolio_asset_id}`)
+}
 </script>
 
 <template>
@@ -162,6 +172,8 @@ const getDividendYield5Y = (asset) => {
           <span v-if="updatingPortfolios && unref(updatingPortfolios).has(portfolio.id)" class="spinner">⏳</span>
         </div>
         <button
+          v-if="!readOnly"
+          type="button"
           class="menu-btn icon-btn"
           @click.stop="openMenu($event, 'portfolio', portfolio)"
         >
@@ -188,7 +200,7 @@ const getDividendYield5Y = (asset) => {
                   <th class="col-right">Див (5л)</th>
                   <th class="col-right">P&L (Всё)</th>
                   <th class="col-right">P&L (День)</th>
-                  <th class="col-actions"></th>
+                  <th v-if="!readOnly" class="col-actions"></th>
                 </tr>
               </thead>
               <tbody>
@@ -197,7 +209,11 @@ const getDividendYield5Y = (asset) => {
                   :key="asset.portfolio_asset_id"
                   :class="{ 'sold-asset': (asset.quantity || 0) === 0 }"
                 >
-                  <td class="cell-name clickable" @click="router.push(`/assets/${asset.portfolio_asset_id}`)">
+                  <td
+                    class="cell-name"
+                    :class="{ clickable: !readOnly }"
+                    @click="goToAsset(asset)"
+                  >
                     <div class="asset-main">
                       <span class="asset-name">
                         {{ asset.name }}
@@ -237,8 +253,9 @@ const getDividendYield5Y = (asset) => {
                   <td class="col-right num-font" :class="asset.daily_change >= 0 ? 'text-green' : 'text-red'">
                     {{ asset.last_price ? (asset.daily_change / asset.last_price * 100).toFixed(2) : '0.00' }}%
                   </td>
-                  <td class="col-actions center">
+                  <td v-if="!readOnly" class="col-actions center">
                     <button
+                      type="button"
                       class="menu-btn icon-btn"
                       @click.stop="openMenu($event, 'asset', asset)"
                     >
@@ -257,7 +274,11 @@ const getDividendYield5Y = (asset) => {
               class="asset-card"
               :class="{ 'sold-asset': (asset.quantity || 0) === 0 }"
             >
-              <div class="asset-card-header" @click="router.push(`/assets/${asset.portfolio_asset_id}`)">
+              <div
+                class="asset-card-header"
+                :class="{ clickable: !readOnly }"
+                @click="goToAsset(asset)"
+              >
                 <div class="asset-card-title">
                   <span class="asset-name">{{ asset.name }}</span>
                   <span v-if="(asset.quantity || 0) === 0" class="sold-badge">(Продан)</span>
@@ -285,8 +306,8 @@ const getDividendYield5Y = (asset) => {
                   <span class="asset-card-value num-font" :class="(effectiveUnitPriceInCurrency(asset) - asset.average_price) >= 0 ? 'text-green' : 'text-red'">{{ asset.average_price ? (((effectiveUnitPriceInCurrency(asset) - asset.average_price) / asset.average_price) * 100).toFixed(2) : '0.00' }}%</span>
                 </div>
               </div>
-              <div class="asset-card-actions">
-                <button class="menu-btn icon-btn" @click.stop="openMenu($event, 'asset', asset)" aria-label="Меню">⋮</button>
+              <div v-if="!readOnly" class="asset-card-actions">
+                <button type="button" class="menu-btn icon-btn" @click.stop="openMenu($event, 'asset', asset)" aria-label="Меню">⋮</button>
               </div>
             </div>
           </div>
@@ -305,6 +326,7 @@ const getDividendYield5Y = (asset) => {
               :expandedPortfolios="expandedPortfolios"
               :updatingPortfolios="updatingPortfolios"
               :showSoldAssets="showSoldAssets"
+              :read-only="readOnly"
               @togglePortfolio="$emit('togglePortfolio', $event)"
               @removeAsset="$emit('removeAsset', $event)"
               @deletePortfolio="$emit('deletePortfolio', $event)"
@@ -679,6 +701,12 @@ const getDividendYield5Y = (asset) => {
   cursor: pointer;
 }
 .cell-name.clickable:hover {
+  background: #f1f5f9;
+}
+.asset-card-header.clickable {
+  cursor: pointer;
+}
+.asset-card-header.clickable:hover {
   background: #f1f5f9;
 }
 .asset-main {

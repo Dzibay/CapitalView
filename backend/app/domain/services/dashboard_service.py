@@ -610,7 +610,7 @@ def _history_row_date(h: dict) -> str:
 
 
 @cache("dashboard:{user_id}", ttl=300)
-async def get_dashboard_data(user_id: int):
+async def get_dashboard_data(user_id: str):
     """
     Данные дашборда: портфели (агрегированные позиции в assets), компактная история, последние сделки.
     Справочники — отдельный GET /reference. История: history.series — [[date, value, invested, payouts, pnl, balance], ...].

@@ -9,11 +9,11 @@
 
 <style scoped>
 .page-layout {
-  max-width: 1400px;
   margin: 0 auto;
   width: 100%;
   padding: 0 16px;
   min-width: 0;
+  max-width: min(1400px, 100%);
   overflow-x: hidden;
   box-sizing: border-box;
 }

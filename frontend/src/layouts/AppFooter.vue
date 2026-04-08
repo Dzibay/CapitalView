@@ -42,6 +42,8 @@ const currentYear = new Date().getFullYear()
   max-width: 1400px;
   margin: 0 auto;
   padding: 32px 24px 24px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .footer-top {
@@ -116,8 +118,9 @@ const currentYear = new Date().getFullYear()
   font-size: 11px;
   line-height: 1.6;
   color: #94a3b8;
-  max-width: 800px;
+  max-width: min(800px, 100%);
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .copyright {
@@ -125,6 +128,13 @@ const currentYear = new Date().getFullYear()
   color: #94a3b8;
   font-weight: 500;
   margin: 0;
+}
+
+@media (max-width: 768px) {
+  .footer-inner {
+    max-width: 100%;
+    padding: 20px 12px 20px;
+  }
 }
 
 @media (max-width: 640px) {

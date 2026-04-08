@@ -114,9 +114,12 @@ function handleToggleSidebar() {
 
 .main-content {
   flex-grow: 1;
+  flex-shrink: 1;
   margin-left: var(--sidebarWidth);
   transition: margin-left 0.3s ease-in-out;
   min-height: 100vh;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -130,7 +133,8 @@ function handleToggleSidebar() {
   padding: var(--spacing);
   flex: 1;
   min-width: 0;
-  overflow-x: auto;
+  /* Не даём широким детям раздувать всю колонку; горизонтальный скролл — внутри своих обёрток (таблицы и т.д.) */
+  overflow-x: hidden;
   width: 100%;
 }
 
