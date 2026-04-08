@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { authService } from '../services/authService.js';
+import { defaultAuthenticatedPath } from '../utils/defaultAppPath';
 
 const route = useRoute();
 const router = useRouter();
@@ -33,7 +34,7 @@ onMounted(async () => {
     try {
       const user = await authService.checkToken();
       if (user && user.user) {
-        router.push('/dashboard');
+        router.push(defaultAuthenticatedPath(user.user));
       }
     } catch {
       authService.logout();
@@ -64,11 +65,15 @@ const handleSubmit = async () => {
       return;
     }
     if (isLoginMode.value) {
-      await authService.login(email.value, password.value);
+      const loginRes = await authService.login(email.value, password.value);
       const savedToken = localStorage.getItem('access_token');
       if (!savedToken) throw new Error('Не удалось сохранить токен авторизации');
       await new Promise(resolve => setTimeout(resolve, 50));
-      const redirectPath = router.currentRoute.value.query.redirect || '/dashboard';
+      const rawRedirect = router.currentRoute.value.query.redirect;
+      const redirectPath =
+        rawRedirect && String(rawRedirect).startsWith('/')
+          ? String(rawRedirect)
+          : defaultAuthenticatedPath(loginRes.data?.user);
       await router.replace(redirectPath);
     } else {
       await authService.register(email.value, password.value);

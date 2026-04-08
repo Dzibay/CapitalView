@@ -49,6 +49,7 @@ register_error_handlers(app)
 # Маршруты API v1
 from app.api.v1 import (
     auth,
+    admin,
     portfolios,
     assets,
     transactions,
@@ -64,6 +65,7 @@ from app.api.v1 import (
 
 # Регистрация API v1 роутеров
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
+app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
 app.include_router(portfolios.router, prefix="/api/v1", tags=["portfolios"])
 app.include_router(assets.router, prefix="/api/v1", tags=["assets"])
 app.include_router(transactions.router, prefix="/api/v1", tags=["transactions"])

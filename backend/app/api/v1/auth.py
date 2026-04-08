@@ -23,6 +23,7 @@ from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.utils.response import success_response
 from app.utils.jwt import create_access_token
 from app.core.dependencies import get_current_user
+from app.core.platform_admin import auth_user_payload
 from app.infrastructure.database.database_service import (
     table_insert_async, table_select_async, table_update_async,
 )
@@ -201,7 +202,7 @@ async def login(data: LoginRequest):
         data={
             "access_token": access_token,
             "token_type": "bearer",
-            "user": {"id": user["id"], "email": user["email"]},
+            "user": auth_user_payload(user),
         },
         message=SuccessMessages.LOGIN_SUCCESS,
     )
@@ -211,13 +212,7 @@ async def login(data: LoginRequest):
 async def check_token(user: dict = Depends(get_current_user)):
     """Проверка валидности JWT токена."""
     return success_response(
-        data={
-            "user": {
-                "id": user["id"],
-                "email": user["email"],
-                "name": user.get("name"),
-            }
-        },
+        data={"user": auth_user_payload(user)},
         message="Token valid",
     )
 
@@ -242,13 +237,7 @@ async def update_profile(
             )
 
         return success_response(
-            data={
-                "user": {
-                    "id": updated_user["id"],
-                    "email": updated_user["email"],
-                    "name": updated_user.get("name"),
-                }
-            },
+            data={"user": auth_user_payload(updated_user)},
             message="Профиль успешно обновлен",
         )
     except ValueError as e:

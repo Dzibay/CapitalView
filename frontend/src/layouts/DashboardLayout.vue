@@ -36,8 +36,13 @@ onMounted(async () => {
     // ОПТИМИЗИРОВАНО: загружаем dashboard в фоновом режиме после загрузки основного контента
     // Это особенно важно для страницы актива, чтобы не блокировать загрузку
     const currentRoute = router.currentRoute.value
+    const isAdminPage = currentRoute.path === '/admin'
     const isAssetDetailPage = currentRoute.path.startsWith('/assets/')
-    
+
+    if (isAdminPage) {
+      return
+    }
+
     if (isAssetDetailPage) {
       // Для страницы актива откладываем загрузку dashboard
       setTimeout(async () => {

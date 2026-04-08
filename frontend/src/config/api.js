@@ -3,6 +3,9 @@
  * Централизованное управление URL для всех сервисов
  */
 export const API_ENDPOINTS = {
+  ADMIN: {
+    STATS_OVERVIEW: '/admin/stats/overview',
+  },
   AUTH: {
     REGISTER: '/auth/register',
     LOGIN: '/auth/login',

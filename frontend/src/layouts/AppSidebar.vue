@@ -10,15 +10,14 @@ import {
   Coins,
   ArrowLeftRight,
   Settings,
-  Sparkles,
+  Shield,
 } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();
 const uiStore = useUIStore();
 
-// Свойство для управления состоянием меню из родительского компонента
-defineProps({
+const props = defineProps({
   collapsed: {
     type: Boolean,
     default: false
@@ -45,44 +44,65 @@ const hoveredItem = ref(null);
 // Ожидается в `frontend/public`
 const logoSrc = ref('/site-logo.webp');
 
-// Структура меню с сегментацией
-const menuSections = ref([
-  {
-    title: 'МЕНЮ',
-    items: [
-      { name: 'Дашборд', link: '/dashboard', icon: LayoutDashboard },
-      { name: 'Аналитика', link: '/analitics', icon: BarChart3 },
-    ]
-  },
-  {
-    title: 'ФИНАНСЫ',
-    items: [
-      { name: 'Активы', link: '/assets', icon: Briefcase },
-      { name: 'Дивиденды', link: '/dividends', icon: Coins },
-      { name: 'Операции', link: '/transactions', icon: ArrowLeftRight },
-    ]
-  },
-  {
-    title: 'ДОПОЛНИТЕЛЬНО',
-    items: [
-      { name: 'Настройки', link: '/settings', icon: Settings },
-    ]
+function buildMenuSections(user) {
+  const sections = [];
+  if (user?.is_admin) {
+    sections.push({
+      title: 'АДМИН',
+      items: [
+        { name: 'Статистика', link: '/admin', icon: Shield },
+      ],
+    });
   }
-]);
+  sections.push(
+    {
+      title: 'МЕНЮ',
+      items: [
+        { name: 'Дашборд', link: '/dashboard', icon: LayoutDashboard },
+        { name: 'Аналитика', link: '/analitics', icon: BarChart3 },
+      ],
+    },
+    {
+      title: 'ФИНАНСЫ',
+      items: [
+        { name: 'Активы', link: '/assets', icon: Briefcase },
+        { name: 'Дивиденды', link: '/dividends', icon: Coins },
+        { name: 'Операции', link: '/transactions', icon: ArrowLeftRight },
+      ],
+    },
+    {
+      title: 'ДОПОЛНИТЕЛЬНО',
+      items: [
+        { name: 'Настройки', link: '/settings', icon: Settings },
+      ],
+    },
+  );
+  return sections;
+}
 
-// Обновление активного пункта меню по текущему маршруту
+const menuSections = ref(buildMenuSections(null));
+
 const updateActiveMenu = () => {
-  menuSections.value.forEach(section => {
-    section.items.forEach(item => {
-    item.active = route.path.startsWith(item.link);
+  menuSections.value.forEach((section) => {
+    section.items.forEach((item) => {
+      item.active = route.path.startsWith(item.link);
     });
   });
 };
 
-// Инициализация
-updateActiveMenu();
+function syncMenuFromUser() {
+  menuSections.value = buildMenuSections(props.user);
+  updateActiveMenu();
+}
 
-// Слежение за изменением маршрута
+syncMenuFromUser();
+
+watch(
+  () => props.user,
+  () => syncMenuFromUser(),
+  { deep: true },
+);
+
 watch(route, () => {
   updateActiveMenu();
   uiStore.setMobileMenuOpen(false);
