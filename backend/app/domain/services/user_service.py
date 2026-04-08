@@ -55,33 +55,65 @@ async def create_or_get_user_oauth(email: str, name: str = None):
 
 
 async def update_user(user_id: str, name: str = None, email: str = None):
-    """Обновляет данные пользователя."""
+    """Обновляет данные пользователя. При смене имени сбрасываются Redis-кэш дашборда и in-memory кэш пользователя."""
+    existing = await get_user_by_id(user_id)
+    if not existing:
+        return None
+
     update_data = {}
+    name_changed = False
+
     if name is not None:
-        update_data["name"] = name
+        trimmed = (name or "").strip()
+        current_name = (existing.get("name") or "").strip()
+        if trimmed != current_name:
+            update_data["name"] = trimmed
+            name_changed = True
+
     if email is not None:
         existing_user = await get_user_by_email(email)
         if existing_user and str(existing_user["id"]) != str(user_id):
             raise ValueError("Email уже используется другим пользователем")
-        update_data["email"] = email
+        if (existing.get("email") or "") != email:
+            update_data["email"] = email
 
     if not update_data:
-        return await get_user_by_id(user_id)
+        return existing
 
-    return await _user_repository.update(user_id, update_data)
+    result = await _user_repository.update(user_id, update_data)
+
+    if name_changed:
+        from app.infrastructure.cache.decorators import invalidate_cache
+        from app.core.dependencies import invalidate_cached_user
+
+        await invalidate_cache("dashboard:{user_id}", user_id=str(user_id))
+        invalidate_cached_user(existing.get("email"))
+
+    return result
 
 
-async def update_user_password(user_id: str, current_password: str, new_password: str) -> bool:
-    """Обновляет пароль пользователя."""
+async def update_user_password(
+    user_id: str,
+    current_password: str | None,
+    new_password: str,
+):
+    """Обновляет пароль; без текущего — только если пароль ещё не задан (OAuth)."""
     user = await get_user_by_id(user_id)
     if not user:
         raise ValueError("Пользователь не найден")
-    if not user.get("password_hash"):
-        raise ValueError("У этого аккаунта нет пароля (вход через Google)")
 
-    if not bcrypt.check_password_hash(user["password_hash"], current_password):
-        raise ValueError("Неверный текущий пароль")
+    if user.get("password_hash"):
+        if not current_password:
+            raise ValueError("Введите текущий пароль")
+        if not bcrypt.check_password_hash(user["password_hash"], current_password):
+            raise ValueError("Неверный текущий пароль")
+    # иначе: первичная установка пароля — проверка текущего не требуется
 
     hashed = bcrypt.generate_password_hash(new_password)
-    await _user_repository.update(user_id, {"password_hash": hashed})
-    return True
+    updated = await _user_repository.update(user_id, {"password_hash": hashed})
+    if not updated:
+        raise ValueError("Пользователь не найден")
+    from app.core.dependencies import invalidate_cached_user
+
+    invalidate_cached_user(user.get("email"))
+    return updated

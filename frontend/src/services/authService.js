@@ -43,24 +43,20 @@ export const authService = {
         }
     },
 
-    async updateProfile(name, email) {
-        const data = {};
-        if (name !== undefined && name !== null) {
-            data.name = name;
-        }
-        if (email !== undefined && email !== null) {
-            data.email = email;
-        }
-        
-        const res = await apiClient.put(API_ENDPOINTS.AUTH.UPDATE_PROFILE, data);
+    async updateProfile(name) {
+        const res = await apiClient.put(API_ENDPOINTS.AUTH.UPDATE_PROFILE, {
+            name: String(name ?? '').trim(),
+        });
         return res.data;
     },
 
     async changePassword(currentPassword, newPassword) {
-        const res = await apiClient.put(API_ENDPOINTS.AUTH.CHANGE_PASSWORD, {
-            current_password: currentPassword,
-            new_password: newPassword,
-        });
+        const body = { new_password: newPassword };
+        const cur = currentPassword != null ? String(currentPassword).trim() : '';
+        if (cur) {
+            body.current_password = cur;
+        }
+        const res = await apiClient.put(API_ENDPOINTS.AUTH.CHANGE_PASSWORD, body);
         return res.data;
     },
 

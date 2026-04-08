@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.store'
 import { authService } from '../services/authService'
@@ -12,6 +12,9 @@ import { User, Lock, LogOut, MessageCircle } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
 const router = useRouter()
+
+/** false только для OAuth без пароля; если поля нет (старый API) — считаем, что пароль есть */
+const userHasPassword = computed(() => authStore.user?.has_password !== false)
 
 const handleLogout = () => {
   authStore.logout()
@@ -66,23 +69,7 @@ const saveProfile = async () => {
       return
     }
 
-    if (!settings.value.profile.email || !settings.value.profile.email.trim()) {
-      errorMessage.value = 'Email не может быть пустым'
-      isLoadingProfile.value = false
-      return
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(settings.value.profile.email)) {
-      errorMessage.value = 'Некорректный формат email'
-      isLoadingProfile.value = false
-      return
-    }
-
-    const response = await authService.updateProfile(
-      settings.value.profile.name.trim(),
-      settings.value.profile.email.trim()
-    )
+    const response = await authService.updateProfile(settings.value.profile.name.trim())
 
     const user = response?.user ?? response?.data?.user
     if (user) {
@@ -107,8 +94,13 @@ const savePassword = async () => {
 
   const { current, new: newPass, confirm } = settings.value.password
 
-  if (!current || !newPass || !confirm) {
-    passwordError.value = 'Заполните все поля'
+  if (userHasPassword.value && !current) {
+    passwordError.value = 'Введите текущий пароль'
+    return
+  }
+
+  if (!newPass || !confirm) {
+    passwordError.value = 'Заполните поля нового пароля'
     return
   }
 
@@ -122,16 +114,26 @@ const savePassword = async () => {
     return
   }
 
-  if (current === newPass) {
+  if (userHasPassword.value && current === newPass) {
     passwordError.value = 'Новый пароль должен отличаться от текущего'
     return
   }
 
   isLoadingPassword.value = true
+  const wasWithoutPassword = !userHasPassword.value
 
   try {
-    await authService.changePassword(current, newPass)
-    passwordSuccess.value = 'Пароль успешно изменён'
+    const data = await authService.changePassword(
+      userHasPassword.value ? current : null,
+      newPass,
+    )
+    const user = data?.user
+    if (user) {
+      authStore.setUser(user)
+    }
+    passwordSuccess.value = wasWithoutPassword
+      ? 'Пароль добавлен — теперь можно входить по email и паролю'
+      : 'Пароль успешно изменён'
     settings.value.password = { current: '', new: '', confirm: '' }
     setTimeout(() => { passwordSuccess.value = '' }, 3000)
   } catch (error) {
@@ -210,15 +212,10 @@ const sendSupportMessage = async () => {
           </div>
           
           <div class="form-group">
-            <label for="email">Email</label>
-            <input 
-              id="email"
-              type="email" 
-              v-model="settings.profile.email"
-              placeholder="Введите email"
-              class="form-input"
-              :disabled="isLoadingProfile"
-            />
+            <label for="profile-email">Email</label>
+            <p id="profile-email" class="profile-email-readonly" aria-readonly="true">
+              {{ settings.profile.email || '—' }}
+            </p>
           </div>
           
           <button 
@@ -237,7 +234,12 @@ const sendSupportMessage = async () => {
           <div v-if="passwordError" class="message message-error">{{ passwordError }}</div>
           <div v-if="passwordSuccess" class="message message-success">{{ passwordSuccess }}</div>
 
-          <div class="form-group">
+          <p v-if="!userHasPassword" class="oauth-password-hint" role="status">
+            Регистрация выполнена через Google. Вы можете добавить пароль для входа в аккаунт по email и паролю
+            (вход через Google по-прежнему доступен).
+          </p>
+
+          <div v-if="userHasPassword" class="form-group">
             <label for="current-password">Текущий пароль</label>
             <input 
               id="current-password"
@@ -281,7 +283,13 @@ const sendSupportMessage = async () => {
             class="btn-primary"
             :disabled="isLoadingPassword"
           >
-            {{ isLoadingPassword ? 'Сохранение...' : 'Изменить пароль' }}
+            {{
+              isLoadingPassword
+                ? 'Сохранение...'
+                : userHasPassword
+                  ? 'Изменить пароль'
+                  : 'Задать пароль'
+            }}
           </button>
         </Widget>
       </WidgetContainer>
@@ -473,6 +481,35 @@ const sendSupportMessage = async () => {
   background: rgba(28, 189, 136, 0.1);
   color: var(--success);
   border: 1px solid rgba(28, 189, 136, 0.3);
+}
+
+.profile-email-readonly {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--axis-border, #e5e7eb);
+  background: var(--bg-secondary, #f9fafb);
+  color: var(--text-secondary, #374151);
+  font-size: var(--text-caption-size, 0.875rem);
+  word-break: break-all;
+}
+
+.profile-email-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #6b7280);
+  line-height: 1.4;
+}
+
+.oauth-password-hint {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--axis-border, #e5e7eb);
+  background: var(--bg-secondary, #f9fafb);
+  color: var(--text-secondary, #374151);
+  font-size: var(--text-caption-size, 0.875rem);
+  line-height: 1.45;
 }
 
 @media (max-width: 768px) {
