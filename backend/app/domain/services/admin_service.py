@@ -1,34 +1,28 @@
 """
 Агрегированные данные для админки (только для platform admin).
 """
-import asyncio
 from typing import Any, Dict
 
-from app.infrastructure.database.repositories.user_repository import UserRepository
-from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
-from app.infrastructure.database.repositories.portfolio_asset_repository import (
-    PortfolioAssetRepository,
-)
-
-_user_repository = UserRepository()
-_portfolio_repository = PortfolioRepository()
-_portfolio_asset_repository = PortfolioAssetRepository()
+from app.infrastructure.database.database_service import rpc_async
 
 
-async def get_platform_stats_overview() -> Dict[str, Any]:
+async def get_admin_data() -> Dict[str, Any]:
     """
-    Сводка по платформе. Расширяйте новыми ключами по мере появления экранов админки;
-    фронт и отчёты могут опираться на стабильные имена полей.
+    Один вызов RPC get_admin_data(): overview + users_registration_series.
     """
-    users_total, users_verified, portfolios_total, portfolio_assets_total = await asyncio.gather(
-        _user_repository.count_rows(),
-        _user_repository.count_rows({"email_verified": True}),
-        _portfolio_repository.count_rows(),
-        _portfolio_asset_repository.count_rows(),
-    )
+    result = await rpc_async("get_admin_data", {})
+    if isinstance(result, dict):
+        out = dict(result)
+        if not isinstance(out.get("users"), list):
+            out["users"] = []
+        return out
     return {
-        "users_total": users_total,
-        "users_verified": users_verified,
-        "portfolios_total": portfolios_total,
-        "portfolio_assets_total": portfolio_assets_total,
+        "overview": {
+            "users_total": 0,
+            "users_verified": 0,
+            "portfolios_total": 0,
+            "portfolio_assets_total": 0,
+        },
+        "users_registration_series": [],
+        "users": [],
     }

@@ -1,7 +1,10 @@
 """
 Доменный сервис для работы с пользователями.
 """
+from datetime import datetime, timezone
+
 from app.extensions import bcrypt
+from app.infrastructure.database.database_service import table_update_async
 from app.infrastructure.database.repositories.user_repository import UserRepository
 
 _user_repository = UserRepository()
@@ -10,6 +13,15 @@ _user_repository = UserRepository()
 async def get_user_by_email(email: str):
     """Получает пользователя по email."""
     return await _user_repository.get_by_email(email)
+
+
+async def record_user_last_login(user_id: str) -> None:
+    """Фиксирует время успешного входа (пароль, OAuth, авто-вход после подтверждения email)."""
+    await table_update_async(
+        "users",
+        {"last_login_at": datetime.now(timezone.utc)},
+        filters={"id": str(user_id)},
+    )
 
 
 async def get_user_by_id(user_id):

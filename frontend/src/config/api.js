@@ -4,7 +4,7 @@
  */
 export const API_ENDPOINTS = {
   ADMIN: {
-    STATS_OVERVIEW: '/admin/stats/overview',
+    DATA: '/admin/data',
   },
   AUTH: {
     REGISTER: '/auth/register',
