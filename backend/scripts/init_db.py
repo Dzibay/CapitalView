@@ -31,7 +31,6 @@ DB_DIR = _script_dir.parent.parent / "database"
 if not DB_DIR.exists():
     DB_DIR = Path("/app/database")  # Docker: context=., database копируется в /app/database
 INIT_SQL = DB_DIR / "init.sql"
-MIGRATE_PAYOUT_TYPES_SQL = DB_DIR / "migrate_payout_types.sql"
 FIX_DUPLICATES_SQL = DB_DIR / "fix_duplicate_payouts.sql"
 INDEXES_SQL = DB_DIR / "create_indexes.sql"
 
@@ -65,13 +64,6 @@ async def init_db():
     async with pool.acquire() as conn:
         # 1. Таблицы и справочники
         await run_sql_file(conn, INIT_SQL)
-
-        # 1b. Типы выплат (payout_types) + перенос asset_payouts.type → type_id на старых БД
-        if MIGRATE_PAYOUT_TYPES_SQL.exists():
-            try:
-                await run_sql_file(conn, MIGRATE_PAYOUT_TYPES_SQL)
-            except Exception as e:
-                logger.warning("migrate_payout_types.sql: %s", e)
 
         # 2. Функции
         for f in FUNCTION_FILES:
