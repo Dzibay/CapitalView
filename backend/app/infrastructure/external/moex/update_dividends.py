@@ -14,10 +14,16 @@ from app.infrastructure.database.postgres_async import (
     table_select_async,
     table_insert_async,
     table_update_async,
+    table_delete_async,
 )
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Порядок слияния дубликатов (одинаковые asset_id + record_date): меньше — раньше в merge, позже идут «дополнения».
+_SOURCE_SMARTLAB_INDEX = 0
+_SOURCE_SMARTLAB_HISTORY = 1
+_SOURCE_DOHOD = 2
 
 # URL страниц
 SMARTLAB_INDEX_URL = "https://smart-lab.ru/dividends/index/order_by_yield/desc/"
@@ -217,9 +223,10 @@ def _payout_pair_key(asset_id: int, record_date) -> tuple:
 
 
 def merge_dividend_sources(items: list) -> dict:
-    """Одинаковые asset_id + record_date: SmartLab раньше в списке, dohod позже — дополняем даты и обновляем сумму/доходность."""
-    m = dict(items[0])
+    """Одинаковые asset_id + record_date: сначала SmartLab (index → history), затем dohod — дополняем даты; value/yield перезаписываются последним источником с данными."""
+    m = {k: v for k, v in items[0].items() if k != "_source_rank"}
     for nxt in items[1:]:
+        nxt = {k: v for k, v in nxt.items() if k != "_source_rank"}
         if nxt.get("last_buy_date"):
             m["last_buy_date"] = m.get("last_buy_date") or nxt["last_buy_date"]
         if nxt.get("payment_date"):
@@ -278,6 +285,74 @@ def _build_payout_row(merged: dict, p_type: str = "dividend") -> dict:
     }
 
 
+def group_and_merge_incoming_dividends(all_items: list) -> list:
+    """После загрузки всех источников: группировка по (asset_id, record_date), детерминированный порядок слияния, одна запись на ключ."""
+    incoming_by_pair = defaultdict(list)
+    for item in all_items:
+        record_date = item.get("record_date")
+        if not record_date:
+            continue
+        key = _payout_pair_key(item["asset_id"], record_date)
+        incoming_by_pair[key].append(item)
+
+    merged_list = []
+    for _key, raw_items in incoming_by_pair.items():
+        raw_items.sort(key=lambda x: x.get("_source_rank", 99))
+        merged_list.append(merge_dividend_sources(raw_items))
+    return merged_list
+
+
+_DUPLICATE_DELETE_CHUNK = 500
+
+
+async def delete_duplicate_dividend_payout_rows(payouts: list) -> tuple[int, list]:
+    """Удаляет лишние строки type=dividend с тем же (asset_id, record_date); оставляет запись с минимальным id."""
+    by_pair = defaultdict(list)
+    for p in payouts:
+        record_date = p.get("record_date")
+        if not record_date:
+            continue
+        key = _payout_pair_key(p["asset_id"], record_date)
+        by_pair[key].append(p)
+
+    ids_to_delete: list = []
+    for _key, rows in by_pair.items():
+        if len(rows) <= 1:
+            continue
+        rows.sort(key=lambda r: r.get("id") or 0)
+        for dup in rows[1:]:
+            ids_to_delete.append(dup["id"])
+
+    if not ids_to_delete:
+        return 0, payouts
+
+    delete_set = set(ids_to_delete)
+    removed = 0
+    for i in range(0, len(ids_to_delete), _DUPLICATE_DELETE_CHUNK):
+        chunk = ids_to_delete[i : i + _DUPLICATE_DELETE_CHUNK]
+        deleted = await table_delete_async("asset_payouts", in_filters={"id": chunk})
+        removed += len(deleted)
+
+    surviving = [p for p in payouts if p["id"] not in delete_set]
+    return removed, surviving
+
+
+def dedupe_payout_insert_rows(rows: list) -> list:
+    """На случай повторов в списке вставок — один ключ (asset_id, record_date, type)."""
+    seen = set()
+    out = []
+    for r in rows:
+        rd = r.get("record_date")
+        if hasattr(rd, "isoformat"):
+            rd = rd.isoformat()
+        k = (r["asset_id"], rd, r.get("type", "dividend"))
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(r)
+    return out
+
+
 async def update_forecasts(show_progress: bool | None = None):
     """Обновляет прогнозы дивидендов (SmartLab, затем dohod.ru).
 
@@ -295,6 +370,12 @@ async def update_forecasts(show_progress: bool | None = None):
         filters={"type": "dividend"},
     )
 
+    removed_dupes, existing_payouts = await delete_duplicate_dividend_payout_rows(existing_payouts)
+    logger.info(
+        "Удалено дубликатов дивидендов в БД (лишние строки по asset_id + record_date): %s",
+        removed_dupes,
+    )
+
     by_pair_lists = defaultdict(list)
     for p in existing_payouts:
         record_date = p.get("record_date")
@@ -306,13 +387,6 @@ async def update_forecasts(show_progress: bool | None = None):
     existing_by_pair = {}
     for key, rows in by_pair_lists.items():
         rows.sort(key=lambda r: r.get("id") or 0)
-        if len(rows) > 1:
-            logger.warning(
-                "В БД несколько дивидендов для asset_id=%s, record_date=%s (%s строк); обновляем все совпадения",
-                key[0],
-                key[1],
-                len(rows),
-            )
         existing_by_pair[key] = rows[0]
 
     all_items = []
@@ -329,6 +403,8 @@ async def update_forecasts(show_progress: bool | None = None):
         ) as p_future:
             future_items = await process_page(session, SMARTLAB_INDEX_URL, "index", ticker_map)
             if future_items:
+                for it in future_items:
+                    it["_source_rank"] = _SOURCE_SMARTLAB_INDEX
                 all_items.extend(future_items)
             p_future.update(1)
 
@@ -357,6 +433,8 @@ async def update_forecasts(show_progress: bool | None = None):
                 elif len(history_items) == 0:
                     break
                 else:
+                    for it in history_items:
+                        it["_source_rank"] = _SOURCE_SMARTLAB_HISTORY
                     all_items.extend(history_items)
                     error_count = 0
                     p_hist.set_postfix_str(f"страница {page_num}")
@@ -377,25 +455,22 @@ async def update_forecasts(show_progress: bool | None = None):
         ) as p_dohod:
             dohod_items = await process_dohod_page(session, ticker_map)
             if dohod_items:
+                for it in dohod_items:
+                    it["_source_rank"] = _SOURCE_DOHOD
                 all_items.extend(dohod_items)
             p_dohod.update(1)
 
-    logger.info(f"Всего найдено записей для обработки: {len(all_items)}")
+    logger.info(f"Всего сырых строк из источников: {len(all_items)}")
 
-    incoming_by_pair = defaultdict(list)
-    for item in all_items:
-        record_date = item.get("record_date")
-        if not record_date:
-            continue
-        key = _payout_pair_key(item["asset_id"], record_date)
-        incoming_by_pair[key].append(item)
+    merged_payouts = group_and_merge_incoming_dividends(all_items)
+    logger.info(f"После слияния дубликатов по (asset_id, record_date): {len(merged_payouts)} записей")
 
     payouts_to_insert = []
     payouts_to_update = []
 
-    for key, raw_items in incoming_by_pair.items():
-        merged = merge_dividend_sources(raw_items)
+    for merged in merged_payouts:
         record_date = merged["record_date"]
+        key = _payout_pair_key(merged["asset_id"], record_date)
         p_type = "dividend"
         new_payout = _build_payout_row(merged, p_type=p_type)
         val = round(float(merged.get("value") or 0), 2)
@@ -447,6 +522,13 @@ async def update_forecasts(show_progress: bool | None = None):
                 logger.warning("Ошибка UPDATE asset_payouts %s: %s", filters, e)
 
     if payouts_to_insert:
+        _before_ins = len(payouts_to_insert)
+        payouts_to_insert = dedupe_payout_insert_rows(payouts_to_insert)
+        if len(payouts_to_insert) < _before_ins:
+            logger.info(
+                "Перед вставкой убрано дубликатов по (asset_id, record_date, type): %s",
+                _before_ins - len(payouts_to_insert),
+            )
         logger.info(f"Пакетная вставка {len(payouts_to_insert)} записей...")
         batch_indices = list(range(0, len(payouts_to_insert), BATCH_SIZE))
         batch_iter = tqdm(
