@@ -114,17 +114,25 @@ monthly AS (
 ),
 monthly_payouts AS (
   SELECT
-    co.portfolio_id,
-    to_char(date_trunc('month', co.date), 'YYYY-MM') AS month,
-    SUM(CASE WHEN ot.name = 'Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS dividends,
-    SUM(CASE WHEN ot.name = 'Coupon' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS coupons,
-    SUM(CASE WHEN ot.name = 'Amortization' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS amortizations,
-    SUM(CASE WHEN ot.name IN ('Dividend','Coupon','Amortization') THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS total_payouts
-  FROM cash_operations co
-  JOIN operations_type ot ON ot.id = co.type
-  JOIN p ON p.id = co.portfolio_id
-  WHERE ot.name IN ('Dividend','Coupon','Amortization')
-  GROUP BY co.portfolio_id, date_trunc('month', co.date)
+    t.portfolio_id,
+    t.month,
+    ROUND(t.div_raw, 2) AS dividends,
+    ROUND(t.coup_raw, 2) AS coupons,
+    ROUND(t.amort_raw, 2) AS amortizations,
+    ROUND(t.div_raw, 2) + ROUND(t.coup_raw, 2) + ROUND(t.amort_raw, 2) AS total_payouts
+  FROM (
+    SELECT
+      co.portfolio_id,
+      to_char(date_trunc('month', co.date), 'YYYY-MM') AS month,
+      SUM(CASE WHEN ot.name = 'Dividend' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS div_raw,
+      SUM(CASE WHEN ot.name = 'Coupon' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS coup_raw,
+      SUM(CASE WHEN ot.name = 'Amortization' THEN COALESCE(co.amount_rub, co.amount) ELSE 0 END) AS amort_raw
+    FROM cash_operations co
+    JOIN operations_type ot ON ot.id = co.type
+    JOIN p ON p.id = co.portfolio_id
+    WHERE ot.name IN ('Dividend','Coupon','Amortization')
+    GROUP BY co.portfolio_id, date_trunc('month', co.date)
+  ) t
 ),
 totals AS (
   SELECT
@@ -261,22 +269,31 @@ asset_payouts_by_asset AS (
 ),
 future_payouts AS (
   SELECT
-    pa.portfolio_id,
-    to_char(date_trunc('month', COALESCE(ap.payment_date, ap.record_date)), 'YYYY-MM') AS month,
-    SUM(CASE WHEN ap.type_id = 1 THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS dividends,
-    SUM(CASE WHEN ap.type_id = 2 THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS coupons,
-    SUM(CASE WHEN ap.type_id = 3 THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS amortizations,
-    SUM(ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date)) AS total_amount,
-    COUNT(*) AS payout_count
-  FROM portfolio_assets pa
-  JOIN p ON p.id = pa.portfolio_id
-  JOIN assets a ON a.id = pa.asset_id
-  JOIN asset_payouts ap ON ap.asset_id = a.id
-  WHERE COALESCE(ap.payment_date, ap.record_date) >= CURRENT_DATE
-    AND COALESCE(ap.payment_date, ap.record_date) <= CURRENT_DATE + INTERVAL '3 years'
-    AND COALESCE(pa.quantity, 0) > 0
-    AND ap.type_id IN (1, 2, 3)
-  GROUP BY pa.portfolio_id, date_trunc('month', COALESCE(ap.payment_date, ap.record_date))
+    u.portfolio_id,
+    u.month,
+    ROUND(u.div_raw, 2) AS dividends,
+    ROUND(u.coup_raw, 2) AS coupons,
+    ROUND(u.amort_raw, 2) AS amortizations,
+    ROUND(u.div_raw, 2) + ROUND(u.coup_raw, 2) + ROUND(u.amort_raw, 2) AS total_amount,
+    u.payout_count
+  FROM (
+    SELECT
+      pa.portfolio_id,
+      to_char(date_trunc('month', COALESCE(ap.payment_date, ap.record_date)), 'YYYY-MM') AS month,
+      SUM(CASE WHEN ap.type_id = 1 THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS div_raw,
+      SUM(CASE WHEN ap.type_id = 2 THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS coup_raw,
+      SUM(CASE WHEN ap.type_id = 3 THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS amort_raw,
+      COUNT(*) AS payout_count
+    FROM portfolio_assets pa
+    JOIN p ON p.id = pa.portfolio_id
+    JOIN assets a ON a.id = pa.asset_id
+    JOIN asset_payouts ap ON ap.asset_id = a.id
+    WHERE COALESCE(ap.payment_date, ap.record_date) >= CURRENT_DATE
+      AND COALESCE(ap.payment_date, ap.record_date) <= CURRENT_DATE + INTERVAL '3 years'
+      AND COALESCE(pa.quantity, 0) > 0
+      AND ap.type_id IN (1, 2, 3)
+    GROUP BY pa.portfolio_id, date_trunc('month', COALESCE(ap.payment_date, ap.record_date))
+  ) u
 ),
 
 -- ОПТИМИЗАЦИЯ: цены на разные даты — один CTE с DISTINCT по asset_id (не для каждого portfolio_asset)
