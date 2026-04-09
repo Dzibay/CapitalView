@@ -13,6 +13,13 @@ logger = get_logger(__name__)
 
 MOEX_BASE_URL = "https://iss.moex.com/iss/engines/stock/markets"
 
+# Цена облигации после перевода из % номинала — округление до копеек (как в moex_price_worker)
+_BOND_PRICE_DECIMALS = 2
+
+
+def _round_bond_price_rub(value: float) -> float:
+    return round(float(value), _BOND_PRICE_DECIMALS)
+
 
 async def get_prices_moex_batch(session: aiohttp.ClientSession, market: str) -> Dict[str, float]:
     """
@@ -137,7 +144,7 @@ async def get_prices_moex_batch(session: aiohttp.ClientSession, market: str) -> 
                 if face_value and face_value > 0:
                     # price - это процент от номинала (например, 95.5 означает 95.5% от номинала)
                     # Конвертируем в абсолютное значение: (price / 100) * face_value
-                    price = (price / 100) * float(face_value)
+                    price = _round_bond_price_rub((price / 100) * float(face_value))
             
             result[ticker] = price
         
@@ -189,7 +196,7 @@ async def get_price_moex(session: aiohttp.ClientSession, ticker: str) -> Optiona
             
             if market == "bonds" or "bond" in sec_group:
                 if face_value and face_value > 0:
-                    last_price = (last_price / 100) * float(face_value)
+                    last_price = _round_bond_price_rub((last_price / 100) * float(face_value))
             
             return last_price
         except Exception:

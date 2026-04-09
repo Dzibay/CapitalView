@@ -36,6 +36,14 @@ sem = asyncio.Semaphore(MAX_PARALLEL)  # для MOEX API запросов
 db_sem = asyncio.Semaphore(MAX_DB_PARALLEL)  # для запросов к БД
 MSK_TZ = pytz.timezone("Europe/Moscow")
 
+# Цена облигации в валюте номинала после перевода из % — как на MOEX, в БД храним с точностью до копеек
+_BOND_PRICE_DECIMALS = 2
+
+
+def _round_bond_price_rub(value: float) -> float:
+    return round(float(value), _BOND_PRICE_DECIMALS)
+
+
 # Интервал обновления сегодняшних цен (15 минут)
 UPDATE_INTERVAL_SECONDS = 15 * 60
 
@@ -233,13 +241,15 @@ async def update_asset_history(
                         eff_fv = get_effective_face_value(float(initial_fv), schedule, td)
                     else:
                         eff_fv = float(initial_fv)
-                    converted.append((trade_date_str, (close_price / 100) * eff_fv))
+                    converted.append(
+                        (trade_date_str, _round_bond_price_rub((close_price / 100) * eff_fv))
+                    )
                 prices = converted
         else:
             initial_face_value = props.get("initial_face_value")
             if initial_face_value and float(initial_face_value) > 0:
                 prices = [
-                    (td, (p / 100) * float(initial_face_value))
+                    (td, _round_bond_price_rub((p / 100) * float(initial_face_value)))
                     for td, p in prices
                 ]
 
@@ -608,7 +618,7 @@ async def process_today_prices_batch(
             if not ticker or ticker not in bonds_prices:
                 continue
             
-            price = bonds_prices[ticker]
+            price = _round_bond_price_rub(bonds_prices[ticker])
             
             # Анти-скачок
             last = last_map.get(asset_id)
