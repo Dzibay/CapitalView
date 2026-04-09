@@ -5,6 +5,7 @@ import { defaultAuthenticatedPath } from '../utils/defaultAppPath';
 const LAST_APP_PATH_REGEXES = [
   /^\/dashboard$/,
   /^\/admin$/,
+  /^\/admin\/messages$/,
   /^\/admin\/users\/[^/]+$/,
   /^\/analitics$/,
   /^\/transactions$/,
@@ -68,6 +69,7 @@ const Transactions = () => import('../views/Transactions.vue');
 const Dividends = () => import('../views/Dividends.vue');
 const Settings = () => import('../views/Settings.vue');
 const Admin = () => import('../views/Admin.vue');
+const AdminMessages = () => import('../views/AdminMessages.vue');
 const AdminUserPortfolios = () => import('../views/AdminUserPortfolios.vue');
 const ErrorStatus = () => import('../views/errors/ErrorStatus.vue');
 const NotFound404 = () => import('../views/errors/NotFound404.vue');
@@ -112,6 +114,11 @@ const routes = [
         path: '/admin',
         component: Admin,
         meta: { title: 'Администрирование — CapitalView', requiresAdmin: true },
+      },
+      {
+        path: '/admin/messages',
+        component: AdminMessages,
+        meta: { title: 'Сообщения в поддержку — CapitalView', requiresAdmin: true },
       },
       {
         path: '/admin/users/:userId',

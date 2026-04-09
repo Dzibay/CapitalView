@@ -15,6 +15,7 @@ from app.infrastructure.database.postgres_async import (
     get_connection_pool,
 )
 from app.utils.date import parse_date as normalize_date
+from app.domain.constants.payout_types import PAYOUT_TYPE_COUPON_ID
 
 
 BATCH_SIZE = 2000
@@ -48,7 +49,7 @@ async def load_coupon_schedules() -> Dict[int, List[Tuple[date, float]]]:
     rows = await db_select(
         "asset_payouts",
         "asset_id, payment_date, value",
-        filters={"type": "coupon"},
+        filters={"type_id": PAYOUT_TYPE_COUPON_ID},
         order="asset_id, payment_date",
         limit=None,
     )

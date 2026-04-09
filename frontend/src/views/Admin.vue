@@ -1,19 +1,19 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-vue-next'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import MultiLineChart from '../components/charts/MultiLineChart.vue'
-import { adminService } from '../services/adminService'
+import { useAdminStore } from '../stores/admin.store'
 
 const router = useRouter()
-const loading = ref(true)
-const error = ref('')
-const overview = ref(null)
-const usersSeries = ref([])
-const adminUsers = ref([])
+const adminStore = useAdminStore()
+const { overview, usersSeries, adminUsers, adminDataError } = storeToRefs(adminStore)
+
+const loading = ref(!adminStore.hasFreshAdminData)
 
 /** По умолчанию: дата регистрации, новые сверху (по убыванию даты). */
 const usersSortKey = ref('created_at')
@@ -107,16 +107,11 @@ const usersChartTooltipCallbacks = {
 }
 
 onMounted(async () => {
-  error.value = ''
-  loading.value = true
+  adminStore.adminDataError = ''
   try {
-    const { overview: ov, users_registration_series: series, users } =
-      await adminService.fetchAdminData()
-    overview.value = ov
-    usersSeries.value = series
-    adminUsers.value = users
-  } catch (e) {
-    error.value = e.response?.data?.error || e.message || 'Не удалось загрузить статистику'
+    await adminStore.fetchAdminData()
+  } catch {
+    /* текст ошибки в store */
   } finally {
     loading.value = false
   }
@@ -124,6 +119,10 @@ onMounted(async () => {
 
 function goSettings() {
   router.push('/settings')
+}
+
+function goMessages() {
+  router.push('/admin/messages')
 }
 
 function openUserPortfolios(u) {
@@ -145,15 +144,20 @@ function openUserPortfolios(u) {
           <PageHeader title="Администрирование" />
           <p class="admin-page__subtitle-line">Сводка по сервису</p>
         </div>
-        <button type="button" class="admin-page__to-app" @click="goSettings">
-          Настройки
-        </button>
+        <div class="admin-page__actions">
+          <button type="button" class="admin-page__to-app" @click="goMessages">
+            Сообщения
+          </button>
+          <button type="button" class="admin-page__to-app" @click="goSettings">
+            Настройки
+          </button>
+        </div>
       </header>
 
       <LoadingState v-if="loading" message="Загрузка статистики…" />
 
-      <div v-else-if="error" class="admin-error" role="alert">
-        {{ error }}
+      <div v-else-if="adminDataError" class="admin-error" role="alert">
+        {{ adminDataError }}
       </div>
 
       <div v-else-if="overview" class="admin-body">
@@ -356,10 +360,17 @@ function openUserPortfolios(u) {
   max-width: 100%;
 }
 
-.admin-page__to-app {
+.admin-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   flex-shrink: 0;
   align-self: flex-start;
   margin-top: 0.125rem;
+}
+
+.admin-page__to-app {
+  flex-shrink: 0;
   padding: 0.5rem 1rem;
   border-radius: 10px;
   border: 1px solid var(--axis-border, #d1d5db);
@@ -733,8 +744,14 @@ function openUserPortfolios(u) {
     margin-bottom: 1rem;
   }
 
-  .admin-page__to-app {
+  .admin-page__actions {
+    flex-direction: column;
     align-self: stretch;
+    width: 100%;
+    margin-top: 0;
+  }
+
+  .admin-page__to-app {
     width: 100%;
     display: flex;
     align-items: center;

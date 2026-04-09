@@ -95,13 +95,14 @@ BEGIN
                     'last_buy_date', ap.last_buy_date,
                     'record_date', ap.record_date,
                     'payment_date', ap.payment_date,
-                    'type', ap.type
+                    'type', pt.code
                 )
                 ORDER BY ap.payment_date DESC NULLS LAST
             ), '[]'::jsonb)
             FROM portfolio_assets pa
             JOIN assets a ON a.id = pa.asset_id
             LEFT JOIN asset_payouts ap ON ap.asset_id = a.id
+            LEFT JOIN payout_types pt ON pt.id = ap.type_id
             WHERE pa.id = p_portfolio_asset_id
               AND ap.id IS NOT NULL
         ),

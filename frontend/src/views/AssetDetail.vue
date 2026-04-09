@@ -22,6 +22,7 @@ import LoadingState from '../components/base/LoadingState.vue'
 import assetsService from '../services/assetsService'
 import operationsService from '../services/operationsService'
 import PageLayout from '../layouts/PageLayout.vue'
+import { PayoutsChartWidget } from '../components/widgets/charts'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
 import { getCurrencySymbol } from '../utils/currencySymbols'
@@ -1541,6 +1542,34 @@ const payoutTableRows = computed(() =>
   sortedPayouts.value.map((p) => ({ p, status: getPayoutStatus(p) }))
 )
 
+/** Те же строки, что в таблице «История выплат», в формате PayoutsChartWidget (агрегация по месяцу даты выплаты) */
+const assetDividendPayoutsChartSeries = computed(() => {
+  const byMonth = {}
+  for (const p of sortedPayouts.value) {
+    const raw = p.payment_date || p.date || p.record_date
+    const ns = normalizeDateToString(raw)
+    if (!ns || ns.length < 7) continue
+    const monthKey = ns.slice(0, 7)
+    if (!/^\d{4}-\d{2}$/.test(monthKey)) continue
+
+    if (!byMonth[monthKey]) {
+      byMonth[monthKey] = { month: monthKey, dividends: 0, coupons: 0, amortizations: 0 }
+    }
+    const value = Math.abs(Number(p.value) || 0)
+    const t = (p.type || '').toLowerCase()
+    if (t.includes('dividend') || t.includes('дивиденд')) {
+      byMonth[monthKey].dividends += value
+    } else if (t.includes('coupon') || t.includes('купон')) {
+      byMonth[monthKey].coupons += value
+    } else if (t.includes('amort') || t.includes('аморт')) {
+      byMonth[monthKey].amortizations += value
+    } else {
+      byMonth[monthKey].dividends += value
+    }
+  }
+  return Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month))
+})
+
 const formatPayoutDividendYield = (y) => {
   if (y == null || y === '') return '—'
   const n = Number(y)
@@ -2020,6 +2049,14 @@ async function handlePortfolioChange(portfolioId) {
       <!-- ===================== TAB: Дивиденды ===================== -->
       <template v-if="selectedTab === 'dividends'">
         <div class="widgets-grid">
+          <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
+            <PayoutsChartWidget
+              title="Выплаты по периодам"
+              :payouts="assetDividendPayoutsChartSeries"
+              :currency="assetCurrency"
+              mode="all"
+            />
+          </WidgetContainer>
           <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
             <Widget title="История выплат" :icon="Coins">
               <div class="table-container">

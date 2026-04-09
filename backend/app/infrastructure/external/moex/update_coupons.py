@@ -9,22 +9,27 @@ from tqdm.asyncio import tqdm_asyncio
 from app.infrastructure.external.moex.client import create_moex_session, fetch_json
 from app.utils.date import parse_date as normalize_date
 from app.core.logging import get_logger
+from app.domain.constants.payout_types import (
+    PAYOUT_CODE_BY_ID,
+    PAYOUT_TYPE_AMORTIZATION_ID,
+    PAYOUT_TYPE_COUPON_ID,
+)
 
 logger = get_logger(__name__)
 
 MOEX_BONDIZATION_URL = "https://iss.moex.com/iss/securities/{ticker}/bondization.json"
 BATCH_SIZE = 1000
 
-# Совпадает с idx_asset_payouts_unique_coupon: (asset_id, payment_date, type) без value
+# Совпадает с idx_asset_payouts_unique_coupon: (asset_id, payment_date, type_id), type_id=2 (купон)
 INSERT_COUPON_SQL = """
-INSERT INTO asset_payouts (asset_id, value, dividend_yield, record_date, payment_date, type)
+INSERT INTO asset_payouts (asset_id, value, dividend_yield, record_date, payment_date, type_id)
 VALUES ($1, $2, $3, $4, $5, $6)
-ON CONFLICT (asset_id, payment_date, type) WHERE type = 'coupon' AND payment_date IS NOT NULL
+ON CONFLICT (asset_id, payment_date, type_id) WHERE type_id = 2 AND payment_date IS NOT NULL
 DO NOTHING
 """
 
 INSERT_AMORTIZATION_SQL = """
-INSERT INTO asset_payouts (asset_id, value, dividend_yield, record_date, payment_date, type)
+INSERT INTO asset_payouts (asset_id, value, dividend_yield, record_date, payment_date, type_id)
 VALUES ($1, $2, $3, $4, $5, $6)
 """
 
@@ -54,7 +59,7 @@ def _payout_row_args(r: dict):
         r["dividend_yield"],
         normalize_date(r["record_date"]) if r.get("record_date") else None,
         normalize_date(r["payment_date"]) if r.get("payment_date") else None,
-        r["type"],
+        r["type_id"],
     )
 
 
@@ -62,8 +67,8 @@ async def _insert_asset_payouts_batch(rows: list) -> None:
     """Вставка батча: купоны с ON CONFLICT DO NOTHING (без ERROR в логах), амортизации — обычный INSERT."""
     if not rows:
         return
-    coupons = [r for r in rows if r.get("type") == "coupon"]
-    amorts = [r for r in rows if r.get("type") == "amortization"]
+    coupons = [r for r in rows if r.get("type_id") == PAYOUT_TYPE_COUPON_ID]
+    amorts = [r for r in rows if r.get("type_id") == PAYOUT_TYPE_AMORTIZATION_ID]
     pool = await get_connection_pool()
     async with pool.acquire() as conn:
         if coupons:
@@ -114,7 +119,7 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
                 "record_date": rec.get("recorddate"),
                 "payment_date": rec.get("coupondate"),
                 "value": rec.get("value"),
-                "type": "coupon"
+                "type_id": PAYOUT_TYPE_COUPON_ID,
             })
 
         if best_coupon_rec and best_coupon_rec.get("valueprc") is not None:
@@ -138,7 +143,7 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
                 "record_date": None,
                 "payment_date": rec.get("amortdate"),
                 "value": rec.get("value"),
-                "type": "amortization"
+                "type_id": PAYOUT_TYPE_AMORTIZATION_ID,
             })
 
     if initial_face_value is None and results:
@@ -226,14 +231,14 @@ async def update_all_coupons():
     print("📥 Загрузка существующих купонов и амортизаций из БД...")
     existing_payouts = await db_select(
         "asset_payouts",
-        "asset_id, record_date, payment_date, value, type",
-        in_filters={"type": ["coupon", "amortization"]},
+        "asset_id, record_date, payment_date, value, type_id",
+        in_filters={"type_id": [PAYOUT_TYPE_COUPON_ID, PAYOUT_TYPE_AMORTIZATION_ID]},
         limit=None
     )
     
     existing_keys = set()
     for payout in existing_payouts:
-        p_type = payout.get("type") or "coupon"
+        p_type = PAYOUT_CODE_BY_ID.get(payout.get("type_id"), "coupon")
         pd = payout.get("payment_date")
         rd = payout.get("record_date")
         if isinstance(pd, str):
@@ -278,7 +283,7 @@ async def update_all_coupons():
                 if not payment_date and not record_date:
                     continue
                 value = round(float(payout.get("value") or 0), 2)
-                p_type = payout.get("type", "coupon")
+                p_type = PAYOUT_CODE_BY_ID.get(payout.get("type_id"), "coupon")
                 key = _payout_dedup_key(asset_id, payment_date, record_date, p_type)
                 if not key or key in existing_keys:
                     continue
@@ -290,7 +295,7 @@ async def update_all_coupons():
                     "payment_date": payment_date.isoformat() if payment_date else None,
                     "value": value,
                     "dividend_yield": None,
-                    "type": p_type
+                    "type_id": payout.get("type_id") or PAYOUT_TYPE_COUPON_ID,
                 }
                 
                 all_new_payouts.append(new_payout)
@@ -305,8 +310,8 @@ async def update_all_coupons():
         print("📭 Новых купонов/амортизаций для вставки не найдено")
         return
     
-    new_coupons = sum(1 for p in all_new_payouts if p["type"] == "coupon")
-    new_amortizations = sum(1 for p in all_new_payouts if p["type"] == "amortization")
+    new_coupons = sum(1 for p in all_new_payouts if p.get("type_id") == PAYOUT_TYPE_COUPON_ID)
+    new_amortizations = sum(1 for p in all_new_payouts if p.get("type_id") == PAYOUT_TYPE_AMORTIZATION_ID)
     print(f"\n📦 Найдено {len(all_new_payouts)} новых записей (купонов: {new_coupons}, амортизаций: {new_amortizations})")
     print(f"📦 Начинаем пакетную вставку батчами по {BATCH_SIZE}...")
     

@@ -153,6 +153,14 @@ CREATE TABLE IF NOT EXISTS asset_prices (
   CONSTRAINT asset_prices_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS payout_types (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  code text NOT NULL,
+  name_ru text NOT NULL,
+  CONSTRAINT payout_types_pkey PRIMARY KEY (id),
+  CONSTRAINT payout_types_code_key UNIQUE (code)
+);
+
 CREATE TABLE IF NOT EXISTS asset_payouts (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   asset_id bigint NOT NULL,
@@ -161,9 +169,10 @@ CREATE TABLE IF NOT EXISTS asset_payouts (
   last_buy_date date,
   record_date date,
   payment_date date,
-  type text,
+  type_id bigint NOT NULL,
   CONSTRAINT asset_payouts_pkey PRIMARY KEY (id),
-  CONSTRAINT asset_payouts_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
+  CONSTRAINT asset_payouts_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE,
+  CONSTRAINT asset_payouts_type_id_fkey FOREIGN KEY (type_id) REFERENCES payout_types(id)
 );
 
 CREATE TABLE IF NOT EXISTS asset_latest_prices (
@@ -331,3 +340,14 @@ INSERT INTO transactions_type (id, name) OVERRIDING SYSTEM VALUE VALUES
   (2, 'Sell'),
   (3, 'Redemption')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+
+INSERT INTO payout_types (id, code, name_ru) OVERRIDING SYSTEM VALUE VALUES
+  (1, 'dividend', 'Дивиденд'),
+  (2, 'coupon', 'Купон'),
+  (3, 'amortization', 'Амортизация')
+ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code, name_ru = EXCLUDED.name_ru;
+
+SELECT setval(
+  pg_get_serial_sequence('payout_types', 'id'),
+  (SELECT COALESCE(MAX(id), 1) FROM payout_types)
+);

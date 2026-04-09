@@ -269,7 +269,7 @@ onMounted(() => {
       <!-- 4. Выплаты по месяцам — на планшете на всю ширину -->
       <WidgetContainer class="payouts-chart-widget" :gridColumn="6" minHeight="var(--widget-height-medium)">
         <PayoutsChartWidget v-if="phase3Ready"
-          title="Полученные выплаты по месяцам"
+          title="Полученные выплаты "
           :payouts="monthlyPayouts"
           mode="past"
           enable-bar-navigation

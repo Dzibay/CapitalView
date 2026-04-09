@@ -12,7 +12,7 @@ from fastapi.responses import ORJSONResponse
 from app.core.dependencies import get_current_admin_user
 from app.core.exceptions import NotFoundError
 from app.core.logging import get_logger
-from app.domain.services.admin_service import get_admin_data
+from app.domain.services.admin_service import get_admin_data, list_support_messages_for_admin
 from app.domain.services.dashboard_service import get_dashboard_data
 from app.domain.services.user_service import get_user_by_id
 from app.utils.response import success_response
@@ -26,6 +26,12 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 async def admin_data(_: dict = Depends(get_current_admin_user)):
     payload = await get_admin_data()
     return success_response(data=payload, message="OK")
+
+
+@router.get("/support-messages")
+async def admin_support_messages(_: dict = Depends(get_current_admin_user)):
+    messages = await list_support_messages_for_admin()
+    return success_response(data={"support_messages": messages}, message="OK")
 
 
 @router.get("/users/{user_id}/dashboard")

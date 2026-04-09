@@ -10,6 +10,7 @@ import {
   ArrowLeftRight,
   Settings,
   Shield,
+  MessageSquare,
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -19,6 +20,7 @@ const items = computed(() => {
   if (authStore.user?.is_admin) {
     return [
       { to: '/admin', label: 'Админ', icon: Shield },
+      { to: '/admin/messages', label: 'Письма', icon: MessageSquare },
       { to: '/settings', label: 'Настройки', icon: Settings },
     ]
   }
@@ -33,6 +35,9 @@ const items = computed(() => {
 })
 
 function isActive(link) {
+  if (link === '/admin') {
+    return route.path === '/admin'
+  }
   return route.path === link || route.path.startsWith(`${link}/`)
 }
 </script>

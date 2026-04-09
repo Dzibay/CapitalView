@@ -539,6 +539,17 @@ const applyRouteFromQuery = () => {
         endDate.value = getLocalYMD(range.end)
         touched = true
       }
+    } else {
+      const year = firstQuery(q.year)
+      if (typeof year === 'string' && /^\d{4}$/.test(year)) {
+        const y = parseInt(year, 10)
+        const start = new Date(y, 0, 1)
+        const end = new Date(y, 11, 31)
+        periodPreset.value = 'custom'
+        startDate.value = getLocalYMD(start)
+        endDate.value = getLocalYMD(end)
+        touched = true
+      }
     }
   }
 

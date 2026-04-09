@@ -66,10 +66,11 @@ BEGIN
                            'payment_date', ap.payment_date,
                            'value', ap.value,
                            'dividend_yield', ap.dividend_yield,
-                           'type', ap.type
+                           'type', pt.code
                        )
                        ORDER BY ap.payment_date DESC)
             FROM asset_payouts ap
+            JOIN payout_types pt ON pt.id = ap.type_id
             WHERE ap.asset_id = pa.asset_id
         ), '[]'::jsonb) AS dividends
 

@@ -11,6 +11,7 @@ import {
   ArrowLeftRight,
   Settings,
   Shield,
+  MessageSquare,
 } from 'lucide-vue-next';
 
 const route = useRoute();
@@ -49,7 +50,10 @@ function buildMenuSections(user) {
     return [
       {
         title: 'АДМИН',
-        items: [{ name: 'Статистика', link: '/admin', icon: Shield }],
+        items: [
+          { name: 'Статистика', link: '/admin', icon: Shield, exact: true },
+          { name: 'Сообщения', link: '/admin/messages', icon: MessageSquare },
+        ],
       },
       {
         title: 'АККАУНТ',
@@ -85,7 +89,9 @@ const menuSections = ref(buildMenuSections(null));
 const updateActiveMenu = () => {
   menuSections.value.forEach((section) => {
     section.items.forEach((item) => {
-      item.active = route.path.startsWith(item.link);
+      item.active = item.exact
+        ? route.path === item.link
+        : route.path === item.link || route.path.startsWith(`${item.link}/`);
     });
   });
 };
