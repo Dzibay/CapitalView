@@ -1503,14 +1503,11 @@ const formatCurrency = (value) => {
   return formatOperationAmount(value || 0, assetCurrency.value)
 }
 
-// Сортировка выплат
+// Сортировка выплат по дате отсечки (новые сверху; без отсечки — по дате выплаты)
 const sortedPayouts = computed(() => {
   if (!payouts.value?.history) return []
-  return [...payouts.value.history].sort((a, b) => {
-    const dateA = new Date(a.payment_date || 0)
-    const dateB = new Date(b.payment_date || 0)
-    return dateB - dateA
-  })
+  const key = (p) => new Date(p.record_date || p.payment_date || p.date || 0).getTime()
+  return [...payouts.value.history].sort((a, b) => key(b) - key(a))
 })
 
 // Функции для выплат
@@ -1524,13 +1521,20 @@ const getPayoutTypeLabel = (type) => {
   return 'Выплата'
 }
 
-/** Статус строки выплаты: по дате выплаты относительно сегодняшнего дня */
+/** Статус: по дате выплаты; если её нет (часто у прогнозов с dohod.ru) — по дате отсечки */
 const getPayoutStatus = (p) => {
-  const payStr = normalizeDateToString(p.payment_date || p.date)
-  if (!payStr) return { key: 'unknown', label: '—' }
   const todayStr = normalizeDateToString(new Date())
-  if (payStr > todayStr) return { key: 'forecast', label: 'Прогноз' }
-  return { key: 'paid', label: 'Выплачены' }
+  const payStr = normalizeDateToString(p.payment_date || p.date)
+  if (payStr) {
+    if (payStr > todayStr) return { key: 'forecast', label: 'Прогноз' }
+    return { key: 'paid', label: 'Выплачены' }
+  }
+  const recordStr = normalizeDateToString(p.record_date)
+  if (recordStr) {
+    if (recordStr > todayStr) return { key: 'forecast', label: 'Прогноз' }
+    return { key: 'paid', label: 'Выплачены' }
+  }
+  return { key: 'unknown', label: '—' }
 }
 
 const payoutTableRows = computed(() =>
@@ -2023,10 +2027,10 @@ async function handlePortfolioChange(portfolioId) {
                   <thead>
                     <tr>
                       <th>Статус</th>
-                      <th>Дата выплаты</th>
+                      <th>Дата отсечки</th>
                       <th>Тип выплаты</th>
                       <th>Дата последней покупки</th>
-                      <th>Дата отсечки</th>
+                      <th>Дата выплаты</th>
                       <th class="text-right">Сумма</th>
                       <th class="text-right">Доходность, %</th>
                     </tr>
@@ -2049,14 +2053,14 @@ async function handlePortfolioChange(portfolioId) {
                           {{ status.label }}
                         </span>
                       </td>
-                      <td class="td-date">{{ formatDate(p.payment_date || p.date) }}</td>
+                      <td class="td-date">{{ p.record_date ? formatDate(p.record_date) : '—' }}</td>
                       <td>
                         <span :class="['badge', 'badge-' + normalizeType(p.type)]">
                           {{ getPayoutTypeLabel(p.type) }}
                         </span>
                       </td>
                       <td class="td-date">{{ p.last_buy_date ? formatDate(p.last_buy_date) : '—' }}</td>
-                      <td class="td-date">{{ p.record_date ? formatDate(p.record_date) : '—' }}</td>
+                      <td class="td-date">{{ (p.payment_date || p.date) ? formatDate(p.payment_date || p.date) : '—' }}</td>
                       <td class="text-right num-font font-semibold text-green">
                         {{ formatOperationAmount(Math.abs(Number(p.value) || 0), assetCurrency) }}
                       </td>
