@@ -10,12 +10,39 @@ import os
 import pytest
 from collections import Counter
 from app.infrastructure.external.brokers.tinkoff import get_tinkoff_portfolio
-from app.infrastructure.external.brokers.tinkoff.import_service import OPERATION_CLASSIFICATION
+from app.infrastructure.external.brokers.tinkoff.import_service import (
+    IMPORT_CANONICAL_TYPES,
+    OPERATION_CLASSIFICATION,
+    classify_tinkoff_operation,
+)
+from t_tech.invest.schemas import OperationType
 
 
 # Токен для тестирования можно задать через переменную окружения TINKOFF_TOKEN
 # или передать через pytest.mark.parametrize
 TINKOFF_TOKEN = os.getenv("TINKOFF_TOKEN")
+
+
+def test_operation_classification_keys_are_sdk_members():
+    """Ключи маппинга — только валидные имена OperationType; неизвестный тип в рантайме → Other."""
+    sdk_names = {e.name for e in OperationType}
+    extra = set(OPERATION_CLASSIFICATION.keys()) - sdk_names
+    assert not extra, f"OPERATION_CLASSIFICATION: ключи не из SDK: {sorted(extra)}"
+
+
+def test_classify_tinkoff_operation_unknown_is_other():
+    assert classify_tinkoff_operation("OPERATION_TYPE_FAKE_FUTURE") == "Other"
+    assert classify_tinkoff_operation("") == "Other"
+
+
+def test_operation_classification_covers_current_sdk():
+    """Полное покрытие текущего enum — при добавлении типов в SDK тест напомнит расширить маппинг."""
+    sdk_names = {e.name for e in OperationType}
+    missing = sdk_names - set(OPERATION_CLASSIFICATION.keys())
+    assert not missing, (
+        "В OPERATION_CLASSIFICATION нет новых типов из SDK (рантайм отдаст Other, но лучше явно смаппить): "
+        f"{sorted(missing)}"
+    )
 
 
 # Фикстура для кеширования данных портфеля между тестами
@@ -82,9 +109,8 @@ class TestTinkoffImport:
                 if op_type:
                     operation_types.append(op_type)
         
-        # Определяем неизвестные типы (те, которые не в OPERATION_CLASSIFICATION)
-        known_types = set(OPERATION_CLASSIFICATION.values())
-        unknown_types = set(operation_types) - known_types
+        # Нормализованные типы (Buy, Tax, Other, …) должны входить в справочник импорта
+        unknown_types = set(operation_types) - IMPORT_CANONICAL_TYPES
         
         # Выводим информацию о типах операций
         print("\n" + "="*80)
@@ -96,7 +122,7 @@ class TestTinkoffImport:
         
         print("\n📊 Все типы операций (с частотой):")
         for op_type, count in type_counter.most_common():
-            status = "✅" if op_type in known_types else "❌ НЕИЗВЕСТНЫЙ"
+            status = "✅" if op_type in IMPORT_CANONICAL_TYPES else "❌ НЕИЗВЕСТНЫЙ"
             print(f"  {status} {op_type}: {count} операций")
         
         if unknown_types:
@@ -278,8 +304,7 @@ def test_standalone_import():
             if op_type:
                 all_operation_types.add(op_type)
     
-    known_types = set(OPERATION_CLASSIFICATION.values())
-    unknown_types = all_operation_types - known_types
+    unknown_types = all_operation_types - IMPORT_CANONICAL_TYPES
     
     if unknown_types:
         print(f"\n⚠️  НАЙДЕНО {len(unknown_types)} НЕИЗВЕСТНЫХ ТИПОВ ОПЕРАЦИЙ:")

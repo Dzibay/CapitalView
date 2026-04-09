@@ -6,32 +6,94 @@ from t_tech.invest import Client, InstrumentIdType
 from t_tech.invest.exceptions import RequestError
 from grpc import StatusCode
 
+# Маппинг OperationType (Tinkoff Invest API) → внутренние типы для portfolio_import_service.
+# Неизвестное имя типа (новый enum в API и т.п.) → Other (см. classify_tinkoff_operation).
 OPERATION_CLASSIFICATION = {
+    # Buy
     "OPERATION_TYPE_BUY": "Buy",
     "OPERATION_TYPE_BUY_CARD": "Buy",
+    "OPERATION_TYPE_BUY_MARGIN": "Buy",
+    "OPERATION_TYPE_DELIVERY_BUY": "Buy",
+    "OPERATION_TYPE_INPUT_SECURITIES": "Buy",
+    # Sell
+    "OPERATION_TYPE_DELIVERY_SELL": "Sell",
+    "OPERATION_TYPE_OUTPUT_SECURITIES": "Sell",
     "OPERATION_TYPE_SELL": "Sell",
+    "OPERATION_TYPE_SELL_CARD": "Sell",
+    "OPERATION_TYPE_SELL_MARGIN": "Sell",
+    # Dividend
     "OPERATION_TYPE_DIVIDEND": "Dividend",
+    "OPERATION_TYPE_DIVIDEND_TRANSFER": "Dividend",
     "OPERATION_TYPE_DIV_EXT": "Dividend",
+    # Coupon
     "OPERATION_TYPE_COUPON": "Coupon",
+    # Deposit
     "OPERATION_TYPE_INPUT": "Deposit",
+    "OPERATION_TYPE_INPUT_ACQUIRING": "Deposit",
+    "OPERATION_TYPE_INPUT_SWIFT": "Deposit",
     "OPERATION_TYPE_INP_MULTI": "Deposit",
+    # Withdraw
     "OPERATION_TYPE_OUTPUT": "Withdraw",
+    "OPERATION_TYPE_OUTPUT_ACQUIRING": "Withdraw",
+    "OPERATION_TYPE_OUTPUT_SWIFT": "Withdraw",
     "OPERATION_TYPE_OUT_MULTI": "Withdraw",
+    # Commission
+    "OPERATION_TYPE_ADVICE_FEE": "Commission",
     "OPERATION_TYPE_BROKER_FEE": "Commission",
-    "OPERATION_TYPE_SERVICE_FEE": "Commission",
+    "OPERATION_TYPE_CASH_FEE": "Commission",
     "OPERATION_TYPE_MARGIN_FEE": "Commission",
+    "OPERATION_TYPE_OTHER_FEE": "Commission",
+    "OPERATION_TYPE_OUT_FEE": "Commission",
+    "OPERATION_TYPE_OUTPUT_PENALTY": "Commission",
+    "OPERATION_TYPE_OUT_STAMP_DUTY": "Commission",
+    "OPERATION_TYPE_OVER_COM": "Commission",
+    "OPERATION_TYPE_SERVICE_FEE": "Commission",
+    "OPERATION_TYPE_SUCCESS_FEE": "Commission",
     "OPERATION_TYPE_TRACK_MFEE": "Commission",
     "OPERATION_TYPE_TRACK_PFEE": "Commission",
-    "OPERATION_TYPE_DIVIDEND_TAX": "Tax",
-    "OPERATION_TYPE_TAX_CORRECTION": "Tax",
-    "OPERATION_TYPE_TAX_COUPON": "Tax",
-    "OPERATION_TYPE_TAX_DIVIDEND": "Tax",
-    "OPERATION_TYPE_TAX_BACK": "Tax",
-    "OPERATION_TYPE_TAX": "Tax",
+    # Tax
     "OPERATION_TYPE_BENEFIT_TAX": "Tax",
+    "OPERATION_TYPE_BENEFIT_TAX_PROGRESSIVE": "Tax",
+    "OPERATION_TYPE_BOND_TAX": "Tax",
+    "OPERATION_TYPE_BOND_TAX_PROGRESSIVE": "Tax",
+    "OPERATION_TYPE_DIVIDEND_TAX": "Tax",
+    "OPERATION_TYPE_DIVIDEND_TAX_PROGRESSIVE": "Tax",
+    "OPERATION_TYPE_TAX": "Tax",
+    "OPERATION_TYPE_TAX_CORRECTION": "Tax",
+    "OPERATION_TYPE_TAX_CORRECTION_COUPON": "Tax",
+    "OPERATION_TYPE_TAX_CORRECTION_PROGRESSIVE": "Tax",
+    "OPERATION_TYPE_TAX_PROGRESSIVE": "Tax",
+    "OPERATION_TYPE_TAX_REPO": "Tax",
+    "OPERATION_TYPE_TAX_REPO_HOLD": "Tax",
+    "OPERATION_TYPE_TAX_REPO_HOLD_PROGRESSIVE": "Tax",
+    "OPERATION_TYPE_TAX_REPO_PROGRESSIVE": "Tax",
+    "OPERATION_TYPE_TAX_REPO_REFUND": "Tax",
+    "OPERATION_TYPE_TAX_REPO_REFUND_PROGRESSIVE": "Tax",
+    # Amortization
+    "OPERATION_TYPE_BOND_REPAYMENT": "Amortization",
     "OPERATION_TYPE_BOND_REPAYMENT_FULL": "Amortization",
-    "OPERATION_TYPE_BOND_REPAYMENT": "Amortization"
+    "OPERATION_TYPE_DFA_REDEMPTION": "Amortization",
+    # Other
+    "OPERATION_TYPE_ACCRUING_VARMARGIN": "Other",
+    "OPERATION_TYPE_FUTURE_EXPIRATION": "Other",
+    "OPERATION_TYPE_OPTION_EXPIRATION": "Other",
+    "OPERATION_TYPE_OTHER": "Other",
+    "OPERATION_TYPE_OVERNIGHT": "Other",
+    "OPERATION_TYPE_OVER_INCOME": "Other",
+    "OPERATION_TYPE_OVER_PLACEMENT": "Other",
+    "OPERATION_TYPE_PRIMARY_ORDER": "Other",
+    "OPERATION_TYPE_TRANS_BS_BS": "Other",
+    "OPERATION_TYPE_TRANS_IIS_BS": "Other",
+    "OPERATION_TYPE_UNSPECIFIED": "Other",
+    "OPERATION_TYPE_WRITING_OFF_VARMARGIN": "Other",
 }
+
+IMPORT_CANONICAL_TYPES = frozenset(OPERATION_CLASSIFICATION.values())
+
+
+def classify_tinkoff_operation(operation_type_name: str) -> str:
+    """Возвращает внутренний тип операции; при отсутствии в маппинге — Other."""
+    return OPERATION_CLASSIFICATION.get(operation_type_name, "Other")
 
 
 def resolve_instrument(client, figi, cache):
@@ -127,7 +189,7 @@ def get_tinkoff_portfolio(token):
                 # Ключ: (дата операции, figi), значение: список сумм налогов
                 tax_by_date_figi = {}
                 for op in ops_raw:
-                    tax_classified = OPERATION_CLASSIFICATION.get(op.operation_type.name, "")
+                    tax_classified = classify_tinkoff_operation(op.operation_type.name)
                     if tax_classified == "Tax":
                         op_date = op.date.date() if op.date else None
                         op_figi = getattr(op, "figi", None)
@@ -146,7 +208,7 @@ def get_tinkoff_portfolio(token):
 
                     inst = resolve_instrument(client, figi, instrument_cache)
 
-                    classified = OPERATION_CLASSIFICATION[op.operation_type.name] if op.operation_type.name in OPERATION_CLASSIFICATION else op.operation_type.name
+                    classified = classify_tinkoff_operation(op.operation_type.name)
                     
                     # Проверяем, является ли это операцией выплаты дивидендов на карту
                     is_div_ext = op.operation_type.name == "OPERATION_TYPE_DIV_EXT"

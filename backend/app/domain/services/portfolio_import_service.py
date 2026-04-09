@@ -284,9 +284,9 @@ async def import_broker_portfolio(
                     if not op_date_normalized:
                         continue
 
-                # Конвертация валюты для не-Deposit/Withdraw операций
+                # Конвертация валюты для не-Deposit/Withdraw операций (operations_type: 5/6)
                 currency_id_for_op = 1
-                if op_type_id not in (7, 8) and asset_id and asset_id in currency_assets_map:
+                if op_type_id not in (5, 6) and asset_id and asset_id in currency_assets_map:
                     quote_asset_id = currency_assets_map[asset_id]
                     currency_id_for_op = quote_asset_id
                     tx_date_obj = parse_date(tx_date)
