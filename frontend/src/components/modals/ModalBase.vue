@@ -49,6 +49,14 @@ const emit = defineEmits(['close'])
   animation: fadeIn 0.2s ease;
 }
 
+@media (max-width: 768px) {
+  .modal-backdrop {
+    padding-bottom: calc(
+      var(--bottomNavHeight, 76px) + env(safe-area-inset-bottom, 0px) + 12px
+    );
+  }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -59,7 +67,7 @@ const emit = defineEmits(['close'])
   border-radius: 20px;
   width: 100%;
   max-width: 480px;
-  max-height: 90vh;
+  max-height: 85vh;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
