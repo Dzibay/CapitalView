@@ -18,11 +18,8 @@ const props = defineProps({
 })
 
 const sortedPayouts = computed(() => {
-  return [...props.payouts].sort((a, b) => {
-    const dateA = new Date(a.date || a.payment_date || 0)
-    const dateB = new Date(b.date || b.payment_date || 0)
-    return dateB - dateA
-  })
+  const key = (p) => new Date(p.record_date || p.payment_date || p.date || 0).getTime()
+  return [...props.payouts].sort((a, b) => key(b) - key(a))
 })
 
 const getPayoutTypeLabel = (type) => {
