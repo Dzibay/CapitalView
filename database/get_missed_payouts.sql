@@ -37,12 +37,12 @@ BEGIN
         po.name AS portfolio_name,
         mp.payout_id,
         ap.value AS payout_value,
-        ap.type AS payout_type,
+        pt.code AS payout_type,
         ap.payment_date,
         ap.record_date,
         ap.last_buy_date,
         CASE 
-            WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'coupon' AND ap.record_date IS NOT NULL THEN
+            WHEN ap.type_id = 2 AND ap.record_date IS NOT NULL THEN
                 ap.value * COALESCE((
                     SELECT pdp.quantity FROM portfolio_asset_daily_values pdp
                     WHERE pdp.portfolio_asset_id = mp.portfolio_asset_id
@@ -50,7 +50,7 @@ BEGIN
                     ORDER BY pdp.report_date DESC
                     LIMIT 1
                 ), 0)
-            WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'dividend' AND ap.last_buy_date IS NOT NULL THEN
+            WHEN ap.type_id = 1 AND ap.last_buy_date IS NOT NULL THEN
                 ap.value * COALESCE((
                     SELECT pdp.quantity FROM portfolio_asset_daily_values pdp
                     WHERE pdp.portfolio_asset_id = mp.portfolio_asset_id
@@ -71,11 +71,11 @@ BEGIN
         COALESCE(a.quote_asset_id, 1)::bigint AS currency_id,
         -- Последняя ли это амортизация по активу (= погашение)
         CASE
-            WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'amortization' THEN
+            WHEN ap.type_id = 3 THEN
                 NOT EXISTS (
                     SELECT 1 FROM asset_payouts ap2
                     WHERE ap2.asset_id = pa.asset_id
-                      AND LOWER(TRIM(COALESCE(ap2.type, ''))) = 'amortization'
+                      AND ap2.type_id = 3
                       AND ap2.payment_date IS NOT NULL
                       AND ap.payment_date IS NOT NULL
                       AND ap2.payment_date > ap.payment_date
@@ -95,6 +95,7 @@ BEGIN
     JOIN portfolios po ON po.id = pa.portfolio_id
     JOIN assets a ON a.id = pa.asset_id
     JOIN asset_payouts ap ON ap.id = mp.payout_id
+    JOIN payout_types pt ON pt.id = ap.type_id
     WHERE po.user_id = p_user_id
       AND (p_portfolio_id IS NULL OR pa.portfolio_id = p_portfolio_id)
     ORDER BY ap.payment_date DESC NULLS LAST;

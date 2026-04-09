@@ -23,7 +23,6 @@ DECLARE
     v_expected_tolerance numeric;
     v_missed_count integer := 0;
     v_operation_type_id bigint;
-    v_payout_type text;
     v_user_id uuid;
     v_portfolio_id bigint;
     v_asset_id bigint;
@@ -83,13 +82,10 @@ BEGIN
         WHERE asset_id = v_asset_id
         ORDER BY payment_date DESC
     LOOP
-        -- Определяем дату проверки в зависимости от типа выплаты
-        -- Для купонов используем record_date, для дивидендов - last_buy_date
-        v_payout_type := LOWER(TRIM(COALESCE(v_payout.type, '')));
-        
-        IF v_payout_type = 'coupon' THEN
+        -- Определяем дату проверки: payout_types.id 1=dividend, 2=coupon, 3=amortization
+        IF v_payout.type_id = 2 THEN
             v_check_date := v_payout.record_date;
-        ELSIF v_payout_type = 'dividend' THEN
+        ELSIF v_payout.type_id = 1 THEN
             v_check_date := v_payout.last_buy_date;
         ELSE
             -- Амортизации с MOEX без record_date/last_buy_date; остальные нестандартные типы — тот же fallback
@@ -139,9 +135,9 @@ BEGIN
         v_expected_tolerance := GREATEST(0.01, ABS(v_expected_amount) * 0.03);
         
         -- Определяем тип операции для проверки в cash_operations
-        IF v_payout_type = 'coupon' THEN
+        IF v_payout.type_id = 2 THEN
             SELECT id INTO v_operation_type_id FROM operations_type WHERE name = 'Coupon' LIMIT 1;
-        ELSIF v_payout_type = 'dividend' THEN
+        ELSIF v_payout.type_id = 1 THEN
             SELECT id INTO v_operation_type_id FROM operations_type WHERE name = 'Dividend' LIMIT 1;
         ELSE
             SELECT id INTO v_operation_type_id FROM operations_type WHERE name = 'Amortization' LIMIT 1;

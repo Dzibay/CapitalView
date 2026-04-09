@@ -18,11 +18,12 @@ asset_payouts_data AS (
                 'payment_date', ap.payment_date,
                 'value', ap.value,
                 'dividend_yield', ap.dividend_yield,
-                'type', ap.type
+                'type', pt.code
             )
             ORDER BY ap.payment_date DESC
         ) AS payouts
     FROM asset_payouts ap
+    JOIN payout_types pt ON pt.id = ap.type_id
     WHERE ap.asset_id IN (
         SELECT DISTINCT pa.asset_id
         FROM portfolio_assets pa

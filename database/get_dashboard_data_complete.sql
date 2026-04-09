@@ -51,7 +51,7 @@ payout_year_totals AS (
     WHERE ap.record_date IS NOT NULL
       AND ap.value IS NOT NULL
       AND ap.value::numeric <> 0
-      AND LOWER(TRIM(COALESCE(ap.type, ''))) = 'dividend'
+      AND ap.type_id = 1
     GROUP BY ap.asset_id, EXTRACT(YEAR FROM ap.record_date::date)
 ),
 
@@ -63,7 +63,7 @@ div_trailing_12m AS (
     FROM asset_payouts ap
     INNER JOIN user_asset_ids u ON u.asset_id = ap.asset_id
     WHERE ap.record_date IS NOT NULL
-      AND LOWER(TRIM(COALESCE(ap.type, ''))) = 'dividend'
+      AND ap.type_id = 1
       AND ap.record_date::date <= CURRENT_DATE
       AND ap.record_date::date > CURRENT_DATE - INTERVAL '1 year'
     GROUP BY ap.asset_id

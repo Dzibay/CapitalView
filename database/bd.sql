@@ -148,6 +148,14 @@ CREATE TABLE public.asset_prices (
   CONSTRAINT asset_prices_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id) ON DELETE CASCADE
 );
 
+CREATE TABLE public.payout_types (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  code text NOT NULL,
+  name_ru text NOT NULL,
+  CONSTRAINT payout_types_pkey PRIMARY KEY (id),
+  CONSTRAINT payout_types_code_key UNIQUE (code)
+);
+
 CREATE TABLE public.asset_payouts (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   asset_id bigint NOT NULL,
@@ -156,9 +164,10 @@ CREATE TABLE public.asset_payouts (
   last_buy_date date,
   record_date date,
   payment_date date,
-  type text,
+  type_id bigint NOT NULL,
   CONSTRAINT asset_payouts_pkey PRIMARY KEY (id),
-  CONSTRAINT asset_payouts_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id) ON DELETE CASCADE
+  CONSTRAINT asset_payouts_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id) ON DELETE CASCADE,
+  CONSTRAINT asset_payouts_type_id_fkey FOREIGN KEY (type_id) REFERENCES public.payout_types(id)
 );
 
 CREATE TABLE public.asset_latest_prices (

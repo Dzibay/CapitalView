@@ -263,9 +263,9 @@ future_payouts AS (
   SELECT
     pa.portfolio_id,
     to_char(date_trunc('month', COALESCE(ap.payment_date, ap.record_date)), 'YYYY-MM') AS month,
-    SUM(CASE WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'dividend' THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS dividends,
-    SUM(CASE WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'coupon' THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS coupons,
-    SUM(CASE WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'amortization' THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS amortizations,
+    SUM(CASE WHEN ap.type_id = 1 THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS dividends,
+    SUM(CASE WHEN ap.type_id = 2 THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS coupons,
+    SUM(CASE WHEN ap.type_id = 3 THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS amortizations,
     SUM(ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date)) AS total_amount,
     COUNT(*) AS payout_count
   FROM portfolio_assets pa
@@ -275,7 +275,7 @@ future_payouts AS (
   WHERE COALESCE(ap.payment_date, ap.record_date) >= CURRENT_DATE
     AND COALESCE(ap.payment_date, ap.record_date) <= CURRENT_DATE + INTERVAL '3 years'
     AND COALESCE(pa.quantity, 0) > 0
-    AND LOWER(TRIM(COALESCE(ap.type, ''))) IN ('dividend', 'coupon', 'amortization')
+    AND ap.type_id IN (1, 2, 3)
   GROUP BY pa.portfolio_id, date_trunc('month', COALESCE(ap.payment_date, ap.record_date))
 ),
 
@@ -327,7 +327,7 @@ asset_yields AS (
                 SELECT SUM(CAST(ap2.value AS numeric)) AS total
                 FROM asset_payouts ap2
                 WHERE ap2.asset_id = a.id
-                  AND ap2.type = 'dividend'
+                  AND ap2.type_id = 1
                   AND ap2.record_date IS NOT NULL
                   AND EXTRACT(YEAR FROM ap2.record_date) >= EXTRACT(YEAR FROM CURRENT_DATE) - 5
                   AND EXTRACT(YEAR FROM ap2.record_date) < EXTRACT(YEAR FROM CURRENT_DATE)
@@ -366,7 +366,7 @@ dividends_by_year AS (
   JOIN p ON p.id = pa.portfolio_id
   JOIN assets a ON a.id = pa.asset_id
   JOIN asset_payouts ap ON ap.asset_id = a.id
-  WHERE ap.type = 'dividend'
+  WHERE ap.type_id = 1
     AND EXTRACT(YEAR FROM COALESCE(ap.payment_date, ap.record_date)) = EXTRACT(YEAR FROM CURRENT_DATE)
     AND COALESCE(ap.payment_date, ap.record_date) >= CURRENT_DATE
     AND COALESCE(pa.quantity, 0) > 0
@@ -684,7 +684,7 @@ SELECT
         JOIN assets a_inner ON a_inner.id = pa_inner.asset_id
         JOIN asset_payouts ap ON ap.asset_id = a_inner.id
         WHERE pa_inner.portfolio_id = p.id
-          AND ap.type = 'coupon'
+          AND ap.type_id = 2
           AND EXTRACT(YEAR FROM COALESCE(ap.payment_date, ap.record_date)) = EXTRACT(YEAR FROM CURRENT_DATE)
           AND COALESCE(ap.payment_date, ap.record_date) >= CURRENT_DATE
           AND COALESCE(pa_inner.quantity, 0) > 0

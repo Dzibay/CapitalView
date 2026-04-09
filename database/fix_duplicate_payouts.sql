@@ -5,9 +5,9 @@
 DELETE FROM asset_payouts
 WHERE id IN (
   SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (PARTITION BY asset_id, payment_date, type ORDER BY id) AS rn
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY asset_id, payment_date, type_id ORDER BY id) AS rn
     FROM asset_payouts
-    WHERE type = 'coupon' AND payment_date IS NOT NULL
+    WHERE type_id = 2 AND payment_date IS NOT NULL
   ) sub
   WHERE rn > 1
 );

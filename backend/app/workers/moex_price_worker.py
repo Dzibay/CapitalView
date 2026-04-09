@@ -26,6 +26,10 @@ from app.workers.base_price_worker import (
 )
 from app.utils.date import parse_date as normalize_date, normalize_date_to_sql_date
 from app.core.logging import get_logger
+from app.domain.constants.payout_types import (
+    PAYOUT_TYPE_AMORTIZATION_ID,
+    PAYOUT_TYPE_COUPON_ID,
+)
 
 logger = get_logger(__name__)
 
@@ -55,7 +59,7 @@ def is_moex_trading_time() -> bool:
 
 
 async def _load_payout_schedules(
-    bond_asset_ids: List[int], payout_type: str,
+    bond_asset_ids: List[int], type_id: int,
 ) -> Dict[int, List[Tuple[date, float]]]:
     """
     Загружает расписание выплат (купонов или амортизаций) из asset_payouts.
@@ -70,7 +74,7 @@ async def _load_payout_schedules(
         rows = await db_select(
             "asset_payouts",
             "asset_id, payment_date, value",
-            filters={"type": payout_type},
+            filters={"type_id": type_id},
             in_filters={"asset_id": bond_asset_ids},
             order="asset_id, payment_date",
             limit=None,
@@ -95,11 +99,11 @@ async def _load_payout_schedules(
 
 
 async def load_amortization_schedules(bond_asset_ids: List[int]) -> Dict[int, List[Tuple[date, float]]]:
-    return await _load_payout_schedules(bond_asset_ids, "amortization")
+    return await _load_payout_schedules(bond_asset_ids, PAYOUT_TYPE_AMORTIZATION_ID)
 
 
 async def load_coupon_schedules(bond_asset_ids: List[int]) -> Dict[int, List[Tuple[date, float]]]:
-    return await _load_payout_schedules(bond_asset_ids, "coupon")
+    return await _load_payout_schedules(bond_asset_ids, PAYOUT_TYPE_COUPON_ID)
 
 
 def calculate_accrued_coupon(

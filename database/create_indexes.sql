@@ -131,16 +131,15 @@ ON asset_payouts(asset_id);
 CREATE INDEX IF NOT EXISTS idx_asset_payouts_payment_date_desc 
 ON asset_payouts(asset_id, payment_date DESC);
 
--- НОВЫЙ: для фильтрации по нормализованному type
+-- Фильтрация по type_id (FK payout_types)
 CREATE INDEX IF NOT EXISTS idx_asset_payouts_asset_type
-ON asset_payouts(asset_id, type)
-WHERE type IS NOT NULL;
+ON asset_payouts(asset_id, type_id);
 
--- Уникальность купонов: (asset_id, payment_date, type) — предотвращает дубли при update_coupons
+-- Уникальность купонов: (asset_id, payment_date, type_id) — предотвращает дубли при update_coupons
 -- Если есть дубликаты, сначала: psql -f fix_duplicate_payouts.sql
 CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_payouts_unique_coupon
-ON asset_payouts(asset_id, payment_date, type)
-WHERE type = 'coupon' AND payment_date IS NOT NULL;
+ON asset_payouts(asset_id, payment_date, type_id)
+WHERE type_id = 2 AND payment_date IS NOT NULL;
 
 -- ============================================================================
 -- ТАБЛИЦА: portfolio_asset_daily_values

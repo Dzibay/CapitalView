@@ -17,6 +17,7 @@ from app.infrastructure.database.postgres_async import (
     table_delete_async,
 )
 from app.core.logging import get_logger
+from app.domain.constants.payout_types import PAYOUT_TYPE_DIVIDEND_ID
 
 logger = get_logger(__name__)
 
@@ -272,8 +273,9 @@ def payout_row_changed(existing: dict, new_payout: dict) -> bool:
     return False
 
 
-def _build_payout_row(merged: dict, p_type: str = "dividend") -> dict:
+def _build_payout_row(merged: dict, type_id: int | None = None) -> dict:
     record_date = merged["record_date"]
+    tid = type_id if type_id is not None else PAYOUT_TYPE_DIVIDEND_ID
     return {
         "asset_id": merged["asset_id"],
         "value": merged["value"],
@@ -281,7 +283,7 @@ def _build_payout_row(merged: dict, p_type: str = "dividend") -> dict:
         "last_buy_date": merged["last_buy_date"].isoformat() if merged.get("last_buy_date") else None,
         "record_date": record_date.isoformat() if isinstance(record_date, date) else record_date,
         "payment_date": merged["payment_date"].isoformat() if merged.get("payment_date") else None,
-        "type": p_type,
+        "type_id": tid,
     }
 
 
@@ -345,7 +347,7 @@ def dedupe_payout_insert_rows(rows: list) -> list:
         rd = r.get("record_date")
         if hasattr(rd, "isoformat"):
             rd = rd.isoformat()
-        k = (r["asset_id"], rd, r.get("type", "dividend"))
+        k = (r["asset_id"], rd, r.get("type_id", PAYOUT_TYPE_DIVIDEND_ID))
         if k in seen:
             continue
         seen.add(k)
@@ -366,8 +368,8 @@ async def update_forecasts(show_progress: bool | None = None):
     
     existing_payouts = await table_select_async(
         "asset_payouts",
-        select="id,asset_id,record_date,value,dividend_yield,last_buy_date,payment_date,type",
-        filters={"type": "dividend"},
+        select="id,asset_id,record_date,value,dividend_yield,last_buy_date,payment_date,type_id",
+        filters={"type_id": PAYOUT_TYPE_DIVIDEND_ID},
     )
 
     removed_dupes, existing_payouts = await delete_duplicate_dividend_payout_rows(existing_payouts)
@@ -471,8 +473,7 @@ async def update_forecasts(show_progress: bool | None = None):
     for merged in merged_payouts:
         record_date = merged["record_date"]
         key = _payout_pair_key(merged["asset_id"], record_date)
-        p_type = "dividend"
-        new_payout = _build_payout_row(merged, p_type=p_type)
+        new_payout = _build_payout_row(merged, type_id=PAYOUT_TYPE_DIVIDEND_ID)
         val = round(float(merged.get("value") or 0), 2)
 
         existing = existing_by_pair.get(key)
@@ -486,7 +487,7 @@ async def update_forecasts(show_progress: bool | None = None):
             continue
 
         rd = existing["record_date"]
-        filters = {"asset_id": merged["asset_id"], "record_date": rd, "type": p_type}
+        filters = {"asset_id": merged["asset_id"], "record_date": rd, "type_id": PAYOUT_TYPE_DIVIDEND_ID}
         payouts_to_update.append(
             (
                 filters,
