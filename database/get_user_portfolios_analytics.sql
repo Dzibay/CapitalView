@@ -189,7 +189,7 @@ asset_payouts_by_asset AS (
 future_payouts AS (
   SELECT
     pa.portfolio_id,
-    to_char(date_trunc('month', ap.payment_date), 'YYYY-MM') AS month,
+    to_char(date_trunc('month', COALESCE(ap.payment_date, ap.record_date)), 'YYYY-MM') AS month,
     SUM(CASE WHEN ap.type = 'dividend' THEN ap.value * COALESCE(pa.quantity, 0) ELSE 0 END) AS dividends,
     SUM(CASE WHEN ap.type = 'coupon' THEN ap.value * COALESCE(pa.quantity, 0) ELSE 0 END) AS coupons,
     SUM(CASE WHEN ap.type = 'amortization' THEN ap.value * COALESCE(pa.quantity, 0) ELSE 0 END) AS amortizations,
@@ -199,12 +199,12 @@ future_payouts AS (
   JOIN p ON p.id = pa.portfolio_id
   JOIN assets a ON a.id = pa.asset_id
   JOIN asset_payouts ap ON ap.asset_id = a.id
-  WHERE ap.payment_date >= CURRENT_DATE
-    AND ap.payment_date <= CURRENT_DATE + INTERVAL '3 years'
+  WHERE COALESCE(ap.payment_date, ap.record_date) >= CURRENT_DATE
+    AND COALESCE(ap.payment_date, ap.record_date) <= CURRENT_DATE + INTERVAL '3 years'
     AND COALESCE(pa.quantity, 0) > 0
     AND ap.type IS NOT NULL
     AND ap.type != ''
-  GROUP BY pa.portfolio_id, date_trunc('month', ap.payment_date)
+  GROUP BY pa.portfolio_id, date_trunc('month', COALESCE(ap.payment_date, ap.record_date))
 ),
 
 -- ОПТИМИЗАЦИЯ: цены на разные даты — один CTE с DISTINCT по asset_id (не для каждого portfolio_asset)
@@ -295,8 +295,8 @@ dividends_by_year AS (
   JOIN assets a ON a.id = pa.asset_id
   JOIN asset_payouts ap ON ap.asset_id = a.id
   WHERE ap.type = 'dividend'
-    AND EXTRACT(YEAR FROM ap.payment_date) = EXTRACT(YEAR FROM CURRENT_DATE)
-    AND ap.payment_date >= CURRENT_DATE
+    AND EXTRACT(YEAR FROM COALESCE(ap.payment_date, ap.record_date)) = EXTRACT(YEAR FROM CURRENT_DATE)
+    AND COALESCE(ap.payment_date, ap.record_date) >= CURRENT_DATE
     AND COALESCE(pa.quantity, 0) > 0
   GROUP BY pa.portfolio_id, EXTRACT(YEAR FROM CURRENT_DATE)
 ),
@@ -610,8 +610,8 @@ SELECT
         JOIN asset_payouts ap ON ap.asset_id = a_inner.id
         WHERE pa_inner.portfolio_id = p.id
           AND ap.type = 'coupon'
-          AND EXTRACT(YEAR FROM ap.payment_date) = EXTRACT(YEAR FROM CURRENT_DATE)
-          AND ap.payment_date >= CURRENT_DATE
+          AND EXTRACT(YEAR FROM COALESCE(ap.payment_date, ap.record_date)) = EXTRACT(YEAR FROM CURRENT_DATE)
+          AND COALESCE(ap.payment_date, ap.record_date) >= CURRENT_DATE
           AND COALESCE(pa_inner.quantity, 0) > 0
       ) + (
         SELECT COALESCE(SUM(COALESCE(co.amount_rub, co.amount)), 0)
