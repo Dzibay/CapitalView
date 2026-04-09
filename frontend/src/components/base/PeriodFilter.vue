@@ -12,6 +12,8 @@ const props = defineProps({
   endDate: { type: String, default: '' },
   /** Левая граница шкалы и выбора — первая дата операции/транзакции (YYYY-MM-DD). Пусто — запас 6 лет назад. */
   trackMinDate: { type: String, default: '' },
+  /** Правая граница шкалы (YYYY-MM-DD). Пусто — сегодня. Нужна для диапазонов с будущими датами (прогнозы выплат). */
+  trackMaxDate: { type: String, default: '' },
   /** Показывать ползунковую шкалу под блоком дат */
   showTrack: { type: Boolean, default: false },
 })
@@ -53,7 +55,14 @@ const trackMin = computed(() => {
   return new Date(t.getFullYear() - 6, 0, 1)
 })
 
-const trackMax = computed(() => startOfToday())
+const trackMax = computed(() => {
+  const p = parseDate(props.trackMaxDate)
+  if (p) {
+    p.setHours(0, 0, 0, 0)
+    return p
+  }
+  return startOfToday()
+})
 
 /** Календарный день в пределах [trackMin, trackMax] */
 const clampDayToTrack = (d) => {
@@ -637,7 +646,7 @@ watch(() => props.preset, (val) => {
 })
 
 watch(
-  () => props.trackMinDate,
+  () => [props.trackMinDate, props.trackMaxDate],
   () => {
     nextTick(() => {
       const mi = trackMin.value

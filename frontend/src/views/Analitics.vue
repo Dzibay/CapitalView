@@ -157,7 +157,7 @@ onMounted(async () => {
 
       <WidgetContainer :gridColumn="6" minHeight="var(--widget-height-medium)">
         <PayoutsChartWidget 
-          title="Полученные выплаты по месяцам"
+          title="Полученные выплаты"
           :payouts="selectedPortfolioAnalytics.monthly_payouts || []"
           mode="past"
           enable-bar-navigation

@@ -1,3 +1,76 @@
+-- Курс валюты котировки актива к рублю на дату (как в check_missed_payouts / apply_operations_batch).
+CREATE OR REPLACE FUNCTION public.currency_asset_to_rub_rate(
+  p_currency_asset_id bigint,
+  p_asof date
+) RETURNS numeric
+LANGUAGE plpgsql
+STABLE
+AS $rate$
+DECLARE
+  v_rub_id bigint;
+  v_quote_id bigint;
+  v_direct numeric;
+  v_c2q numeric;
+  v_q2r numeric;
+  v_rate numeric;
+BEGIN
+  SELECT COALESCE(
+    (SELECT id FROM public.assets WHERE UPPER(TRIM(ticker)) = 'RUB' LIMIT 1),
+    1::bigint
+  ) INTO v_rub_id;
+
+  IF p_currency_asset_id IS NULL OR p_currency_asset_id = v_rub_id THEN
+    RETURN 1;
+  END IF;
+
+  SELECT quote_asset_id INTO v_quote_id
+  FROM public.assets
+  WHERE id = p_currency_asset_id;
+
+  IF v_quote_id IS NULL OR v_quote_id = v_rub_id OR v_quote_id = 1 THEN
+    SELECT price INTO v_direct
+    FROM public.asset_prices
+    WHERE asset_id = p_currency_asset_id
+      AND trade_date <= p_asof
+    ORDER BY trade_date DESC
+    LIMIT 1;
+    v_rate := v_direct;
+  ELSE
+    SELECT price INTO v_c2q
+    FROM public.asset_prices
+    WHERE asset_id = p_currency_asset_id
+      AND trade_date <= p_asof
+    ORDER BY trade_date DESC
+    LIMIT 1;
+
+    SELECT price INTO v_q2r
+    FROM public.asset_prices
+    WHERE asset_id = v_quote_id
+      AND trade_date <= p_asof
+    ORDER BY trade_date DESC
+    LIMIT 1;
+
+    IF v_c2q IS NOT NULL AND v_q2r IS NOT NULL THEN
+      v_rate := v_c2q * v_q2r;
+    ELSE
+      v_rate := NULL;
+    END IF;
+  END IF;
+
+  IF v_rate IS NULL OR v_rate <= 0 THEN
+    SELECT curr_price INTO v_rate
+    FROM public.asset_latest_prices
+    WHERE asset_id = p_currency_asset_id;
+  END IF;
+
+  IF v_rate IS NULL OR v_rate <= 0 THEN
+    RETURN 1;
+  END IF;
+
+  RETURN v_rate;
+END;
+$rate$;
+
 CREATE OR REPLACE FUNCTION get_user_portfolios_analytics(p_user_id uuid)
 RETURNS json
 LANGUAGE plpgsql STABLE
@@ -190,10 +263,10 @@ future_payouts AS (
   SELECT
     pa.portfolio_id,
     to_char(date_trunc('month', COALESCE(ap.payment_date, ap.record_date)), 'YYYY-MM') AS month,
-    SUM(CASE WHEN ap.type = 'dividend' THEN ap.value * COALESCE(pa.quantity, 0) ELSE 0 END) AS dividends,
-    SUM(CASE WHEN ap.type = 'coupon' THEN ap.value * COALESCE(pa.quantity, 0) ELSE 0 END) AS coupons,
-    SUM(CASE WHEN ap.type = 'amortization' THEN ap.value * COALESCE(pa.quantity, 0) ELSE 0 END) AS amortizations,
-    SUM(ap.value * COALESCE(pa.quantity, 0)) AS total_amount,
+    SUM(CASE WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'dividend' THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS dividends,
+    SUM(CASE WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'coupon' THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS coupons,
+    SUM(CASE WHEN LOWER(TRIM(COALESCE(ap.type, ''))) = 'amortization' THEN ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date) ELSE 0 END) AS amortizations,
+    SUM(ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date)) AS total_amount,
     COUNT(*) AS payout_count
   FROM portfolio_assets pa
   JOIN p ON p.id = pa.portfolio_id
@@ -202,8 +275,7 @@ future_payouts AS (
   WHERE COALESCE(ap.payment_date, ap.record_date) >= CURRENT_DATE
     AND COALESCE(ap.payment_date, ap.record_date) <= CURRENT_DATE + INTERVAL '3 years'
     AND COALESCE(pa.quantity, 0) > 0
-    AND ap.type IS NOT NULL
-    AND ap.type != ''
+    AND LOWER(TRIM(COALESCE(ap.type, ''))) IN ('dividend', 'coupon', 'amortization')
   GROUP BY pa.portfolio_id, date_trunc('month', COALESCE(ap.payment_date, ap.record_date))
 ),
 
@@ -289,7 +361,7 @@ dividends_by_year AS (
   SELECT
     pa.portfolio_id,
     EXTRACT(YEAR FROM CURRENT_DATE)::int AS year,
-    SUM(ap.value * COALESCE(pa.quantity, 0)) AS total_dividends
+    SUM(ap.value * COALESCE(pa.quantity, 0) * public.currency_asset_to_rub_rate(a.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date)) AS total_dividends
   FROM portfolio_assets pa
   JOIN p ON p.id = pa.portfolio_id
   JOIN assets a ON a.id = pa.asset_id
@@ -604,7 +676,10 @@ SELECT
           AND dy.year = EXTRACT(YEAR FROM CURRENT_DATE)
       ),
       'coupons_per_year', (
-        SELECT COALESCE(SUM(ap.value * COALESCE(pa_inner.quantity, 0)), 0)
+        SELECT COALESCE(SUM(
+          ap.value * COALESCE(pa_inner.quantity, 0)
+          * public.currency_asset_to_rub_rate(a_inner.quote_asset_id, (COALESCE(ap.payment_date, ap.record_date))::date)
+        ), 0)
         FROM portfolio_assets pa_inner
         JOIN assets a_inner ON a_inner.id = pa_inner.asset_id
         JOIN asset_payouts ap ON ap.asset_id = a_inner.id
