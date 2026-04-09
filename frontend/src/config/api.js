@@ -5,6 +5,7 @@
 export const API_ENDPOINTS = {
   ADMIN: {
     DATA: '/admin/data',
+    SUPPORT_MESSAGES: '/admin/support-messages',
     USER_DASHBOARD: (userId) => `/admin/users/${userId}/dashboard`,
   },
   AUTH: {

@@ -19,4 +19,10 @@ export const adminService = {
     const res = await apiClient.get(API_ENDPOINTS.ADMIN.USER_DASHBOARD(userId))
     return res.data?.dashboard ?? null
   },
+
+  async fetchSupportMessages() {
+    const res = await apiClient.get(API_ENDPOINTS.ADMIN.SUPPORT_MESSAGES)
+    const raw = res.data?.support_messages
+    return Array.isArray(raw) ? raw : []
+  },
 }

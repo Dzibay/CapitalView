@@ -58,6 +58,35 @@ class TestAdminData:
 
 @pytest.mark.integration
 @pytest.mark.api
+class TestAdminSupportMessages:
+    def test_support_messages_forbidden_for_regular_user(self, authenticated_client, mock_user):
+        response = authenticated_client.get("/api/v1/admin/support-messages")
+        assert response.status_code == 403
+
+    def test_support_messages_ok_for_platform_admin(self, authenticated_client, mock_user, monkeypatch):
+        monkeypatch.setenv("ADMIN_EMAILS", mock_user["email"])
+        sample = [
+            {
+                "id": 1,
+                "user_id": str(mock_user["id"]),
+                "message": "Нужна помощь",
+                "created_at": "2025-01-15T10:00:00+00:00",
+                "user_email": mock_user["email"],
+                "user_name": "Test User",
+            }
+        ]
+        with patch(
+            "app.api.v1.admin.list_support_messages_for_admin",
+            new_callable=AsyncMock,
+            return_value=sample,
+        ):
+            response = authenticated_client.get("/api/v1/admin/support-messages")
+        data = get_response_data(response)
+        assert data["support_messages"] == sample
+
+
+@pytest.mark.integration
+@pytest.mark.api
 class TestAdminUserDashboard:
     def test_user_dashboard_forbidden_for_regular_user(self, authenticated_client, mock_user):
         response = authenticated_client.get(
