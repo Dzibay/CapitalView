@@ -51,22 +51,21 @@ payout_year_totals AS (
     WHERE ap.record_date IS NOT NULL
       AND ap.value IS NOT NULL
       AND ap.value::numeric <> 0
+      AND LOWER(TRIM(COALESCE(ap.type, ''))) = 'dividend'
     GROUP BY ap.asset_id, EXTRACT(YEAR FROM ap.record_date::date)
 ),
 
--- Текущий календарный год: все выплаты с record_date в этом году, parseFloat(value)||0 на строку
-div_current_year AS (
+-- TTM: сумма дивидендов (type=dividend) за скользящие 12 месяцев по дате отсечки, только уже наступившие отсечки
+div_trailing_12m AS (
     SELECT
         ap.asset_id,
-        COALESCE(
-            SUM(COALESCE(ap.value::numeric, 0)) FILTER (
-                WHERE EXTRACT(YEAR FROM ap.record_date::date)::int = EXTRACT(YEAR FROM CURRENT_DATE)::int
-            ),
-            0
-        ) AS div_sum_cy
+        COALESCE(SUM(COALESCE(ap.value::numeric, 0)), 0) AS div_sum_ttm
     FROM asset_payouts ap
     INNER JOIN user_asset_ids u ON u.asset_id = ap.asset_id
     WHERE ap.record_date IS NOT NULL
+      AND LOWER(TRIM(COALESCE(ap.type, ''))) = 'dividend'
+      AND ap.record_date::date <= CURRENT_DATE
+      AND ap.record_date::date > CURRENT_DATE - INTERVAL '1 year'
     GROUP BY ap.asset_id
 ),
 
@@ -113,7 +112,7 @@ portfolio_assets_data AS (
                 'first_purchase_price', COALESCE(fpd.first_purchase_price, 0),
                 'dividend_yield_year_pct', CASE
                     WHEN COALESCE(apf.curr_price, 0) = 0 THEN 0::numeric
-                    ELSE (COALESCE(dcy.div_sum_cy, 0) / NULLIF(COALESCE(apf.curr_price, 0)::numeric, 0)) * 100
+                    ELSE (COALESCE(dtm.div_sum_ttm, 0) / NULLIF(COALESCE(apf.curr_price, 0)::numeric, 0)) * 100
                 END,
                 'dividend_yield_5y_pct', CASE
                     WHEN COALESCE(apf.curr_price, 0) = 0 THEN 0::numeric
@@ -130,7 +129,7 @@ portfolio_assets_data AS (
     LEFT JOIN assets qa ON qa.id = a.quote_asset_id
     LEFT JOIN asset_latest_prices curr ON curr.asset_id = a.quote_asset_id
     LEFT JOIN first_purchase_data fpd ON fpd.portfolio_asset_id = pa.id
-    LEFT JOIN div_current_year dcy ON dcy.asset_id = pa.asset_id
+    LEFT JOIN div_trailing_12m dtm ON dtm.asset_id = pa.asset_id
     LEFT JOIN div_5y_avg d5 ON d5.asset_id = pa.asset_id
     GROUP BY pa.portfolio_id
 ),

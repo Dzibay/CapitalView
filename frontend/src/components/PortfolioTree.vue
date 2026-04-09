@@ -109,16 +109,31 @@ const sortedPortfolios = computed(() => sortPortfolios(unref(props.portfolios)))
 // ==== Остальная логика ====
 const togglePortfolio = (id) => emit("togglePortfolio", id);
 
-// 📈 Дивидендная доходность за текущий календарный год (%) — с сервера (get_dashboard_data_complete) или как раньше
+// 📈 Дивидендная доходность TTM (~12 мес. по record_date, только type=dividend) — с сервера (dividend_yield_year_pct) или fallback
+const isDividendPayoutRow = (d) => {
+  const t = String(d?.type ?? '').trim().toLowerCase()
+  if (!t) return true
+  return t === 'dividend'
+}
+
 const getDividendYieldCurrentYear = (asset) => {
   if (asset.dividend_yield_year_pct != null && asset.dividend_yield_year_pct !== '') {
     return Number(asset.dividend_yield_year_pct)
   }
   const payouts = asset.payouts || asset.dividends || []
   if (!payouts.length || !asset.last_price) return 0
-  const currentYear = new Date().getFullYear()
+  const todayYmd = new Date()
+  const todayDay = new Date(todayYmd.getFullYear(), todayYmd.getMonth(), todayYmd.getDate())
+  const cutoffDay = new Date(todayDay)
+  cutoffDay.setFullYear(cutoffDay.getFullYear() - 1)
   const totalDividends = payouts
-    .filter(d => new Date(d.record_date).getFullYear() === currentYear)
+    .filter((d) => {
+      if (!isDividendPayoutRow(d) || !d.record_date) return false
+      const rd = new Date(d.record_date)
+      if (Number.isNaN(rd.getTime())) return false
+      const rdDay = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate())
+      return rdDay > cutoffDay && rdDay <= todayDay
+    })
     .reduce((sum, d) => sum + (parseFloat(d.value) || 0), 0)
   return (totalDividends / asset.last_price) * 100
 }
@@ -132,7 +147,7 @@ const getDividendYield5Y = (asset) => {
   if (!payouts.length || !asset.last_price) return 0
   const yearly = {}
   for (const d of payouts) {
-    if (!d.record_date || !d.value) continue
+    if (!isDividendPayoutRow(d) || !d.record_date || !d.value) continue
     const year = new Date(d.record_date).getFullYear()
     yearly[year] = (yearly[year] || 0) + parseFloat(d.value)
   }
@@ -196,7 +211,7 @@ function goToAsset(asset) {
                   <th class="col-right">Ср. цена</th>
                   <th class="col-right">Цена</th>
                   <th class="col-right">Стоимость</th>
-                  <th class="col-right">Див (год)</th>
+                  <th class="col-right">Див (12 мес.)</th>
                   <th class="col-right">Див (5л)</th>
                   <th class="col-right">P&L (Всё)</th>
                   <th class="col-right">P&L (День)</th>
