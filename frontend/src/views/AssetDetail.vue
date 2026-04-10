@@ -1,7 +1,16 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Building2, PieChart, TrendingDown, Hash, History, LineChart, Coins } from 'lucide-vue-next'
+import {
+  Building2,
+  TrendingDown,
+  Hash,
+  History,
+  LineChart,
+  Coins,
+  LayoutDashboard,
+  BarChart3
+} from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import MultiLineChart from '../components/charts/MultiLineChart.vue'
@@ -22,7 +31,7 @@ import LoadingState from '../components/base/LoadingState.vue'
 import assetsService from '../services/assetsService'
 import operationsService from '../services/operationsService'
 import PageLayout from '../layouts/PageLayout.vue'
-import { PayoutsChartWidget } from '../components/widgets/charts'
+import { PayoutsChartWidget, AssetAllocationWidget } from '../components/widgets/charts'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
 import { getCurrencySymbol } from '../utils/currencySymbols'
@@ -49,9 +58,9 @@ const showMinMax = ref(false)
 const selectedTab = ref('general') // 'general' | 'analytics' | 'dividends'
 
 const tabs = [
-  { id: 'general', label: 'Общее' },
-  { id: 'analytics', label: 'Аналитика' },
-  { id: 'dividends', label: 'Дивиденды' }
+  { id: 'general', label: 'Общее', icon: LayoutDashboard },
+  { id: 'analytics', label: 'Аналитика', icon: BarChart3 },
+  { id: 'dividends', label: 'Дивиденды', icon: Coins }
 ]
 
 const analyticsChartMetric = ref('position') // 'position' | 'quantity'
@@ -1015,18 +1024,6 @@ const assetHistoryTitle = computed(() => {
   return 'История актива'
 })
 
-// Расчет доли в корневом портфеле для выбранного портфеля
-const selectedPortfolioPercentageInRoot = computed(() => {
-  if (!selectedPortfolioAsset.value) return null
-
-  const rootValue = rootPortfolio.value?.total_value || 0
-  const assetValue = selectedPortfolioAsset.value.asset_value || 0
-
-  if (rootValue === 0) return null
-
-  return (assetValue / rootValue) * 100
-})
-
 // Computed properties для виджетов метрик
 const basicInfoItems = computed(() => {
   // Для "Основная информация" используем валюту актива (quote_asset_id)
@@ -1075,35 +1072,55 @@ const basicInfoItems = computed(() => {
   return result
 })
 
-const contributionItems = computed(() => {
-  // Для "Вклад в портфель" все значения в рублях
-  const result = [
-    { 
-      label: 'Общая стоимость портфеля', 
-      value: selectedPortfolioAsset.value?.portfolio_total_value || 0, 
-      format: 'currency',
-      formatter: (v) => formatOperationAmount(v, 'RUB')
-    },
-    { 
-      label: 'Стоимость актива', 
-      value: selectedPortfolioAsset.value?.asset_value || 0, 
-      format: 'currency',
-      formatter: (v) => formatOperationAmount(v, 'RUB')
-    },
-    { label: 'Доля в портфеле', value: selectedPortfolioAsset.value?.percentage_in_portfolio || 0, format: 'number', suffix: '%' }
-  ]
-  
-  if (selectedPortfolioPercentageInRoot.value !== null && selectedPortfolioPercentageInRoot.value !== undefined) {
-    result.push({
-      label: 'Доля в портфеле "Все активы"',
-      value: selectedPortfolioPercentageInRoot.value,
-      format: 'number',
-      suffix: '%'
-    })
-  }
-  
-  return result
+const contributionScope = ref('portfolio')
+
+const contributionScopeOptions = [
+  { value: 'portfolio', label: 'По портфелю' },
+  { value: 'all_assets', label: 'По всем активам' }
+]
+
+const contributionAssetLabel = computed(() => {
+  const t = selectedPortfolioAsset.value?.ticker || assetInfo.value?.ticker
+  return t ? String(t).trim() : 'Этот актив'
 })
+
+const contributionAssetAllocation = computed(() => {
+  const pa = selectedPortfolioAsset.value
+
+  let totalVal = 0
+  let raw = 0
+  if (contributionScope.value === 'all_assets') {
+    totalVal = Math.max(0, Number(rootPortfolio.value?.total_value) || 0)
+    const agg = aggregatedPortfolioMetrics.value
+    raw = agg
+      ? Math.max(0, Number(agg.totalValueRub) || 0)
+      : Math.max(0, Number(pa?.asset_value) || 0)
+  } else {
+    totalVal = Math.max(0, Number(pa?.portfolio_total_value) || 0)
+    raw = Math.max(0, Number(pa?.asset_value) || 0)
+  }
+
+  const asset = totalVal > 0 ? Math.min(raw, totalVal) : raw
+  const rest = totalVal > 0 ? Math.max(0, totalVal - asset) : 0
+  if (asset + rest <= 0) return null
+  return {
+    labels: [contributionAssetLabel.value, 'Остальные активы'],
+    datasets: [{
+      data: [asset, rest],
+      backgroundColor: ['#3b82f6', '#e5e7eb']
+    }]
+  }
+})
+
+const contributionEmptyMessage = computed(() =>
+  contributionScope.value === 'all_assets'
+    ? 'Нет данных о портфеле «Все активы»'
+    : 'Нет данных о стоимости портфеля'
+)
+
+function formatContributionCenterRub(value) {
+  return formatOperationAmount(value, 'RUB')
+}
 
 const profitLossItems = computed(() => {
   // Для "Прибыль и убытки" все значения всегда в рублях
@@ -1781,59 +1798,77 @@ async function handlePortfolioChange(portfolioId) {
               {{ headerUnitPriceDisplay }}
               <span v-if="assetCurrency" class="price-currency"> {{ getCurrencySymbol(assetCurrency) }}</span>
             </div>
-            <div v-if="selectedPortfolioAsset?.daily_change !== undefined && selectedPortfolioAsset.daily_change !== 0" class="price-change">
-              <ValueChangePill
-                :value="selectedPriceChangePercent"
-                :is-positive="selectedPortfolioAsset.daily_change >= 0"
-                format="percent"
-              />
-              <span class="price-change-currency">
-                ({{ selectedPortfolioAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(selectedPortfolioAsset.daily_change) }})
-              </span>
+            <div v-if="selectedPortfolioAsset?.last_price" class="price-change">
+              <template
+                v-if="selectedPortfolioAsset.daily_change != null && selectedPortfolioAsset.daily_change !== 0"
+              >
+                <ValueChangePill
+                  :value="selectedPriceChangePercent"
+                  :is-positive="selectedPortfolioAsset.daily_change >= 0"
+                  format="percent"
+                />
+                <span class="price-change-currency">
+                  ({{ selectedPortfolioAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(selectedPortfolioAsset.daily_change) }})
+                </span>
+              </template>
+              <template v-else-if="selectedPortfolioAsset.daily_change === 0">
+                <span class="price-change-flat">{{ Math.abs(selectedPriceChangePercent).toFixed(2) }}%</span>
+                <span class="price-change-currency">
+                  ({{ selectedPortfolioAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(selectedPortfolioAsset.daily_change) }})
+                </span>
+              </template>
+              <template v-else>
+                <span class="price-change-flat">—</span>
+                <span class="price-change-currency">—</span>
+              </template>
             </div>
           </div>
         </div>
 
         <!-- Ключевые метрики: сумма по всем портфелям с этим активом -->
-        <div class="asset-key-metrics" v-if="aggregatedPortfolioMetrics">
-          <div class="key-metric">
-            <span class="key-metric-label">Количество</span>
-            <span class="key-metric-value">{{ aggregatedPortfolioMetrics.totalQuantity }}</span>
+        <dl class="asset-key-metrics" v-if="aggregatedPortfolioMetrics">
+          <div class="key-metric left-metric-item">
+            <dt class="key-metric-label">Количество</dt>
+            <dd class="key-metric-value">{{ aggregatedPortfolioMetrics.totalQuantity }}</dd>
           </div>
-          <div class="key-metric">
-            <span class="key-metric-label">Стоимость</span>
-            <span class="key-metric-value">{{ formatOperationAmount(aggregatedPortfolioMetrics.totalValueRub, 'RUB') }}</span>
+          <div class="key-metric right-metric-item">
+            <dt class="key-metric-label">Стоимость</dt>
+            <dd class="key-metric-value">{{ formatOperationAmount(aggregatedPortfolioMetrics.totalValueRub, 'RUB') }}</dd>
           </div>
-          <div class="key-metric">
-            <span class="key-metric-label">Доля</span>
-            <span class="key-metric-value">
+          <div class="key-metric left-metric-item">
+            <dt class="key-metric-label">Доля</dt>
+            <dd class="key-metric-value">
               {{
                 aggregatedPortfolioMetrics.shareInRootPercent != null
                   ? `${aggregatedPortfolioMetrics.shareInRootPercent.toFixed(2)}%`
                   : '—'
               }}
-            </span>
+            </dd>
           </div>
-          <div class="key-metric">
-            <span class="key-metric-label">Общая прибыль</span>
-            <span
+          <div class="key-metric right-metric-item">
+            <dt class="key-metric-label">Общая прибыль</dt>
+            <dd
               class="key-metric-value"
               :class="aggregatedPortfolioMetrics.isProfit ? 'text-green' : 'text-red'"
             >
               {{ formatOperationAmount(aggregatedPortfolioMetrics.totalPnl, 'RUB') }}
-            </span>
+            </dd>
           </div>
-        </div>
+        </dl>
 
         <!-- Табы навигации -->
-        <div class="asset-tabs">
+        <div class="asset-tabs" role="tablist">
           <button
             v-for="tab in tabs"
             :key="tab.id"
+            type="button"
+            role="tab"
+            :aria-selected="selectedTab === tab.id"
             :class="['asset-tab', { active: selectedTab === tab.id }]"
             @click="selectedTab = tab.id"
           >
-            {{ tab.label }}
+            <component :is="tab.icon" class="asset-tab-icon" :size="18" aria-hidden="true" />
+            <span class="asset-tab-label">{{ tab.label }}</span>
           </button>
         </div>
       </div>
@@ -1842,7 +1877,7 @@ async function handlePortfolioChange(portfolioId) {
       <template v-if="selectedTab === 'general'">
         <!-- График цены и описание актива -->
         <div class="widgets-grid">
-          <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-large)">
+          <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-large)">
             <Widget title="История цены" :icon="LineChart">
               <template #header>
                 <ChartOptionsMenu
@@ -1875,63 +1910,6 @@ async function handlePortfolioChange(portfolioId) {
                   />
                   <div v-else class="no-chart-data">Нет данных для отображения графика</div>
                 </div>
-              </div>
-            </Widget>
-          </WidgetContainer>
-
-          <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-large)">
-            <Widget title="Описание актива" :icon="Hash">
-              <div class="asset-description-placeholder">
-                <p>Описание актива будет здесь</p>
-              </div>
-            </Widget>
-          </WidgetContainer>
-        </div>
-
-        <div class="widgets-grid">
-          <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-            <MetricsWidget title="Основная информация" :icon="Building2" :items="basicInfoItems" />
-          </WidgetContainer>
-
-          <WidgetContainer :gridColumn="8" minHeight="var(--widget-height-medium)">
-            <Widget title="Операции" :icon="History">
-              <div class="table-container">
-                <table class="transactions-table">
-                  <thead>
-                    <tr>
-                      <th>Дата</th>
-                      <th>Тип</th>
-                      <th class="text-right">Кол-во</th>
-                      <th class="text-right">Цена</th>
-                      <th class="text-right">Сумма</th>
-                      <th class="text-right">Валюта</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="op in allOperations" :key="op.id" class="tx-row">
-                      <td class="td-date">{{ formatDate(op.date) }}</td>
-                      <td>
-                        <span :class="['badge', 'badge-' + normalizeType(op.operationType, op.type)]">
-                          {{ getOperationTypeLabel(op) }}
-                        </span>
-                      </td>
-                      <td class="text-right num-font">{{ op.quantity || '—' }}</td>
-                      <td class="text-right num-font">{{ op.price ? op.price.toLocaleString() : '—' }}</td>
-                      <td class="text-right num-font font-semibold" :class="op.amount >= 0 ? 'text-green' : 'text-red'">
-                        {{ formatOperationAmount(Math.abs(op.amount || 0), op.currency || 'RUB') }}
-                      </td>
-                      <td class="text-right num-font">{{ op.currency || 'RUB' }}</td>
-                    </tr>
-                    <tr v-if="allOperations.length === 0">
-                      <td colspan="6" class="empty-cell">
-                        <div class="empty-state">
-                          <span class="empty-icon">🔍</span>
-                          <p>Операции не найдены</p>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
               </div>
             </Widget>
           </WidgetContainer>
@@ -1987,7 +1965,19 @@ async function handlePortfolioChange(portfolioId) {
         <!-- Показатели аналитики -->
         <div class="widgets-grid">
           <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-            <MetricsWidget title="Вклад в портфель" :icon="PieChart" :items="contributionItems" />
+            <AssetAllocationWidget
+              title="Вклад в портфель"
+              :asset-allocation="contributionAssetAllocation"
+              :empty-message="contributionEmptyMessage"
+              :format-center-value="formatContributionCenterRub"
+            >
+              <template #header>
+                <ChartVariantSelect
+                  v-model="contributionScope"
+                  :options="contributionScopeOptions"
+                />
+              </template>
+            </AssetAllocationWidget>
           </WidgetContainer>
 
           <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
@@ -2142,17 +2132,6 @@ async function handlePortfolioChange(portfolioId) {
   margin-top: 2rem;
 }
 
-@media (max-width: 1200px) {
-  .widgets-grid {
-    grid-template-columns: repeat(6, 1fr);
-  }
-}
-
-@media (max-width: 768px) {
-  .widgets-grid {
-    grid-template-columns: 1fr;
-  }
-}
 
 .error-state {
   display: flex;
@@ -2169,7 +2148,7 @@ async function handlePortfolioChange(portfolioId) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   gap: 1rem;
 }
 
@@ -2201,7 +2180,7 @@ async function handlePortfolioChange(portfolioId) {
 /* Блок с названием актива, ценой, метриками и табами */
 .asset-overview-block {
   background: white;
-  padding: 1.5rem 1.5rem 0;
+  padding: 1.5rem 1.5rem 0rem;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.05);
   margin-bottom: 0;
@@ -2215,13 +2194,7 @@ async function handlePortfolioChange(portfolioId) {
   justify-content: space-between;
   align-items: flex-start;
   gap: 2rem;
-  flex-wrap: wrap;
   padding-bottom: 1rem;
-}
-
-.asset-main-info {
-  flex: 1;
-  min-width: 200px;
 }
 
 .asset-name {
@@ -2262,6 +2235,7 @@ async function handlePortfolioChange(portfolioId) {
   font-weight: 700;
   color: #111827;
   line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
 .price-currency {
@@ -2280,6 +2254,14 @@ async function handlePortfolioChange(portfolioId) {
 .price-change-currency {
   color: #6b7280;
   font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-change-flat {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Ключевые метрики в overview */
@@ -2289,12 +2271,24 @@ async function handlePortfolioChange(portfolioId) {
   padding: 0.75rem 0;
   border-top: 1px solid #f3f4f6;
   flex-wrap: wrap;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .key-metric {
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
+}
+
+@media (max-width: 768px) {
+  .left-metric-item {
+    align-items: flex-start;
+  }
+
+  .right-metric-item {
+    align-items: flex-end;
+  }
 }
 
 .key-metric-label {
@@ -2309,48 +2303,119 @@ async function handlePortfolioChange(portfolioId) {
   font-size: 0.875rem;
   font-weight: 600;
   color: #111827;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Табы навигации */
 .asset-tabs {
   display: flex;
-  gap: 0;
+  justify-content: flex-start;
+  align-items: flex-end;
+  gap: 0.25rem;
   border-top: 1px solid #f3f4f6;
   margin: 0 -1.5rem;
   padding: 0 1.5rem;
+  box-sizing: border-box;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+@media (max-width: 768px) {
+  .asset-tabs {
+    gap: 0rem;
+    justify-content: space-between;
+  }
+}
+
+.asset-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+
+.asset-tabs::-webkit-scrollbar-thumb {
+  background: #e5e7eb;
+  border-radius: 4px;
 }
 
 .asset-tab {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex: 0 0 auto;
+  width: fit-content;
+  max-width: 100%;
   padding: 0.75rem 1rem;
+  margin: 0;
   background: none;
   border: none;
+  border-bottom: 2px solid transparent;
   font-size: 0.875rem;
   font-weight: 500;
   color: #6b7280;
   cursor: pointer;
-  transition: color 0.2s;
+  transition: color 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
+  scroll-snap-align: start;
+  box-sizing: border-box;
 }
 
-.asset-tab:hover {
-  color: #111827;
+.asset-tab-icon {
+  flex-shrink: 0;
+  color: inherit;
 }
 
+.asset-tab:first-child {
+  padding-left: 0;
+}
+
+.asset-tab:last-child {
+  padding-right: 0;
+}
+
+.asset-tab:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.asset-tab:hover,
 .asset-tab.active {
-  color: #111827;
-  font-weight: 600;
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
 }
 
-.asset-tab.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 1rem;
-  right: 1rem;
-  height: 2px;
-  background: #3b82f6;
-  border-radius: 1px 1px 0 0;
+@media (max-width: 640px) {
+  .asset-overview-top {
+    gap: 1rem;
+  }
+
+  .asset-key-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 1rem;
+    row-gap: 0.875rem;
+  }
+
+  .asset-tabs {
+    overflow-x: visible;
+    scroll-snap-type: none;
+  }
+
+  .asset-tab {
+    flex: unset;
+    scroll-snap-align: unset;
+    font-size: 0.75rem;
+    gap: 0.25rem;
+    padding: 0.75rem 0.35rem;
+    min-width: 0;
+  }
+
+  .asset-tab :deep(svg) {
+    width: 15px;
+    height: 15px;
+  }
 }
 
 .section-title {
@@ -2792,21 +2857,21 @@ async function handlePortfolioChange(portfolioId) {
 
 @media (max-width: 1200px) {
   .widgets-grid {
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 768px) {
+  .widgets-grid {
+    margin-top: 1rem;
+  }
+
   .content-wrapper {
     padding: 1rem;
   }
 
   .asset-name {
     font-size: 1.5rem;
-  }
-
-  .widgets-grid {
-    grid-template-columns: 1fr;
   }
 
   .chart-container {

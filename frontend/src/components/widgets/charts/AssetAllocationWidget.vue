@@ -1,18 +1,37 @@
 <script setup>
-import { ref, computed, watch, inject, onMounted, unref } from 'vue'
+import { ref, computed, watch, inject, onMounted, unref, useSlots } from 'vue'
 import { PieChart } from 'lucide-vue-next'
 import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, DoughnutController } from 'chart.js'
 import Widget from '../base/Widget.vue'
+import EmptyState from '../base/EmptyState.vue'
 import { LANDING_DASH_REVEAL_KEY } from '../../../constants/landingDashboardReveal'
 
 ChartJS.register(Title, Tooltip, Legend, ArcElement, DoughnutController)
 
 // Props
 const props = defineProps({
+  title: {
+    type: String,
+    default: 'Распределение активов'
+  },
+  icon: {
+    type: [Object, Function],
+    default: () => PieChart
+  },
   assetAllocation: {
     type: Object,
-    required: true
+    default: null
+  },
+  /** Подпись суммы в центре кольца (по умолчанию — formatCurrency в RUB) */
+  formatCenterValue: {
+    type: Function,
+    default: null
+  },
+  /** Показать EmptyState, если данных для графика нет */
+  emptyMessage: {
+    type: String,
+    default: null
   },
   scrollReveal: {
     type: Boolean,
@@ -23,6 +42,8 @@ const props = defineProps({
     default: null
   }
 })
+
+const slots = useSlots()
 
 const injectedLandingReveal = inject(LANDING_DASH_REVEAL_KEY, null)
 
@@ -62,6 +83,11 @@ const formatCurrency = (value) => {
   return value.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 })
 }
 
+function formatCenterDisplay(value) {
+  if (props.formatCenterValue) return props.formatCenterValue(value)
+  return formatCurrency(value)
+}
+
 const chartData = computed(() => ({
   labels: props.assetAllocation?.labels ?? [],
   datasets: props.assetAllocation?.datasets ?? []
@@ -69,7 +95,13 @@ const chartData = computed(() => ({
 
 const total = computed(() => {
   if (!props.assetAllocation?.datasets?.length) return 0
-  return props.assetAllocation.datasets[0].data.reduce((a, b) => a + b, 0)
+  return props.assetAllocation.datasets[0].data.reduce((a, b) => a + (Number(b) || 0), 0)
+})
+
+const hasRenderableData = computed(() => {
+  const a = props.assetAllocation
+  if (!a?.labels?.length || !a.datasets?.[0]?.data?.length) return false
+  return total.value > 0
 })
 
 const chartOptions = computed(() => ({
@@ -84,14 +116,14 @@ const chartOptions = computed(() => ({
         const tooltipModel = context.tooltip
         const data = props.assetAllocation
 
-        if (tooltipModel.dataPoints?.length && data.datasets?.length) {
+        if (tooltipModel.dataPoints?.length && data?.datasets?.length) {
           const idx = tooltipModel.dataPoints[0].dataIndex
           const label = data.labels[idx]
           const value = data.datasets[0].data[idx]
           const totalValue = total.value
           const percentage = totalValue > 0 ? Math.round((value / totalValue) * 100) : 0
           centerInfo.value = { label, value, percentage }
-        } else if (data.datasets?.length) {
+        } else if (data?.datasets?.length) {
           centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
         }
       }
@@ -99,36 +131,43 @@ const chartOptions = computed(() => ({
   },
   onHover: (event, activeElements, chart) => {
     const data = props.assetAllocation
-    if (activeElements && activeElements.length > 0 && data.datasets?.length) {
+    if (activeElements && activeElements.length > 0 && data?.datasets?.length) {
       const index = activeElements[0].index
       const label = data.labels[index]
       const value = data.datasets[0].data[index]
       const totalValue = total.value
       const percentage = totalValue > 0 ? Math.round((value / totalValue) * 100) : 0
       centerInfo.value = { label, value, percentage }
-    } else if (data.datasets?.length) {
+    } else if (data?.datasets?.length) {
       centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
     }
   }
 }))
 
 // Инициализация и обновление centerInfo при изменении данных
-watch(() => props.assetAllocation, () => {
-  if (props.assetAllocation?.datasets?.length) {
-    centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
-  }
-}, { immediate: true, deep: true })
+watch(
+  () => props.assetAllocation,
+  () => {
+    if (hasRenderableData.value) {
+      centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
+    }
+  },
+  { immediate: true, deep: true }
+)
 </script>
 
 <template>
-  <Widget title="Распределение активов" :icon="PieChart">
-    <div v-if="assetAllocation && assetAllocation.labels" class="allocation-container">
+  <Widget :title="title" :icon="icon">
+    <template v-if="slots.header" #header>
+      <slot name="header" />
+    </template>
+    <div v-if="hasRenderableData" class="allocation-container">
       <div class="chart-wrapper">
         <Doughnut :key="doughnutRemountKey" :data="chartData" :options="chartOptions" />
         <div v-if="centerInfo.label" class="chart-center">
           <span class="center-label">{{ centerInfo.label }}</span>
           <span class="center-percentage">{{ centerInfo.percentage }}%</span>
-          <span class="center-value">{{ formatCurrency(centerInfo.value) }}</span>
+          <span class="center-value">{{ formatCenterDisplay(centerInfo.value) }}</span>
         </div>
       </div>
 
@@ -139,6 +178,7 @@ watch(() => props.assetAllocation, () => {
         </div>
       </div>
     </div>
+    <EmptyState v-else-if="emptyMessage" :message="emptyMessage" />
   </Widget>
 </template>
 
