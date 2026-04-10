@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { useContextMenu } from '../composables/useContextMenu';
 import { getCurrencySymbol } from '../utils/currencySymbols';
 import { effectiveUnitPriceInCurrency } from '../utils/effectiveAssetPrice';
+import { isDepositLikePortfolioAsset } from '../utils/depositAssetType';
 
 const router = useRouter();
 
@@ -240,9 +241,15 @@ function goToAsset(asset) {
                       </div>
                     </div>
                   </td>
-                  <td class="col-right">{{ asset.quantity }}</td>
-                  <td class="col-right num-font">{{ asset.average_price.toFixed(2) }} {{ getCurrencySymbol(asset.currency_ticker) }}</td>
-                  <td class="col-right num-font">{{ effectiveUnitPriceInCurrency(asset) ? effectiveUnitPriceInCurrency(asset) + ' ' + getCurrencySymbol(asset.currency_ticker) : '-' }}</td>
+                  <td class="col-right">{{ isDepositLikePortfolioAsset(asset) ? '—' : asset.quantity }}</td>
+                  <td class="col-right num-font">
+                    <template v-if="isDepositLikePortfolioAsset(asset)">—</template>
+                    <template v-else>{{ Number(asset.average_price || 0).toFixed(2) }} {{ getCurrencySymbol(asset.currency_ticker) }}</template>
+                  </td>
+                  <td class="col-right num-font">
+                    <template v-if="isDepositLikePortfolioAsset(asset)">—</template>
+                    <template v-else>{{ effectiveUnitPriceInCurrency(asset) ? effectiveUnitPriceInCurrency(asset) + ' ' + getCurrencySymbol(asset.currency_ticker) : '—' }}</template>
+                  </td>
                   <td class="col-right num-font bold">
                     {{ Math.max(0, calculateAssetValue(asset)).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽
                   </td>
@@ -306,11 +313,14 @@ function goToAsset(asset) {
               <div class="asset-card-body">
                 <div class="asset-card-row">
                   <span class="asset-card-label">Кол-во</span>
-                  <span class="asset-card-value">{{ asset.quantity }}</span>
+                  <span class="asset-card-value">{{ isDepositLikePortfolioAsset(asset) ? '—' : asset.quantity }}</span>
                 </div>
                 <div class="asset-card-row">
                   <span class="asset-card-label">Цена</span>
-                  <span class="asset-card-value num-font">{{ effectiveUnitPriceInCurrency(asset) ? effectiveUnitPriceInCurrency(asset) + ' ' + getCurrencySymbol(asset.currency_ticker) : '–' }}</span>
+                  <span class="asset-card-value num-font">
+                    <template v-if="isDepositLikePortfolioAsset(asset)">—</template>
+                    <template v-else>{{ effectiveUnitPriceInCurrency(asset) ? effectiveUnitPriceInCurrency(asset) + ' ' + getCurrencySymbol(asset.currency_ticker) : '—' }}</template>
+                  </span>
                 </div>
                 <div class="asset-card-row">
                   <span class="asset-card-label">Стоимость</span>
