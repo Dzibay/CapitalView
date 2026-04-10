@@ -25,4 +25,12 @@ export const adminService = {
     const raw = res.data?.support_messages
     return Array.isArray(raw) ? raw : []
   },
+
+  async replySupportMessage(userId, message) {
+    const res = await apiClient.post(API_ENDPOINTS.ADMIN.SUPPORT_REPLY, {
+      user_id: userId,
+      message,
+    })
+    return res.data?.chat_message ?? null
+  },
 }

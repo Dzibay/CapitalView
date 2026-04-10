@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { useContextMenu } from '../composables/useContextMenu';
 import { getCurrencySymbol } from '../utils/currencySymbols';
 import { effectiveUnitPriceInCurrency } from '../utils/effectiveAssetPrice';
+import { isDepositLikePortfolioAsset } from '../utils/depositAssetType';
 
 const router = useRouter();
 
@@ -163,6 +164,28 @@ function goToAsset(asset) {
   if (props.readOnly) return
   router.push(`/assets/${asset.portfolio_asset_id}`)
 }
+
+function mobileAssetValueRub(asset) {
+  return Math.max(0, calculateAssetValue(asset)).toLocaleString('ru-RU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })
+}
+
+function mobilePlTotalPct(asset) {
+  const ap = Number(asset.average_price || 0)
+  if (!ap) return '0.00'
+  return (
+    ((effectiveUnitPriceInCurrency(asset) - ap) / ap) *
+    100
+  ).toFixed(2)
+}
+
+function mobilePlTotalClass(asset) {
+  const ap = Number(asset.average_price || 0)
+  if (!ap) return 'text-green'
+  return effectiveUnitPriceInCurrency(asset) - ap >= 0 ? 'text-green' : 'text-red'
+}
 </script>
 
 <template>
@@ -240,9 +263,15 @@ function goToAsset(asset) {
                       </div>
                     </div>
                   </td>
-                  <td class="col-right">{{ asset.quantity }}</td>
-                  <td class="col-right num-font">{{ asset.average_price.toFixed(2) }} {{ getCurrencySymbol(asset.currency_ticker) }}</td>
-                  <td class="col-right num-font">{{ effectiveUnitPriceInCurrency(asset) ? effectiveUnitPriceInCurrency(asset) + ' ' + getCurrencySymbol(asset.currency_ticker) : '-' }}</td>
+                  <td class="col-right">{{ isDepositLikePortfolioAsset(asset) ? '—' : asset.quantity }}</td>
+                  <td class="col-right num-font">
+                    <template v-if="isDepositLikePortfolioAsset(asset)">—</template>
+                    <template v-else>{{ Number(asset.average_price || 0).toFixed(2) }} {{ getCurrencySymbol(asset.currency_ticker) }}</template>
+                  </td>
+                  <td class="col-right num-font">
+                    <template v-if="isDepositLikePortfolioAsset(asset)">—</template>
+                    <template v-else>{{ effectiveUnitPriceInCurrency(asset) ? effectiveUnitPriceInCurrency(asset) + ' ' + getCurrencySymbol(asset.currency_ticker) : '—' }}</template>
+                  </td>
                   <td class="col-right num-font bold">
                     {{ Math.max(0, calculateAssetValue(asset)).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽
                   </td>
@@ -281,49 +310,45 @@ function goToAsset(asset) {
               </tbody>
             </table>
           </div>
-          <!-- Мобильная/планшет: карточки без скролла -->
-          <div v-if="portfolio.assets && portfolio.assets.length > 0 && isMobileView" class="asset-cards">
+          <!-- Мобильная/планшет: список строк -->
+          <div v-if="portfolio.assets && portfolio.assets.length > 0 && isMobileView" class="m-asset-list">
             <div
               v-for="asset in portfolio.assets"
               :key="asset.portfolio_asset_id"
-              class="asset-card"
-              :class="{ 'sold-asset': (asset.quantity || 0) === 0 }"
+              class="m-asset-row"
+              :class="{
+                'sold-asset': (asset.quantity || 0) === 0,
+                'm-asset-row--clickable': !readOnly,
+              }"
+              @click="goToAsset(asset)"
             >
-              <div
-                class="asset-card-header"
-                :class="{ clickable: !readOnly }"
-                @click="goToAsset(asset)"
-              >
-                <div class="asset-card-title">
-                  <span class="asset-name">{{ asset.name }}</span>
+              <div class="m-asset-row-left">
+                <div class="m-asset-name-row">
+                  <span class="m-asset-name">{{ asset.name }}</span>
                   <span v-if="(asset.quantity || 0) === 0" class="sold-badge">(Продан)</span>
                 </div>
-                <div class="asset-card-meta">
-                  <span class="asset-ticker">{{ asset.ticker }}</span>
+                <div class="m-asset-sub">
+                  <span class="asset-ticker m-asset-ticker-inline">{{ asset.ticker }}</span>
+                  <span class="m-asset-qty-block num-font">
+                    <span class="m-asset-dot" aria-hidden="true">·</span><span class="m-asset-qty">{{ isDepositLikePortfolioAsset(asset) ? '—' : asset.quantity }}</span>
+                  </span>
                   <span v-if="asset.leverage && asset.leverage > 1" class="badge-leverage">×{{ asset.leverage }}</span>
                 </div>
               </div>
-              <div class="asset-card-body">
-                <div class="asset-card-row">
-                  <span class="asset-card-label">Кол-во</span>
-                  <span class="asset-card-value">{{ asset.quantity }}</span>
-                </div>
-                <div class="asset-card-row">
-                  <span class="asset-card-label">Цена</span>
-                  <span class="asset-card-value num-font">{{ effectiveUnitPriceInCurrency(asset) ? effectiveUnitPriceInCurrency(asset) + ' ' + getCurrencySymbol(asset.currency_ticker) : '–' }}</span>
-                </div>
-                <div class="asset-card-row">
-                  <span class="asset-card-label">Стоимость</span>
-                  <span class="asset-card-value num-font bold">{{ Math.max(0, calculateAssetValue(asset)).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ₽</span>
-                </div>
-                <div class="asset-card-row">
-                  <span class="asset-card-label">P&L</span>
-                  <span class="asset-card-value num-font" :class="(effectiveUnitPriceInCurrency(asset) - asset.average_price) >= 0 ? 'text-green' : 'text-red'">{{ asset.average_price ? (((effectiveUnitPriceInCurrency(asset) - asset.average_price) / asset.average_price) * 100).toFixed(2) : '0.00' }}%</span>
-                </div>
+              <div class="m-asset-row-nums">
+                <span class="m-asset-value num-font">{{ mobileAssetValueRub(asset) }} ₽</span>
+                <span
+                  class="m-asset-pnl num-font"
+                  :class="mobilePlTotalClass(asset)"
+                >{{ mobilePlTotalPct(asset) }}%</span>
               </div>
-              <div v-if="!readOnly" class="asset-card-actions">
-                <button type="button" class="menu-btn icon-btn" @click.stop="openMenu($event, 'asset', asset)" aria-label="Меню">⋮</button>
-              </div>
+              <button
+                v-if="!readOnly"
+                type="button"
+                class="menu-btn icon-btn m-asset-menu"
+                aria-label="Действия с активом"
+                @click.stop="openMenu($event, 'asset', asset)"
+              >⋮</button>
             </div>
           </div>
           <!-- Баланс портфеля - отображается внизу, под активами -->
@@ -566,7 +591,7 @@ function goToAsset(asset) {
     margin-top: 8px;
   }
   .child-portfolios {
-    padding: 0 4px 8px 4px;
+    padding: 0 8px 8px 8px;
   }
   .portfolio-balance-section {
     padding: 8px 12px;
@@ -579,18 +604,17 @@ function goToAsset(asset) {
     padding: 16px;
     font-size: 13px;
   }
-  .asset-cards {
-    padding: 10px;
-    gap: 8px;
+  .m-asset-list {
+    padding: 0;
   }
-  .portfolio-card.is-child .asset-cards {
-    padding: 6px 8px;
+  .portfolio-card.is-child .m-asset-list {
+    padding: 0;
   }
-  .asset-card {
-    padding: 10px;
+  .m-asset-row {
+    padding: 10px 12px;
   }
-  .portfolio-card.is-child .asset-card {
-    padding: 8px;
+  .portfolio-card.is-child .m-asset-row {
+    padding: 8px 10px;
   }
 }
 
@@ -605,7 +629,7 @@ function goToAsset(asset) {
     margin-top: 6px;
   }
   .child-portfolios {
-    padding: 0 2px 6px 2px;
+    padding: 0 6px 6px 6px;
   }
   .portfolio-name {
     font-size: 14px;
@@ -613,20 +637,16 @@ function goToAsset(asset) {
   .portfolio-value {
     font-size: 12px;
   }
-  .asset-cards {
-    padding: 8px;
-    gap: 6px;
+  .m-asset-row {
+    padding: 8px 10px;
   }
-  .portfolio-card.is-child .asset-cards {
-    padding: 4px 6px;
+  .portfolio-card.is-child .m-asset-row {
+    padding: 6px 8px;
   }
-  .asset-card {
-    padding: 8px;
+  .m-asset-value {
+    font-size: 13px;
   }
-  .portfolio-card.is-child .asset-card {
-    padding: 6px;
-  }
-  .asset-card-body {
+  .m-asset-pnl {
     font-size: 11px;
   }
 }
@@ -718,11 +738,11 @@ function goToAsset(asset) {
 .cell-name.clickable:hover {
   background: #f1f5f9;
 }
-.asset-card-header.clickable {
+.m-asset-row--clickable {
   cursor: pointer;
 }
-.asset-card-header.clickable:hover {
-  background: #f1f5f9;
+.m-asset-row--clickable:active {
+  background: #f8fafc;
 }
 .asset-main {
   display: flex;
@@ -801,96 +821,120 @@ function goToAsset(asset) {
   letter-spacing: 0.5px;
 }
 
-/* --- Мобильные карточки активов (без скролла) --- */
-.asset-cards {
+/* --- Мобильный список активов --- */
+.m-asset-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
   width: 100%;
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
+  padding: 0;
+  background: #fff;
 }
 
-.asset-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 12px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto;
-  gap: 8px 12px;
-  width: 100%;
+.m-asset-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #eef0f2;
   min-width: 0;
   box-sizing: border-box;
 }
 
-.asset-card.sold-asset {
-  opacity: 0.7;
+.m-asset-row:last-child {
+  border-bottom: none;
 }
 
-.asset-card-header {
-  grid-column: 1;
-  cursor: pointer;
+.m-asset-row.sold-asset {
+  opacity: 0.72;
+}
+
+.m-asset-row-left {
+  flex: 1;
   min-width: 0;
 }
 
-.asset-card-title {
+.m-asset-name-row {
   display: flex;
   align-items: baseline;
-  gap: 6px;
   flex-wrap: wrap;
-}
-
-.asset-card-title .asset-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: #0f172a;
-}
-
-.asset-card-meta {
-  display: flex;
-  align-items: center;
   gap: 6px;
-  margin-top: 4px;
-}
-
-.asset-card-body {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 6px 16px;
-  font-size: 12px;
   min-width: 0;
 }
 
-.asset-card-row {
+.m-asset-name {
+  font-weight: 500;
+  font-size: 13px;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.m-asset-sub {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-top: 5px;
   min-width: 0;
 }
 
-.asset-card-label {
-  color: #64748b;
+.m-asset-ticker-inline {
+  margin: 0;
   flex-shrink: 0;
 }
 
-.asset-card-value {
+.m-asset-qty-block {
+  display: inline-flex;
+  align-items: baseline;
+  flex-shrink: 0;
+  gap: 0;
   color: #334155;
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.asset-card-actions {
-  grid-column: 2;
-  grid-row: 1;
-  align-self: start;
-  justify-self: end;
+.m-asset-dot {
+  color: #94a3b8;
+  font-weight: 700;
+  line-height: 1;
+  margin-right: 10px;
+  padding: 0;
+  user-select: none;
+}
+
+.m-asset-qty {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.m-asset-row-nums {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.m-asset-value {
+  font-weight: 600;
+  font-size: 14px;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.m-asset-pnl {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-asset-menu {
+  flex-shrink: 0;
+  align-self: center;
 }
 
 /* --- Переходы --- */

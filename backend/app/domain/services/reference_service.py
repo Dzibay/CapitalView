@@ -201,7 +201,7 @@ async def _ensure_assets_search_cache() -> None:
             try:
                 await _load_reference_into_cache()
             except Exception as e:
-                logger.error("get_reference_cache_payload: %s", e, exc_info=True)
+                logger.error("Справочник (ensure cache): %s", e, exc_info=True)
             return
         if not _sync_worker_bundle_from_redis():
             try:
@@ -215,7 +215,7 @@ async def _ensure_assets_search_cache() -> None:
     try:
         await _load_reference_into_cache()
     except Exception as e:
-        logger.error("get_reference_cache_payload: %s", e, exc_info=True)
+        logger.error("Справочник (ensure cache): %s", e, exc_info=True)
 
 
 async def search_reference_assets(query: str, limit: int = 25) -> list:
@@ -273,14 +273,14 @@ async def get_reference_data_cached():
             try:
                 await _load_reference_into_cache()
             except Exception as e:
-                logger.error("Failed to load reference on demand: %s", e, exc_info=True)
+                logger.error("Не удалось загрузить справочник по требованию: %s", e, exc_info=True)
                 _reset_reference_after_load_failure()
             return _worker_bundle.get("reference") or {}
         if not _sync_worker_bundle_from_redis():
             try:
                 await _load_reference_into_cache()
             except Exception as e:
-                logger.error("Failed to sync reference from Redis: %s", e, exc_info=True)
+                logger.error("Не удалось синхронизировать справочник из Redis: %s", e, exc_info=True)
                 _reset_reference_after_load_failure()
         return _worker_bundle.get("reference") or {}
 
@@ -288,7 +288,7 @@ async def get_reference_data_cached():
         try:
             await _load_reference_into_cache()
         except Exception as e:
-            logger.error("Failed to load reference on demand: %s", e, exc_info=True)
+            logger.error("Не удалось загрузить справочник по требованию: %s", e, exc_info=True)
             _reset_reference_after_load_failure()
     return _memory_fallback["reference"] or {}
 
@@ -299,17 +299,17 @@ async def init_reference_data_async():
         return
 
     try:
-        logger.info("Loading reference data on server startup...")
+        logger.info("Загрузка справочника при старте сервера")
         await asyncio.wait_for(
             _load_reference_into_cache(),
             timeout=30.0,
         )
-        logger.info("Reference data loaded successfully")
+        logger.info("Справочник успешно загружен")
     except asyncio.TimeoutError:
-        logger.error("Timeout loading reference data on startup (30s exceeded)")
+        logger.error("Таймаут загрузки справочника при старте (более 30 с)")
         _reset_reference_after_load_failure()
     except Exception as e:
-        logger.error("Failed to load reference data on startup: %s", e, exc_info=True)
+        logger.error("Не удалось загрузить справочник при старте: %s", e, exc_info=True)
         _reset_reference_after_load_failure()
 
 
@@ -328,42 +328,42 @@ async def get_brokers_cached():
         try:
             rows = await get_brokers()
         except Exception as e:
-            logger.error("Failed to load brokers: %s", e, exc_info=True)
+            logger.error("Не удалось загрузить список брокеров: %s", e, exc_info=True)
             return []
         redis_sync_set(REF_BROKERS_KEY, json.dumps(rows, default=str, ensure_ascii=False))
         return rows
 
     if _memory_fallback["brokers"] is None:
-        logger.warning("Brokers cache is empty, loading on demand")
+        logger.warning("Кэш брокеров пуст, загрузка по требованию")
         try:
             _memory_fallback["brokers"] = await get_brokers()
         except Exception as e:
-            logger.error("Failed to load brokers on demand: %s", e, exc_info=True)
+            logger.error("Не удалось загрузить брокеров по требованию: %s", e, exc_info=True)
             _memory_fallback["brokers"] = []
     return _memory_fallback["brokers"]
 
 
 async def init_brokers_async():
     if redis_sync_available() and redis_sync_get(REF_BROKERS_KEY):
-        logger.debug("Brokers already in Redis, skipping...")
+        logger.debug("Брокеры уже в Redis, пропуск загрузки")
         return
     if not redis_sync_available() and _memory_fallback.get("brokers"):
-        logger.debug("Brokers already in memory, skipping...")
+        logger.debug("Брокеры уже в памяти, пропуск загрузки")
         return
 
     try:
-        logger.info("Loading brokers on server startup...")
+        logger.info("Загрузка брокеров при старте сервера")
         rows = await asyncio.wait_for(get_brokers(), timeout=10.0) or []
         if redis_sync_available():
             redis_sync_set(REF_BROKERS_KEY, json.dumps(rows, default=str, ensure_ascii=False))
         else:
             _memory_fallback["brokers"] = rows
-        logger.info("Brokers loaded successfully (%s brokers)", len(rows))
+        logger.info("Брокеры загружены, записей: %s", len(rows))
     except asyncio.TimeoutError:
-        logger.error("Timeout loading brokers on startup (10s exceeded)")
+        logger.error("Таймаут загрузки брокеров при старте (более 10 с)")
         if not redis_sync_available():
             _memory_fallback["brokers"] = []
     except Exception as e:
-        logger.error("Failed to load brokers on startup: %s", e, exc_info=True)
+        logger.error("Не удалось загрузить брокеров при старте: %s", e, exc_info=True)
         if not redis_sync_available():
             _memory_fallback["brokers"] = []

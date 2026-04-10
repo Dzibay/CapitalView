@@ -3,7 +3,6 @@
 Перенесено из supabase_data/update_dividends.py
 """
 import asyncio
-import sys
 import aiohttp
 import random
 from collections import defaultdict
@@ -17,10 +16,10 @@ from app.infrastructure.database.postgres_async import (
     table_update_async,
     table_delete_async,
 )
-from app.core.logging import get_logger
+from app.core.reference_logging import get_reference_logger, reference_progress_enabled
 from app.domain.constants.payout_types import PAYOUT_TYPE_DIVIDEND_ID
 
-logger = get_logger(__name__)
+logger = get_reference_logger("dividends")
 
 # Порядок слияния дубликатов (одинаковые asset_id + record_date): меньше — раньше в merge, позже идут «дополнения».
 _SOURCE_SMARTLAB_INDEX = 0
@@ -498,10 +497,10 @@ def dedupe_payout_insert_rows(rows: list) -> list:
 async def update_forecasts(show_progress: bool | None = None):
     """Обновляет прогнозы дивидендов (SmartLab, затем dohod.ru).
 
-    show_progress: полоса tqdm в stderr. None — включать только в интерактивном TTY.
+    show_progress: полоса tqdm в stderr. None — см. REFERENCE_PROGRESS и TTY.
     """
     if show_progress is None:
-        show_progress = sys.stderr.isatty()
+        show_progress = reference_progress_enabled()
 
     assets = await table_select_async("assets")
     ticker_map = {a["ticker"].upper(): a["id"] for a in assets if a.get("ticker")}

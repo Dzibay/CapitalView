@@ -13,6 +13,10 @@ except ImportError:
     print("Установите её командой: pip install pybit", file=sys.stderr)
     sys.exit(1)
 
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 # --- Дата старта ---
 BYBIT_START_DATE = datetime(2025, 8, 1)
 
@@ -60,7 +64,7 @@ def _fetch_transaction_log(session, start_ms, end_ms, processed_tx_ids):
                 startTime=start_ms, endTime=end_ms
             )
             if resp.get("retCode") != 0:
-                print(f"⚠️ Ошибка Transaction Log: {resp.get('retMsg')}")
+                logger.warning("Bybit Transaction Log retMsg=%s", resp.get("retMsg"))
                 break
 
             data = resp.get("result", {}).get("list", [])
@@ -96,7 +100,7 @@ def _fetch_transaction_log(session, start_ms, end_ms, processed_tx_ids):
                 break
             time.sleep(0.2)
         except Exception as e:
-            print(f"❌ Ошибка при получении Unified Log: {e}")
+            logger.error("Bybit Unified Log: %s", e)
             break
     return transactions
 
@@ -131,7 +135,7 @@ def _fetch_executions(session, start_ms, end_ms, processed_tx_ids):
                 "tx_id": tx_id
             })
     except Exception as e:
-        print(f"❌ Ошибка при получении исполнений: {e}")
+        logger.error("Bybit executions: %s", e)
     return transactions
 
 
@@ -161,7 +165,7 @@ def _fetch_closed_pnl(session, start_ms, end_ms, processed_tx_ids):
                 "tx_id": tx_id
             })
     except Exception as e:
-        print(f"❌ Ошибка при получении Closed PnL: {e}")
+        logger.error("Bybit Closed PnL: %s", e)
     return transactions
 
 
@@ -193,7 +197,7 @@ def _fetch_deposits(session, start_ms, end_ms, processed_tx_ids):
                 "tx_id": tx_id
             })
     except Exception as e:
-        print(f"❌ Ошибка при получении депозитов: {e}")
+        logger.error("Bybit deposits: %s", e)
     return transactions
 
 
@@ -237,7 +241,7 @@ def _fetch_withdrawals(session, start_ms, end_ms, processed_tx_ids):
                     "tx_id": f"{tx_id}_fee"
                 })
     except Exception as e:
-        print(f"❌ Ошибка при получении выводов: {e}")
+        logger.error("Bybit withdrawals: %s", e)
     return transactions
 
 
@@ -246,7 +250,7 @@ def get_bybit_data(api_key, api_secret):
     try:
         session = HTTP(testnet=False, api_key=api_key, api_secret=api_secret)
     except Exception as e:
-        print(f"❌ Ошибка инициализации: {e}")
+        logger.error("Bybit session init: %s", e)
         return {}
 
     all_tx = []
@@ -254,12 +258,12 @@ def get_bybit_data(api_key, api_secret):
     start = BYBIT_START_DATE
     end = datetime.now()
 
-    print(f"📥 Загрузка истории с {start.date()} по {end.date()}")
+    logger.info("Bybit history range %s .. %s", start.date(), end.date())
 
     while start < end:
         end_ = min(start + timedelta(days=7), end)
         s_ms, e_ms = int(start.timestamp() * 1000), int(end_.timestamp() * 1000)
-        print(f"  → Период: {start.date()} → {end_.date()}")
+        logger.debug("Bybit chunk %s .. %s", start.date(), end_.date())
 
         all_tx += _fetch_transaction_log(session, s_ms, e_ms, processed_tx_ids)
         all_tx += _fetch_executions(session, s_ms, e_ms, processed_tx_ids)
@@ -273,5 +277,5 @@ def get_bybit_data(api_key, api_secret):
     all_tx = merge_by_tx_prefix(all_tx)
     all_tx.sort(key=lambda x: x["date"])
 
-    print(f"\n✅ Всего транзакций собрано: {len(all_tx)}")
+    logger.info("Bybit transactions total=%s", len(all_tx))
     return {"Bybit (All)": {"transactions": all_tx}}

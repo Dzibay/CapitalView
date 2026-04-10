@@ -10,16 +10,14 @@
       <div class="footer-links">
         <div class="footer-col">
           <h4>Продукт</h4>
-          <a href="#features">Возможности</a>
-          <a href="#pricing">Бесплатно</a>
-          <a href="#integrations">Интеграции</a>
+          <router-link :to="{ path: '/', hash: '#features' }">Возможности</router-link>
+          <router-link :to="{ path: '/', hash: '#pricing' }">Бесплатно</router-link>
+          <router-link :to="{ path: '/', hash: '#integrations' }">Интеграции</router-link>
         </div>
         <div class="footer-col">
           <h4>Поддержка</h4>
-          <a href="#faq">FAQ</a>
-          <router-link :to="{ path: '/login', query: { redirect: '/settings#support' } }">
-            Написать нам
-          </router-link>
+          <router-link :to="{ path: '/', hash: '#faq' }">FAQ на главной</router-link>
+          <router-link to="/support">Написать в поддержку</router-link>
         </div>
         <div class="footer-col">
           <h4>Правовая информация</h4>

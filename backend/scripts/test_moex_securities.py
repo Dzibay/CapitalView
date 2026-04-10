@@ -13,7 +13,13 @@ from collections import defaultdict
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.infrastructure.external.moex.client import create_moex_session, fetch_json
+from app.infrastructure.external.moex.client import (
+    MOEX_HTTP_PER_HOST_LIMIT,
+    MOEX_HTTP_TOTAL_LIMIT,
+    create_moex_session,
+    fetch_json,
+)
+from app.infrastructure.external.moex.urls import MOEX_SECURITIES_JSON
 from app.infrastructure.database.postgres_async import table_select_async
 from app.utils.async_runner import run_async
 
@@ -29,7 +35,7 @@ async def fetch_all_securities(session, market: str):
     Returns:
         Список всех тикеров (secid)
     """
-    base_url = "https://iss.moex.com/iss/securities.json"
+    base_url = MOEX_SECURITIES_JSON
     params = {"engine": "stock", "market": market}
     
     all_tickers = set()
@@ -145,7 +151,10 @@ async def compare_securities():
     print("СРАВНЕНИЕ АКТИВОВ MOEX API С БАЗОЙ ДАННЫХ")
     print("="*80)
     
-    async with create_moex_session() as session:
+    async with create_moex_session(
+        limit=MOEX_HTTP_TOTAL_LIMIT,
+        limit_per_host=MOEX_HTTP_PER_HOST_LIMIT,
+    ) as session:
         # Получаем все тикеры из MOEX API
         print("\n📊 Получение данных из MOEX API:")
         moex_shares = await fetch_all_securities(session, "shares")

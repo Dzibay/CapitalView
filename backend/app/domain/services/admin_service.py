@@ -3,7 +3,10 @@
 """
 from typing import Any, Dict, List
 
-from app.infrastructure.database.database_service import rpc_async
+from app.core.exceptions import DatabaseError, NotFoundError
+from app.domain.services.support_service import _serialize_row
+from app.domain.services.user_service import get_user_by_id
+from app.infrastructure.database.database_service import rpc_async, table_insert_async
 
 _ADMIN_SUPPORT_MESSAGES_LIMIT = 100
 
@@ -42,3 +45,25 @@ async def list_support_messages_for_admin() -> List[Dict[str, Any]]:
     if isinstance(result, list):
         return result
     return []
+
+
+async def admin_reply_support_message(target_user_id: str, text: str) -> dict:
+    """
+    Ответ администратора в переписку пользователя (та же нить, что и сообщения пользователя).
+    """
+    target = await get_user_by_id(target_user_id)
+    if not target:
+        raise NotFoundError("Пользователь")
+
+    inserted = await table_insert_async(
+        "support_messages",
+        {
+            "user_id": target_user_id,
+            "message": text,
+            "is_from_admin": True,
+        },
+    )
+    if not inserted:
+        raise DatabaseError("Не удалось сохранить ответ")
+
+    return _serialize_row(inserted[0])

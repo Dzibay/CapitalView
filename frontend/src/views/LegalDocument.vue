@@ -52,7 +52,7 @@ const document = computed(() => {
           <span class="divider" />
           <a href="/terms" target="_blank" rel="noopener noreferrer">Условия использования</a>
           <span class="divider" />
-          <router-link :to="{ path: '/login', query: { redirect: '/settings#support' } }">Поддержка</router-link>
+          <router-link :to="{ path: '/login', query: { redirect: '/support' } }">Поддержка</router-link>
         </div>
         <p class="copyright">© {{ new Date().getFullYear() }} CapitalView. Все права защищены.</p>
       </div>

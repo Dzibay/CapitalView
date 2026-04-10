@@ -6,6 +6,7 @@ export const API_ENDPOINTS = {
   ADMIN: {
     DATA: '/admin/data',
     SUPPORT_MESSAGES: '/admin/support-messages',
+    SUPPORT_REPLY: '/admin/support-messages/reply',
     USER_DASHBOARD: (userId) => `/admin/users/${userId}/dashboard`,
   },
   AUTH: {
@@ -76,6 +77,7 @@ export const API_ENDPOINTS = {
     BASE: '/missed-payouts',
   },
   SUPPORT: {
+    MESSAGES: '/support/messages',
     MESSAGE: '/support/message',
   },
 };

@@ -10,21 +10,30 @@ from app.infrastructure.database.postgres_async import (
     table_update_async,
     table_delete_async
 )
-from app.infrastructure.external.moex.client import create_moex_session, fetch_json
-from app.infrastructure.external.moex.constants import FUND_BOARDIDS, PRIORITY_BOARDIDS
-from app.infrastructure.external.moex.utils import (
-    get_column_index,
-    parse_json_properties,
-    get_asset_type_name
+from app.infrastructure.external.moex.client import (
+    MOEX_HTTP_PER_HOST_LIMIT,
+    MOEX_HTTP_TOTAL_LIMIT,
+    create_moex_session,
+    fetch_json,
 )
-from app.core.logging import get_logger
+from app.infrastructure.external.moex.constants import FUND_BOARDIDS, PRIORITY_BOARDIDS
+from app.infrastructure.external.moex.urls import (
+    BONDS_ACTIVE_SECURITIES_JSON,
+    SHARES_SECURITIES_JSON,
+    moex_bond_history_url,
+    moex_bonds_securities_page_url,
+)
+from app.infrastructure.external.moex.utils import (
+    determine_asset_type,
+    get_column_index,
+    get_asset_type_name,
+    iss_table,
+    normalize_moex_currency,
+    parse_json_properties,
+)
+from app.core.reference_logging import get_reference_logger, reference_progress_enabled
 
-logger = get_logger(__name__)
-
-SHARES_ENDPOINT = "https://iss.moex.com/iss/engines/stock/markets/shares/securities.json"
-BONDS_SECURITIES_ENDPOINT = "https://iss.moex.com/iss/securities.json"
-BONDS_ACTIVE_ENDPOINT = "https://iss.moex.com/iss/engines/stock/markets/bonds/securities.json"
-BONDS_HISTORY_TICKER_ENDPOINT = "https://iss.moex.com/iss/history/engines/stock/markets/bonds/securities"
+logger = get_reference_logger("moex_assets")
 
 MAX_EXAMPLES = 10
 
@@ -32,16 +41,6 @@ MAX_EXAMPLES = 10
 # ---------------------------------------------------------------------------
 #  Вспомогательные функции
 # ---------------------------------------------------------------------------
-
-def determine_asset_type(board_id: str, market: str) -> str:
-    if market == "bonds":
-        return "Облигация"
-    if market == "shares":
-        if board_id and board_id.upper() in FUND_BOARDIDS:
-            return "Фонд"
-        return "Акция"
-    return "Акция"
-
 
 def normalize_properties(props, asset_type_name):
     normalized = {"source": "moex"}
@@ -118,12 +117,7 @@ def get_bond_currency(ticker: str, existing_asset=None, historical_bonds_currenc
     if existing_asset:
         props = parse_json_properties(existing_asset.get("properties"))
         if "currency" in props:
-            c = props["currency"]
-            if c.startswith("SUR"):
-                c = "RUB"
-            elif len(c) > 3:
-                c = c[:3]
-            return c
+            return normalize_moex_currency(props["currency"])
 
     if historical_bonds_currency and ticker in historical_bonds_currency:
         val = historical_bonds_currency[ticker]
@@ -132,6 +126,20 @@ def get_bond_currency(ticker: str, existing_asset=None, historical_bonds_currenc
         return val
 
     return None
+
+
+def resolve_quote_asset_id(currency: Optional[str], currency_map: Dict[str, int]) -> int:
+    """
+    ID актива-валюты для quote_asset_id.
+    Если кода нет в currency_map (нет записи валюты в БД), используется RUB (как в init.sql, id=1).
+    """
+    rub_id = (currency_map or {}).get("RUB") or 1
+    if not currency:
+        return rub_id
+    code = str(currency).upper().strip()
+    if not code:
+        return rub_id
+    return (currency_map or {}).get(code) or rub_id
 
 
 # ---------------------------------------------------------------------------
@@ -180,14 +188,13 @@ async def fetch_all_bonds(session):
     logger.info("Загрузка списка облигаций...")
 
     while True:
-        url = f"{BONDS_SECURITIES_ENDPOINT}?engine=stock&market=bonds&start={start}&limit={limit}"
+        url = moex_bonds_securities_page_url(start, limit)
         js = await fetch_json(session, url)
-        if not js or "securities" not in js:
+        table = iss_table(js, "securities")
+        if not table:
             break
-
-        cols = js["securities"].get("columns", [])
-        rows = js["securities"].get("data", [])
-        if not cols or not rows:
+        cols, rows = table
+        if not rows:
             break
 
         if all_cols is None:
@@ -206,15 +213,14 @@ async def fetch_all_bonds(session):
 
 async def fetch_active_bonds_currency(session) -> Dict:
     logger.info("Загрузка данных активных облигаций...")
-    js = await fetch_json(session, BONDS_ACTIVE_ENDPOINT)
+    js = await fetch_json(session, BONDS_ACTIVE_SECURITIES_JSON)
     active_data: Dict = {}
 
-    if not js or "securities" not in js:
+    table = iss_table(js, "securities")
+    if not table:
         return active_data
-
-    cols = js["securities"].get("columns", [])
-    rows = js["securities"].get("data", [])
-    if not cols or not rows:
+    cols, rows = table
+    if not rows:
         return active_data
 
     i_SECID = get_column_index(cols, "SECID", "secid")
@@ -237,11 +243,9 @@ async def fetch_active_bonds_currency(session) -> Dict:
 
         currency = None
         if i_FACEUNIT is not None and row[i_FACEUNIT]:
-            currency = str(row[i_FACEUNIT]).upper().strip()
+            currency = normalize_moex_currency(row[i_FACEUNIT])
         elif i_CURRENCYID is not None and row[i_CURRENCYID]:
-            currency = str(row[i_CURRENCYID]).upper().strip()
-        if currency:
-            currency = "RUB" if currency.startswith("SUR") else currency[:3]
+            currency = normalize_moex_currency(row[i_CURRENCYID])
 
         def _float(idx):
             if idx is not None and row[idx] is not None:
@@ -272,15 +276,14 @@ async def fetch_active_bonds_currency(session) -> Dict:
 
 
 async def fetch_bond_currency_single(session, ticker: str) -> Optional[dict]:
-    url = f"{BONDS_HISTORY_TICKER_ENDPOINT}/{ticker}.json"
+    url = moex_bond_history_url(ticker)
     js = await fetch_json(session, url, max_attempts=2)
 
-    if not js or "history" not in js:
+    table = iss_table(js, "history")
+    if not table:
         return None
-
-    cols = js["history"].get("columns", [])
-    rows = js["history"].get("data", [])
-    if not cols or not rows:
+    cols, rows = table
+    if not rows:
         return None
 
     i_CURRENCYID = get_column_index(cols, "CURRENCYID", "currencyid")
@@ -299,11 +302,9 @@ async def fetch_bond_currency_single(session, ticker: str) -> Optional[dict]:
     row = rows[-1]
     currency = None
     if i_FACEUNIT is not None and row[i_FACEUNIT]:
-        currency = str(row[i_FACEUNIT]).upper().strip()
+        currency = normalize_moex_currency(row[i_FACEUNIT])
     elif i_CURRENCYID is not None and row[i_CURRENCYID]:
-        currency = str(row[i_CURRENCYID]).upper().strip()
-    if currency:
-        currency = "RUB" if currency.startswith("SUR") else currency[:3]
+        currency = normalize_moex_currency(row[i_CURRENCYID])
 
     def _fval(idx):
         if idx is not None and row[idx] is not None:
@@ -332,7 +333,13 @@ async def fetch_inactive_bonds_currency_batch(session, tickers: list, batch_size
     logger.info(f"Загрузка данных {len(tickers)} неактивных облигаций...")
     inactive_data: Dict = {}
 
-    pbar = tqdm(total=len(tickers), desc="Неактивные облигации", unit="шт", leave=False)
+    pbar = tqdm(
+        total=len(tickers),
+        desc="Неактивные облигации",
+        unit="шт",
+        leave=False,
+        disable=not reference_progress_enabled(),
+    )
     for i in range(0, len(tickers), batch_size):
         batch = tickers[i:i + batch_size]
         tasks = [fetch_bond_currency_single(session, t) for t in batch]
@@ -358,14 +365,13 @@ async def fetch_inactive_bonds_currency_batch(session, tickers: list, batch_size
 # ---------------------------------------------------------------------------
 
 async def process_shares(session, existing_assets, type_map, currency_map):
-    js = await fetch_json(session, SHARES_ENDPOINT)
-    if not js or "securities" not in js:
+    js = await fetch_json(session, SHARES_SECURITIES_JSON)
+    table = iss_table(js, "securities")
+    if not table:
         logger.warning("Нет данных для shares")
         return 0, 0
-
-    cols = js["securities"].get("columns", [])
-    rows = js["securities"].get("data", [])
-    if not cols or not rows:
+    cols, rows = table
+    if not rows:
         return 0, 0
 
     logger.info(f"Shares: получено {len(rows)} записей от MOEX")
@@ -452,7 +458,13 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
     inserted_examples: List[str] = []
     updated_examples: List[str] = []
 
-    pbar = tqdm(total=len(ticker_records), desc=f"Обработка {market}", unit="шт", leave=False)
+    pbar = tqdm(
+        total=len(ticker_records),
+        desc=f"Обработка {market}",
+        unit="шт",
+        leave=False,
+        disable=not reference_progress_enabled(),
+    )
 
     for ticker, rec in ticker_records.items():
         r = rec["row"]
@@ -524,7 +536,7 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
             pbar.update(1)
             continue
 
-        quote_asset_id = currency_map.get(currency.upper()) if currency and currency_map else None
+        quote_asset_id = resolve_quote_asset_id(currency, currency_map)
 
         asset = {
             "asset_type_id": asset_type_id,
@@ -594,7 +606,13 @@ async def remove_duplicate_assets():
     to_delete: List[int] = []
     deleted_examples: List[str] = []
 
-    pbar = tqdm(total=len(duplicates), desc="Проверка дубликатов", unit="тикер", leave=False)
+    pbar = tqdm(
+        total=len(duplicates),
+        desc="Проверка дубликатов",
+        unit="тикер",
+        leave=False,
+        disable=not reference_progress_enabled(),
+    )
     for ticker, assets in duplicates.items():
         assets_sorted = sorted(assets, key=lambda x: x.get("id", 0))
         for dup in assets_sorted[1:]:
@@ -721,7 +739,13 @@ async def cleanup_priceless_assets(pre_existing_ids: Optional[set] = None) -> in
             deleted_examples.append(f"  {a.get('ticker', '?')} ({a.get('name', '?')}, id={aid})")
 
     deleted = 0
-    pbar = tqdm(total=len(to_delete), desc="Удаление активов без цен", unit="шт", leave=False)
+    pbar = tqdm(
+        total=len(to_delete),
+        desc="Удаление активов без цен",
+        unit="шт",
+        leave=False,
+        disable=not reference_progress_enabled(),
+    )
     for i in range(0, len(to_delete), batch_size):
         batch = to_delete[i:i + batch_size]
         try:
@@ -805,7 +829,10 @@ async def import_moex_assets_async():
     if "RUB" in currency_map:
         currency_map["SUR"] = currency_map["RUB"]
 
-    async with create_moex_session() as session:
+    async with create_moex_session(
+        limit=MOEX_HTTP_TOTAL_LIMIT,
+        limit_per_host=MOEX_HTTP_PER_HOST_LIMIT,
+    ) as session:
         # 3.1. Акции — быстрый запрос, обрабатываем первыми
         logger.info("--- Этап 3.1: Загрузка акций ---")
         shares_result = await process_shares(session, existing_assets, type_map, currency_map)

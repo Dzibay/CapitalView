@@ -2,6 +2,7 @@
 import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { Briefcase, TrendingUp, Receipt, DollarSign, PlusCircle, BarChart3, MoveRight, Trash2, Edit, RotateCcw, RefreshCw } from 'lucide-vue-next'
 import { useContextMenu } from '../../composables/useContextMenu'
+import { isDepositLikePortfolioAsset } from '../../utils/depositAssetType'
 
 const emit = defineEmits([
   'clearPortfolio',
@@ -132,9 +133,9 @@ onBeforeUnmount(() => {
           <PlusCircle :size="16" class="item-icon" />
           <span class="item-text">Добавить транзакцию</span>
         </button>
-        <!-- Скрываем кнопку "Изменить цену" для системных активов (is_custom === false) -->
+        <!-- Скрываем «Изменить цену» для системных активов и для вкладов -->
         <button 
-          v-if="menu.payload?.asset?.is_custom !== false && menu.payload?.is_custom !== false"
+          v-if="menu.payload?.asset?.is_custom !== false && menu.payload?.is_custom !== false && !isDepositLikePortfolioAsset(menu.payload?.asset ?? menu.payload)"
           class="item" 
           @click="closeMenu(); $emit('addPrice', menu.payload)"
         >

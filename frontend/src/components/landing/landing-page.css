@@ -269,6 +269,10 @@ html.cv-landing-snap {
   transition: color 0.2s;
 }
 
+.cv-landing .nav a.router-link-active {
+  color: var(--color-primary);
+}
+
 .cv-landing .nav a:hover {
   color: var(--color-text);
 }

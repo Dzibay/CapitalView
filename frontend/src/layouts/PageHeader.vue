@@ -49,7 +49,7 @@ defineProps({
 /* Первый уровень: заголовок и actions (переключатель) */
 .page-header-row1 {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: nowrap;
   min-width: 0;
   width: 100%;
@@ -77,9 +77,11 @@ defineProps({
   margin-top: 0.25rem;
 }
 
+/* Высота как у .btn-md (Button.vue), контент по вертикали по центру */
 .page-header-actions {
   display: flex;
   align-items: center;
+  min-height: 38px;
   gap: 1rem;
   flex: 0 0 auto;
   margin-left: auto;
@@ -92,7 +94,7 @@ defineProps({
   /* Одна строка: подзаголовок слева на всё свободное место, actions справа по содержимому */
   .page-header-row1 {
     flex-wrap: nowrap;
-    align-items: center;
+    align-items: flex-end;
     gap: 0.75rem;
   }
 
@@ -123,7 +125,7 @@ defineProps({
 /* Меню кнопок: одна строка, не переносим кнопки внутри */
 .page-header-menu {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 0.5rem;
   flex-wrap: nowrap;
   min-width: 0;

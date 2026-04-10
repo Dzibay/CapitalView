@@ -146,7 +146,7 @@ function openUserPortfolios(u) {
         </div>
         <div class="admin-page__actions">
           <button type="button" class="admin-page__to-app" @click="goMessages">
-            Сообщения
+            Поддержка
           </button>
           <button type="button" class="admin-page__to-app" @click="goSettings">
             Настройки

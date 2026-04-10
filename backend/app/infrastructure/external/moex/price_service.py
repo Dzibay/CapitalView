@@ -5,13 +5,12 @@ import asyncio
 import aiohttp
 from datetime import date, timedelta, datetime
 from typing import Optional, List, Tuple, Dict
-from app.infrastructure.external.moex.client import create_moex_session, fetch_json, MAX_RETRIES
+from app.infrastructure.external.moex.client import fetch_json, MAX_RETRIES
 from app.infrastructure.external.moex.constants import PRIORITY_BOARDIDS
+from app.infrastructure.external.moex.urls import MOEX_BASE_URL
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
-
-MOEX_BASE_URL = "https://iss.moex.com/iss/engines/stock/markets"
 
 # Цена облигации после перевода из % номинала — округление до копеек (как в moex_price_worker)
 _BOND_PRICE_DECIMALS = 2
@@ -265,35 +264,18 @@ async def get_price_moex_history(
 
     async def fetch_batch(market: str, batch_start: date, batch_end: date) -> List[Tuple[str, float]]:
         url = f"{MOEX_BASE_URL}/{market}/securities/{ticker}/candles.json?interval=24&from={batch_start}&to={batch_end}"
-
-        for attempt in range(MAX_RETRIES):
-            try:
-                async with session.get(url) as resp:
-                    if resp.status != 200:
-                        if attempt < MAX_RETRIES - 1:
-                            await asyncio.sleep(min(2 ** attempt, 10))
-                            continue
-                        return []
-
-                    data = await resp.json()
-                    candles = data.get('candles', {}).get('data', [])
-                    if not candles:
-                        return []
-
-                    # candles: [open, close, high, low, value, volume, begin, end]
-                    return [
-                        (row[6], row[1])
-                        for row in candles
-                        if row[1] is not None and row[1] > 0
-                    ]
-            except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError):
-                if attempt < MAX_RETRIES - 1:
-                    await asyncio.sleep(min(2 ** (attempt + 1), 15))
-                    continue
-                return []
-            except Exception:
-                return []
-        return []
+        data = await fetch_json(session, url, max_attempts=MAX_RETRIES)
+        if not data:
+            return []
+        candles = data.get("candles", {}).get("data", [])
+        if not candles:
+            return []
+        # candles: [open, close, high, low, value, volume, begin, end]
+        return [
+            (row[6], row[1])
+            for row in candles
+            if row[1] is not None and row[1] > 0
+        ]
 
     def _parse_last_date(date_str) -> Optional[date]:
         if isinstance(date_str, str):

@@ -6,6 +6,10 @@ from t_tech.invest import Client, InstrumentIdType
 from t_tech.invest.exceptions import RequestError
 from grpc import StatusCode
 
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 # Маппинг OperationType (Tinkoff Invest API) → внутренние типы для portfolio_import_service.
 # Неизвестное имя типа (новый enum в API и т.п.) → Other (см. classify_tinkoff_operation).
 OPERATION_CLASSIFICATION = {
@@ -125,7 +129,7 @@ def resolve_instrument(client, figi, cache):
 
 def get_tinkoff_portfolio(token):
     """Получает данные портфеля от брокера Tinkoff."""
-    print("📥 Получаем данные от брокера Tinkoff...")
+    logger.info("Tinkoff portfolio import start")
 
     result = {}
     instrument_cache = {}
@@ -141,7 +145,7 @@ def get_tinkoff_portfolio(token):
         for account in accounts:
             acc_id = account.id
             acc_name = account.name or f"Account {acc_id}"
-            print(f"🔹 Счёт: {acc_name}")
+            logger.info("Tinkoff account name=%s", acc_name)
 
             try:
                 # ПОЗИЦИИ
@@ -164,7 +168,7 @@ def get_tinkoff_portfolio(token):
                 except RequestError as e:
                     # Если счет недоступен для получения портфеля, пропускаем его
                     if e.code == StatusCode.NOT_FOUND and e.details == "50004":
-                        print(f"⚠️  Счёт {acc_name} недоступен (Account not found), пропускаем")
+                        logger.warning("Tinkoff account not found, skip name=%s", acc_name)
                         continue
                     raise
 
@@ -178,13 +182,17 @@ def get_tinkoff_portfolio(token):
                 except RequestError as e:
                     # Если счет недоступен для получения операций, используем пустой список операций
                     if e.code == StatusCode.NOT_FOUND and e.details == "50004":
-                        print(f"⚠️  Операции для счёта {acc_name} недоступны (Account not found), используем пустой список")
+                        logger.warning(
+                            "Tinkoff operations unavailable (Account not found), empty ops name=%s",
+                            acc_name,
+                        )
                         ops_raw = []
                     else:
                         raise
 
                 transactions = []
-                
+                transactions_skipped = []
+
                 # Создаем индекс операций Tax по дате и активу (figi) для быстрого поиска
                 # Ключ: (дата операции, figi), значение: список сумм налогов
                 tax_by_date_figi = {}
@@ -219,7 +227,8 @@ def get_tinkoff_portfolio(token):
                         "name": inst["name"] if inst else None,
                         "isin": inst["isin"] if inst else None,
                         "date": op.date.isoformat() if op.date else None,
-                        "type": classified
+                        "type": classified,
+                        "tinkoff_operation_type": op.operation_type.name,
                     }
 
                     # BUY / SELL / AMORTIZATION (транзакции, которые изменяют количество актива)
@@ -228,6 +237,21 @@ def get_tinkoff_portfolio(token):
                         
                         # Пропускаем операции с quantity = 0 (неисполненные заявки)
                         if classified in ("Buy", "Sell") and op_quantity == 0:
+                            pay_skip = op.payment.units + op.payment.nano / 1e9 if op.payment else 0
+                            transactions_skipped.append({
+                                "date": op.date.isoformat() if op.date else None,
+                                "tinkoff_operation_type": op.operation_type.name,
+                                "type": classified,
+                                "reason": "buy_sell_zero_executed_quantity",
+                                "figi": figi,
+                                "ticker": inst["ticker"] if inst else None,
+                                "name": inst["name"] if inst else None,
+                                "quantity_api": quantity,
+                                "quantity_rest": quantity_rest,
+                                "executed_quantity": op_quantity,
+                                "payment": pay_skip,
+                                "currency": op.currency,
+                            })
                             continue
                         
                         if classified == "Amortization":
@@ -290,6 +314,7 @@ def get_tinkoff_portfolio(token):
                             "isin": None,
                             "date": op.date.isoformat() if op.date else None,
                             "type": "Withdraw",
+                            "tinkoff_operation_type": "SYNTHETIC_DIV_EXT_WITHDRAW",
                             "price": None,
                             "quantity": None,
                             "payment": withdraw_amount,  # Отрицательное значение для вывода средств (учитывает налог)
@@ -300,24 +325,25 @@ def get_tinkoff_portfolio(token):
                 result[acc_name] = {
                     "account_id": acc_id,
                     "positions": positions,
-                    "transactions": transactions
+                    "transactions": transactions,
+                    "transactions_skipped": transactions_skipped,
+                    "operations_raw_count": len(ops_raw),
                 }
             except RequestError as e:
                 # Обработка других ошибок RequestError
-                print(f"❌ Ошибка при обработке счёта {acc_name}: {e.code.name} - {e.details}")
+                logger.error(
+                    "Tinkoff account error name=%s code=%s details=%s",
+                    acc_name,
+                    e.code.name,
+                    e.details,
+                )
                 # Пропускаем этот счет и продолжаем обработку остальных
                 continue
             except Exception as e:
                 # Обработка любых других неожиданных ошибок
-                print(f"❌ Неожиданная ошибка при обработке счёта {acc_name}: {str(e)}")
+                logger.error("Tinkoff account unexpected error name=%s err=%s", acc_name, e, exc_info=True)
                 # Пропускаем этот счет и продолжаем обработку остальных
                 continue
 
     return result
 
-
-# portfolio = get_tinkoff_portfolio('t.b7cVknEoyjXW6FG39o4woo12yzoCAKsTwYgT0LqYFvNEH0hC5IGSMtLxVEwGfwXOv048FR5kGmxMeFpEM-GCRQ')
-# for acc in portfolio:
-#     if acc == 'Облигации':
-#         for tx in portfolio[acc]['transactions']:
-#             print(tx)

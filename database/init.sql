@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS support_messages (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   user_id uuid NOT NULL,
   message text NOT NULL,
+  is_from_admin boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT support_messages_pkey PRIMARY KEY (id),
   CONSTRAINT support_messages_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -267,20 +268,21 @@ CREATE TABLE IF NOT EXISTS missed_payouts (
   CONSTRAINT missed_payouts_payout_id_fkey FOREIGN KEY (payout_id) REFERENCES asset_payouts(id) ON DELETE CASCADE
 );
 
--- Справочные данные (если пусто)
+-- Справочные данные: биржевые и кастомные типы в одном стиле — краткое имя категории (им. п.).
+-- Кастомные: по алфавиту в UI сортирует фронт; «Другое» — категория «прочее».
 INSERT INTO asset_types (id, name, is_custom) OVERRIDING SYSTEM VALUE VALUES
-  (1, 'Акция', false),
-  (2, 'Облигация', false),
-  (3, 'Фонд', false),
-  (4, 'Опцион', false),
-  (5, 'Фьючерс', false),
+  (1, 'Акции', false),
+  (2, 'Облигации', false),
+  (3, 'Фонды', false),
+  (4, 'Опционы', false),
+  (5, 'Фьючерсы', false),
   (6, 'Криптовалюта', false),
   (7, 'Валюта', false),
   (8, 'Недвижимость', true),
-  (9, 'Драгоценная монета', true),
-  (10, 'Вклад', true),
+  (9, 'Драгоценные металлы', true),
+  (10, 'Вклады', true),
   (11, 'Другое', true)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_custom = EXCLUDED.is_custom;
 
 -- Валюты (asset_type_id=7, quote_asset_id=1=RUB)
 -- RUB — id=1 обязателен (базовая валюта, циклическая ссылка)
@@ -304,6 +306,10 @@ WHERE NOT EXISTS (SELECT 1 FROM assets WHERE ticker = 'CNY' AND user_id IS NULL)
 INSERT INTO assets (asset_type_id, user_id, name, ticker, quote_asset_id)
 SELECT 7, NULL, 'Швейцарский франк', 'CHF', 1
 WHERE NOT EXISTS (SELECT 1 FROM assets WHERE ticker = 'CHF' AND user_id IS NULL);
+
+INSERT INTO assets (asset_type_id, user_id, name, ticker, quote_asset_id)
+SELECT 7, NULL, 'Кыргызский сом', 'KGS', 1
+WHERE NOT EXISTS (SELECT 1 FROM assets WHERE ticker = 'KGS' AND user_id IS NULL);
 
 -- FK quote_asset_id (циклическая ссылка)
 DO $$

@@ -157,4 +157,10 @@ function handleToggleSidebar() {
     padding: 10px 12px;
   }
 }
+
+@media (max-width: 480px) {
+  .page-content {
+    padding: 8px 4px;
+  }
+}
 </style>

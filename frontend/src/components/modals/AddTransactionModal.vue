@@ -84,6 +84,23 @@ const isSystemAsset = computed(() => {
   return m.user_id == null || m.is_custom === false
 })
 
+/** Кастомный актив «Вклад» / «Вклады»: в транзакциях quantity = сумма в валюте актива, price = 1 */
+const DEPOSIT_ASSET_TYPE_ID = 10
+
+function isDepositTypeDisplayName(typeName) {
+  const n = (typeName || '').trim().toLowerCase()
+  if (!n) return false
+  return n === 'вклад' || n === 'вклады' || n.startsWith('вклад')
+}
+
+const isPortfolioDepositAsset = computed(() => {
+  if (!props.asset) return false
+  if (isDepositTypeDisplayName(props.asset.type)) return true
+  const m = resolvedAssetMeta.value
+  if (m && m.id === props.asset.asset_id && Number(m.asset_type_id) === DEPOSIT_ASSET_TYPE_ID) return true
+  return false
+})
+
 // Поля для повторяющихся операций
 const startDate = ref('')
 const endDate = ref(normalizeDateToString(new Date()) || '')
@@ -157,6 +174,21 @@ const isTransaction = computed(() => {
   return operationType.value === 1 || operationType.value === 2 || operationType.value === 9  // Buy, Sell, Amortization
 })
 
+// До watch с immediate (вклад) — иначе TDZ: Cannot access 'useMarketPrice' before initialization
+const useMarketPrice = ref(true)
+const lastMarketPrice = ref(null)
+
+watch(
+  () => [isPortfolioDepositAsset.value, isTransaction.value],
+  () => {
+    if (isPortfolioDepositAsset.value && isTransaction.value) {
+      price.value = 1
+      useMarketPrice.value = false
+    }
+  },
+  { immediate: true }
+)
+
 const isPayout = computed(() => {
   return operationType.value === 3 || operationType.value === 4
 })
@@ -198,10 +230,6 @@ watch(() => operationType.value, (newType) => {
 // Валюта выплаты (для Dividend/Coupon и cash операций)
 const currencyId = ref(1) // RUB по умолчанию
 const createAssetFromCurrency = ref(false) // Автоматически создать актив из валюты
-
-// Использование рыночной цены для транзакций
-const useMarketPrice = ref(true) // Переключатель для автоматической загрузки рыночной цены (включен по умолчанию)
-const lastMarketPrice = ref(null) // Последняя загруженная рыночная цена
 
 // Галочка для создания операции пополнения на сумму операции (по умолчанию включена)
 const createDepositOperation = ref(true)
@@ -1056,11 +1084,14 @@ const handleSubmit = async () => {
   }
   
   if (isTransaction.value) {
+    if (isPortfolioDepositAsset.value) {
+      price.value = 1
+    }
     if (!quantity.value || quantity.value <= 0) {
-      error.value = 'Введите количество'
+      error.value = isPortfolioDepositAsset.value ? 'Введите сумму' : 'Введите количество'
       return
     }
-    if (!price.value || price.value <= 0) {
+    if (!isPortfolioDepositAsset.value && (!price.value || price.value <= 0)) {
       error.value = 'Введите цену'
       return
     }
@@ -1447,6 +1478,21 @@ const handleSubmit = async () => {
         <div v-if="isTransaction" class="form-section">
           <div class="section-divider"></div>
           
+          <template v-if="isPortfolioDepositAsset">
+            <div class="form-row form-row-deposit-tx">
+              <div class="form-field">
+                <label class="form-label">
+                  <Hash :size="16" class="label-icon" />
+                  <template v-if="operationType === 1">Сумма пополнения вклада</template>
+                  <template v-else-if="operationType === 2">Сумма списания с вклада</template>
+                  <template v-else>Сумма</template>
+                  ({{ assetCurrencySymbol || '₽' }})
+                </label>
+                <input type="number" v-model.number="quantity" min="0" step="0.01" class="form-input" required />
+              </div>
+            </div>
+          </template>
+          <template v-else>
           <!-- Переключатель использования рыночной цены -->
           <div class="toggle-wrapper">
             <ToggleSwitch v-model="useMarketPrice" />
@@ -1489,6 +1535,7 @@ const handleSubmit = async () => {
               </small>
             </div>
           </div>
+          </template>
           <div class="form-field" style="margin-top: 12px;">
             <label class="form-label">
               <Calendar :size="16" class="label-icon" />
@@ -1845,6 +1892,10 @@ const handleSubmit = async () => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+
+.form-row-deposit-tx {
+  grid-template-columns: 1fr;
 }
 
 .form-field {

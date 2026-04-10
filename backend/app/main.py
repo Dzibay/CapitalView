@@ -83,7 +83,7 @@ app.include_router(support.router, prefix="/api/v1", tags=["support"])
 async def startup_event():
     """События при запуске приложения."""
     Config.validate()
-    logger.info("🚀 CapitalView API starting up...")
+    logger.info("CapitalView API starting")
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     logger.info(f"Log level: {Config.LOG_LEVEL}")
     
@@ -106,6 +106,9 @@ async def startup_event():
     # Включается через RUN_REFERENCE_UPDATES=1
     if os.getenv("RUN_REFERENCE_UPDATES", "").strip() in ("1", "true", "yes"):
         from scripts.run_reference_updates import run_all_updates
+        from app.core.reference_logging import boost_reference_loggers_to_info
+
+        boost_reference_loggers_to_info()
         logger.info("Запуск обновления справочных данных (RUN_REFERENCE_UPDATES=1)...")
         await run_all_updates()
         from app.domain.services.reference_service import invalidate_reference_cache
@@ -121,7 +124,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """События при остановке приложения."""
-    logger.info("🛑 CapitalView API shutting down...")
+    logger.info("CapitalView API shutting down")
 
     from app.infrastructure.database.database_service import close_connection_pool
 

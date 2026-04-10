@@ -38,10 +38,10 @@ BEGIN
         COALESCE(apf.curr_price,0)::numeric(20,6) AS last_price,
         COALESCE(apf.curr_accrued,0)::numeric(20,6) AS accrued_coupon,
 
-        -- 💹 daily_change: если нет цены ни за сегодня, ни за вчера → 0
+        -- 💹 daily_change: curr_price - prev_price из asset_latest_prices (две последние даты в истории)
         CASE
-            WHEN apf.today_price IS NOT NULL OR apf.yesterday_price IS NOT NULL THEN
-                (COALESCE(apf.curr_price,0) - COALESCE(apf.prev_price,0))
+            WHEN apf.prev_price IS NOT NULL THEN
+                (COALESCE(apf.curr_price,0) - apf.prev_price)
             ELSE
                 0
         END::numeric(20,6) AS daily_change,

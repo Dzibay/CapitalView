@@ -6,10 +6,11 @@
       <router-link to="/" class="logo" aria-label="CapitalView — на главную">Capital<span>View</span></router-link>
 
       <nav class="nav" aria-label="Основная навигация">
-        <a href="#features">Возможности</a>
-        <a href="#how-it-works">Как это работает</a>
-        <a href="#pricing">Тарифы</a>
-        <a href="#faq">FAQ</a>
+        <router-link :to="{ path: '/', hash: '#features' }">Возможности</router-link>
+        <router-link :to="{ path: '/', hash: '#how-it-works' }">Как это работает</router-link>
+        <router-link :to="{ path: '/', hash: '#pricing' }">Тарифы</router-link>
+        <router-link :to="{ path: '/', hash: '#faq' }">FAQ</router-link>
+        <router-link to="/support">Поддержка</router-link>
       </nav>
 
       <div class="header-actions">

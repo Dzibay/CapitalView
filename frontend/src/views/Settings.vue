@@ -7,7 +7,6 @@ import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import Widget from '../components/widgets/base/Widget.vue'
 import WidgetContainer from '../components/widgets/base/WidgetContainer.vue'
-import { supportService } from '../services/supportService'
 import { User, Lock, LogOut, MessageCircle } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
@@ -32,7 +31,6 @@ const settings = ref({
     new: '',
     confirm: '',
   },
-  support: ''
 })
 
 // Состояния для UI
@@ -42,10 +40,6 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const passwordError = ref('')
 const passwordSuccess = ref('')
-const supportError = ref('')
-const supportSuccess = ref('')
-const isLoadingSupport = ref(false)
-
 // Обновляем значения при изменении пользователя в store
 watch(() => authStore.user, (newUser) => {
   if (newUser) {
@@ -144,38 +138,6 @@ const savePassword = async () => {
   }
 }
 
-// Отправка сообщения в поддержку
-const sendSupportMessage = async () => {
-  if (isLoadingSupport.value) return
-
-  const text = settings.value.support?.trim()
-  supportError.value = ''
-  supportSuccess.value = ''
-
-  if (!text) {
-    supportError.value = 'Введите сообщение'
-    return
-  }
-
-  if (text.length > 5000) {
-    supportError.value = 'Сообщение не должно превышать 5000 символов'
-    return
-  }
-
-  isLoadingSupport.value = true
-
-  try {
-    await supportService.sendMessage(text)
-    supportSuccess.value = 'Сообщение отправлено. Мы свяжемся с вами в ближайшее время.'
-    settings.value.support = ''
-    setTimeout(() => { supportSuccess.value = '' }, 5000)
-  } catch (error) {
-    console.error('Ошибка при отправке сообщения:', error)
-    supportError.value = error.response?.data?.detail || error.message || 'Не удалось отправить сообщение'
-  } finally {
-    isLoadingSupport.value = false
-  }
-}
 </script>
 
 <template>
@@ -295,32 +257,14 @@ const sendSupportMessage = async () => {
       </WidgetContainer>
 
       <!-- Поддержка -->
-      <WidgetContainer id="support" :gridColumn="12" minHeight="auto">
+      <WidgetContainer id="support" :gridColumn="6" minHeight="auto">
         <Widget title="Поддержка" :icon="MessageCircle">
-          <div v-if="supportError" class="message message-error">{{ supportError }}</div>
-          <div v-if="supportSuccess" class="message message-success">{{ supportSuccess }}</div>
-
-          <div class="form-group">
-            <label for="support-message">Ваше сообщение</label>
-            <textarea
-              id="support-message"
-              v-model="settings.support"
-              placeholder="Опишите ваш вопрос или проблему..."
-              class="form-textarea"
-              rows="4"
-              maxlength="5000"
-              :disabled="isLoadingSupport"
-            />
-            <span class="char-count">{{ (settings.support || '').length }} / 5000</span>
-          </div>
-
-          <button
-            @click="sendSupportMessage"
-            class="btn-primary"
-            :disabled="isLoadingSupport || !settings.support?.trim()"
-          >
-            {{ isLoadingSupport ? 'Отправка...' : 'Отправить в поддержку' }}
-          </button>
+          <p class="settings-support-lead">
+            Чат с поддержкой и ответы на частые вопросы доступны на отдельной странице.
+          </p>
+          <router-link to="/support" class="btn-primary settings-support-link">
+            Открыть поддержку
+          </router-link>
         </Widget>
       </WidgetContainer>
     </div>
@@ -510,6 +454,21 @@ const sendSupportMessage = async () => {
   color: var(--text-secondary, #374151);
   font-size: var(--text-caption-size, 0.875rem);
   line-height: 1.45;
+}
+
+.settings-support-lead {
+  margin: 0 0 1rem;
+  font-size: var(--text-caption-size, 0.875rem);
+  line-height: 1.5;
+  color: var(--text-secondary, #475569);
+}
+
+.settings-support-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
