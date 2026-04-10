@@ -99,8 +99,8 @@ portfolio_assets_data AS (
                 'last_price', COALESCE(apf.curr_price, 0),
                 'accrued_coupon', COALESCE(apf.curr_accrued, 0),
                 'daily_change', CASE
-                    WHEN apf.today_price IS NOT NULL OR apf.yesterday_price IS NOT NULL THEN
-                        (COALESCE(apf.curr_price, 0) - COALESCE(apf.prev_price, 0))
+                    WHEN apf.prev_price IS NOT NULL THEN
+                        COALESCE(apf.curr_price, 0) - apf.prev_price
                     ELSE 0
                 END,
                 'profit', (((COALESCE(apf.curr_price, 0) + COALESCE(apf.curr_accrued, 0)) - COALESCE(pa.average_price, 0)) * COALESCE(pa.quantity, 0)),

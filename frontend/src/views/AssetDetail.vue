@@ -2252,9 +2252,9 @@ async function handlePortfolioChange(portfolioId) {
 
 .asset-price-info {
   display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.375rem;
 }
 
 .price-main {

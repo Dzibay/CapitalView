@@ -576,7 +576,7 @@ function goToAsset(asset) {
     margin-top: 8px;
   }
   .child-portfolios {
-    padding: 0 4px 8px 4px;
+    padding: 0 8px 8px 8px;
   }
   .portfolio-balance-section {
     padding: 8px 12px;
@@ -615,7 +615,7 @@ function goToAsset(asset) {
     margin-top: 6px;
   }
   .child-portfolios {
-    padding: 0 2px 6px 2px;
+    padding: 0 6px 6px 6px;
   }
   .portfolio-name {
     font-size: 14px;

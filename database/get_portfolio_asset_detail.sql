@@ -30,9 +30,10 @@ BEGIN
                 'average_price', COALESCE(pa.average_price, 0),
                 'last_price', COALESCE(apf.curr_price, 0),
                 'accrued_coupon', COALESCE(apf.curr_accrued, 0),
+                -- Изменение за последний доступный шаг цены: curr_price - prev_price (asset_latest_prices)
                 'daily_change', CASE
-                    WHEN apf.today_price IS NOT NULL OR apf.yesterday_price IS NOT NULL THEN
-                        (COALESCE(apf.curr_price, 0) - COALESCE(apf.prev_price, 0))
+                    WHEN apf.prev_price IS NOT NULL THEN
+                        COALESCE(apf.curr_price, 0) - apf.prev_price
                     ELSE 0
                 END,
                 'currency_ticker', qa.ticker,
@@ -118,8 +119,8 @@ BEGIN
                     'last_price', COALESCE(apf2.curr_price, 0),
                     'accrued_coupon', COALESCE(apf2.curr_accrued, 0),
                     'daily_change', CASE
-                        WHEN apf2.today_price IS NOT NULL OR apf2.yesterday_price IS NOT NULL THEN
-                            (COALESCE(apf2.curr_price, 0) - COALESCE(apf2.prev_price, 0))
+                        WHEN apf2.prev_price IS NOT NULL THEN
+                            COALESCE(apf2.curr_price, 0) - apf2.prev_price
                         ELSE 0
                     END,
                     'profit_rub', pdp2.position_value - pdp2.cumulative_invested,
