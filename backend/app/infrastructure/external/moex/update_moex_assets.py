@@ -128,6 +128,20 @@ def get_bond_currency(ticker: str, existing_asset=None, historical_bonds_currenc
     return None
 
 
+def resolve_quote_asset_id(currency: Optional[str], currency_map: Dict[str, int]) -> int:
+    """
+    ID актива-валюты для quote_asset_id.
+    Если кода нет в currency_map (нет записи валюты в БД), используется RUB (как в init.sql, id=1).
+    """
+    rub_id = (currency_map or {}).get("RUB") or 1
+    if not currency:
+        return rub_id
+    code = str(currency).upper().strip()
+    if not code:
+        return rub_id
+    return (currency_map or {}).get(code) or rub_id
+
+
 # ---------------------------------------------------------------------------
 #  Вставка/обновление
 # ---------------------------------------------------------------------------
@@ -510,7 +524,7 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
             pbar.update(1)
             continue
 
-        quote_asset_id = currency_map.get(currency.upper()) if currency and currency_map else None
+        quote_asset_id = resolve_quote_asset_id(currency, currency_map)
 
         asset = {
             "asset_type_id": asset_type_id,

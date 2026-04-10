@@ -306,6 +306,10 @@ INSERT INTO assets (asset_type_id, user_id, name, ticker, quote_asset_id)
 SELECT 7, NULL, 'Швейцарский франк', 'CHF', 1
 WHERE NOT EXISTS (SELECT 1 FROM assets WHERE ticker = 'CHF' AND user_id IS NULL);
 
+INSERT INTO assets (asset_type_id, user_id, name, ticker, quote_asset_id)
+SELECT 7, NULL, 'Кыргызский сом', 'KGS', 1
+WHERE NOT EXISTS (SELECT 1 FROM assets WHERE ticker = 'KGS' AND user_id IS NULL);
+
 -- FK quote_asset_id (циклическая ссылка)
 DO $$
 BEGIN

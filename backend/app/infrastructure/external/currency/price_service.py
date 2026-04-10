@@ -24,6 +24,7 @@ CURRENCY_CODES = {
     "CNY": "R01375",  # Китайский юань
     "JPY": "R01820",  # Японская иена
     "CHF": "R01775",  # Швейцарский франк
+    "KGS": "R01335",  # Кыргызский сом
 }
 
 # Коды валют для daily_json.js (CharCode)
@@ -34,10 +35,11 @@ CURRENCY_CHAR_CODES = {
     "CNY": "CNY",
     "JPY": "JPY",
     "CHF": "CHF",
+    "KGS": "KGS",
 }
 
 # Поддерживаемые валюты
-SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "CNY", "JPY", "CHF"]
+SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "CNY", "JPY", "CHF", "KGS"]
 
 
 
