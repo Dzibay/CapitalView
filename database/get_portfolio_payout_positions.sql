@@ -271,6 +271,7 @@ BEGIN
         END LOOP;
 
         v_elem := jsonb_build_object(
+            'portfolio_id', r_pa.portfolio_id,
             'portfolio_asset_id', r_pa.pa_id,
             'asset_id', r_pa.asset_id,
             'name', r_pa.asset_name,

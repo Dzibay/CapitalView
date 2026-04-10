@@ -1,10 +1,12 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useDashboardStore } from '../stores/dashboard.store'
+import { useDividendsStore } from '../stores/dividends.store'
 import { getCurrencySymbol } from '../utils/currencySymbols'
 import { payoutAmountToRub } from '../utils/currencyRatesToRub'
 import { useUIStore } from '../stores/ui.store'
-import portfolioService from '../services/portfolioService'
+import { getDescendantPortfolioIds } from '../utils/portfolioSubtree'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import PageLayout from '../layouts/PageLayout.vue'
@@ -12,30 +14,54 @@ import PageHeader from '../layouts/PageHeader.vue'
 import { CheckCircle2, Clock } from 'lucide-vue-next'
 
 // Используем stores вместо inject
+const route = useRoute()
 const dashboardStore = useDashboardStore()
+const dividendsStore = useDividendsStore()
 const uiStore = useUIStore()
 
 // === STATE ===
 const currentDate = ref(new Date()) // Текущий месяц
-/** Позиции с выплатами для выбранного портфеля (поддерево), не из дашборда */
-const payoutPositions = ref([])
 
 const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
 const weekDays = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС']
 
+/** Кэш выплат: запрос(ы) только по корневым портфелям (RPC уже отдаёт всё поддерево). Смена портфеля — фильтр из Pinia без нового запроса. */
 watch(
-  () => uiStore.selectedPortfolioId,
-  async (id) => {
-    payoutPositions.value = []
-    if (!id) return
+  () => ({
+    path: route.path,
+    portfolioIds: (dashboardStore.portfolios || [])
+      .map((p) => p.id)
+      .filter((id) => id != null)
+      .sort()
+      .join(','),
+    dashboardStamp: dashboardStore.lastFetch,
+  }),
+  async ({ path, portfolioIds }) => {
+    if (path !== '/dividends' || !portfolioIds) return
     try {
-      payoutPositions.value = await portfolioService.getPayoutPositions(id)
+      await dividendsStore.fetchPayoutPositionsForAllPortfolios()
     } catch (e) {
       if (import.meta.env.VITE_APP_DEV) console.error(e)
-      payoutPositions.value = []
     }
   },
   { immediate: true }
+)
+
+/** Позиции выплат для выбранного портфеля и его подпортфелей (из общего кэша по portfolio_id). */
+const payoutPositions = computed(() => {
+  const all = dividendsStore.payoutPositionsFlat
+  if (!all?.length) return []
+  const sid = uiStore.selectedPortfolioId
+  if (sid == null) return []
+  const subtree = getDescendantPortfolioIds(dashboardStore.portfolios ?? [], sid)
+  return all.filter((row) => subtree.has(row.portfolio_id))
+})
+
+/** Первый заход: ждём общий лоадер дашборда или загрузку выплат; повторный заход при непустом кэше — не блокируем весь экран. */
+const dividendsPageBlocking = computed(
+  () =>
+    uiStore.loading ||
+    (dividendsStore.payoutPositionsLoading && dividendsStore.payoutPositionsCacheIsEmpty)
 )
 
 // === COMPUTED: ДАННЫЕ ===
@@ -296,7 +322,7 @@ function formatPayoutRowDate(evt) {
       </template>
     </PageHeader>
 
-    <LoadingState v-if="uiStore.loading" />
+    <LoadingState v-if="dividendsPageBlocking" />
 
     <div v-else class="dividends-content">
       <div class="calendar-controls">
