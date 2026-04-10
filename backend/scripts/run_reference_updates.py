@@ -6,60 +6,62 @@
 
 Или через env при старте backend:
   RUN_REFERENCE_UPDATES=1
+
+Логи: app.reference.* в stdout (см. app.core.logging и app.core.reference_logging).
 """
 import os
 import sys
+import time
 
 # Добавляем корень backend в path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.logging import init_logging, get_logger
+from app.core.logging import init_logging
+from app.core.reference_logging import boost_reference_loggers_to_info, get_reference_logger
 
 init_logging()
-logger = get_logger(__name__)
+boost_reference_loggers_to_info()
+logger = get_reference_logger("runner")
 
 
 async def run_all_updates():
     """Последовательно выполняет все обновления справочников."""
-    logger.info("=" * 50)
-    logger.info("Запуск обновления справочных данных")
-    logger.info("=" * 50)
+    started = time.perf_counter()
+    logger.info("reference_updates_start")
+    phases_failed = []
 
-    # 1. MOEX активы (акции, облигации, фонды)
-    try:
-        from app.infrastructure.external.moex.update_moex_assets import import_moex_assets_async
-        logger.info("--- update_moex_assets ---")
-        await import_moex_assets_async()
-    except Exception as e:
-        logger.error(f"Ошибка update_moex_assets: {e}", exc_info=True)
+    async def _phase(name: str, coro_factory):
+        t0 = time.perf_counter()
+        logger.info("reference_phase_start phase=%s", name)
+        try:
+            await coro_factory()
+            logger.info(
+                "reference_phase_done phase=%s duration_sec=%.2f",
+                name,
+                time.perf_counter() - t0,
+            )
+        except Exception:
+            phases_failed.append(name)
+            logger.exception("reference_phase_failed phase=%s", name)
 
-    # 2. Дивиденды
-    try:
-        from app.infrastructure.external.moex.update_dividends import update_forecasts
-        logger.info("--- update_dividends ---")
-        await update_forecasts()
-    except Exception as e:
-        logger.error(f"Ошибка update_dividends: {e}", exc_info=True)
+    from app.infrastructure.external.moex.update_moex_assets import import_moex_assets_async
+    from app.infrastructure.external.moex.update_dividends import update_forecasts
+    from app.infrastructure.external.moex.update_coupons import update_all_coupons
+    from app.infrastructure.external.crypto.update_crypto_assets import import_crypto_assets_async
+    from app.core.reference_logging import reference_progress_enabled
 
-    # 3. Купоны облигаций
-    try:
-        from app.infrastructure.external.moex.update_coupons import update_all_coupons
-        logger.info("--- update_coupons ---")
-        await update_all_coupons()
-    except Exception as e:
-        logger.error(f"Ошибка update_coupons: {e}", exc_info=True)
+    show_progress = reference_progress_enabled()
 
-    # 4. Криптоактивы
-    try:
-        from app.infrastructure.external.crypto.update_crypto_assets import import_crypto_assets_async
-        logger.info("--- update_crypto_assets ---")
-        await import_crypto_assets_async()
-    except Exception as e:
-        logger.error(f"Ошибка update_crypto_assets: {e}", exc_info=True)
+    await _phase("moex_assets", import_moex_assets_async)
+    await _phase("dividends", lambda: update_forecasts(show_progress=show_progress))
+    await _phase("coupons", lambda: update_all_coupons(show_progress=show_progress))
+    await _phase("crypto_assets", import_crypto_assets_async)
 
-    logger.info("=" * 50)
-    logger.info("Обновление справочных данных завершено")
-    logger.info("=" * 50)
+    logger.info(
+        "reference_updates_finish total_duration_sec=%.2f failed_phases=%s",
+        time.perf_counter() - started,
+        ",".join(phases_failed) if phases_failed else "none",
+    )
 
 
 if __name__ == "__main__":

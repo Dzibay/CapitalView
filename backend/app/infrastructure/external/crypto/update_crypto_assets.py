@@ -8,9 +8,9 @@ from app.infrastructure.database.postgres_async import table_select_async, table
 from app.infrastructure.external.common.client import create_http_session, fetch_json
 from app.infrastructure.external.crypto.price_service import COINGECKO_API_URL, COINGECKO_RATE_LIMIT_DELAY
 from app.infrastructure.external.moex.utils import parse_json_properties
-from app.core.logging import get_logger
+from app.core.reference_logging import get_reference_logger
 
-logger = get_logger(__name__)
+logger = get_reference_logger("crypto")
 
 
 async def get_crypto_list(session: aiohttp.ClientSession, limit: int = 250) -> List[Dict]:
@@ -112,8 +112,8 @@ async def process_crypto_assets(session: aiohttp.ClientSession, existing_assets:
     Returns:
         Кортеж (количество добавленных, количество обновленных)
     """
-    print(f"\n🔹 Обработка криптовалют...")
-    
+    logger.info("crypto_process_start")
+
     # Находим ID актива USD один раз для всех криптовалют
     usd_asset = await table_select_async(
         "assets",
@@ -123,14 +123,16 @@ async def process_crypto_assets(session: aiohttp.ClientSession, existing_assets:
     quote_asset_id = usd_asset[0]["id"] if usd_asset and len(usd_asset) > 0 else None
     
     if not quote_asset_id:
-        logger.warning("⚠️ Актив USD не найден в базе данных. quote_asset_id будет NULL для всех криптовалют")
+        logger.warning(
+            "crypto_usd_quote_asset_missing quote_asset_id will be null for new crypto rows"
+        )
     else:
-        print(f"   💵 Найден актив USD с ID: {quote_asset_id}")
-    
+        logger.info("crypto_usd_quote_asset_id id=%s", quote_asset_id)
+
     crypto_list = await get_crypto_list(session, limit=10)
-    
+
     if not crypto_list:
-        print(f"   ⚠️ Нет данных о криптовалютах")
+        logger.warning("crypto_coingecko_empty_list")
         return 0, 0
     
     inserted = 0
@@ -165,8 +167,7 @@ async def process_crypto_assets(session: aiohttp.ClientSession, existing_assets:
         elif result == "updated":
             updated += 1
     
-    print(f"   ➕ Добавлено: {inserted}")
-    print(f"   ♻️ Обновлено: {updated}")
+    logger.info("crypto_batch_done inserted=%s updated=%s", inserted, updated)
     return inserted, updated
 
 
@@ -175,7 +176,7 @@ async def import_crypto_assets_async():
     Импортирует и обновляет криптовалютные активы.
     Проверяет активы в базе и обновляет их если они с ошибками или если появились новые - добавляет.
     """
-    print("📥 Асинхронный импорт и обновление криптовалютных активов...\n")
+    logger.info("crypto_import_start")
 
     crypto_type_id = 6
     
@@ -204,9 +205,7 @@ async def import_crypto_assets_async():
     async with create_http_session(limit=10, limit_per_host=5) as session:
         inserted, updated = await process_crypto_assets(session, existing_assets, crypto_type_id)
     
-    print(f"\n🎯 Готово!")
-    print(f"   ➕ Всего добавлено: {inserted}")
-    print(f"   ♻️ Всего обновлено: {updated}")
+    logger.info("crypto_import_done inserted=%s updated=%s", inserted, updated)
     return inserted, updated
 
 

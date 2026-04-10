@@ -1,116 +1,110 @@
 """
-Централизованная система логирования для всего приложения.
+Централизованное логирование: только консоль (stdout) по умолчанию.
+
+Файловые логи не используются. Явный opt-in: LOG_FILE=имя_файла (не none).
+
+Переменные окружения:
+  LOG_LEVEL          — DEBUG|INFO|WARNING|ERROR (в production без env по умолчанию WARNING)
+  LOG_FORMAT         — dev | production | compact (в production без env — compact)
+  ENVIRONMENT        — production → см. умолчания выше
+  LOG_FILE           — если задан и не «none», добавляется RotatingFileHandler (редкий случай)
+  LOG_DIR            — каталог для LOG_FILE (по умолчанию logs)
 """
 import logging
-import sys
 import os
+import sys
 from typing import Optional
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
 from app.config import Config
 
 
 class AppLogger:
-    """Централизованный класс для настройки логирования."""
-    
+    """Настройка root-логгера: один StreamHandler в stdout, без файла по умолчанию."""
+
     _initialized = False
-    
+
     @staticmethod
     def setup(
         log_level: Optional[str] = None,
         log_file: Optional[str] = None,
-        log_dir: str = "logs"
+        log_dir: str = "logs",
     ) -> None:
-        """
-        Настраивает логирование для всего приложения.
-        
-        Args:
-            log_level: Уровень логирования (DEBUG, INFO, WARNING, ERROR)
-            log_file: Имя файла для логов (если None, логи только в консоль)
-            log_dir: Директория для логов
-        """
         if AppLogger._initialized:
             return
-        
-        # Определяем уровень логирования
-        # Приоритет: переданный параметр > LOG_LEVEL (для скриптов) > Config.LOG_LEVEL > INFO
+
         if not log_level:
             log_level = os.getenv("LOG_LEVEL") or getattr(Config, "LOG_LEVEL", "INFO")
         log_level_upper = log_level.upper()
-        
-        # Формат логов
-        log_format = "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
-        date_format = "%Y-%m-%d %H:%M:%S"
-        
-        # Создаем форматтер
+
+        env = os.getenv("ENVIRONMENT", "").strip().lower()
+        fmt_env = (os.getenv("LOG_FORMAT") or "").strip().lower()
+        if not fmt_env and env == "production":
+            fmt_env = "production"
+        if fmt_env in ("production", "prod", "compact"):
+            log_format = "%(asctime)s %(levelname)-5s [%(name)s] %(message)s"
+            date_format = "%Y-%m-%dT%H:%M:%S"
+        else:
+            log_format = "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+            date_format = "%Y-%m-%d %H:%M:%S"
+
         formatter = logging.Formatter(log_format, datefmt=date_format)
-        
-        # Настраиваем root logger
+
         root_logger = logging.getLogger()
         root_logger.setLevel(getattr(logging, log_level_upper, logging.INFO))
-        
-        # Удаляем существующие handlers
         root_logger.handlers.clear()
-        
-        # Консольный handler
+
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(getattr(logging, log_level_upper, logging.INFO))
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
-        
-        # Файловый handler (если указан)
+
         if log_file:
-            log_path = Path(log_dir)
-            log_path.mkdir(exist_ok=True)
-            
+            log_path = Path(os.getenv("LOG_DIR", log_dir))
+            log_path.mkdir(parents=True, exist_ok=True)
             file_handler = RotatingFileHandler(
                 log_path / log_file,
-                maxBytes=10 * 1024 * 1024,  # 10 MB
-                backupCount=5
+                maxBytes=10 * 1024 * 1024,
+                backupCount=5,
             )
             file_handler.setLevel(getattr(logging, log_level_upper, logging.INFO))
             file_handler.setFormatter(formatter)
             root_logger.addHandler(file_handler)
-        
-        # Настройка уровней для внешних библиотек
+
         logging.getLogger("uvicorn").setLevel(logging.INFO)
         logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
         logging.getLogger("uvicorn.error").setLevel(logging.INFO)
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("httpcore").setLevel(logging.WARNING)
-        logging.getLogger("hpack").setLevel(logging.WARNING)  # Отключаем DEBUG логи от HTTP/2 библиотеки
-        logging.getLogger("h2").setLevel(logging.WARNING)  # Отключаем DEBUG логи от HTTP/2 библиотеки
-        logging.getLogger("hyperframe").setLevel(logging.WARNING)  # Отключаем DEBUG логи от HTTP/2 библиотеки
-        
+        logging.getLogger("hpack").setLevel(logging.WARNING)
+        logging.getLogger("h2").setLevel(logging.WARNING)
+        logging.getLogger("hyperframe").setLevel(logging.WARNING)
+        logging.getLogger("asyncpg").setLevel(logging.WARNING)
+        logging.getLogger("aiohttp").setLevel(logging.WARNING)
+        logging.getLogger("tqdm").setLevel(logging.WARNING)
+        logging.getLogger("tqdm.contrib").setLevel(logging.WARNING)
+
         AppLogger._initialized = True
-    
+
     @staticmethod
     def get_logger(name: str) -> logging.Logger:
-        """
-        Получает logger для модуля.
-        
-        Args:
-            name: Имя модуля (обычно __name__)
-            
-        Returns:
-            Настроенный logger
-        """
         if not AppLogger._initialized:
             AppLogger.setup()
         return logging.getLogger(name)
 
 
-# Инициализация при импорте
-def init_logging():
-    """Инициализирует логирование при старте приложения."""
-    log_file = os.getenv("LOG_FILE", "app.log")
-    # В production по умолчанию WARNING, если LOG_LEVEL не задан
+def init_logging() -> None:
+    """Инициализация при старте API/скриптов: только stdout, если не задан LOG_FILE."""
     log_level = os.getenv("LOG_LEVEL")
-    if not log_level and os.getenv("ENVIRONMENT") == "production":
+    if not log_level and os.getenv("ENVIRONMENT", "").strip().lower() == "production":
         log_level = "WARNING"
-    AppLogger.setup(log_file=log_file if log_file != "none" else None, log_level=log_level)
+
+    raw_file = os.getenv("LOG_FILE", "").strip()
+    log_file = raw_file if raw_file and raw_file.lower() != "none" else None
+
+    AppLogger.setup(log_file=log_file, log_level=log_level)
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Удобная функция для получения logger."""
     return AppLogger.get_logger(name)

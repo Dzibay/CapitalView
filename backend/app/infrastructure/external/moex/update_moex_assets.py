@@ -31,9 +31,9 @@ from app.infrastructure.external.moex.utils import (
     normalize_moex_currency,
     parse_json_properties,
 )
-from app.core.logging import get_logger
+from app.core.reference_logging import get_reference_logger, reference_progress_enabled
 
-logger = get_logger(__name__)
+logger = get_reference_logger("moex_assets")
 
 MAX_EXAMPLES = 10
 
@@ -333,7 +333,13 @@ async def fetch_inactive_bonds_currency_batch(session, tickers: list, batch_size
     logger.info(f"Загрузка данных {len(tickers)} неактивных облигаций...")
     inactive_data: Dict = {}
 
-    pbar = tqdm(total=len(tickers), desc="Неактивные облигации", unit="шт", leave=False)
+    pbar = tqdm(
+        total=len(tickers),
+        desc="Неактивные облигации",
+        unit="шт",
+        leave=False,
+        disable=not reference_progress_enabled(),
+    )
     for i in range(0, len(tickers), batch_size):
         batch = tickers[i:i + batch_size]
         tasks = [fetch_bond_currency_single(session, t) for t in batch]
@@ -452,7 +458,13 @@ async def _process_assets(rows, cols, i_SECID, i_SHORTNAME, i_NAME, i_ISIN, i_BO
     inserted_examples: List[str] = []
     updated_examples: List[str] = []
 
-    pbar = tqdm(total=len(ticker_records), desc=f"Обработка {market}", unit="шт", leave=False)
+    pbar = tqdm(
+        total=len(ticker_records),
+        desc=f"Обработка {market}",
+        unit="шт",
+        leave=False,
+        disable=not reference_progress_enabled(),
+    )
 
     for ticker, rec in ticker_records.items():
         r = rec["row"]
@@ -594,7 +606,13 @@ async def remove_duplicate_assets():
     to_delete: List[int] = []
     deleted_examples: List[str] = []
 
-    pbar = tqdm(total=len(duplicates), desc="Проверка дубликатов", unit="тикер", leave=False)
+    pbar = tqdm(
+        total=len(duplicates),
+        desc="Проверка дубликатов",
+        unit="тикер",
+        leave=False,
+        disable=not reference_progress_enabled(),
+    )
     for ticker, assets in duplicates.items():
         assets_sorted = sorted(assets, key=lambda x: x.get("id", 0))
         for dup in assets_sorted[1:]:
@@ -721,7 +739,13 @@ async def cleanup_priceless_assets(pre_existing_ids: Optional[set] = None) -> in
             deleted_examples.append(f"  {a.get('ticker', '?')} ({a.get('name', '?')}, id={aid})")
 
     deleted = 0
-    pbar = tqdm(total=len(to_delete), desc="Удаление активов без цен", unit="шт", leave=False)
+    pbar = tqdm(
+        total=len(to_delete),
+        desc="Удаление активов без цен",
+        unit="шт",
+        leave=False,
+        disable=not reference_progress_enabled(),
+    )
     for i in range(0, len(to_delete), batch_size):
         batch = to_delete[i:i + batch_size]
         try:

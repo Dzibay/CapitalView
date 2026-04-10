@@ -232,7 +232,12 @@ def process_today_price(
     if prev_price:
         prev_price = float(prev_price)
     if prev_price and abs(float(price) - prev_price) / prev_price > 0.2:
-        logger.warning(f"⚠️ Скачок цены для {coingecko_id}: {prev_price} -> {price}")
+        logger.warning(
+            "Скачок цены для %s: %s -> %s",
+            coingecko_id,
+            prev_price,
+            price,
+        )
         return None
 
     # Для крипты всегда используем сегодняшнюю дату (торгуется 24/7)

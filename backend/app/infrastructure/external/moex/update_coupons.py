@@ -15,14 +15,14 @@ from app.infrastructure.external.moex.client import (
 )
 from app.infrastructure.external.moex.urls import moex_bondization_url
 from app.utils.date import parse_date as normalize_date
-from app.core.logging import get_logger
+from app.core.reference_logging import get_reference_logger, reference_progress_enabled
 from app.domain.constants.payout_types import (
     PAYOUT_CODE_BY_ID,
     PAYOUT_TYPE_AMORTIZATION_ID,
     PAYOUT_TYPE_COUPON_ID,
 )
 
-logger = get_logger(__name__)
+logger = get_reference_logger("coupons")
 
 BATCH_SIZE = 1000
 # Семафор смягчает волны из тысяч корутин; значения ближе к дефолтному коннектору MOEX (30 / 5).
@@ -229,9 +229,12 @@ async def _update_bond_properties(
     return updated
 
 
-async def update_all_coupons():
+async def update_all_coupons(show_progress: bool | None = None):
     """Обновляет купоны и амортизации для всех облигаций с batch вставками и проверкой на дубликаты."""
-    print("📥 Загрузка облигаций из БД...")
+    if show_progress is None:
+        show_progress = reference_progress_enabled()
+
+    logger.info("coupons_load_bonds_from_db")
     bonds = await db_select(
         "assets",
         "id, ticker",
@@ -240,12 +243,12 @@ async def update_all_coupons():
     )
     
     if not bonds:
-        print("⚠️ Облигации не найдены")
+        logger.warning("coupons_no_bonds_in_db")
         return
-    
-    print(f"✅ Найдено {len(bonds)} облигаций")
-    
-    print("📥 Загрузка существующих купонов и амортизаций из БД...")
+
+    logger.info("coupons_bonds_count count=%s", len(bonds))
+
+    logger.info("coupons_load_existing_payouts")
     existing_payouts = await db_select(
         "asset_payouts",
         "asset_id, record_date, payment_date, value, type_id",
@@ -266,9 +269,9 @@ async def update_all_coupons():
         if key:
             existing_keys.add(key)
     
-    print(f"✅ Загружено {len(existing_keys)} существующих записей (купоны + амортизации)")
-    
-    print(f"\n📥 Загрузка данных о купонах и амортизациях с MOEX...")
+    logger.info("coupons_existing_payout_keys count=%s", len(existing_keys))
+
+    logger.info("coupons_fetch_moex_bondization")
     
     all_new_payouts = []
     initial_fv_map = {}      # {asset_id: initial_face_value}
@@ -285,7 +288,11 @@ async def update_all_coupons():
             for bond in bonds_with_ticker
         ]
         
-        results = await tqdm_asyncio.gather(*tasks, desc="Загрузка купонов и амортизаций")
+        results = await tqdm_asyncio.gather(
+            *tasks,
+            desc="Загрузка купонов и амортизаций",
+            disable=not show_progress,
+        )
         
         for bond, (payouts, initial_fv, coupon_pct) in zip(bonds_with_ticker, results):
             asset_id = bond["id"]
@@ -323,18 +330,27 @@ async def update_all_coupons():
     
     # Обновляем properties: initial_face_value для всех облигаций + coupon_percent для тех, у кого отсутствует
     if initial_fv_map or coupon_percent_map:
-        print(f"\n📦 Обновление properties: initial_face_value ({len(initial_fv_map)} шт.), coupon_percent ({len(coupon_percent_map)} шт.)...")
+        logger.info(
+            "coupons_update_bond_properties initial_face_value_assets=%s coupon_percent_assets=%s",
+            len(initial_fv_map),
+            len(coupon_percent_map),
+        )
         props_updated = await _update_bond_properties(bonds_with_ticker, initial_fv_map, coupon_percent_map)
-        print(f"   ✅ Обновлено облигаций: {props_updated}")
+        logger.info("coupons_properties_rows_updated count=%s", props_updated)
 
     if not all_new_payouts:
-        print("📭 Новых купонов/амортизаций для вставки не найдено")
+        logger.info("coupons_no_new_payouts_to_insert")
         return
-    
+
     new_coupons = sum(1 for p in all_new_payouts if p.get("type_id") == PAYOUT_TYPE_COUPON_ID)
     new_amortizations = sum(1 for p in all_new_payouts if p.get("type_id") == PAYOUT_TYPE_AMORTIZATION_ID)
-    print(f"\n📦 Найдено {len(all_new_payouts)} новых записей (купонов: {new_coupons}, амортизаций: {new_amortizations})")
-    print(f"📦 Начинаем пакетную вставку батчами по {BATCH_SIZE}...")
+    logger.info(
+        "coupons_insert_queue total=%s coupons=%s amortizations=%s batch_size=%s",
+        len(all_new_payouts),
+        new_coupons,
+        new_amortizations,
+        BATCH_SIZE,
+    )
     
     total_batches = (len(all_new_payouts) + BATCH_SIZE - 1) // BATCH_SIZE
     processed = 0
@@ -346,13 +362,21 @@ async def update_all_coupons():
             await _insert_asset_payouts_batch(batch)
             processed += len(batch)
             if batch_num % 10 == 0 or batch_num == total_batches:
-                print(f"   ✅ Батч {batch_num}/{total_batches} ({len(batch)} строк, всего отправлено: {processed})")
+                logger.info(
+                    "coupons_batch_progress batch=%s/%s batch_rows=%s total_processed=%s",
+                    batch_num,
+                    total_batches,
+                    len(batch),
+                    processed,
+                )
         except Exception as e:
-            logger.error(f"   ❌ Ошибка вставки батча {batch_num}: {e}")
+            logger.error("coupons_batch_insert_error batch=%s error=%s", batch_num, e)
             raise
-    
-    print(f"\n🎯 Готово!")
-    print(f"   ➕ Обработано строк: {processed} (дубликаты купонов по дате отброшены в БД без ошибок)")
+
+    logger.info(
+        "coupons_done processed_rows=%s (coupon duplicates skipped via ON CONFLICT)",
+        processed,
+    )
 
 
 if __name__ == "__main__":

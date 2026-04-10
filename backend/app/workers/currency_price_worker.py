@@ -148,15 +148,15 @@ async def update_history_prices() -> int:
     
     assets = await get_currency_assets()
     if not assets:
-        logger.warning("⚠️ Не найдено валютных активов для обновления")
+        logger.warning("Не найдено валютных активов для обновления")
         return 0
     
-    logger.info(f"📊 Найдено {len(assets)} валют для обновления")
+    logger.info("Найдено валют для обновления: %s", len(assets))
     
     asset_ids = [a["id"] for a in assets]
     last_date_map = await get_last_prices_from_latest_prices(asset_ids)
     
-    logger.info("📊 Загрузка последних дат курсов...")
+    logger.info("Загрузка последних дат курсов")
     
     # Создаем словарь {asset_id: last_date_str} для удобства
     last_date_str_map = {}
@@ -191,7 +191,7 @@ async def update_history_prices() -> int:
                 pass
         else:
             error_count += 1
-            logger.warning(f"⚠️ Не удалось получить курсы для {ticker} (asset_id: {asset_id})")
+            logger.warning("Не удалось получить курсы для %s (asset_id=%s)", ticker, asset_id)
     
     if all_new_prices:
         await batch_upsert_prices(all_new_prices)
@@ -218,7 +218,7 @@ async def update_today_prices() -> int:
     
     assets = await get_currency_assets()
     if not assets:
-        logger.warning("⚠️ Не найдено валютных активов для обновления")
+        logger.warning("Не найдено валютных активов для обновления")
         return 0
     
     async with create_http_session() as session:
@@ -227,7 +227,7 @@ async def update_today_prices() -> int:
         rates = await get_currency_rates_batch(session, tickers)
     
     if not rates:
-        logger.warning("⚠️ Не удалось получить текущие курсы валют")
+        logger.warning("Не удалось получить текущие курсы валют")
         return 0
     
     updates_batch = []

@@ -18,6 +18,10 @@
 from datetime import datetime, timedelta
 import httpx
 
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 # Маппинг типов операций БКС -> CapitalView
 OPERATION_CLASSIFICATION = {
     "BUY": "Buy",
@@ -167,7 +171,7 @@ def get_bks_portfolio(refresh_token: str) -> dict:
     portfolio_url = f"{base}/trade-api-bff-portfolio/api/v1/portfolio"
     trades_url = f"{base}/trade-api-bff-trade-details/api/v1/trades/search"
     
-    print("📥 Получаем данные от брокера БКС...")
+    logger.info("BKS portfolio import start")
     
     access_token = _get_access_token(refresh_token)
     headers = _get_headers(access_token)
@@ -245,9 +249,9 @@ def get_bks_portfolio(refresh_token: str) -> dict:
         except httpx.HTTPStatusError as e:
             # Сделки доступны с 26.01.2026, может быть 404 или другой код
             if e.response.status_code == 404:
-                print("⚠️ БКС API: эндпоинт trades/search не найден (404), используем только позиции")
+                logger.warning("BKS trades/search 404, using positions only")
             else:
-                print(f"⚠️ БКС API trades: {e.response.status_code} - {e.response.text}")
+                logger.warning("BKS trades API status=%s body=%s", e.response.status_code, e.response.text)
         
         result["Портфель БКС"] = {
             "account_id": "default",

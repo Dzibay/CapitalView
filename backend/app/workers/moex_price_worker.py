@@ -217,7 +217,7 @@ async def update_asset_history(
         if last_date:
             return True, None, []
         else:
-            logger.debug(f"⚠️ Не удалось получить цены для {ticker} (asset_id: {asset_id})")
+            logger.debug("Не удалось получить цены для %s (asset_id=%s)", ticker, asset_id)
             return False, None, []
 
     if asset_type_id == 2:  # Облигация
@@ -456,7 +456,11 @@ async def update_history_prices() -> int:
         if len(valid_prices) < len(deduplicated_prices):
             skipped_count = len(deduplicated_prices) - len(valid_prices)
             skipped_asset_ids = price_asset_ids - existing_asset_ids
-            logger.warning(f"⚠️ Пропущено {skipped_count} цен для несуществующих активов: {sorted(skipped_asset_ids)}")
+            logger.warning(
+                "Пропущено %s цен для несуществующих активов: %s",
+                skipped_count,
+                sorted(skipped_asset_ids),
+            )
         
         batch_size = 1000  # Увеличиваем размер батча для уменьшения количества запросов
         for i in range(0, len(valid_prices), batch_size):
@@ -589,7 +593,12 @@ async def process_today_prices_batch(
                 prev_price_float = float(prev_price)
                 price_float = float(price)
                 if abs(price_float - prev_price_float) / prev_price_float > 0.1:
-                    logger.warning(f"⚠️ Скачок цены для {ticker}: {prev_price} -> {price}")
+                    logger.warning(
+                        "Скачок цены для %s: %s -> %s",
+                        ticker,
+                        prev_price,
+                        price,
+                    )
                     continue
             
             # Выбираем дату для вставки
@@ -638,7 +647,12 @@ async def process_today_prices_batch(
                 prev_price_float = float(prev_price)
                 price_float = float(price)
                 if abs(price_float - prev_price_float) / prev_price_float > 0.1:
-                    logger.warning(f"⚠️ Скачок цены для {ticker}: {prev_price} -> {price}")
+                    logger.warning(
+                        "Скачок цены для %s: %s -> %s",
+                        ticker,
+                        prev_price,
+                        price,
+                    )
                     continue
             
             # Выбираем дату для вставки
@@ -764,7 +778,11 @@ async def update_today_prices() -> int:
         if len(valid_updates) < len(unique_updates):
             skipped_count = len(unique_updates) - len(valid_updates)
             skipped_asset_ids = update_asset_ids - existing_asset_ids
-            logger.warning(f"⚠️ Пропущено {skipped_count} цен для несуществующих активов: {sorted(skipped_asset_ids)}")
+            logger.warning(
+                "Пропущено %s цен для несуществующих активов: %s",
+                skipped_count,
+                sorted(skipped_asset_ids),
+            )
         
         pack = []
         for row in valid_updates:

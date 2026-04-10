@@ -6,6 +6,10 @@ from t_tech.invest import Client, InstrumentIdType
 from t_tech.invest.exceptions import RequestError
 from grpc import StatusCode
 
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 # Маппинг OperationType (Tinkoff Invest API) → внутренние типы для portfolio_import_service.
 # Неизвестное имя типа (новый enum в API и т.п.) → Other (см. classify_tinkoff_operation).
 OPERATION_CLASSIFICATION = {
@@ -125,7 +129,7 @@ def resolve_instrument(client, figi, cache):
 
 def get_tinkoff_portfolio(token):
     """Получает данные портфеля от брокера Tinkoff."""
-    print("📥 Получаем данные от брокера Tinkoff...")
+    logger.info("Tinkoff portfolio import start")
 
     result = {}
     instrument_cache = {}
@@ -141,7 +145,7 @@ def get_tinkoff_portfolio(token):
         for account in accounts:
             acc_id = account.id
             acc_name = account.name or f"Account {acc_id}"
-            print(f"🔹 Счёт: {acc_name}")
+            logger.info("Tinkoff account name=%s", acc_name)
 
             try:
                 # ПОЗИЦИИ
@@ -164,7 +168,7 @@ def get_tinkoff_portfolio(token):
                 except RequestError as e:
                     # Если счет недоступен для получения портфеля, пропускаем его
                     if e.code == StatusCode.NOT_FOUND and e.details == "50004":
-                        print(f"⚠️  Счёт {acc_name} недоступен (Account not found), пропускаем")
+                        logger.warning("Tinkoff account not found, skip name=%s", acc_name)
                         continue
                     raise
 
@@ -178,7 +182,10 @@ def get_tinkoff_portfolio(token):
                 except RequestError as e:
                     # Если счет недоступен для получения операций, используем пустой список операций
                     if e.code == StatusCode.NOT_FOUND and e.details == "50004":
-                        print(f"⚠️  Операции для счёта {acc_name} недоступны (Account not found), используем пустой список")
+                        logger.warning(
+                            "Tinkoff operations unavailable (Account not found), empty ops name=%s",
+                            acc_name,
+                        )
                         ops_raw = []
                     else:
                         raise
@@ -324,12 +331,17 @@ def get_tinkoff_portfolio(token):
                 }
             except RequestError as e:
                 # Обработка других ошибок RequestError
-                print(f"❌ Ошибка при обработке счёта {acc_name}: {e.code.name} - {e.details}")
+                logger.error(
+                    "Tinkoff account error name=%s code=%s details=%s",
+                    acc_name,
+                    e.code.name,
+                    e.details,
+                )
                 # Пропускаем этот счет и продолжаем обработку остальных
                 continue
             except Exception as e:
                 # Обработка любых других неожиданных ошибок
-                print(f"❌ Неожиданная ошибка при обработке счёта {acc_name}: {str(e)}")
+                logger.error("Tinkoff account unexpected error name=%s err=%s", acc_name, e, exc_info=True)
                 # Пропускаем этот счет и продолжаем обработку остальных
                 continue
 
