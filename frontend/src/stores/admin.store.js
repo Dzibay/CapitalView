@@ -108,5 +108,11 @@ export const useAdminStore = defineStore('admin', {
 
       return supportMessagesFetchInFlight
     },
+
+    async sendSupportReply(userId, message) {
+      await adminService.replySupportMessage(userId, message)
+      this.supportMessagesLastFetch = null
+      await this.fetchSupportMessages(true)
+    },
   },
 })

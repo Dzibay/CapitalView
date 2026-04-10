@@ -12,6 +12,7 @@ import {
   Settings,
   Shield,
   MessageSquare,
+  Headphones,
 } from 'lucide-vue-next';
 
 const route = useRoute();
@@ -79,7 +80,10 @@ function buildMenuSections(user) {
     },
     {
       title: 'ДОПОЛНИТЕЛЬНО',
-      items: [{ name: 'Настройки', link: '/settings', icon: Settings }],
+      items: [
+        { name: 'Поддержка', link: '/support', icon: Headphones },
+        { name: 'Настройки', link: '/settings', icon: Settings },
+      ],
     },
   ]
 }
@@ -186,9 +190,6 @@ watch(route, () => {
       </div>
     </nav>
 
-    <!-- Нижний блок: Профиль пользователя -->
-    <div class="sidebar__footer">
-    </div>
   </aside>
 </template>
 
@@ -328,7 +329,7 @@ watch(route, () => {
 .sidebar__section {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.25rem;
 }
 
 .sidebar__section-title {
@@ -497,17 +498,6 @@ watch(route, () => {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-}
-
-
-/* Подвал */
-.sidebar__footer {
-  display: flex;
-  align-items: center;
-  height: 5rem; /* 80px */
-  padding: 0 1.25rem; /* 20px */
-  background-color: var(--sidebar-item-hover-bg);
-  transition: all 0.3s;
 }
 
 .sidebar__user-avatar {

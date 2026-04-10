@@ -11,6 +11,7 @@ AS $$
         'user_id', s.user_id::text,
         'message', s.message,
         'created_at', s.created_at,
+        'is_from_admin', s.is_from_admin,
         'user_email', s.user_email,
         'user_name', s.user_name
       )
@@ -24,6 +25,7 @@ AS $$
       m.user_id,
       m.message,
       m.created_at,
+      m.is_from_admin,
       u.email AS user_email,
       u.name AS user_name,
       m.created_at AS sort_ts

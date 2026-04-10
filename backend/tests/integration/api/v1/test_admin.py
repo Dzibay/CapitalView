@@ -71,6 +71,7 @@ class TestAdminSupportMessages:
                 "user_id": str(mock_user["id"]),
                 "message": "Нужна помощь",
                 "created_at": "2025-01-15T10:00:00+00:00",
+                "is_from_admin": False,
                 "user_email": mock_user["email"],
                 "user_name": "Test User",
             }

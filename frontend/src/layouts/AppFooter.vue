@@ -11,7 +11,7 @@
           <span class="divider" />
           <a href="/terms" target="_blank" rel="noopener noreferrer">Условия использования</a>
           <span class="divider" />
-          <router-link :to="{ path: '/settings', hash: '#support' }">Поддержка</router-link>
+          <router-link to="/support">Поддержка</router-link>
         </div>
       </div>
       <div class="footer-bottom">

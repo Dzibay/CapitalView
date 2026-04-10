@@ -11,6 +11,7 @@ const LAST_APP_PATH_REGEXES = [
   /^\/transactions$/,
   /^\/dividends$/,
   /^\/settings$/,
+  /^\/support$/,
   /^\/assets$/,
   /^\/assets\/[^/]+$/
 ]
@@ -59,6 +60,7 @@ const Login = () => import('../views/Login.vue');
 
 // Остальные маршруты — lazy (загружаются по требованию)
 const LegalDocument = () => import('../views/LegalDocument.vue');
+const Support = () => import('../views/Support.vue');
 const AuthCallback = () => import('../views/AuthCallback.vue');
 const DashboardLayout = () => import('../layouts/DashboardLayout.vue');
 const Dashboard = () => import('../views/Dashboard.vue');
@@ -140,7 +142,8 @@ const routes = [
       },
       { path: '/transactions', component: Transactions, meta: { title: 'Сделки — CapitalView' } },
       { path: '/dividends', component: Dividends, meta: { title: 'Дивиденды и купоны — CapitalView' } },
-      { path: '/settings', component: Settings, meta: { title: 'Настройки — CapitalView' } }
+      { path: '/settings', component: Settings, meta: { title: 'Настройки — CapitalView' } },
+      { path: '/support', component: Support, meta: { title: 'Поддержка — CapitalView' } }
     ]
   },
   {

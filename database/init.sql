@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS support_messages (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   user_id uuid NOT NULL,
   message text NOT NULL,
+  is_from_admin boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT support_messages_pkey PRIMARY KEY (id),
   CONSTRAINT support_messages_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
