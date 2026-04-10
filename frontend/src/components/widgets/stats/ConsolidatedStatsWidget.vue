@@ -165,7 +165,7 @@ const profitBreakdownTooltip = computed(() => {
   if (b.realized !== 0) parts.push(`Реализованная прибыль: ${formatForTooltip(b.realized)}`)
   if (b.unrealized !== 0) parts.push(`Нереализованная прибыль: ${formatForTooltip(b.unrealized)}`)
   if (b.accruedCouponRub !== 0) {
-    parts.push(`НКД по облигациям (в оценке): ${formatForTooltip(b.accruedCouponRub)}`)
+    parts.push(`НКД по облигациям: ${formatForTooltip(b.accruedCouponRub)}`)
   }
   if (b.dividends !== 0) parts.push(`Дивиденды: ${formatForTooltip(b.dividends)}`)
   if (b.coupons !== 0) parts.push(`Купоны: ${formatForTooltip(b.coupons)}`)

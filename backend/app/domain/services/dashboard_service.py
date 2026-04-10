@@ -21,7 +21,7 @@ def _asset_unit_dirty_price(asset: dict) -> float:
 
 
 def _portfolio_accrued_coupon_rub(assets: list) -> float:
-    """Сумма НКД по открытым позициям в ₽ (та же логика, что в оценке стоимости позиций)."""
+    """Сумма НКД по открытым позициям в ₽."""
     return round(
         sum(
             float(a.get("quantity") or 0)
