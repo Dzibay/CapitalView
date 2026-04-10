@@ -6,23 +6,32 @@ import aiohttp
 from typing import Optional
 from app.infrastructure.external.common.client import create_http_session, fetch_json as common_fetch_json
 from app.core.logging import get_logger
+from app.infrastructure.external.moex.urls import MOEX_BASE_URL
 
 logger = get_logger(__name__)
 
-MOEX_BASE_URL = "https://iss.moex.com/iss/engines/stock/markets"
 MOEX_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_read=20)
 MAX_RETRIES = 5
 
+# Единые лимиты TCPConnector для всех импортов с iss.moex.com (батчи, bondization, цены и т.д.).
+MOEX_HTTP_TOTAL_LIMIT = 30
+MOEX_HTTP_PER_HOST_LIMIT = 5
 
-def create_moex_session(limit: int = 30, limit_per_host: int = 5) -> aiohttp.ClientSession:
+
+def create_moex_session(
+    limit: int = MOEX_HTTP_TOTAL_LIMIT,
+    limit_per_host: int = MOEX_HTTP_PER_HOST_LIMIT,
+) -> aiohttp.ClientSession:
     """
     Создает HTTP сессию для работы с MOEX API.
-    Использует общий клиент с параметрами по умолчанию для MOEX.
-    
+
+    Используйте только эту фабрику для запросов к ISS MOEX, чтобы лимиты совпадали во всех скриптах.
+    Использует общий клиент из common/client.py.
+
     Args:
-        limit: Максимальное количество соединений
-        limit_per_host: Максимальное количество соединений на хост
-        
+        limit: Максимальное количество соединений (по умолчанию MOEX_HTTP_TOTAL_LIMIT).
+        limit_per_host: Максимальное количество соединений на хост (по умолчанию MOEX_HTTP_PER_HOST_LIMIT).
+
     Returns:
         aiohttp.ClientSession
     """

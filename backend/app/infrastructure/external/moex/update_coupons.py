@@ -7,7 +7,13 @@ from datetime import date, datetime
 
 from app.infrastructure.database.postgres_async import db_select, db_update, get_connection_pool
 from tqdm.asyncio import tqdm_asyncio
-from app.infrastructure.external.moex.client import create_moex_session, fetch_json
+from app.infrastructure.external.moex.client import (
+    MOEX_HTTP_PER_HOST_LIMIT,
+    MOEX_HTTP_TOTAL_LIMIT,
+    create_moex_session,
+    fetch_json,
+)
+from app.infrastructure.external.moex.urls import moex_bondization_url
 from app.utils.date import parse_date as normalize_date
 from app.core.logging import get_logger
 from app.domain.constants.payout_types import (
@@ -18,7 +24,6 @@ from app.domain.constants.payout_types import (
 
 logger = get_logger(__name__)
 
-MOEX_BONDIZATION_URL = "https://iss.moex.com/iss/securities/{ticker}/bondization.json"
 BATCH_SIZE = 1000
 # Семафор смягчает волны из тысяч корутин; значения ближе к дефолтному коннектору MOEX (30 / 5).
 MOEX_BONDIZATION_CONCURRENCY = 10
@@ -89,7 +94,7 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
         (payouts: list, initial_face_value: float | None, coupon_percent: float | None).
         Если в ответе нет initialfacevalue, но есть строки купонов/амортизаций, подставляется 1000.
     """
-    url = MOEX_BONDIZATION_URL.format(ticker=ticker)
+    url = moex_bondization_url(ticker)
     data = await fetch_json(session, url)
     if not data:
         return [], None, None
@@ -271,7 +276,10 @@ async def update_all_coupons():
     bonds_with_ticker = [b for b in bonds if b.get("ticker")]
     
     sem = asyncio.Semaphore(MOEX_BONDIZATION_CONCURRENCY)
-    async with create_moex_session() as session:
+    async with create_moex_session(
+        limit=MOEX_HTTP_TOTAL_LIMIT,
+        limit_per_host=MOEX_HTTP_PER_HOST_LIMIT,
+    ) as session:
         tasks = [
             _fetch_bond_payouts_throttled(session, sem, bond["ticker"])
             for bond in bonds_with_ticker

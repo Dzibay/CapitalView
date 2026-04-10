@@ -15,7 +15,11 @@ from typing import Optional, Dict, List, Tuple
 from tqdm.asyncio import tqdm_asyncio
 
 from app.infrastructure.database.postgres_async import db_select, db_rpc
-from app.infrastructure.external.moex.client import create_moex_session
+from app.infrastructure.external.moex.client import (
+    MOEX_HTTP_PER_HOST_LIMIT,
+    MOEX_HTTP_TOTAL_LIMIT,
+    create_moex_session,
+)
 from app.infrastructure.external.moex.price_service import get_price_moex_history
 from app.workers.common.price_utils import get_last_prices_from_latest_prices
 from app.workers.base_price_worker import (
@@ -389,7 +393,10 @@ async def update_history_prices() -> int:
     # Собираем все новые цены для массовой вставки
     all_new_prices = []
     
-    async with create_moex_session() as session:
+    async with create_moex_session(
+        limit=MOEX_HTTP_TOTAL_LIMIT,
+        limit_per_host=MOEX_HTTP_PER_HOST_LIMIT,
+    ) as session:
         tasks = [update_asset_history(session, a, last_date_map, amort_schedules, coupon_schedules) for a in assets]
         results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="История")
 
@@ -719,7 +726,10 @@ async def update_today_prices() -> int:
     bond_ids = [a["id"] for a in assets if a.get("asset_type_id") == 2]
     coupon_schedules = await load_coupon_schedules(bond_ids)
 
-    async with create_moex_session() as session:
+    async with create_moex_session(
+        limit=MOEX_HTTP_TOTAL_LIMIT,
+        limit_per_host=MOEX_HTTP_PER_HOST_LIMIT,
+    ) as session:
         updates_batch = await process_today_prices_batch(session, assets, today, trading, last_map, now, coupon_schedules)
     # получаем список изменившихся активов
     updated_ids = list({row["asset_id"] for row in updates_batch})

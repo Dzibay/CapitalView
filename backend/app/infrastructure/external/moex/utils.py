@@ -2,7 +2,49 @@
 Утилиты для работы с MOEX API.
 """
 import json
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
+
+from app.infrastructure.external.moex.constants import FUND_BOARDIDS
+
+
+def iss_table(js: Optional[dict], key: str) -> Optional[Tuple[List[str], List]]:
+    """
+    Секция ответа ISS в формате { "columns": [...], "data": [...] }.
+    None, если блока нет или нет колонок; data может быть пустым списком.
+    """
+    if not js or key not in js:
+        return None
+    block = js[key]
+    cols = block.get("columns")
+    if not cols:
+        return None
+    rows = block.get("data")
+    if rows is None:
+        rows = []
+    return cols, list(rows)
+
+
+def normalize_moex_currency(raw: Optional[Any]) -> Optional[str]:
+    """Код валюты из FACEUNIT / CURRENCYID: SUR → RUB, иначе первые 3 символа."""
+    if raw is None:
+        return None
+    c = str(raw).upper().strip()
+    if not c:
+        return None
+    if c.startswith("SUR"):
+        return "RUB"
+    return c[:3]
+
+
+def determine_asset_type(board_id: Optional[str], market: str) -> str:
+    """Тип бумаги по рынку и BOARDID (фонды — по FUND_BOARDIDS)."""
+    if market == "bonds":
+        return "Облигация"
+    if market == "shares":
+        if board_id and board_id.upper() in FUND_BOARDIDS:
+            return "Фонд"
+        return "Акция"
+    return "Акция"
 
 
 def get_column_index(cols: List[str], *possible_names: str) -> Optional[int]:

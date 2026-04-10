@@ -18,26 +18,21 @@ import aiohttp
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.infrastructure.external.moex.client import create_moex_session, fetch_json
-from app.infrastructure.external.moex.utils import get_column_index
+from app.infrastructure.external.moex.client import (
+    MOEX_HTTP_PER_HOST_LIMIT,
+    MOEX_HTTP_TOTAL_LIMIT,
+    create_moex_session,
+    fetch_json,
+)
+from app.infrastructure.external.moex.utils import determine_asset_type, get_column_index
 from app.infrastructure.external.moex.constants import FUND_BOARDIDS, PRIORITY_BOARDIDS
+from app.infrastructure.external.moex.urls import (
+    BONDS_ACTIVE_SECURITIES_JSON,
+    MOEX_BASE_URL,
+    MOEX_SECURITIES_JSON,
+    SHARES_SECURITIES_JSON,
+)
 from app.infrastructure.external.moex.price_service import get_price_moex_history
-
-
-MOEX_BASE_URL = "https://iss.moex.com/iss/engines/stock/markets"
-
-
-def determine_asset_type(board_id: Optional[str], market: str) -> str:
-    """Определяет тип актива по BOARDID и рынку."""
-    if market == "bonds":
-        return "Облигация"
-    
-    if market == "shares":
-        if board_id and board_id.upper() in FUND_BOARDIDS:
-            return "Фонд"
-        return "Акция"
-    
-    return "Акция"
 
 
 async def find_asset_in_markets(session: aiohttp.ClientSession, ticker: str) -> Optional[Dict[str, Any]]:
@@ -401,7 +396,10 @@ async def test_asset(ticker: str):
     
     print_section(f"Тестирование актива: {ticker}")
     
-    async with create_moex_session() as session:
+    async with create_moex_session(
+        limit=MOEX_HTTP_TOTAL_LIMIT,
+        limit_per_host=MOEX_HTTP_PER_HOST_LIMIT,
+    ) as session:
         # 1. Поиск актива во всех рынках
         print_section("1. Поиск актива")
         asset_info = await find_asset_in_markets(session, ticker)
@@ -478,14 +476,14 @@ async def test_asset(ticker: str):
         
         if market == "shares":
             endpoints_to_check = [
-                ("Акции (массовый)", f"{MOEX_BASE_URL}/shares/securities.json"),
+                ("Акции (массовый)", SHARES_SECURITIES_JSON),
                 ("Акция (детально)", f"{MOEX_BASE_URL}/shares/securities/{ticker}.json"),
                 ("История цен", f"{MOEX_BASE_URL}/shares/securities/{ticker}/candles.json?interval=24&from={date.today() - timedelta(days=7)}&to={date.today()}"),
             ]
         elif market == "bonds":
             endpoints_to_check = [
-                ("Облигации (все)", f"https://iss.moex.com/iss/securities.json?engine=stock&market=bonds"),
-                ("Активные облигации", f"{MOEX_BASE_URL}/bonds/securities.json"),
+                ("Облигации (все)", f"{MOEX_SECURITIES_JSON}?engine=stock&market=bonds"),
+                ("Активные облигации", BONDS_ACTIVE_SECURITIES_JSON),
                 ("Облигация (детально)", f"{MOEX_BASE_URL}/bonds/securities/{ticker}.json"),
                 ("История цен", f"{MOEX_BASE_URL}/bonds/securities/{ticker}/candles.json?interval=24&from={date.today() - timedelta(days=7)}&to={date.today()}"),
             ]
