@@ -1,41 +1,67 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useDashboardStore } from '../stores/dashboard.store'
+import { useDividendsStore } from '../stores/dividends.store'
 import { getCurrencySymbol } from '../utils/currencySymbols'
 import { payoutAmountToRub } from '../utils/currencyRatesToRub'
 import { useUIStore } from '../stores/ui.store'
-import portfolioService from '../services/portfolioService'
+import { getDescendantPortfolioIds } from '../utils/portfolioSubtree'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
+import { CheckCircle2, Clock } from 'lucide-vue-next'
 
 // Используем stores вместо inject
+const route = useRoute()
 const dashboardStore = useDashboardStore()
+const dividendsStore = useDividendsStore()
 const uiStore = useUIStore()
 
 // === STATE ===
 const currentDate = ref(new Date()) // Текущий месяц
-const selectedDay = ref(null)       // Выбранный день
-/** Позиции с выплатами для выбранного портфеля (поддерево), не из дашборда */
-const payoutPositions = ref([])
 
 const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
-const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+const weekDays = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС']
 
+/** Кэш выплат: запрос(ы) только по корневым портфелям (RPC уже отдаёт всё поддерево). Смена портфеля — фильтр из Pinia без нового запроса. */
 watch(
-  () => uiStore.selectedPortfolioId,
-  async (id) => {
-    payoutPositions.value = []
-    if (!id) return
+  () => ({
+    path: route.path,
+    portfolioIds: (dashboardStore.portfolios || [])
+      .map((p) => p.id)
+      .filter((id) => id != null)
+      .sort()
+      .join(','),
+    dashboardStamp: dashboardStore.lastFetch,
+  }),
+  async ({ path, portfolioIds }) => {
+    if (path !== '/dividends' || !portfolioIds) return
     try {
-      payoutPositions.value = await portfolioService.getPayoutPositions(id)
+      await dividendsStore.fetchPayoutPositionsForAllPortfolios()
     } catch (e) {
       if (import.meta.env.VITE_APP_DEV) console.error(e)
-      payoutPositions.value = []
     }
   },
   { immediate: true }
+)
+
+/** Позиции выплат для выбранного портфеля и его подпортфелей (из общего кэша по portfolio_id). */
+const payoutPositions = computed(() => {
+  const all = dividendsStore.payoutPositionsFlat
+  if (!all?.length) return []
+  const sid = uiStore.selectedPortfolioId
+  if (sid == null) return []
+  const subtree = getDescendantPortfolioIds(dashboardStore.portfolios ?? [], sid)
+  return all.filter((row) => subtree.has(row.portfolio_id))
+})
+
+/** Первый заход: ждём общий лоадер дашборда или загрузку выплат; повторный заход при непустом кэше — не блокируем весь экран. */
+const dividendsPageBlocking = computed(
+  () =>
+    uiStore.loading ||
+    (dividendsStore.payoutPositionsLoading && dividendsStore.payoutPositionsCacheIsEmpty)
 )
 
 // === COMPUTED: ДАННЫЕ ===
@@ -56,9 +82,8 @@ const allDividends = computed(() => {
 
     payouts.forEach(div => {
       // --- ОПРЕДЕЛЕНИЕ ДАТ ---
-      // Для календаря (grid) приоритет: Payment > Record > LastBuy
-      // Обычно мы хотим видеть, когда придут деньги.
-      const mainDateStr = div.payment_date || div.record_date || div.last_buy_date
+      // Календарь: дата отсечки (record_date); без неё — выплата / last_buy (бэкенд сравнивает с cash_operations по payment_date).
+      const mainDateStr = div.record_date || div.payment_date || div.last_buy_date
       
       if (!mainDateStr) return // Пропускаем, если нет дат
 
@@ -75,30 +100,37 @@ const allDividends = computed(() => {
       // dividend, coupon, amortization
       const paymentType = div.type || 'dividend'
 
+      const dy =
+        div.dividend_yield != null && div.dividend_yield !== ''
+          ? parseFloat(div.dividend_yield)
+          : null
+
       list.push({
         id: div.id || `${asset.asset_id ?? asset.portfolio_asset_id}-${mainDateStr}-${div.value}`,
-        
+
         assetTicker: asset.ticker,
         assetName: asset.name,
-        
-        // Дата для отображения в ячейке календаря
-        date: calendarDate, 
-        // Дата для отображения в карточке "Отсечка"
-        lastBuyDate: lastBuyDate,
-        // Реальная дата выплаты (для инфо)
-        paymentDate: paymentDate,
-        
+
+        date: calendarDate,
+        lastBuyDate,
+        paymentDate,
+
         value: parseFloat(div.value),
+        /** Валюта номинала выплаты = валюта котировки актива (как в asset_payouts и на бэкенде) */
         currency: asset.currency_ticker || div.currency || 'RUB',
-        
-        // Общая сумма: выплата * кол-во бумаг в портфеле
-        totalAmount: parseFloat(div.value) * (asset.quantity || 0), 
-        
-        status: status, 
-        // Считаем прогнозом, если статус не confirmed
+
+        /** Сумма позиции по выплате в той же валюте (для ₽-итогов — через payoutAmountToRub) */
+        totalAmount:
+          div.expected_total != null && div.expected_total !== ''
+            ? parseFloat(div.expected_total)
+            : parseFloat(div.value) * (asset.quantity || 0),
+
+        dividendYield: Number.isFinite(dy) ? dy : null,
+
+        status,
         isForecast: status === 'forecast' || status === 'recommended',
-        
-        paymentType: paymentType
+
+        paymentType,
       })
     })
   })
@@ -116,31 +148,39 @@ const monthDividends = computed(() => {
   )
 })
 
-// 4. Итоговая сумма за выбранный период в ₽ (выплаты в валюте × курс из справочника)
-const totalMonthIncome = computed(() => {
-  const dividendsToSum = selectedDay.value
-    ? selectedDay.value.events
-    : monthDividends.value
-
+// 4. Итоги за месяц в ₽: получено (сверено с операциями) и ожидается (прочее)
+function _sumMonthDividendsRub(items) {
   const ref = dashboardStore.referenceData
   let sum = 0
-  for (const item of dividendsToSum) {
+  for (const item of items) {
     const rub = payoutAmountToRub(item.totalAmount, item.currency, ref)
     if (rub != null) sum += rub
   }
   return sum.toFixed(2)
-})
+}
 
-/** Есть выплаты в валюте, для которой в справочнике нет курса — рублёвая сумма занижена */
-const totalMonthIncomeIncomplete = computed(() => {
-  const dividendsToSum = selectedDay.value
-    ? selectedDay.value.events
-    : monthDividends.value
+function _monthItemsIncomplete(items) {
   const ref = dashboardStore.referenceData
-  return dividendsToSum.some(
-    (item) => payoutAmountToRub(item.totalAmount, item.currency, ref) == null
-  )
-})
+  return items.some((item) => payoutAmountToRub(item.totalAmount, item.currency, ref) == null)
+}
+
+const monthDividendsReceived = computed(() =>
+  monthDividends.value.filter((d) => d.status === 'received')
+)
+
+const monthDividendsExpected = computed(() =>
+  monthDividends.value.filter((d) => d.status !== 'received')
+)
+
+const totalMonthReceived = computed(() => _sumMonthDividendsRub(monthDividendsReceived.value))
+
+const totalMonthExpected = computed(() => _sumMonthDividendsRub(monthDividendsExpected.value))
+
+const totalMonthIncomeIncomplete = computed(
+  () =>
+    _monthItemsIncomplete(monthDividendsReceived.value) ||
+    _monthItemsIncomplete(monthDividendsExpected.value)
+)
 
 // Справочник (в т.ч. currency_rates_to_rub) уже грузит DashboardLayout → fetchDashboard → fetchReferenceData.
 // Отдельный вызов здесь давал второй параллельный запрос: дочерний вид монтировался до заполнения store.
@@ -169,18 +209,27 @@ const calendarDays = computed(() => {
     days.push({ day: '', type: 'empty' })
   }
 
-  // Заполнение днями
+  const ref = dashboardStore.referenceData
+
   for (let i = 1; i <= daysInMonth; i++) {
     const dateCheck = new Date(year, month, i)
-    // Поиск событий для конкретного дня
-    const events = monthDividends.value.filter(d => d.date.getDate() === i)
-    
+    const events = monthDividends.value.filter((d) => d.date.getDate() === i)
+    let dayTotalRub = 0
+    let dayIncomplete = false
+    for (const item of events) {
+      const rub = payoutAmountToRub(item.totalAmount, item.currency, ref)
+      if (rub != null) dayTotalRub += rub
+      else dayIncomplete = true
+    }
+
     days.push({
       day: i,
       type: 'day',
-      events: events,
+      events,
       hasEvents: events.length > 0,
-      isToday: isToday(dateCheck)
+      isToday: isToday(dateCheck),
+      dayTotalRub,
+      dayTotalIncomplete: dayIncomplete,
     })
   }
   return days
@@ -190,28 +239,10 @@ const calendarDays = computed(() => {
 
 function prevMonth() {
   currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() - 1, 1)
-  selectedDay.value = null
 }
 
 function nextMonth() {
   currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 1)
-  selectedDay.value = null
-}
-
-function selectDate(dayObj) {
-  if (dayObj.type === 'day') {
-    // Если кликнули на уже выбранный день - снимаем выбор (показываем весь месяц)
-    if (selectedDay.value && selectedDay.value.day === dayObj.day) {
-      selectedDay.value = null
-    } else {
-      selectedDay.value = dayObj
-    }
-  }
-}
-
-function selectMonth() {
-  // Клик на месяц - показываем все выплаты за месяц
-  selectedDay.value = null
 }
 
 function isToday(date) {
@@ -222,15 +253,57 @@ function isToday(date) {
 }
 
 const formatMoney = (val) => new Intl.NumberFormat('ru-RU').format(val)
-const formatDate = (date) => {
-  if (!date) return '—'
-  return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
+
+/** Итог по дню в ячейке: +929,43 ₽ или +3,64 тыс. ₽ */
+function formatDayCellTotalRub(rub, incomplete) {
+  if (rub == null || rub <= 0) return ''
+  const nf = new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  let body
+  if (rub >= 1000) {
+    body = `${nf.format(rub / 1000)} тыс. ₽`
+  } else {
+    body = `${nf.format(rub)} ₽`
+  }
+  return incomplete ? `${body}*` : body
 }
 
-// Сброс выбора дня при переключении портфеля
-watch(() => uiStore.selectedPortfolioId, () => {
-  selectedDay.value = null
+/** Сумма на карточке — в валюте выплаты; итоги по дню/месяцу считаются в ₽ отдельно */
+function formatPayoutCardAmount(item) {
+  const n = Number(item.totalAmount)
+  if (!Number.isFinite(n)) return '—'
+  return `${formatMoney(Number(n.toFixed(2)))} ${getCurrencySymbol(item.currency)}`
+}
+
+function formatDividendYieldPct(y) {
+  if (y == null || !Number.isFinite(y)) return null
+  return `${new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(y)}%`
+}
+
+/** Класс для левой полосы (--payout-* из main.css) */
+function payoutAccentClass(paymentType) {
+  if (paymentType === 'coupon') return 'payout-mini--coupon'
+  if (paymentType === 'amortization') return 'payout-mini--amortization'
+  if (paymentType === 'dividend') return 'payout-mini--dividend'
+  return 'payout-mini--other'
+}
+
+/** Список выплат месяца по дате (для мобильной ленты) */
+const monthDividendsChronological = computed(() =>
+  [...monthDividends.value].sort((a, b) => a.date.getTime() - b.date.getTime())
+)
+
+const payoutRowDateFmt = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'short',
 })
+
+function formatPayoutRowDate(evt) {
+  if (!evt?.date) return ''
+  return payoutRowDateFmt.format(evt.date).replace(/\.$/, '')
+}
 </script>
 
 <template>
@@ -249,29 +322,43 @@ watch(() => uiStore.selectedPortfolioId, () => {
       </template>
     </PageHeader>
 
-    <LoadingState v-if="uiStore.loading" />
+    <LoadingState v-if="dividendsPageBlocking" />
 
     <div v-else class="dividends-content">
       <div class="calendar-controls">
         <div class="month-nav">
           <button class="btn-icon" @click="prevMonth">‹</button>
-          <h2 class="month-title" @click="selectMonth" :class="{ 'has-selection': selectedDay }">
+          <h2 class="month-title">
             {{ currentMonthName }} {{ currentYear }}
           </h2>
           <button class="btn-icon" @click="nextMonth">›</button>
         </div>
         
         <div class="month-summary">
-          <span class="label">
-            {{
-              selectedDay
-                ? `Ожидается за ${selectedDay.day} ${currentMonthName} (в ₽ по текущим курса валют):`
-                : 'Ожидается за месяц (в ₽ по текущим курсам валют):'
-            }}
-          </span>
-          <span class="value" :class="Number(totalMonthIncome) > 0 ? 'text-green' : ''">
-            + {{ formatMoney(totalMonthIncome) }} ₽
-          </span>
+          <div class="month-summary-list">
+            <div class="month-summary-item">
+              <span class="month-summary-ico month-summary-ico--ok" aria-hidden="true">
+                <CheckCircle2 :size="20" :stroke-width="2.25" />
+              </span>
+              <div class="month-summary-text">
+                <div class="month-summary-lbl">Получено</div>
+                <div class="month-summary-val">
+                  + {{ formatMoney(totalMonthReceived) }} ₽
+                </div>
+              </div>
+            </div>
+            <div class="month-summary-item">
+              <span class="month-summary-ico month-summary-ico--wait" aria-hidden="true">
+                <Clock :size="20" :stroke-width="2.25" />
+              </span>
+              <div class="month-summary-text">
+                <div class="month-summary-lbl">Ожидается</div>
+                <div class="month-summary-val month-summary-val--expected">
+                  + {{ formatMoney(totalMonthExpected) }} ₽
+                </div>
+              </div>
+            </div>
+          </div>
           <span v-if="totalMonthIncomeIncomplete" class="month-summary-note">
             Часть выплат в валюте без курса в справочнике в сумму не входит
           </span>
@@ -279,98 +366,181 @@ watch(() => uiStore.selectedPortfolioId, () => {
       </div>
 
       <div class="calendar-layout">
-        
-        <div class="calendar-grid">
+        <div class="calendar-grid calendar-grid--desktop">
           <div class="week-header">
             <div class="week-day" v-for="day in weekDays" :key="day">{{ day }}</div>
           </div>
-          
+
           <div class="days-container">
-            <div 
-              v-for="(cell, index) in calendarDays" 
+            <div
+              v-for="(cell, index) in calendarDays"
               :key="index"
               class="calendar-cell"
-              :class="{ 
-                'empty': cell.type === 'empty',
+              :class="{
+                empty: cell.type === 'empty',
                 'has-events': cell.hasEvents,
                 'is-today': cell.isToday,
-                'selected': selectedDay && selectedDay.day === cell.day
               }"
-              @click="selectDate(cell)"
             >
-              <span v-if="cell.day" class="day-number">{{ cell.day }}</span>
-              
-              <div v-if="cell.hasEvents" class="events-dots">
-                <span 
-                  v-for="evt in cell.events.slice(0, 4)" 
-                  :key="evt.id" 
-                  class="dot"
-                  :class="[
-                    `dot-${evt.paymentType}`, 
-                    evt.isForecast ? 'is-forecast' : ''
-                  ]"
-                  :title="`${evt.assetTicker}: ${evt.value}`"
-                ></span>
-                <span v-if="cell.events.length > 4" class="dot dot-more">•••</span>
-              </div>
+              <template v-if="cell.type === 'day'">
+                <div class="cell-head">
+                  <span class="day-number">{{ cell.day }}</span>
+                  <span
+                    v-if="cell.hasEvents && cell.dayTotalRub > 0"
+                    class="day-total text-green"
+                    :title="cell.dayTotalIncomplete ? 'Часть сумм без курса в ₽' : ''"
+                  >
+                    +{{ formatDayCellTotalRub(cell.dayTotalRub, cell.dayTotalIncomplete) }}
+                  </span>
+                </div>
+
+                <div v-if="cell.hasEvents" class="payout-cards">
+                  <div
+                    v-for="evt in cell.events"
+                    :key="evt.id"
+                    class="payout-mini-card"
+                    :class="[
+                      payoutAccentClass(evt.paymentType),
+                      {
+                        'payout-mini--forecast': evt.isForecast,
+                        'payout-mini--received': evt.status === 'received',
+                      },
+                    ]"
+                  >
+                    <span
+                      v-if="evt.status === 'received'"
+                      class="payout-mini-received-icon"
+                      role="img"
+                      aria-label="Выплата получена"
+                      title="Выплата получена"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M20 6L9 17l-5-5"
+                          stroke="currentColor"
+                          stroke-width="2.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    </span>
+                    <div class="payout-mini-body">
+                      <div class="payout-mini-name" :title="evt.assetName || ''">
+                        {{ evt.assetName || '—' }}
+                      </div>
+                      <div
+                        v-if="evt.assetTicker"
+                        class="payout-mini-ticker"
+                        :title="evt.assetTicker"
+                      >
+                        {{ evt.assetTicker }}
+                      </div>
+                      <div class="payout-mini-meta">
+                        <span
+                          class="payout-mini-amount"
+                          :class="evt.isForecast ? 'text-muted' : ''"
+                        >
+                          {{ formatPayoutCardAmount(evt) }}
+                        </span>
+                        <template v-if="formatDividendYieldPct(evt.dividendYield)">
+                          <span class="payout-mini-sep">•</span>
+                          <span class="payout-mini-yield">{{
+                            formatDividendYieldPct(evt.dividendYield)
+                          }}</span>
+                        </template>
+                      </div>
+                      <div v-if="evt.isForecast" class="payout-mini-badge">прогноз</div>
+                    </div>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
         </div>
 
-        <div class="details-panel">
-          <div class="details-header">
-            <h3 v-if="selectedDay">{{ selectedDay.day }} {{ currentMonthName }}</h3>
-            <h3 v-else>Весь месяц</h3>
-            
-            <span class="details-subtitle" v-if="selectedDay && selectedDay.events.length">
-              {{ selectedDay.events.length }} выплат(ы)
-            </span>
-          </div>
-
-          <div class="events-list">
-            <div 
-              v-for="item in (selectedDay ? selectedDay.events : monthDividends)" 
-              :key="item.id" 
-              class="event-card"
-              :class="{'forecast-card': item.isForecast}"
+        <div class="mobile-payout-stack">
+          <template v-if="monthDividendsChronological.length">
+            <article
+              v-for="evt in monthDividendsChronological"
+              :key="evt.id"
+              class="payout-mini-card mobile-payout-card"
+              :class="[
+                payoutAccentClass(evt.paymentType),
+                {
+                  'payout-mini--forecast': evt.isForecast,
+                  'payout-mini--received': evt.status === 'received',
+                },
+              ]"
             >
-              <div class="card-row">
-                <div class="ticker-badge">{{ item.assetTicker }}</div>
-                <div class="amount" :class="item.isForecast ? 'text-gray' : 'text-green'">
-                  +{{ formatMoney(item.totalAmount.toFixed(2)) }} {{ getCurrencySymbol(item.currency) }}
+              <div class="mobile-payout-date">{{ formatPayoutRowDate(evt) }}</div>
+              <span
+                v-if="evt.status === 'received'"
+                class="payout-mini-received-icon"
+                role="img"
+                aria-label="Выплата получена"
+                title="Выплата получена"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M20 6L9 17l-5-5"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </span>
+              <div class="payout-mini-body">
+                <div class="payout-mini-name" :title="evt.assetName || ''">
+                  {{ evt.assetName || '—' }}
                 </div>
-              </div>
-              
-              <div class="card-row">
-                <div class="company-name">{{ item.assetName }}</div>
-                <div class="per-share">{{ item.value }} {{ getCurrencySymbol(item.currency) }} / шт</div>
-              </div>
-
-              <div class="card-footer">
-                <div class="date-col">
-                  <span class="date-label">Отсечка (T-1):</span>
-                  <span class="date-val">{{ formatDate(item.lastBuyDate) }}</span>
+                <div
+                  v-if="evt.assetTicker"
+                  class="payout-mini-ticker"
+                  :title="evt.assetTicker"
+                >
+                  {{ evt.assetTicker }}
                 </div>
-                <div class="date-col right">
-                  <span class="date-label">Выплата:</span>
-                  <span class="date-val">{{ formatDate(item.paymentDate) }}</span>
+                <div class="payout-mini-meta">
+                  <span
+                    class="payout-mini-amount"
+                    :class="evt.isForecast ? 'text-muted' : ''"
+                  >
+                    {{ formatPayoutCardAmount(evt) }}
+                  </span>
+                  <template v-if="formatDividendYieldPct(evt.dividendYield)">
+                    <span class="payout-mini-sep">•</span>
+                    <span class="payout-mini-yield">{{
+                      formatDividendYieldPct(evt.dividendYield)
+                    }}</span>
+                  </template>
                 </div>
+                <div v-if="evt.isForecast" class="payout-mini-badge">прогноз</div>
               </div>
-              
-              <div v-if="item.isForecast" class="forecast-badge-row">
-                 <span class="status-badge">ПРОГНОЗ</span>
-              </div>
-            </div>
-            
-            <div v-if="selectedDay && selectedDay.events.length === 0" class="no-events">
-              Нет выплат в этот день
-            </div>
-             <div v-if="!selectedDay && monthDividends.length === 0" class="no-events">
-              В этом месяце выплат не найдено
-            </div>
-          </div>
+            </article>
+          </template>
+          <p
+            v-else-if="!monthDividends.length && payoutPositions.length"
+            class="empty-month-hint empty-month-hint--mobile"
+          >
+            В этом месяце выплат не найдено
+          </p>
         </div>
 
+        <p
+          v-if="!monthDividends.length && payoutPositions.length"
+          class="empty-month-hint empty-month-hint--desktop"
+        >
+          В этом месяце выплат не найдено
+        </p>
       </div>
     </div>
   </PageLayout>
@@ -413,11 +583,6 @@ watch(() => uiStore.selectedPortfolioId, () => {
   color: #374151;
 }
 
-.month-title {
-  cursor: pointer;
-  user-select: none;
-}
-
 .btn-icon {
   background: white;
   border: 1px solid #e5e7eb;
@@ -440,26 +605,77 @@ watch(() => uiStore.selectedPortfolioId, () => {
 .month-summary {
   text-align: right;
   min-width: 0;
+  max-width: min(100%, 20rem);
 }
-.month-summary .label {
+
+.month-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-end;
+  width: 100%;
+}
+
+.month-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.month-summary-ico {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+  color: inherit;
+}
+
+.month-summary-ico :deep(svg) {
   display: block;
+}
+
+.month-summary-ico--ok {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.month-summary-ico--wait {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.month-summary-text {
+  text-align: right;
+  min-width: 0;
+}
+
+.month-summary-lbl {
   font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 2px;
+  color: #9ca3af;
+  line-height: 1.25;
 }
-.month-summary .value {
-  display: block;
-  font-size: 22px;
+
+.month-summary-val {
+  font-size: 16px;
   font-weight: 700;
-  color: #374151;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+  color: #111827;
+  line-height: 1.3;
 }
+
+.month-summary-val--expected {
+  color: #059669;
+}
+
 .month-summary-note {
   display: block;
   font-size: 11px;
   color: #9ca3af;
-  margin-top: 6px;
+  margin-top: 8px;
   max-width: 22rem;
   margin-left: auto;
   line-height: 1.35;
@@ -467,38 +683,127 @@ watch(() => uiStore.selectedPortfolioId, () => {
 .text-green { color: #10b981 !important; }
 .text-gray { color: #9ca3af !important; }
 
-/* Сетка разметки */
+/* Календарь на всю ширину */
 .calendar-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
-  gap: 24px;
-  align-items: start;
   min-width: 0;
 }
 
-@media (max-width: 900px) {
-  .calendar-layout {
-    grid-template-columns: 1fr;
-  }
+.empty-month-hint {
+  margin: 16px 0 0;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 14px;
 }
 
-@media (max-width: 480px) {
+.empty-month-hint--mobile {
+  display: none;
+  margin-top: 8px;
+}
+
+.mobile-payout-stack {
+  display: none;
+}
+
+/* Мобильная вёрстка: месяц → суммы → лента карточек на всю ширину */
+@media (max-width: 768px) {
   .calendar-controls {
     flex-direction: column;
     align-items: stretch;
+    gap: 16px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
   }
+
   .month-nav {
-    justify-content: center;
+    justify-content: space-between;
+    width: 100%;
+    order: 1;
   }
+
   .month-nav h2 {
-    min-width: auto;
+    min-width: 0;
+    flex: 1;
+    text-align: center;
+    font-size: 18px;
   }
+
   .month-summary {
+    order: 2;
+    text-align: center;
+    max-width: none;
+    width: 100%;
+  }
+
+  .month-summary-list {
+    align-items: center;
+  }
+
+  .month-summary-text {
     text-align: center;
   }
+
   .month-summary-note {
     margin-left: auto;
     margin-right: auto;
+    text-align: center;
+  }
+
+  .calendar-grid--desktop {
+    display: none !important;
+  }
+
+  .empty-month-hint--desktop {
+    display: none !important;
+  }
+
+  .empty-month-hint--mobile {
+    display: block;
+  }
+
+  .mobile-payout-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+    padding-bottom: 24px;
+  }
+
+  .mobile-payout-card {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px 12px 12px;
+    border-radius: 12px;
+  }
+
+  .mobile-payout-card .payout-mini-name {
+    font-size: 13px;
+  }
+
+  .mobile-payout-card .payout-mini-ticker {
+    font-size: 11px;
+  }
+
+  .mobile-payout-card .payout-mini-meta {
+    font-size: 12px;
+  }
+
+  .mobile-payout-date {
+    font-size: 11px;
+    font-weight: 600;
+    color: #9ca3af;
+    text-transform: lowercase;
+    margin-bottom: 8px;
+    letter-spacing: 0.02em;
+  }
+
+  .mobile-payout-card.payout-mini--received .mobile-payout-date {
+    padding-right: 22px;
+  }
+
+  .mobile-payout-card .payout-mini-received-icon {
+    top: 10px;
+    right: 10px;
   }
 }
 
@@ -509,7 +814,7 @@ watch(() => uiStore.selectedPortfolioId, () => {
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   border: 1px solid #e5e7eb;
-  height: 650px;
+  min-height: 520px;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -535,270 +840,214 @@ watch(() => uiStore.selectedPortfolioId, () => {
 .days-container {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  grid-auto-rows: minmax(100px, 1fr);
+  grid-auto-rows: minmax(132px, auto);
   flex: 1;
   min-height: 0;
   min-width: 0;
 }
 
 .calendar-cell {
-  min-height: 100px;
-  height: 100%;
+  min-height: 132px;
   border-right: 1px solid #f3f4f6;
   border-bottom: 1px solid #f3f4f6;
-  padding: 10px;
-  cursor: pointer;
+  padding: 8px 6px 6px;
   position: relative;
   transition: background 0.2s;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   box-sizing: border-box;
 }
 .calendar-cell:nth-child(7n) {
   border-right: none;
 }
-.calendar-cell:hover {
-  background: #f9fafb;
-}
-.calendar-cell.selected {
-  background: #eff6ff;
-  box-shadow: inset 0 0 0 2px #3b82f6;
+.calendar-cell:hover:not(.empty) {
+  background: #fafafa;
 }
 .calendar-cell.is-today {
-  background: #f0fdf4;
+  background: #f7fdf9;
 }
 .calendar-cell.empty {
   background: #fcfcfc;
-  cursor: default;
+}
+
+.cell-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .day-number {
   font-weight: 600;
-  font-size: 14px;
-  color: #374151;
-}
-
-.events-dots {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 12px;
-}
-
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: block;
-  border: 1px solid transparent; 
-  box-sizing: border-box;
-}
-
-/* Цвета по типам выплат - фирменные цвета */
-.dot-dividend {
-  background-color: var(--payout-dividends, #2563eb); /* Синий - дивиденды */
-  border-color: var(--payout-dividends, #2563eb);
-}
-
-.dot-coupon {
-  background-color: var(--payout-coupons, #06b6d4); /* Голубой - купоны */
-  border-color: var(--payout-coupons, #06b6d4);
-}
-
-.dot-amortization {
-  background-color: var(--payout-amortizations, #fb923c); /* Оранжевый - амортизации */
-  border-color: var(--payout-amortizations, #fb923c);
-}
-
-.dot-unknown {
-  background-color: #9ca3af;
-  border-color: #9ca3af;
-}
-
-/* Прогнозы: "пустая" точка */
-.dot.is-forecast {
-  background-color: transparent;
-  border-style: dashed;
-}
-.dot-more {
-  width: auto;
-  height: auto;
-  background: none;
-  border: none;
-  color: #9ca3af;
-  font-size: 10px;
-  line-height: 8px;
-}
-
-/* Боковая панель деталей */
-.details-panel {
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  border: 1px solid #e5e7eb;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  height: 650px;
-  overflow: hidden;
-  min-width: 0;
-}
-
-.details-header {
-  border-bottom: 1px solid #e5e7eb;
-  padding-bottom: 12px;
-  margin-bottom: 16px;
-  flex-shrink: 0;
-}
-.details-header h3 {
-  margin: 0;
-  font-size: 18px;
-  color: #111827;
-}
-.details-subtitle {
   font-size: 13px;
-  color: #6b7280;
+  color: #374151;
+  line-height: 1.2;
 }
 
-.events-list {
+.day-total {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: right;
+  max-width: 58%;
+  word-break: break-word;
+}
+
+.payout-cards {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  gap: 5px;
+  margin-top: 6px;
   flex: 1;
   min-height: 0;
-  padding-right: 4px;
-  scrollbar-gutter: stable;
-  margin-right: -4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 1px;
 }
 
-.events-list::-webkit-scrollbar {
-  width: 6px;
+.payout-cards::-webkit-scrollbar {
+  width: 4px;
+}
+.payout-cards::-webkit-scrollbar-thumb {
+  background: #e5e7eb;
+  border-radius: 2px;
 }
 
-.events-list::-webkit-scrollbar-track {
-  background: #f9fafb;
-  border-radius: 3px;
-}
-
-.events-list::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
-}
-
-.events-list::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
-}
-
-.event-card {
-  padding: 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+/* Карточка выплаты в ячейке; слева акцент по типу (--payout-* в main.css) */
+.payout-mini-card {
+  position: relative;
+  padding: 6px 7px 6px 8px;
   background: #fff;
-  transition: transform 0.2s;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 1px solid #eef0f3;
+  border-left-width: 3px;
+  border-left-style: solid;
   min-width: 0;
 }
-.event-card:hover {
-  border-color: #d1d5db;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.03);
-}
-.event-card.forecast-card {
-  background: #f8fafc;
-  border-style: dashed;
+
+.payout-mini--received {
+  padding-right: 22px;
 }
 
-.card-row {
+.payout-mini-received-icon {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 15px;
+  height: 15px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
-  gap: 8px;
+  justify-content: center;
+  color: var(--payout-dividends, #2563eb);
+  pointer-events: none;
+}
+
+.payout-mini-received-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.payout-mini--coupon .payout-mini-received-icon {
+  color: var(--payout-coupons, #06b6d4);
+}
+
+.payout-mini--amortization .payout-mini-received-icon {
+  color: var(--payout-amortizations, #fb923c);
+}
+
+.payout-mini--other .payout-mini-received-icon {
+  color: #94a3b8;
+}
+
+.payout-mini--dividend {
+  border-left-color: var(--payout-dividends, #2563eb);
+}
+
+.payout-mini--coupon {
+  border-left-color: var(--payout-coupons, #06b6d4);
+}
+
+.payout-mini--amortization {
+  border-left-color: var(--payout-amortizations, #fb923c);
+}
+
+.payout-mini--other {
+  border-left-color: #94a3b8;
+}
+
+.payout-mini--forecast {
+  border-style: dashed;
+  border-left-style: solid;
+  background: #fafbfc;
+}
+
+.payout-mini-body {
   min-width: 0;
-}
-
-.ticker-badge {
-  font-weight: 700;
-  font-size: 13px;
-  background: #f3f4f6;
-  padding: 2px 8px;
-  border-radius: 6px;
-  color: #374151;
-  flex-shrink: 0;
-}
-
-.amount {
-  font-weight: 700;
-  font-size: 15px;
-  flex-shrink: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-.company-name {
-  font-size: 12px;
-  color: #6b7280;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex: 1;
-}
-.per-share {
-  font-size: 12px;
-  color: #6b7280;
-  flex-shrink: 0;
-}
-
-.card-footer {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #f3f4f6;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-}
-.date-col {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
-.date-col.right {
-  align-items: flex-end;
-}
-.date-label {
-  font-size: 10px;
-  color: #9ca3af;
-  margin-bottom: 2px;
-}
-.date-val {
-  font-size: 12px;
+
+.payout-mini-name {
+  font-size: 11px;
   font-weight: 600;
-  color: #4b5563;
+  color: #111827;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.forecast-badge-row {
-  margin-top: 6px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.status-badge {
+.payout-mini-ticker {
   font-size: 10px;
-  font-weight: 700;
-  background: #e2e8f0;
-  color: #64748b;
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-weight: 400;
+  color: #9ca3af;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
-.no-events {
-  text-align: center;
+.payout-mini-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 4px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.payout-mini-amount {
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.payout-mini-sep {
+  color: #d1d5db;
+  font-weight: 400;
+}
+
+.payout-mini-yield {
   color: #9ca3af;
-  padding: 24px 0;
-  font-size: 14px;
+  font-weight: 500;
+}
+
+.payout-mini-badge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.text-muted {
+  color: #9ca3af !important;
 }
 </style>
