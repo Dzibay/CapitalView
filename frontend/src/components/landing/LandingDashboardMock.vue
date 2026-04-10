@@ -738,12 +738,13 @@ onUnmounted(() => {
   margin-top: 0.4rem;
 }
 
-/* Одна строка: значение + пилюля; без width:100% у обёртки — иначе пилюля уезжает вниз */
+/* Значение + пилюля; при нехватке ширины пилюля переносится на следующую строку */
 .landing-dash-mock :deep(.stat-card-content .main-value-row) {
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.35rem;
+  gap: 0.25rem 0.35rem;
   margin: 4px 0 6px;
 }
 

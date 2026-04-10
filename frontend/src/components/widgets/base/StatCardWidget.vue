@@ -407,8 +407,10 @@ const mainWrapperStyle = computed(() => {
 .main-value-row {
   margin: 15px 0;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 0.25rem 0.5rem;
 }
 
 .stat-card-content.change-below .main-value-row {
@@ -421,6 +423,18 @@ const mainWrapperStyle = computed(() => {
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.main-value-row :deep(.tooltip-wrapper) {
+  flex-shrink: 0;
+  max-width: 100%;
+}
+
+.main-value-row > :deep(.value-change-pill) {
+  flex-shrink: 0;
+  max-width: 100%;
 }
 
 .main-value {
