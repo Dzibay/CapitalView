@@ -109,7 +109,7 @@
               <div class="form-field">
                 <CustomSelect
                   v-model="form.asset_type_id"
-                  :options="referenceData.asset_types.filter(t => t.is_custom)"
+                  :options="customAssetTypeOptions"
                   label="Тип"
                   placeholder="Выберите тип"
                   :show-empty-option="false"
@@ -307,6 +307,21 @@ const fiatCurrencies = computed(() => {
   return props.referenceData.currencies.filter(c => c.asset_type_id === 7)
 })
 
+/** «Другое» / синонимы — в конце списка типов */
+function isCatchAllCustomAssetTypeName(name) {
+  const n = (name || '').trim().toLowerCase()
+  return n === 'другое' || n === 'прочее' || n === 'иное'
+}
+
+/** Кастомные типы: алфавит (ru), категория «прочее» последней — единообразно при любом числе типов */
+const customAssetTypeOptions = computed(() => {
+  const list = (props.referenceData?.asset_types || []).filter((t) => t.is_custom)
+  const catchAll = list.filter((t) => isCatchAllCustomAssetTypeName(t.name))
+  const main = list.filter((t) => !isCatchAllCustomAssetTypeName(t.name))
+  main.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'))
+  return [...main, ...catchAll]
+})
+
 /** Справочный id типа «Вклад» (см. init.sql); имя в БД может быть «Вклад» или «Вклады» */
 const DEPOSIT_ASSET_TYPE_ID = 10
 
@@ -390,10 +405,9 @@ const setAssetTypeChoice = (choice) => {
     
     // Устанавливаем обязательные значения по умолчанию для кастомного, если это 'custom'
     if (choice === 'custom') {
-        // Устанавливаем первый кастомный тип и первую валюту, если они есть
-        const firstCustomType = props.referenceData.asset_types.find(t => t.is_custom)
-        if (firstCustomType) {
-            form.asset_type_id = firstCustomType.id
+        const opts = customAssetTypeOptions.value
+        if (opts.length > 0) {
+            form.asset_type_id = opts[0].id
         }
         if (fiatCurrencies.value.length > 0) {
             form.currency = fiatCurrencies.value[0].id
