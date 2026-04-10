@@ -4,7 +4,7 @@
       <div class="footer-top">
         <div class="footer-brand">
           <span class="logo">Capital<span class="logo-accent">View</span></span>
-          <span class="version">v1.0</span>
+          <span class="version">v1.0.77</span>
         </div>
         <div class="footer-links">
           <a href="/privacy" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a>
