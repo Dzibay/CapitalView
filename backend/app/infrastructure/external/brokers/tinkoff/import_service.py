@@ -184,7 +184,8 @@ def get_tinkoff_portfolio(token):
                         raise
 
                 transactions = []
-                
+                transactions_skipped = []
+
                 # Создаем индекс операций Tax по дате и активу (figi) для быстрого поиска
                 # Ключ: (дата операции, figi), значение: список сумм налогов
                 tax_by_date_figi = {}
@@ -219,7 +220,8 @@ def get_tinkoff_portfolio(token):
                         "name": inst["name"] if inst else None,
                         "isin": inst["isin"] if inst else None,
                         "date": op.date.isoformat() if op.date else None,
-                        "type": classified
+                        "type": classified,
+                        "tinkoff_operation_type": op.operation_type.name,
                     }
 
                     # BUY / SELL / AMORTIZATION (транзакции, которые изменяют количество актива)
@@ -228,6 +230,21 @@ def get_tinkoff_portfolio(token):
                         
                         # Пропускаем операции с quantity = 0 (неисполненные заявки)
                         if classified in ("Buy", "Sell") and op_quantity == 0:
+                            pay_skip = op.payment.units + op.payment.nano / 1e9 if op.payment else 0
+                            transactions_skipped.append({
+                                "date": op.date.isoformat() if op.date else None,
+                                "tinkoff_operation_type": op.operation_type.name,
+                                "type": classified,
+                                "reason": "buy_sell_zero_executed_quantity",
+                                "figi": figi,
+                                "ticker": inst["ticker"] if inst else None,
+                                "name": inst["name"] if inst else None,
+                                "quantity_api": quantity,
+                                "quantity_rest": quantity_rest,
+                                "executed_quantity": op_quantity,
+                                "payment": pay_skip,
+                                "currency": op.currency,
+                            })
                             continue
                         
                         if classified == "Amortization":
@@ -290,6 +307,7 @@ def get_tinkoff_portfolio(token):
                             "isin": None,
                             "date": op.date.isoformat() if op.date else None,
                             "type": "Withdraw",
+                            "tinkoff_operation_type": "SYNTHETIC_DIV_EXT_WITHDRAW",
                             "price": None,
                             "quantity": None,
                             "payment": withdraw_amount,  # Отрицательное значение для вывода средств (учитывает налог)
@@ -300,7 +318,9 @@ def get_tinkoff_portfolio(token):
                 result[acc_name] = {
                     "account_id": acc_id,
                     "positions": positions,
-                    "transactions": transactions
+                    "transactions": transactions,
+                    "transactions_skipped": transactions_skipped,
+                    "operations_raw_count": len(ops_raw),
                 }
             except RequestError as e:
                 # Обработка других ошибок RequestError
@@ -315,9 +335,3 @@ def get_tinkoff_portfolio(token):
 
     return result
 
-
-# portfolio = get_tinkoff_portfolio('t.b7cVknEoyjXW6FG39o4woo12yzoCAKsTwYgT0LqYFvNEH0hC5IGSMtLxVEwGfwXOv048FR5kGmxMeFpEM-GCRQ')
-# for acc in portfolio:
-#     if acc == 'Облигации':
-#         for tx in portfolio[acc]['transactions']:
-#             print(tx)
