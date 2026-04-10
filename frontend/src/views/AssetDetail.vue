@@ -846,28 +846,27 @@ const rootPortfolio = computed(() => {
   return portfolios.value.find(p => !p.parent_portfolio_id) || null
 })
 
-// Сводка по всем портфелям, где есть этот актив (шапка страницы)
+// Сумма стоимости позиции по всем портфелям (виджет «вклад» при масштабе «Все активы»)
+const sumAssetValueAcrossPortfolios = computed(() =>
+  assetInAllPortfolios.value.reduce((s, p) => s + (Number(p.asset_value) || 0), 0)
+)
+
+// Ключевые метрики в шапке — только по выбранному портфелю
 const aggregatedPortfolioMetrics = computed(() => {
-  const list = assetInAllPortfolios.value
-  if (!list || !list.length) return null
+  const pa = selectedPortfolioAsset.value
+  if (!pa) return null
 
-  let totalQuantity = 0
-  let totalValueRub = 0
-  let totalPnl = 0
-
-  for (const p of list) {
-    totalQuantity += Number(p.quantity) || 0
-    totalValueRub += Number(p.asset_value) || 0
-    totalPnl += Number(p.total_pnl) || 0
-  }
-
-  const rootVal = Number(rootPortfolio.value?.total_value) || 0
-  const shareInRootPercent = rootVal > 0 ? (totalValueRub / rootVal) * 100 : null
+  const totalQuantity = Number(pa.quantity) || 0
+  const totalValueRub = Number(pa.asset_value) || 0
+  const totalPnl = Number(pa.total_pnl) || 0
+  const portfolioTotal = Math.max(0, Number(pa.portfolio_total_value) || 0)
+  const shareInPortfolioPercent =
+    portfolioTotal > 0 ? (totalValueRub / portfolioTotal) * 100 : null
 
   return {
     totalQuantity,
     totalValueRub,
-    shareInRootPercent,
+    shareInPortfolioPercent,
     totalPnl,
     isProfit: totalPnl >= 0
   }
@@ -1091,10 +1090,11 @@ const contributionAssetAllocation = computed(() => {
   let raw = 0
   if (contributionScope.value === 'all_assets') {
     totalVal = Math.max(0, Number(rootPortfolio.value?.total_value) || 0)
-    const agg = aggregatedPortfolioMetrics.value
-    raw = agg
-      ? Math.max(0, Number(agg.totalValueRub) || 0)
-      : Math.max(0, Number(pa?.asset_value) || 0)
+    const sumAll = sumAssetValueAcrossPortfolios.value
+    raw =
+      sumAll > 0
+        ? sumAll
+        : Math.max(0, Number(pa?.asset_value) || 0)
   } else {
     totalVal = Math.max(0, Number(pa?.portfolio_total_value) || 0)
     raw = Math.max(0, Number(pa?.asset_value) || 0)
@@ -1825,7 +1825,7 @@ async function handlePortfolioChange(portfolioId) {
           </div>
         </div>
 
-        <!-- Ключевые метрики: сумма по всем портфелям с этим активом -->
+        <!-- Ключевые метрики по выбранному портфелю -->
         <dl class="asset-key-metrics" v-if="aggregatedPortfolioMetrics">
           <div class="key-metric left-metric-item">
             <dt class="key-metric-label">Количество</dt>
@@ -1839,8 +1839,8 @@ async function handlePortfolioChange(portfolioId) {
             <dt class="key-metric-label">Доля</dt>
             <dd class="key-metric-value">
               {{
-                aggregatedPortfolioMetrics.shareInRootPercent != null
-                  ? `${aggregatedPortfolioMetrics.shareInRootPercent.toFixed(2)}%`
+                aggregatedPortfolioMetrics.shareInPortfolioPercent != null
+                  ? `${aggregatedPortfolioMetrics.shareInPortfolioPercent.toFixed(2)}%`
                   : '—'
               }}
             </dd>
