@@ -7,6 +7,7 @@ import sys
 import aiohttp
 import random
 from collections import defaultdict
+from itertools import groupby
 from bs4 import BeautifulSoup
 from datetime import datetime, date
 from tqdm import tqdm
@@ -25,6 +26,10 @@ logger = get_logger(__name__)
 _SOURCE_SMARTLAB_INDEX = 0
 _SOURCE_SMARTLAB_HISTORY = 1
 _SOURCE_DOHOD = 2
+
+# Если у актива одна и та же выплата на бумагу, но record_date отличается на день (dohod vs SmartLab) —
+# склеиваем в одну строку, каноническая дата — у источника с меньшим _source_rank (SmartLab).
+FUZZY_RECORD_GAP_DAYS = 14
 
 # URL страниц
 SMARTLAB_INDEX_URL = "https://smart-lab.ru/dividends/index/order_by_yield/desc/"
@@ -223,8 +228,69 @@ def _payout_pair_key(asset_id: int, record_date) -> tuple:
     return (asset_id, iso)
 
 
+def _as_date_field(d):
+    """Дата из БД / merge: date, datetime или 'YYYY-MM-DD'."""
+    if d is None:
+        return None
+    if isinstance(d, datetime):
+        return d.date()
+    if isinstance(d, date):
+        return d
+    if isinstance(d, str):
+        return date.fromisoformat(d[:10])
+    return None
+
+
+def build_existing_by_pair(existing_payouts: list) -> dict:
+    """Одна строка на ключ (asset_id, record_date) — с минимальным id."""
+    by_pair_lists = defaultdict(list)
+    for p in existing_payouts:
+        record_date = p.get("record_date")
+        if not record_date:
+            continue
+        key = _payout_pair_key(p["asset_id"], record_date)
+        by_pair_lists[key].append(p)
+    out = {}
+    for key, rows in by_pair_lists.items():
+        rows.sort(key=lambda r: r.get("id") or 0)
+        out[key] = rows[0]
+    return out
+
+
+def collect_fuzzy_obsolete_dividend_ids(merged_payouts: list, existing_payouts: list) -> set:
+    """Строки в БД: тот же актив и сумма на бумагу, record_date на ≤FUZZY_RECORD_GAP_DAYS от канона merge, но не равна ему."""
+    ids = set()
+    for m in merged_payouts:
+        m_rd = _as_date_field(m.get("record_date"))
+        if m_rd is None:
+            continue
+        m_val = _value_cluster_key(m.get("value"))
+        if m_val is None:
+            continue
+        for p in existing_payouts:
+            if p.get("type_id") != PAYOUT_TYPE_DIVIDEND_ID:
+                continue
+            p_rd = _as_date_field(p.get("record_date"))
+            if p_rd is None:
+                continue
+            if p["asset_id"] != m["asset_id"]:
+                continue
+            p_val = _value_cluster_key(p.get("value"))
+            if p_val is None or p_val != m_val:
+                continue
+            if p_rd == m_rd:
+                continue
+            if abs((p_rd - m_rd).days) <= FUZZY_RECORD_GAP_DAYS:
+                ids.add(p["id"])
+    return ids
+
+
 def merge_dividend_sources(items: list) -> dict:
-    """Одинаковые asset_id + record_date: сначала SmartLab (index → history), затем dohod — дополняем даты; value/yield перезаписываются последним источником с данными."""
+    """Порядок items — по возрастанию _source_rank (SmartLab раньше dohod).
+
+    Приоритет первого источника: value, dividend_yield, record_date не перетираются
+    данными из следующих; из dohod только дополняем пустые поля.
+    """
     m = {k: v for k, v in items[0].items() if k != "_source_rank"}
     for nxt in items[1:]:
         nxt = {k: v for k, v in nxt.items() if k != "_source_rank"}
@@ -232,9 +298,12 @@ def merge_dividend_sources(items: list) -> dict:
             m["last_buy_date"] = m.get("last_buy_date") or nxt["last_buy_date"]
         if nxt.get("payment_date"):
             m["payment_date"] = m.get("payment_date") or nxt["payment_date"]
-        if float(nxt.get("value") or 0) > 0:
+        if nxt.get("record_date") and not m.get("record_date"):
+            m["record_date"] = nxt["record_date"]
+        nxt_val = float(nxt.get("value") or 0)
+        if nxt_val > 0 and float(m.get("value") or 0) <= 0:
             m["value"] = nxt["value"]
-        if nxt.get("dividend_yield") is not None:
+        if nxt.get("dividend_yield") is not None and m.get("dividend_yield") is None:
             m["dividend_yield"] = nxt["dividend_yield"]
     return m
 
@@ -285,6 +354,77 @@ def _build_payout_row(merged: dict, type_id: int | None = None) -> dict:
         "payment_date": merged["payment_date"].isoformat() if merged.get("payment_date") else None,
         "type_id": tid,
     }
+
+
+def _value_cluster_key(value):
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v <= 0:
+        return None
+    return round(v, 4)
+
+
+def fuzzy_dedupe_dividend_rows_by_near_record_date(all_items: list) -> list:
+    """Схлопывает строки одного актива с одинаковой суммой на бумагу, если record_date
+    отличается не более чем на FUZZY_RECORD_GAP_DAYS (типичный сдвиг dohod.ru).
+
+    Канонические дата/сумма/доходность — от источника с минимальным _source_rank (SmartLab).
+    Строки без record_date не участвуют в fuzzy и возвращаются как есть.
+    """
+    with_rd: list = []
+    without_rd: list = []
+    for it in all_items:
+        if it.get("record_date"):
+            with_rd.append(it)
+        else:
+            without_rd.append(it)
+
+    with_rd.sort(
+        key=lambda x: (
+            x["asset_id"],
+            _value_cluster_key(x.get("value")) is None,
+            _value_cluster_key(x.get("value")) or 0,
+            x["record_date"],
+        )
+    )
+
+    result: list = []
+
+    for (aid, vk), group_iter in groupby(
+        with_rd,
+        key=lambda x: (x["asset_id"], _value_cluster_key(x.get("value"))),
+    ):
+        block = list(group_iter)
+        if vk is None:
+            result.extend(block)
+            continue
+
+        block.sort(key=lambda x: x["record_date"])
+        clusters: list[list] = []
+        cur = [block[0]]
+        for it in block[1:]:
+            delta = (it["record_date"] - cur[-1]["record_date"]).days
+            if delta <= FUZZY_RECORD_GAP_DAYS:
+                cur.append(it)
+            else:
+                clusters.append(cur)
+                cur = [it]
+        clusters.append(cur)
+
+        for cl in clusters:
+            if len(cl) == 1:
+                result.append(cl[0])
+                continue
+            cl_sorted = sorted(cl, key=lambda x: x.get("_source_rank", 99))
+            merged = merge_dividend_sources(cl_sorted)
+            merged["_source_rank"] = cl_sorted[0].get("_source_rank", _SOURCE_SMARTLAB_INDEX)
+            result.append(merged)
+
+    return result + without_rd
 
 
 def group_and_merge_incoming_dividends(all_items: list) -> list:
@@ -378,18 +518,7 @@ async def update_forecasts(show_progress: bool | None = None):
         removed_dupes,
     )
 
-    by_pair_lists = defaultdict(list)
-    for p in existing_payouts:
-        record_date = p.get("record_date")
-        if not record_date:
-            continue
-        key = _payout_pair_key(p["asset_id"], record_date)
-        by_pair_lists[key].append(p)
-
-    existing_by_pair = {}
-    for key, rows in by_pair_lists.items():
-        rows.sort(key=lambda r: r.get("id") or 0)
-        existing_by_pair[key] = rows[0]
+    existing_by_pair = build_existing_by_pair(existing_payouts)
 
     all_items = []
 
@@ -464,8 +593,31 @@ async def update_forecasts(show_progress: bool | None = None):
 
     logger.info(f"Всего сырых строк из источников: {len(all_items)}")
 
+    all_items = fuzzy_dedupe_dividend_rows_by_near_record_date(all_items)
+    logger.info(
+        "После fuzzy-dedupe (одинаковый asset + сумма на бумагу, record_date в пределах ±%s дн.): %s строк",
+        FUZZY_RECORD_GAP_DAYS,
+        len(all_items),
+    )
+
     merged_payouts = group_and_merge_incoming_dividends(all_items)
-    logger.info(f"После слияния дубликатов по (asset_id, record_date): {len(merged_payouts)} записей")
+    logger.info(f"После слияния по (asset_id, record_date): {len(merged_payouts)} записей")
+
+    fuzzy_ids = collect_fuzzy_obsolete_dividend_ids(merged_payouts, existing_payouts)
+    if fuzzy_ids:
+        id_list = list(fuzzy_ids)
+        removed_fuzzy = 0
+        for i in range(0, len(id_list), _DUPLICATE_DELETE_CHUNK):
+            chunk = id_list[i : i + _DUPLICATE_DELETE_CHUNK]
+            deleted = await table_delete_async("asset_payouts", in_filters={"id": chunk})
+            removed_fuzzy += len(deleted)
+        logger.info(
+            "Удалено строк с record_date в пределах ±%s дн. от канона (та же сумма на бумагу): %s",
+            FUZZY_RECORD_GAP_DAYS,
+            removed_fuzzy,
+        )
+        existing_payouts = [p for p in existing_payouts if p["id"] not in fuzzy_ids]
+        existing_by_pair = build_existing_by_pair(existing_payouts)
 
     payouts_to_insert = []
     payouts_to_update = []
