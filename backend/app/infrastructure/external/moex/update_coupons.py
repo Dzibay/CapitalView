@@ -2,6 +2,7 @@
 Обновление купонов и амортизаций облигаций с MOEX.
 Перенесено из supabase_data/update_coupons.py
 """
+import asyncio
 from datetime import date, datetime
 
 from app.infrastructure.database.postgres_async import db_select, db_update, get_connection_pool
@@ -19,6 +20,9 @@ logger = get_logger(__name__)
 
 MOEX_BONDIZATION_URL = "https://iss.moex.com/iss/securities/{ticker}/bondization.json"
 BATCH_SIZE = 1000
+# Семафор смягчает волны из тысяч корутин; значения ближе к дефолтному коннектору MOEX (30 / 5).
+MOEX_BONDIZATION_CONCURRENCY = 10
+MOEX_BONDIZATION_REQUEST_DELAY_SEC = 0.02
 
 # Совпадает с idx_asset_payouts_unique_coupon: (asset_id, payment_date, type_id), type_id=2 (купон)
 INSERT_COUPON_SQL = """
@@ -137,8 +141,6 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
                     initial_face_value = float(rec["initialfacevalue"])
                 except (ValueError, TypeError):
                     pass
-            if rec.get("data_source") == "maturity":
-                continue
             results.append({
                 "record_date": None,
                 "payment_date": rec.get("amortdate"),
@@ -150,6 +152,16 @@ async def fetch_bond_payouts_from_moex(session, ticker: str):
         initial_face_value = 1000.0
 
     return results, initial_face_value, coupon_percent
+
+
+async def _fetch_bond_payouts_throttled(
+    session,
+    semaphore: asyncio.Semaphore,
+    ticker: str,
+):
+    async with semaphore:
+        await asyncio.sleep(MOEX_BONDIZATION_REQUEST_DELAY_SEC)
+        return await fetch_bond_payouts_from_moex(session, ticker)
 
 
 async def _update_bond_properties(
@@ -258,9 +270,10 @@ async def update_all_coupons():
     coupon_percent_map = {}  # {asset_id: coupon_percent}
     bonds_with_ticker = [b for b in bonds if b.get("ticker")]
     
+    sem = asyncio.Semaphore(MOEX_BONDIZATION_CONCURRENCY)
     async with create_moex_session() as session:
         tasks = [
-            fetch_bond_payouts_from_moex(session, bond["ticker"])
+            _fetch_bond_payouts_throttled(session, sem, bond["ticker"])
             for bond in bonds_with_ticker
         ]
         
