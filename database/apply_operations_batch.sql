@@ -95,7 +95,7 @@ BEGIN
         (op->>'portfolio_asset_id')::bigint as portfolio_asset_id,
         (op->>'dividend_yield')::numeric as dividend_yield,
         (op->>'quantity')::numeric as quantity,
-        (op->>'price')::numeric(20,2) as price,
+        (op->>'price')::numeric(20,6) as price,
         COALESCE((op->>'payment')::numeric(20,6), (op->>'amount')::numeric(20,6)) as payment,
         COALESCE((op->>'commission')::numeric(20,6), 0) as commission,
         (op->>'commission_rub')::numeric(20,6) as commission_rub,
