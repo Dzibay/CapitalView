@@ -759,9 +759,8 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.landing-dash-mock :deep(.value-change-pill .arrow-icon svg) {
-  width: 10px;
-  height: 10px;
+.landing-dash-mock :deep(.value-change-pill .sign-prefix) {
+  font-size: 0.85em;
 }
 
 .landing-dash-mock :deep(.main-value-row .tooltip-wrapper) {

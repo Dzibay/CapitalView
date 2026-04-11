@@ -12,6 +12,7 @@ import { DateInput, ToggleSwitch, PeriodFilter, Tooltip } from '../components/ba
 import { Search, SlidersHorizontal, ChevronDown } from 'lucide-vue-next'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
+import { ValueChange } from '../components/widgets/base'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
 import { getCurrencySymbol } from '../utils/currencySymbols'
@@ -199,6 +200,16 @@ const handleDeleteOperation = (operation) => {
 }
 
 // --- ВСПОМОГАТЕЛЬНОЕ: нормализация типа ---
+const isSellTransaction = (tx) =>
+  tx?.transaction_type_id === 2 || normalizeType(tx?.transaction_type) === 'sell'
+
+/** Реализованная прибыль (₽) для продажи; null — не рендерим ValueChange под суммой */
+const txSellRealizedPnlNumber = (tx) => {
+  if (!isSellTransaction(tx)) return null
+  const v = Number(tx?.realized_pnl)
+  return Number.isNaN(v) ? null : v
+}
+
 const normalizeType = (type) => {
   const t = (type || '').toString().toLowerCase()
   if (t.includes('покуп') || t.includes('buy')) return 'buy'
@@ -1213,8 +1224,15 @@ const periodFilterLabel = computed(() => {
                 </div>
                 <div class="transaction-card-row">
                   <span class="card-label">Сумма</span>
-                  <span class="card-value num-font font-semibold">
-                    {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }} {{ getCurrencySymbol(tx.currency_ticker) }}
+                  <span class="card-value num-font font-semibold tx-sum-stack">
+                    <span class="tx-sum-line">
+                      {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }} {{ getCurrencySymbol(tx.currency_ticker) }}
+                    </span>
+                    <ValueChange
+                      v-if="txSellRealizedPnlNumber(tx) !== null"
+                      :value="txSellRealizedPnlNumber(tx)"
+                      format="currency"
+                    />
                   </span>
                 </div>
               </div>
@@ -1316,8 +1334,17 @@ const periodFilterLabel = computed(() => {
                 <td class="text-secondary">{{ tx.portfolio_name }}</td>
                 <td class="text-right num-font">{{ tx.quantity }}</td>
                 <td class="text-right num-font">{{ tx.price.toLocaleString() }} {{ getCurrencySymbol(tx.currency_ticker) }}</td>
-                <td class="text-right num-font font-semibold">
-                  {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }} {{ getCurrencySymbol(tx.currency_ticker) }}
+                <td class="text-right num-font font-semibold tx-sum-cell">
+                  <div class="tx-sum-stack">
+                    <div class="tx-sum-line">
+                      {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }} {{ getCurrencySymbol(tx.currency_ticker) }}
+                    </div>
+                    <ValueChange
+                      v-if="txSellRealizedPnlNumber(tx) !== null"
+                      :value="txSellRealizedPnlNumber(tx)"
+                      format="currency"
+                    />
+                  </div>
                 </td>
                 <td class="w-actions">
                   <button class="icon-btn" @click="openMenu($event, 'transaction', tx)">⋯</button>
@@ -1976,6 +2003,22 @@ const periodFilterLabel = computed(() => {
 .badge-withdraw { background: #ffedd5; color: #9a3412; }
 .badge-tax, .badge-commission { background: #fef3c7; color: #92400e; }
 .badge-other { background: #f3f4f6; color: #4b5563; }
+
+.tx-sum-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.125rem;
+}
+.tx-sum-line {
+  line-height: 1.25;
+}
+.tx-sum-stack :deep(.value-change) {
+  font-size: 0.8125rem;
+}
+.tx-sum-cell {
+  vertical-align: middle;
+}
 
 .icon-btn {
   background: none;
