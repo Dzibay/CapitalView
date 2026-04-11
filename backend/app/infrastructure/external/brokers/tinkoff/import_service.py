@@ -127,8 +127,80 @@ def resolve_instrument(client, figi, cache):
         return None
 
 
-def get_tinkoff_portfolio(token):
-    """Получает данные портфеля от брокера Tinkoff."""
+def _money_value_to_dict(mv) -> dict | None:
+    if mv is None:
+        return None
+    return {
+        "currency": mv.currency,
+        "units": int(mv.units),
+        "nano": int(mv.nano),
+    }
+
+
+def tinkoff_operation_to_raw_dict(op, client, instrument_cache: dict) -> dict:
+    """
+    Сериализация ответа get_operations в JSON-совместимый словарь (поля protobuf/dataclass API).
+    Добавляет ticker / instrument_name / isin по FIGI через resolve_instrument.
+    """
+    figi = getattr(op, "figi", None) or None
+    if figi == "":
+        figi = None
+    inst = resolve_instrument(client, figi, instrument_cache) if figi else None
+
+    ot = getattr(op, "operation_type", None)
+    operation_type_name = ot.name if ot is not None and hasattr(ot, "name") else str(ot)
+
+    st = getattr(op, "state", None)
+    state_name = st.name if st is not None and hasattr(st, "name") else (str(st) if st is not None else None)
+
+    trades_out = []
+    for tr in getattr(op, "trades", None) or []:
+        trades_out.append({
+            "trade_id": getattr(tr, "trade_id", None),
+            "date_time": tr.date_time.isoformat() if getattr(tr, "date_time", None) else None,
+            "quantity": getattr(tr, "quantity", None),
+            "price": _money_value_to_dict(getattr(tr, "price", None)),
+        })
+
+    child_ops = []
+    for ch in getattr(op, "child_operations", None) or []:
+        child_ops.append({
+            "instrument_uid": getattr(ch, "instrument_uid", None),
+            "payment": _money_value_to_dict(getattr(ch, "payment", None)),
+        })
+
+    return {
+        "id": getattr(op, "id", None),
+        "parent_operation_id": getattr(op, "parent_operation_id", None),
+        "currency": getattr(op, "currency", None),
+        "payment": _money_value_to_dict(getattr(op, "payment", None)),
+        "price": _money_value_to_dict(getattr(op, "price", None)),
+        "state": state_name,
+        "quantity": getattr(op, "quantity", None),
+        "quantity_rest": getattr(op, "quantity_rest", None),
+        "figi": figi,
+        "instrument_type": getattr(op, "instrument_type", None),
+        "date": op.date.isoformat() if getattr(op, "date", None) else None,
+        "type": getattr(op, "type", None),
+        "operation_type": operation_type_name,
+        "trades": trades_out,
+        "asset_uid": getattr(op, "asset_uid", None),
+        "position_uid": getattr(op, "position_uid", None),
+        "instrument_uid": getattr(op, "instrument_uid", None),
+        "child_operations": child_ops,
+        "ticker": inst["ticker"] if inst else None,
+        "instrument_name": inst["name"] if inst else None,
+        "isin": inst["isin"] if inst else None,
+    }
+
+
+def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
+    """
+    Получает данные портфеля от брокера Tinkoff.
+
+    include_raw_operations: добавить в каждый счёт ключ operations_raw — список словарей
+    с максимально полным снимком операций из get_operations (удобно для отладки импорта).
+    """
     logger.info("Tinkoff portfolio import start")
 
     result = {}
@@ -322,13 +394,18 @@ def get_tinkoff_portfolio(token):
                         }
                         transactions.append(withdraw_tx)
 
-                result[acc_name] = {
+                entry = {
                     "account_id": acc_id,
                     "positions": positions,
                     "transactions": transactions,
                     "transactions_skipped": transactions_skipped,
                     "operations_raw_count": len(ops_raw),
                 }
+                if include_raw_operations:
+                    entry["operations_raw"] = [
+                        tinkoff_operation_to_raw_dict(op, client, instrument_cache) for op in ops_raw
+                    ]
+                result[acc_name] = entry
             except RequestError as e:
                 # Обработка других ошибок RequestError
                 logger.error(

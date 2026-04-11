@@ -2,16 +2,24 @@
 Скрипт для ручного тестирования импорта портфелей от Tinkoff.
 
 Использование:
-    python scripts/test_tinkoff_import.py                      # полная статистика (таблицы), все счета
+    python scripts/test_tinkoff_import.py --token YOUR_TOKEN   # токен в аргументе (или -t)
+    python scripts/test_tinkoff_import.py                      # токен из TINKOFF_TOKEN
     python scripts/test_tinkoff_import.py --account-index 1  # только счёт №1 (сортировка имён по алфавиту)
     python scripts/test_tinkoff_import.py --account ИИС      # счета, в имени которых есть подстрока
     python scripts/test_tinkoff_import.py --interactive      # меню + полный отчёт
+    python scripts/test_tinkoff_import.py --raw-ticker SBER --account-index 1   # сырые операции API по тикеру и счёту
+    python scripts/test_tinkoff_import.py --raw-ticker GAZP --raw-only -t TOKEN  # только блок сырых операций
+    python scripts/test_tinkoff_import.py --gui   # окно: аналитика + сырые операции с фильтрами
 
-Требуется переменная окружения TINKOFF_TOKEN с токеном доступа к Tinkoff Invest API.
+Токен: аргумент --token / -t или переменная окружения TINKOFF_TOKEN (приоритет у аргумента).
 """
 import argparse
+import io
+import json
 import os
 import sys
+import threading
+from contextlib import redirect_stdout
 from pathlib import Path
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -131,6 +139,30 @@ def _iter_transactions(broker_data: dict) -> List[dict]:
             t["account_name"] = account_name
             all_tx.append(t)
     return all_tx
+
+
+def _skipped_qty_equals_rest(entry: dict) -> bool:
+    """True, если quantity_api совпадает с quantity_rest (заявка целиком не исполнена)."""
+    qa = entry.get("quantity_api")
+    qr = entry.get("quantity_rest")
+    if qa is None or qr is None:
+        return False
+    try:
+        return abs(float(qa) - float(qr)) < 1e-9
+    except (TypeError, ValueError):
+        return False
+
+
+def _raw_op_qty_equals_rest(op: dict) -> bool:
+    """Сырые операции API: quantity и quantity_rest в корне словаря (как в tinkoff_operation_to_raw_dict)."""
+    qa = op.get("quantity")
+    qr = op.get("quantity_rest")
+    if qa is None or qr is None:
+        return False
+    try:
+        return abs(float(qa) - float(qr)) < 1e-9
+    except (TypeError, ValueError):
+        return False
 
 
 def emit_full_statistics(
@@ -258,26 +290,34 @@ def emit_full_statistics(
         hint = ""
         if n_api > n_exp:
             hint = f" (API {n_api} > выгрузка {n_exp}: не хватает {n_api - n_exp} относительно «сырых»)"
+        skipped_eq_rest = [s for s in skipped if _skipped_qty_equals_rest(s)]
+        skipped_detail = [s for s in skipped if not _skipped_qty_equals_rest(s)]
+
         print("\n" + "=" * 100)
         print(f"НЕ В ВЫГРУЗКЕ — пропущенные операции: счёт «{acc_name}» ({len(skipped)} шт.){hint}")
         print("=" * 100)
-        rows = []
-        for s in sorted(skipped, key=lambda x: (x.get("date") or ""), reverse=True):
-            rows.append([
-                (s.get("date") or "")[:19],
-                (s.get("tinkoff_operation_type") or "")[:36],
-                s.get("type"),
-                s.get("reason"),
-                (s.get("ticker") or "—")[:10],
-                f"{float(s.get('payment') or 0):,.2f}",
-                _fmt_currency(s.get("currency"))[:8],
-                str(s.get("quantity_api")),
-                str(s.get("quantity_rest")),
-            ])
-        print_table(
-            ["Дата", "tinkoff_operation_type", "class", "reason", "Тикер", "payment", "cur.", "qty", "qty_rest"],
-            rows,
-        )
+        if skipped_eq_rest:
+            print(
+                f"Операций с qty = qty_rest (неисполненные заявки, только количество): {len(skipped_eq_rest)} шт."
+            )
+        if skipped_detail:
+            rows = []
+            for s in sorted(skipped_detail, key=lambda x: (x.get("date") or ""), reverse=True):
+                rows.append([
+                    (s.get("date") or "")[:19],
+                    (s.get("tinkoff_operation_type") or "")[:36],
+                    s.get("type"),
+                    s.get("reason"),
+                    (s.get("ticker") or "—")[:10],
+                    f"{float(s.get('payment') or 0):,.2f}",
+                    _fmt_currency(s.get("currency"))[:8],
+                    str(s.get("quantity_api")),
+                    str(s.get("quantity_rest")),
+                ])
+            print_table(
+                ["Дата", "tinkoff_operation_type", "class", "reason", "Тикер", "payment", "cur.", "qty", "qty_rest"],
+                rows,
+            )
 
     # Синтетические строки (DIV_EXT → Withdraw и т.п.) — при выгрузке > API; показываем всегда, если есть
     for acc_name, acc in filtered.items():
@@ -388,6 +428,19 @@ def emit_full_statistics(
             ["Минимум", "Максимум", "Всего операций"],
             [[min(dates)[:10], max(dates)[:10], len(dates)]],
         )
+
+
+def format_full_statistics(
+    broker_data: dict,
+    account_substr: Optional[str] = None,
+    account_index: Optional[int] = None,
+) -> str:
+    """Текст полной сводки (как emit_full_statistics), для вывода в GUI."""
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        emit_full_statistics(broker_data, account_substr, account_index)
+    return buf.getvalue()
+
 
 def show_balance_analysis(broker_data: dict, account_substr: Optional[str] = None, account_index: Optional[int] = None):
     """Анализ балансов RUB по данным брокера."""
@@ -521,8 +574,310 @@ def show_operations(
         print(f"{date_str:<20} | {account:<20} | {tx_type:<15} | {ticker:<15} | {price_str:>12} | {qty_str:>12} | {payment_str:>15}")
 
 
+def show_raw_operations_for_ticker(
+    broker_data: dict,
+    ticker: str,
+    account_substr: Optional[str] = None,
+    account_index: Optional[int] = None,
+) -> None:
+    """Сырые операции get_operations (сериализация полей API), отфильтрованные по тикеру и счёту."""
+    filtered, warn = filter_broker_accounts(broker_data, account_substr, account_index)
+    t = ticker.strip().upper()
+    print("\n" + "=" * 100)
+    print(f"СЫРЫЕ ОПЕРАЦИИ API (get_operations), тикер {t!r}")
+    print("=" * 100)
+    if warn:
+        print(f"⚠️  {warn}")
+
+    any_raw = False
+    any_match = False
+    for acc_name, acc in filtered.items():
+        raw_list = acc.get("operations_raw")
+        if raw_list is None:
+            print(
+                f"\n⚠️  Счёт «{acc_name}»: нет operations_raw — запустите скрипт с флагом --raw-ticker "
+                "(данные запрашиваются при его наличии)."
+            )
+            continue
+        any_raw = True
+        matched = [r for r in raw_list if (r.get("ticker") or "").upper() == t]
+        print(f"\n—— Счёт «{acc_name}» (account_id={acc.get('account_id')}) ——")
+        print(f"    по тикеру {t!r}: {len(matched)} из {len(raw_list)} сырых операций на счёте")
+        if not matched:
+            continue
+        any_match = True
+        for i, r in enumerate(sorted(matched, key=lambda x: x.get("date") or "", reverse=True), 1):
+            print(f"\n--- #{i} ---")
+            print(json.dumps(r, ensure_ascii=False, indent=2))
+
+    if any_raw and not any_match:
+        print(f"\nОпераций с тикером {t!r} среди выбранных счетов не найдено.")
+
+
+def _payment_raw_display(op: dict) -> str:
+    p = op.get("payment")
+    if p is None:
+        return ""
+    if isinstance(p, dict):
+        u = int(p.get("units") or 0)
+        n = int(p.get("nano") or 0)
+        cur = p.get("currency") or ""
+        val = float(u) + float(n) / 1e9
+        return f"{val:,.4f} {cur}".strip()
+    return str(p)
+
+
+def run_gui(initial_token: str = "") -> None:
+    """Двухпанельное окно: аналитика и сырые операции (обязательно без qty = qty_rest)."""
+    import tkinter as tk
+    from tkinter import messagebox, scrolledtext, ttk
+
+    ALL_ACCOUNTS = "Все счета"
+
+    class TinkoffImportGui:
+        def __init__(self, root: tk.Tk, token_hint: str) -> None:
+            self.root = root
+            self.root.title("Tinkoff import — аналитика и сырые операции")
+            self.root.minsize(1080, 660)
+            self.broker_data: Optional[dict] = None
+            self._row_ops: Dict[str, dict] = {}
+            self._row_i = 0
+
+            main = ttk.Frame(self.root, padding=6)
+            main.pack(fill=tk.BOTH, expand=True)
+
+            top = ttk.Frame(main)
+            top.pack(fill=tk.X, pady=(0, 6))
+
+            ttk.Label(top, text="Токен:").pack(side=tk.LEFT)
+            hint = (token_hint or "").strip() or (os.getenv("TINKOFF_TOKEN") or "")
+            self.token_var = tk.StringVar(value=hint)
+            ttk.Entry(top, textvariable=self.token_var, width=44, show="*").pack(
+                side=tk.LEFT, padx=6, fill=tk.X, expand=True
+            )
+            self.btn_load = ttk.Button(top, text="Загрузить с API", command=self.on_load)
+            self.btn_load.pack(side=tk.LEFT)
+
+            paned = ttk.Panedwindow(main, orient=tk.HORIZONTAL)
+            paned.pack(fill=tk.BOTH, expand=True)
+
+            left = ttk.Frame(paned, padding=2)
+            paned.add(left, weight=5)
+            ttk.Label(left, text="Аналитика").pack(anchor=tk.W)
+            self.txt_analytics = scrolledtext.ScrolledText(left, wrap=tk.WORD, font=("Consolas", 9))
+            self.txt_analytics.pack(fill=tk.BOTH, expand=True)
+            self.txt_analytics.insert(tk.END, "Нажмите «Загрузить с API». Запрашиваются позиции, выгрузка и сырые операции.\n")
+
+            right = ttk.Frame(paned, padding=2)
+            paned.add(right, weight=4)
+
+            filt = ttk.LabelFrame(right, text="Сырые операции (фильтры)", padding=8)
+            filt.pack(fill=tk.X)
+
+            r1 = ttk.Frame(filt)
+            r1.pack(fill=tk.X)
+            ttk.Label(r1, text="Счёт:").pack(side=tk.LEFT)
+            self.account_var = tk.StringVar(value=ALL_ACCOUNTS)
+            self.combo_acc = ttk.Combobox(r1, textvariable=self.account_var, width=32, state="readonly")
+            self.combo_acc.pack(side=tk.LEFT, padx=6)
+            self.combo_acc.bind("<<ComboboxSelected>>", lambda _e: self.refresh_all_views())
+
+            r2 = ttk.Frame(filt)
+            r2.pack(fill=tk.X, pady=6)
+            ttk.Label(r2, text="Тикер содержит:").pack(side=tk.LEFT)
+            self.ticker_var = tk.StringVar()
+            e_ticker = ttk.Entry(r2, textvariable=self.ticker_var, width=14)
+            e_ticker.pack(side=tk.LEFT, padx=4)
+            ttk.Label(r2, text="Тип API содержит:").pack(side=tk.LEFT, padx=(14, 0))
+            self.type_var = tk.StringVar()
+            e_type = ttk.Entry(r2, textvariable=self.type_var, width=22)
+            e_type.pack(side=tk.LEFT, padx=4)
+            for w in (e_ticker, e_type):
+                w.bind("<Return>", lambda _e: self.refresh_raw_only())
+
+            ttk.Label(
+                filt,
+                text="Неисполненные заявки (quantity = quantity_rest) всегда исключены из списка.",
+                foreground="#555",
+            ).pack(anchor=tk.W, pady=(0, 4))
+
+            ttk.Button(filt, text="Обновить список", command=self.refresh_raw_only).pack(anchor=tk.W)
+
+            tree_fr = ttk.Frame(right)
+            tree_fr.pack(fill=tk.BOTH, expand=True, pady=6)
+
+            cols = ("date", "account", "ticker", "op_type", "state", "qty", "qty_rest", "payment", "id")
+            self.tree = ttk.Treeview(tree_fr, columns=cols, show="headings", height=16)
+            htext = {
+                "date": "Дата",
+                "account": "Счёт",
+                "ticker": "Тикер",
+                "op_type": "operation_type",
+                "state": "state",
+                "qty": "qty",
+                "qty_rest": "qty_rest",
+                "payment": "payment",
+                "id": "id",
+            }
+            for c in cols:
+                self.tree.heading(c, text=htext[c])
+                self.tree.column(c, width=88, stretch=(c == "op_type"))
+            self.tree.column("date", width=140)
+            self.tree.column("account", width=110)
+            self.tree.column("op_type", width=220)
+            self.tree.column("payment", width=120)
+            self.tree.column("id", width=100)
+
+            vsb = ttk.Scrollbar(tree_fr, orient=tk.VERTICAL, command=self.tree.yview)
+            hsb = ttk.Scrollbar(tree_fr, orient=tk.HORIZONTAL, command=self.tree.xview)
+            self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+            self.tree.grid(row=0, column=0, sticky="nsew")
+            vsb.grid(row=0, column=1, sticky="ns")
+            hsb.grid(row=1, column=0, sticky="ew")
+            tree_fr.grid_rowconfigure(0, weight=1)
+            tree_fr.grid_columnconfigure(0, weight=1)
+
+            self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
+
+            ttk.Label(right, text="Полный JSON выбранной строки").pack(anchor=tk.W)
+            self.txt_json = scrolledtext.ScrolledText(right, height=11, wrap=tk.NONE, font=("Consolas", 8))
+            self.txt_json.pack(fill=tk.BOTH, expand=True)
+
+        def account_filter_params(self) -> Tuple[Optional[str], Optional[int]]:
+            sel = self.account_var.get()
+            if sel == ALL_ACCOUNTS or not sel:
+                return None, None
+            return sel, None
+
+        def refresh_analytics(self) -> None:
+            self.txt_analytics.delete("1.0", tk.END)
+            if not self.broker_data:
+                self.txt_analytics.insert(tk.END, "Нет данных. Загрузите портфель.")
+                return
+            acc_substr, acc_idx = self.account_filter_params()
+            try:
+                text = format_full_statistics(self.broker_data, acc_substr, acc_idx)
+            except Exception as e:
+                text = f"Ошибка построения сводки:\n{e}\n"
+            self.txt_analytics.insert(tk.END, text)
+
+        def refresh_raw_only(self) -> None:
+            for x in self.tree.get_children():
+                self.tree.delete(x)
+            self._row_ops.clear()
+            self._row_i = 0
+            self.txt_json.delete("1.0", tk.END)
+            if not self.broker_data:
+                return
+            acc_substr, acc_idx = self.account_filter_params()
+            filtered, _warn = filter_broker_accounts(self.broker_data, acc_substr, acc_idx)
+            t_sub = self.ticker_var.get().strip().upper()
+            type_sub = self.type_var.get().strip().upper()
+            n_hidden_rest = 0
+            n_shown = 0
+
+            for acc_name, acc_data in filtered.items():
+                raw_list = acc_data.get("operations_raw")
+                if raw_list is None:
+                    continue
+                for op in raw_list:
+                    if _raw_op_qty_equals_rest(op):
+                        n_hidden_rest += 1
+                        continue
+                    tick = op.get("ticker") or ""
+                    if t_sub and t_sub not in tick.upper():
+                        continue
+                    ot = op.get("operation_type") or ""
+                    if type_sub and type_sub not in ot.upper():
+                        continue
+                    iid = f"r{self._row_i}"
+                    self._row_i += 1
+                    self._row_ops[iid] = op
+                    n_shown += 1
+                    self.tree.insert(
+                        "",
+                        "end",
+                        iid=iid,
+                        values=(
+                            (op.get("date") or "")[:19],
+                            (acc_name or "")[:28],
+                            tick,
+                            (str(ot))[:80],
+                            op.get("state") or "",
+                            op.get("quantity"),
+                            op.get("quantity_rest"),
+                            _payment_raw_display(op),
+                            (op.get("id") or "")[:40],
+                        ),
+                    )
+
+            status = f"Строк: {n_shown} (скрыто qty=qty_rest на выбранных счетах: {n_hidden_rest})"
+            self.root.title(f"Tinkoff import — {status}")
+
+        def refresh_all_views(self) -> None:
+            self.refresh_analytics()
+            self.refresh_raw_only()
+
+        def on_tree_select(self, _evt: Any = None) -> None:
+            self.txt_json.delete("1.0", tk.END)
+            sel = self.tree.selection()
+            if not sel:
+                return
+            op = self._row_ops.get(sel[0])
+            if op:
+                self.txt_json.insert(tk.END, json.dumps(op, ensure_ascii=False, indent=2))
+
+        def on_load(self) -> None:
+            tok = self.token_var.get().strip()
+            if not tok:
+                messagebox.showerror("Токен", "Введите токен Tinkoff Invest API.")
+                return
+            self.btn_load.config(state="disabled")
+            self.root.title("Tinkoff import — загрузка…")
+
+            def work() -> None:
+                try:
+                    data = get_tinkoff_portfolio(tok, include_raw_operations=True)
+                    self.root.after(0, lambda d=data: self._load_done(d, None))
+                except Exception as e:
+                    self.root.after(0, lambda err=e: self._load_done(None, err))
+
+            threading.Thread(target=work, daemon=True).start()
+
+        def _load_done(self, data: Optional[dict], err: Optional[Exception]) -> None:
+            self.btn_load.config(state="normal")
+            if err is not None:
+                messagebox.showerror("Ошибка загрузки", str(err))
+                self.root.title("Tinkoff import — аналитика и сырые операции")
+                return
+            self.broker_data = data or {}
+            names = sorted(self.broker_data.keys())
+            self.combo_acc["values"] = [ALL_ACCOUNTS] + names
+            self.account_var.set(ALL_ACCOUNTS)
+            self.refresh_all_views()
+            if not self.broker_data:
+                messagebox.showinfo("Пусто", "Нет доступных счетов.")
+
+    root = tk.Tk()
+    TinkoffImportGui(root, initial_token)
+    root.mainloop()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Тест импорта Tinkoff: статистика по данным API (без БД).")
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Окно: аналитика и сырые операции с фильтрами (qty=qty_rest всегда скрыты).",
+    )
+    parser.add_argument(
+        "--token",
+        "-t",
+        type=str,
+        default=None,
+        metavar="TOKEN",
+        help="Токен Tinkoff Invest API. Если не задан, используется переменная TINKOFF_TOKEN.",
+    )
     parser.add_argument(
         "--interactive",
         action="store_true",
@@ -542,13 +897,34 @@ def main():
         metavar="SUBSTR",
         help="Подстрока в имени счёта (без учёта регистра).",
     )
+    parser.add_argument(
+        "--raw-ticker",
+        type=str,
+        default=None,
+        metavar="TICKER",
+        help="Показать сырые операции API по тикеру (учитываются --account / --account-index).",
+    )
+    parser.add_argument(
+        "--raw-only",
+        action="store_true",
+        help="Только блок сырых операций (--raw-ticker), без полной сводки и без интерактива.",
+    )
     args = parser.parse_args()
 
-    token = os.getenv("TINKOFF_TOKEN")
+    if args.raw_only and not (args.raw_ticker and args.raw_ticker.strip()):
+        parser.error("--raw-only имеет смысл вместе с непустым --raw-ticker")
+
+    if args.gui:
+        run_gui((args.token or "").strip())
+        return
+
+    token = (args.token or "").strip() or os.getenv("TINKOFF_TOKEN")
 
     if not token:
-        print("❌ ОШИБКА: TINKOFF_TOKEN не установлен!")
-        print("\nУстановите переменную окружения:")
+        print("❌ ОШИБКА: не задан токен.")
+        print("\nПередайте токен аргументом:")
+        print("  python scripts/test_tinkoff_import.py --token YOUR_TOKEN")
+        print("или установите переменную окружения:")
         print("  Windows PowerShell: $env:TINKOFF_TOKEN='your_token_here'")
         print("  Windows CMD: set TINKOFF_TOKEN=your_token_here")
         print("  Linux/Mac: export TINKOFF_TOKEN='your_token_here'")
@@ -559,8 +935,9 @@ def main():
     print("=" * 80)
 
     try:
+        want_raw = bool(args.raw_ticker and args.raw_ticker.strip())
         print("\n📥 Получаем данные от брокера Tinkoff...")
-        broker_data = get_tinkoff_portfolio(token)
+        broker_data = get_tinkoff_portfolio(token, include_raw_operations=want_raw)
 
         if not broker_data:
             print("⚠️  Портфель пуст (нет доступных счетов)")
@@ -571,7 +948,10 @@ def main():
         acc_substr: Optional[str] = args.account
         acc_index: Optional[int] = args.account_index
 
-        if args.interactive:
+        if args.raw_only and args.interactive:
+            print("⚠️  Режим --raw-only: интерактивное меню пропущено.")
+
+        if not args.raw_only and args.interactive:
             print("\n" + "=" * 80)
             print("ВЫБОР ТИПА АНАЛИЗА")
             print("=" * 80)
@@ -624,7 +1004,11 @@ def main():
                 print(f"📊 Всего позиций: {total_positions}")
                 print(f"📊 Всего операций в выгрузке: {total_transactions}")
 
-        emit_full_statistics(broker_data, acc_substr, acc_index)
+        if want_raw:
+            show_raw_operations_for_ticker(broker_data, args.raw_ticker.strip(), acc_substr, acc_index)
+
+        if not args.raw_only:
+            emit_full_statistics(broker_data, acc_substr, acc_index)
 
         print("\n" + "=" * 80)
 
