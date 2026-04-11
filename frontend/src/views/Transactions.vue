@@ -8,7 +8,7 @@ import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/base/ContextMenu.vue'
 import CustomSelect from '../components/base/CustomSelect.vue'
-import { DateInput, ToggleSwitch, PeriodFilter } from '../components/base'
+import { DateInput, ToggleSwitch, PeriodFilter, Tooltip } from '../components/base'
 import { Search, SlidersHorizontal, ChevronDown } from 'lucide-vue-next'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
@@ -256,17 +256,64 @@ const setPeriodPreset = (preset) => {
 // --- формат даты ---
 const formatDate = formatDateForDisplay
 
+const COMMISSION_EPS = 1e-8
+
 // --- функции для отображения операций в выбранной валюте ---
-// Получаем сумму операции в выбранной валюте
-const getOperationAmount = (op) => {
-  if (selectedCurrency.value === 'RUB') {
-    // Используем amount_rub (уже переведено в рубли по курсу на дату операции)
-    const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
-    return amountRub
-  } else {
-    // Используем оригинальную сумму в исходной валюте
-    return Number(op.amount) || 0
+const OP_TYPE_BUY = 1
+const OP_TYPE_SELL = 2
+const OP_TYPE_AMORT = 9
+
+const resolveOperationTypeId = (op) => {
+  const id = Number(op.operation_type_id ?? op.operationTypeId)
+  if (Number.isFinite(id) && id > 0) return id
+  const slug = normalizeType(op.operation_type)
+  if (slug === 'buy') return OP_TYPE_BUY
+  if (slug === 'sell') return OP_TYPE_SELL
+  if (slug === 'amortization') return OP_TYPE_AMORT
+  return NaN
+}
+
+/**
+ * Сумма для UI: для покупки/продажи/амортизации без включённой комиссии (как payment в apply_operations_batch).
+ * Комиссия только в tooltip; поля amount / amount_rub в БД задают полный денежный поток.
+ * @param {'ui'|'rub_stats'} mode — rub_stats: всегда в рублях для блоков сводки/калькулятора
+ */
+const getOperationDisplayAmount = (op, mode = 'ui') => {
+  const useRub = mode === 'rub_stats' || selectedCurrency.value === 'RUB'
+  const typeId = resolveOperationTypeId(op)
+  const isTrade =
+    typeId === OP_TYPE_BUY || typeId === OP_TYPE_SELL || typeId === OP_TYPE_AMORT
+  const comm = Number(op.commission ?? 0)
+  const hasComm = Number.isFinite(comm) && Math.abs(comm) > COMMISSION_EPS
+  const native = Number(op.amount) || 0
+  const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
+  const commRubRaw = op.commission_rub
+  const commRub =
+    commRubRaw != null && commRubRaw !== '' ? Number(commRubRaw) : NaN
+  const hasCommRub = Number.isFinite(commRub) && Math.abs(commRub) > COMMISSION_EPS
+
+  if (!isTrade) {
+    return useRub ? amountRub : native
   }
+
+  if (useRub) {
+    if (hasCommRub) {
+      if (typeId === OP_TYPE_BUY) return amountRub + commRub
+      return amountRub - commRub
+    }
+    if (native !== 0 && hasComm) {
+      const adjNative =
+        typeId === OP_TYPE_BUY ? native + comm : native - comm
+      return adjNative * (amountRub / native)
+    }
+    return amountRub
+  }
+
+  if (hasComm) {
+    if (typeId === OP_TYPE_BUY) return native + comm
+    return native - comm
+  }
+  return native
 }
 
 // Нормализует код валюты (защита от некорректных значений типа "RUB000UTSTOM")
@@ -307,6 +354,35 @@ const getOperationCurrency = (op) => {
     const originalCurrency = op.currency_ticker || 'RUB'
     return normalizeCurrencyTicker(originalCurrency)
   }
+}
+
+/** Текст tooltip с комиссией; пустая строка — подсказку не показываем */
+const getOperationCommissionTooltipContent = (op) => {
+  const comm = Number(op.commission)
+  const commRubRaw = op.commission_rub
+  const commRub =
+    commRubRaw != null && commRubRaw !== '' ? Number(commRubRaw) : NaN
+  const hasCommNative = Number.isFinite(comm) && Math.abs(comm) > COMMISSION_EPS
+  const hasCommRub = Number.isFinite(commRub) && Math.abs(commRub) > COMMISSION_EPS
+  if (!hasCommNative && !hasCommRub) return ''
+
+  if (selectedCurrency.value === 'RUB') {
+    if (hasCommRub) {
+      return `Комиссия: ${formatOperationAmount(Math.abs(commRub), 'RUB')}`
+    }
+    const cur = normalizeCurrencyTicker(op.currency_ticker || 'RUB')
+    return `Комиссия: ${formatOperationAmount(Math.abs(comm), cur)}`
+  }
+
+  const cur = normalizeCurrencyTicker(op.currency_ticker || 'RUB')
+  if (hasCommNative) {
+    let s = `Комиссия: ${formatOperationAmount(Math.abs(comm), cur)}`
+    if (hasCommRub && cur !== 'RUB') {
+      s += `\nВ рублях: ${formatOperationAmount(Math.abs(commRub), 'RUB')}`
+    }
+    return s
+  }
+  return `Комиссия: ${formatOperationAmount(Math.abs(commRub), 'RUB')}`
 }
 
 // --- фильтр активов для дропа ---
@@ -459,7 +535,7 @@ const applyFilter = () => {
         if (end && opDate > end) return false
       }
 
-      // Глобальный поиск (используем amount_rub для поиска)
+      // Глобальный поиск по отображаемой сумме (без комиссии в сделках)
       if (hasTerm) {
         const opAmount = getOperationAmount(op)
         const searchableText = `${op.asset_name || ''} ${op.portfolio_name || ''} ${op.operation_type || ''} ${opAmount || ''} ${getOperationCurrency(op) || ''} ${formatDate(op.operation_date)}`.toLowerCase()
@@ -757,11 +833,9 @@ const summary = computed(() => {
       res.byType[slug].value += value
     }
   } else {
-    // Для операций суммируем по типам (ВСЕГДА используем amount_rub в рублях для статистики)
+    // Для операций суммируем по типам (рубли; для сделок — сумма без комиссии, как в колонке)
     for (const op of filteredOperations.value) {
-      // Для статистики всегда используем amount_rub (в рублях)
-      const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
-      const value = amountRub
+      const value = getOperationAmount(op, { rubOnly: true })
       const slug = normalizeType(op.operation_type)
 
       res.total += Math.abs(value)
@@ -835,15 +909,12 @@ const calculatorResult = computed(() => {
   return result !== null ? Math.round(result * 100) / 100 : 0
 })
 
-// Получение суммы по типу операции из отфильтрованных данных
-// ВСЕГДА использует amount_rub (в рублях) для статистики
+// Получение суммы по типу операции из отфильтрованных данных (рубли, без комиссии в сделках)
 const getOperationTypeSum = (operationType) => {
   let sum = 0
   for (const op of filteredOperations.value) {
     if (op.operation_type === operationType) {
-      // Для статистики всегда используем amount_rub (в рублях)
-      const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
-      sum += Math.abs(amountRub)
+      sum += Math.abs(getOperationAmount(op, { rubOnly: true }))
     }
   }
   return sum
@@ -1239,8 +1310,18 @@ const periodFilterLabel = computed(() => {
                 </div>
                 <div class="transaction-card-row">
                   <span class="card-label">Сумма</span>
-                  <span class="card-value num-font font-semibold">
-                    {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
+                  <Tooltip
+                    v-if="getOperationCommissionTooltipContent(op)"
+                    class="op-amount-tooltip"
+                    :content="getOperationCommissionTooltipContent(op)"
+                    position="top"
+                  >
+                    <span class="card-value num-font font-semibold">
+                    {{ formatOperationAmount(Math.abs(getOperationDisplayAmount(op)), getOperationCurrency(op)) }}
+                  </span>
+                  </Tooltip>
+                  <span v-else class="card-value num-font font-semibold">
+                    {{ formatOperationAmount(Math.abs(getOperationDisplayAmount(op)), getOperationCurrency(op)) }}
                   </span>
                 </div>
               </div>
@@ -1332,8 +1413,18 @@ const periodFilterLabel = computed(() => {
                 </td>
                 <td class="font-medium">{{ op.asset_name || '—' }}</td>
                 <td class="text-secondary">{{ op.portfolio_name }}</td>
-                <td class="text-right num-font font-semibold">
-                  {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
+                <td class="text-right num-font font-semibold op-amount-cell">
+                  <Tooltip
+                    v-if="getOperationCommissionTooltipContent(op)"
+                    class="op-amount-tooltip"
+                    :content="getOperationCommissionTooltipContent(op)"
+                    position="top"
+                  >
+                    <span class="op-amount-trigger">{{ formatOperationAmount(Math.abs(getOperationDisplayAmount(op)), getOperationCurrency(op)) }}</span>
+                  </Tooltip>
+                  <template v-else>
+                    {{ formatOperationAmount(Math.abs(getOperationDisplayAmount(op)), getOperationCurrency(op)) }}
+                  </template>
                 </td>
                 <td class="text-right num-font">{{ getOperationCurrency(op) }}</td>
                 <td class="w-actions">

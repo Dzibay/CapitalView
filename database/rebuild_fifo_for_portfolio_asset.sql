@@ -55,11 +55,13 @@ begin
     ) u
     order by u.event_ts, u.step_kind, u.ord2
   loop
-    -- Только лоты до ex-date. Количество — в актуальных бумагах; цена лота — как в сделке (не × коэффициент сплита).
+    -- Только лоты до ex-date. Количество и цена за бумагу — в единицах после сплита:
+    -- q' = q * (after/before), p' = p * (before/after), стоимость лота q*p не меняется.
     if ev.step_kind = 0 then
       update fifo_lots fl
       set
-        remaining_qty = fl.remaining_qty * (ev.ratio_after / ev.ratio_before)
+        remaining_qty = fl.remaining_qty * (ev.ratio_after / ev.ratio_before),
+        price = fl.price * (ev.ratio_before / ev.ratio_after)
       where fl.portfolio_asset_id = p_portfolio_asset_id
         and fl.remaining_qty > 0
         and fl.created_at::date < (ev.event_ts::date);

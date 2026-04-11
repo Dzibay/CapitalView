@@ -1119,7 +1119,14 @@ const contributionEmptyMessage = computed(() =>
 )
 
 function formatContributionCenterRub(value) {
-  return formatOperationAmount(value, 'RUB')
+  const n = Number(value)
+  const x = Number.isFinite(n) ? n : 0
+  return x.toLocaleString('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
 }
 
 const profitLossItems = computed(() => {

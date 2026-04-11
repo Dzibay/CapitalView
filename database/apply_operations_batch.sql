@@ -45,6 +45,8 @@ DECLARE
     v_currency_id bigint;  -- эффективная валюта: из данных или из актива (quote_asset_id)
     v_currency_ticker text;
     v_quote_ticker text;
+    v_sell_commission_rub numeric(20,6);
+    v_op_commission_rub numeric(20,6);
 BEGIN
     IF p_operations IS NULL OR jsonb_array_length(p_operations) = 0 THEN
         RETURN jsonb_build_object(
@@ -95,6 +97,8 @@ BEGIN
         (op->>'quantity')::numeric as quantity,
         (op->>'price')::numeric(20,2) as price,
         COALESCE((op->>'payment')::numeric(20,6), (op->>'amount')::numeric(20,6)) as payment,
+        COALESCE((op->>'commission')::numeric(20,6), 0) as commission,
+        (op->>'commission_rub')::numeric(20,6) as commission_rub,
         op as original_json
     FROM jsonb_array_elements(p_operations) op
     ORDER BY 
@@ -112,7 +116,9 @@ BEGIN
         transaction_date timestamp without time zone,
         price numeric,
         quantity numeric,
-        currency_id bigint
+        currency_id bigint,
+        commission numeric DEFAULT 0,
+        commission_rub numeric
     );
 
     -- ========== СНАЧАЛА: Buy/Sell/Amortization (чтобы покупки были в БД до проверки «первая покупка» для Dividend/Coupon) ==========
@@ -183,7 +189,7 @@ BEGIN
                     transaction_date
                 FROM inserted_transactions;
                 
-                INSERT INTO temp_tx_payment_map (transaction_id, payment, user_id, portfolio_asset_id, transaction_type, transaction_date, price, quantity, currency_id)
+                INSERT INTO temp_tx_payment_map (transaction_id, payment, user_id, portfolio_asset_id, transaction_type, transaction_date, price, quantity, currency_id, commission, commission_rub)
                 SELECT
                     tibt.tx_id,
                     COALESCE(tso.payment, 0),
@@ -193,7 +199,9 @@ BEGIN
                     tibt.transaction_date,
                     tibt.price,
                     tibt.quantity,
-                    COALESCE(tso.currency_id, (SELECT a.quote_asset_id FROM portfolio_assets pa JOIN assets a ON a.id = pa.asset_id WHERE pa.id = tibt.portfolio_asset_id LIMIT 1), 1)
+                    COALESCE(tso.currency_id, (SELECT a.quote_asset_id FROM portfolio_assets pa JOIN assets a ON a.id = pa.asset_id WHERE pa.id = tibt.portfolio_asset_id LIMIT 1), 1),
+                    COALESCE(tso.commission, 0),
+                    NULL::numeric
                 FROM temp_inserted_buy_tx tibt
                 JOIN transactions t ON t.id = tibt.tx_id
                 JOIN portfolio_assets pa ON pa.id = tibt.portfolio_asset_id
@@ -208,7 +216,7 @@ BEGIN
                     AND ABS(COALESCE(tso.price, 0) - COALESCE(tibt.price, 0)) < 0.0001
                     AND ABS(COALESCE(tso.quantity, 0) - COALESCE(tibt.quantity, 0)) < 0.0001;
 
-                INSERT INTO temp_tx_payment_map (transaction_id, payment, user_id, portfolio_asset_id, transaction_type, transaction_date, price, quantity, currency_id)
+                INSERT INTO temp_tx_payment_map (transaction_id, payment, user_id, portfolio_asset_id, transaction_type, transaction_date, price, quantity, currency_id, commission, commission_rub)
                 SELECT DISTINCT ON (tibt.tx_id)
                     tibt.tx_id,
                     COALESCE(tso.payment, 0),
@@ -218,7 +226,9 @@ BEGIN
                     tibt.transaction_date,
                     tibt.price,
                     tibt.quantity,
-                    COALESCE(tso.currency_id, (SELECT a.quote_asset_id FROM portfolio_assets pa JOIN assets a ON a.id = pa.asset_id WHERE pa.id = tibt.portfolio_asset_id LIMIT 1), 1)
+                    COALESCE(tso.currency_id, (SELECT a.quote_asset_id FROM portfolio_assets pa JOIN assets a ON a.id = pa.asset_id WHERE pa.id = tibt.portfolio_asset_id LIMIT 1), 1),
+                    COALESCE(tso.commission, 0),
+                    NULL::numeric
                 FROM temp_inserted_buy_tx tibt
                 JOIN transactions t ON t.id = tibt.tx_id
                 JOIN portfolio_assets pa ON pa.id = tibt.portfolio_asset_id
@@ -236,6 +246,58 @@ BEGIN
                 AND tso.payment != 0
                 ORDER BY tibt.tx_id, ABS(EXTRACT(EPOCH FROM (tso.operation_date - tibt.transaction_date)));
                 
+                UPDATE temp_tx_payment_map tpm
+                SET
+                    commission = COALESCE(u.commission, tpm.commission, 0),
+                    commission_rub = COALESCE(u.commission_rub, tpm.commission_rub)
+                FROM (
+                    SELECT DISTINCT ON (tibt.tx_id)
+                        tibt.tx_id,
+                        COALESCE(tso.commission, 0) AS commission,
+                        COALESCE(
+                            tso.commission_rub,
+                            CASE
+                                WHEN COALESCE(tso.commission, 0) = 0 THEN NULL::numeric(20,6)
+                                WHEN COALESCE(cj.eff_cid, tso.currency_id, 1) IN (1, v_rub_currency_id)
+                                    THEN ROUND(tso.commission, 6)
+                                ELSE ROUND(
+                                    tso.commission * COALESCE(
+                                        (SELECT ap.price FROM asset_prices ap
+                                         WHERE ap.asset_id = COALESCE(cj.eff_cid, tso.currency_id, 1)
+                                           AND ap.trade_date <= tso.operation_date::date
+                                         ORDER BY ap.trade_date DESC LIMIT 1),
+                                        (SELECT al.curr_price FROM asset_latest_prices al
+                                         WHERE al.asset_id = COALESCE(cj.eff_cid, tso.currency_id, 1) LIMIT 1),
+                                        1::numeric
+                                    ),
+                                    6
+                                )
+                            END
+                        ) AS commission_rub
+                    FROM temp_inserted_buy_tx tibt
+                    LEFT JOIN temp_sorted_ops tso ON
+                        tso.portfolio_asset_id = tibt.portfolio_asset_id
+                        AND tso.operation_type = v_buy_op_type_id
+                        AND (
+                            tso.operation_date = tibt.transaction_date
+                            OR ABS(EXTRACT(EPOCH FROM (tso.operation_date - tibt.transaction_date))) < 1
+                        )
+                        AND ABS(COALESCE(tso.price, 0) - COALESCE(tibt.price, 0)) < 0.0001
+                        AND ABS(COALESCE(tso.quantity, 0) - COALESCE(tibt.quantity, 0)) < 0.0001
+                    LEFT JOIN LATERAL (
+                        SELECT COALESCE(tso.currency_id, a.quote_asset_id, 1) AS eff_cid
+                        FROM portfolio_assets pa
+                        JOIN assets a ON a.id = pa.asset_id
+                        WHERE pa.id = tibt.portfolio_asset_id
+                        LIMIT 1
+                    ) cj ON TRUE
+                    ORDER BY
+                        tibt.tx_id,
+                        CASE WHEN tso.payment IS NOT NULL AND tso.payment <> 0 THEN 0 ELSE 1 END,
+                        ABS(EXTRACT(EPOCH FROM (COALESCE(tso.operation_date, tibt.transaction_date) - tibt.transaction_date)))
+                ) u
+                WHERE tpm.transaction_id = u.tx_id;
+
                 SELECT COALESCE(array_agg(tx_id), ARRAY[]::bigint[]) INTO v_tx_ids FROM temp_inserted_buy_tx;
                 v_inserted_count := v_inserted_count + (SELECT COUNT(*) FROM temp_inserted_buy_tx);
                 
@@ -266,6 +328,8 @@ BEGIN
                     t.price,
                     t.payment,
                     t.currency_id,
+                    t.commission,
+                    t.commission_rub,
                     t.original_json,
                     CASE 
                         WHEN t.operation_type = v_sell_op_type_id THEN 2
@@ -307,6 +371,30 @@ BEGIN
                         CONTINUE;
                     END IF;
 
+                    v_currency_id := COALESCE(
+                        v_tx_item.currency_id,
+                        (SELECT a.quote_asset_id FROM portfolio_assets pa JOIN assets a ON a.id = pa.asset_id WHERE pa.id = v_tx_item.portfolio_asset_id LIMIT 1),
+                        1
+                    );
+
+                    v_sell_commission_rub := NULL;
+                    IF v_tx_item.commission_rub IS NOT NULL THEN
+                        v_sell_commission_rub := v_tx_item.commission_rub;
+                    ELSIF COALESCE(v_tx_item.commission, 0) <> 0 THEN
+                        IF v_currency_id = v_rub_currency_id OR v_currency_id = 1 THEN
+                            v_sell_commission_rub := ROUND(v_tx_item.commission, 6);
+                        ELSE
+                            v_sell_commission_rub := ROUND(
+                                v_tx_item.commission * COALESCE(
+                                    (SELECT price FROM asset_prices WHERE asset_id = v_currency_id AND trade_date <= v_tx_date::date ORDER BY trade_date DESC LIMIT 1),
+                                    (SELECT curr_price FROM asset_latest_prices WHERE asset_id = v_currency_id LIMIT 1),
+                                    1::numeric
+                                ),
+                                6
+                            );
+                        END IF;
+                    END IF;
+
                     INSERT INTO transactions (
                         portfolio_asset_id,
                         transaction_type,
@@ -328,14 +416,8 @@ BEGIN
                     IF v_tx_id IS NULL THEN
                         RAISE EXCEPTION 'Failed to insert transaction: transaction_id is NULL';
                     END IF;
-
-                    v_currency_id := COALESCE(
-                        v_tx_item.currency_id,
-                        (SELECT a.quote_asset_id FROM portfolio_assets pa JOIN assets a ON a.id = pa.asset_id WHERE pa.id = v_tx_item.portfolio_asset_id LIMIT 1),
-                        1
-                    );
                     
-                    INSERT INTO temp_tx_payment_map (transaction_id, payment, user_id, portfolio_asset_id, transaction_type, transaction_date, price, quantity, currency_id)
+                    INSERT INTO temp_tx_payment_map (transaction_id, payment, user_id, portfolio_asset_id, transaction_type, transaction_date, price, quantity, currency_id, commission, commission_rub)
                     VALUES (
                         v_tx_id,
                         COALESCE(v_tx_item.payment, 0),
@@ -345,7 +427,9 @@ BEGIN
                         v_tx_date,
                         v_tx_item.price,
                         v_tx_item.quantity,
-                        v_currency_id
+                        v_currency_id,
+                        COALESCE(v_tx_item.commission, 0),
+                        v_sell_commission_rub
                     );
 
                     v_remaining := v_tx_item.quantity;
@@ -406,7 +490,7 @@ BEGIN
             -- Батч-создание cash_operations для всех вставленных транзакций (Buy/Sell/Amortization)
             -- currency из переданных данных или из актива (quote_asset_id); amount_rub по курсу на дату операции
             IF array_length(v_tx_ids, 1) > 0 THEN
-                INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id, amount_rub)
+                INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id, amount_rub, commission, commission_rub)
                 SELECT
                     p.user_id,
                     pa.portfolio_id,
@@ -416,9 +500,9 @@ BEGIN
                         WHEN t.transaction_type = 3 THEN v_amortization_op_type_id
                     END,
                     CASE 
-                        WHEN t.transaction_type = 1 THEN -ABS(COALESCE(tpm.payment, 0))
-                        WHEN t.transaction_type = 2 THEN ABS(COALESCE(tpm.payment, 0))
-                        WHEN t.transaction_type = 3 THEN ABS(COALESCE(tpm.payment, 0))
+                        WHEN t.transaction_type = 1 THEN -(ABS(COALESCE(tpm.payment, 0)) + ABS(COALESCE(tpm.commission, 0)))
+                        WHEN t.transaction_type = 2 THEN COALESCE(tpm.payment, 0) + COALESCE(tpm.commission, 0)
+                        WHEN t.transaction_type = 3 THEN ABS(COALESCE(tpm.payment, 0) + COALESCE(tpm.commission, 0))
                         ELSE COALESCE(tpm.payment, 0)
                     END,
                     COALESCE(tpm.currency_id, 1),
@@ -428,8 +512,17 @@ BEGIN
                     -- amount_rub с тем же знаком, что и amount (Buy — отрицательный, Sell/Amortization — положительный)
                     (CASE WHEN t.transaction_type = 1 THEN -1 ELSE 1 END)
                     * (CASE
-                        WHEN COALESCE(tpm.currency_id, 1) IN (1, v_rub_currency_id) THEN ABS(COALESCE(tpm.payment, 0))
-                        ELSE ABS(COALESCE(tpm.payment, 0)) * COALESCE(
+                        WHEN COALESCE(tpm.currency_id, 1) IN (1, v_rub_currency_id) THEN
+                            CASE
+                                WHEN t.transaction_type = 1 THEN ABS(COALESCE(tpm.payment, 0)) + ABS(COALESCE(tpm.commission, 0))
+                                ELSE (COALESCE(tpm.payment, 0) + COALESCE(tpm.commission, 0))
+                            END
+                        ELSE (
+                            CASE
+                                WHEN t.transaction_type = 1 THEN ABS(COALESCE(tpm.payment, 0)) + ABS(COALESCE(tpm.commission, 0))
+                                ELSE (COALESCE(tpm.payment, 0) + COALESCE(tpm.commission, 0))
+                            END
+                        ) * COALESCE(
                             (SELECT price FROM asset_prices
                              WHERE asset_id = COALESCE(tpm.currency_id, 1)
                                AND trade_date <= t.transaction_date::date
@@ -440,7 +533,9 @@ BEGIN
                              LIMIT 1),
                             1
                         )
-                    END)
+                    END),
+                    COALESCE(tpm.commission, 0),
+                    tpm.commission_rub
                 FROM transactions t
                 JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
                 JOIN portfolios p ON p.id = pa.portfolio_id
@@ -614,6 +709,17 @@ BEGIN
                 END IF;
             END IF;
 
+            v_op_commission_rub := NULL;
+            IF COALESCE(v_op_record.commission, 0) = 0 THEN
+                v_op_commission_rub := NULL;
+            ELSIF v_op_record.commission_rub IS NOT NULL THEN
+                v_op_commission_rub := v_op_record.commission_rub;
+            ELSIF v_op_record.amount IS NOT NULL AND v_op_record.amount <> 0 THEN
+                v_op_commission_rub := ROUND(v_op_record.commission * (v_amount_rub / v_op_record.amount), 6);
+            ELSE
+                v_op_commission_rub := ROUND(v_op_record.commission, 6);
+            END IF;
+
             INSERT INTO cash_operations (
                 user_id,
                 portfolio_id,
@@ -622,7 +728,9 @@ BEGIN
                 currency,
                 date,
                 asset_id,
-                amount_rub
+                amount_rub,
+                commission,
+                commission_rub
             )
             VALUES (
                 v_op_record.user_id,
@@ -632,7 +740,9 @@ BEGIN
                 v_currency_id,
                 v_op_record.operation_date,
                 v_asset_id,
-                v_amount_rub
+                v_amount_rub,
+                COALESCE(v_op_record.commission, 0),
+                v_op_commission_rub
             )
             RETURNING id INTO v_op_id;
 

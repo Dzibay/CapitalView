@@ -617,7 +617,22 @@ def _convert_price_payment_to_rub_if_needed(
     rate = _find_currency_rate(currency_rates, quote_asset_id, date_str)
     if not rate or rate <= 0:
         return price, payment
-    return round(price / rate, 6), round(payment / rate, 2)
+    # payment в рублях с полной точностью (как у API nano), иначе сумма по многим операциям
+    # расходится с остатком кэша в позициях на десятки копеек.
+    return round(price / rate, 6), round(payment / rate, 6)
+
+
+async def _asset_ids_that_exist(asset_ids: List[int]) -> set[int]:
+    """Проверка, что id есть в assets (защита от гонок и устаревших id в картах)."""
+    if not asset_ids:
+        return set()
+    pool = await get_connection_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id FROM assets WHERE id = ANY($1::bigint[])",
+            asset_ids,
+        )
+    return {int(r["id"]) for r in rows}
 
 
 async def import_broker_portfolio(
@@ -633,6 +648,19 @@ async def import_broker_portfolio(
         raise ValueError(f"Пользователь с email {email} не найден")
     user_id = user["id"]
 
+    # ======================================================================
+    # Сначала очистка: clear_portfolio_full удаляет неиспользуемые кастомные
+    # активы (см. database/clear_portfolio_full.sql). Справочники isin/figi/
+    # ticker → asset_id нужно строить ПОСЛЕ очистки, иначе в памяти остаются
+    # id уже удалённых строк assets → FK при batch_create_portfolio_assets.
+    # ======================================================================
+    try:
+        await rpc_async("clear_portfolio_full", {"p_portfolio_id": parent_portfolio_id})
+        logger.info(f"Очистка портфеля {parent_portfolio_id} завершена")
+    except Exception as e:
+        logger.error(f"Ошибка при очистке портфеля: {e}", exc_info=True)
+        raise
+
     (
         op_type_map,
         all_assets,
@@ -642,18 +670,6 @@ async def import_broker_portfolio(
         currency_assets_map,
     ) = await _load_reference_data_for_import(user_id)
     assets_by_id: Dict[int, dict] = {int(a["id"]): a for a in (all_assets or [])}
-
-    # ======================================================================
-    # Полная очистка: удаляем дочерние портфели + все данные родительского
-    # Родительский портфель сохраняется (p_delete_self=false по умолчанию)
-    # broker_connection пересоздадим в конце
-    # ======================================================================
-    try:
-        await rpc_async("clear_portfolio_full", {"p_portfolio_id": parent_portfolio_id})
-        logger.info(f"Очистка портфеля {parent_portfolio_id} завершена")
-    except Exception as e:
-        logger.error(f"Ошибка при очистке портфеля: {e}", exc_info=True)
-        raise
 
     instruments = collect_broker_instruments(broker_data, broker_ticker_to_asset, assets_by_id)
     ticker_to_quote = _build_ticker_to_quote_asset_id(all_assets)
@@ -732,6 +748,16 @@ async def import_broker_portfolio(
         # ==================================================================
         pa_map = {}
         if needed_asset_ids:
+            existing_aids = await _asset_ids_that_exist(list(needed_asset_ids))
+            phantom = needed_asset_ids - existing_aids
+            if phantom:
+                logger.error(
+                    "Импорт: resolve вернул asset_id, которых нет в таблице assets: %s. "
+                    "Они исключены из batch_create_portfolio_assets.",
+                    sorted(phantom),
+                )
+            needed_asset_ids = needed_asset_ids & existing_aids
+        if needed_asset_ids:
             new_pa = await rpc_async("batch_create_portfolio_assets", {
                 "p_portfolio_id": portfolio_id,
                 "p_asset_ids": list(needed_asset_ids),
@@ -807,15 +833,24 @@ async def import_broker_portfolio(
                     qty = round(float(tx.get("quantity") or 0), 6)
 
                 currency_id_for_tx = 1
+                comm_val = float(tx.get("commission") or 0)
+                comm_rub = None
                 if asset_id in currency_assets_map:
                     currency_id_for_tx = currency_assets_map[asset_id]
                     price, payment = _convert_price_payment_to_rub_if_needed(
                         asset_id, currency_assets_map, currency_rates, tx_date, price, payment,
                     )
+                    if abs(comm_val) >= 1e-12:
+                        _, comm_val = _convert_price_payment_to_rub_if_needed(
+                            asset_id, currency_assets_map, currency_rates, tx_date, 0.0, comm_val,
+                        )
+                        comm_rub = round(comm_val, 6)
+                elif abs(comm_val) >= 1e-12:
+                    comm_rub = round(comm_val, 6)
 
                 tx_type_id = {"Buy": 1, "Sell": 2, "Amortization": 3}[tx_type]
 
-                new_tx.append({
+                tx_row = {
                     "portfolio_id": portfolio_id,
                     "portfolio_asset_id": pa_id,
                     "transaction_type": tx_type_id,
@@ -825,7 +860,12 @@ async def import_broker_portfolio(
                     "currency_id": currency_id_for_tx,
                     "transaction_date": tx_date_normalized,
                     "user_id": user_id,
-                })
+                }
+                if abs(comm_val) >= 1e-12:
+                    tx_row["commission"] = comm_val
+                if comm_rub is not None:
+                    tx_row["commission_rub"] = comm_rub
+                new_tx.append(tx_row)
             else:
                 # Cash operations: Dividend, Coupon, Commission, Tax, Deposit, Withdraw
                 if abs(payment) < 1e-8:
@@ -842,15 +882,24 @@ async def import_broker_portfolio(
                         continue
 
                 currency_id_for_op = 1
+                comm_cash = float(tx.get("commission") or 0)
+                comm_cash_rub = None
                 if op_type_id not in (5, 6) and asset_id and asset_id in currency_assets_map:
                     currency_id_for_op = currency_assets_map[asset_id]
                     _, payment = _convert_price_payment_to_rub_if_needed(
                         asset_id, currency_assets_map, currency_rates, tx_date, 0.0, payment,
                     )
+                    if abs(comm_cash) >= 1e-12:
+                        _, comm_cash = _convert_price_payment_to_rub_if_needed(
+                            asset_id, currency_assets_map, currency_rates, tx_date, 0.0, comm_cash,
+                        )
+                        comm_cash_rub = round(comm_cash, 6)
+                elif abs(comm_cash) >= 1e-12:
+                    comm_cash_rub = round(comm_cash, 6)
 
                 pa_id_for_op = pa_map.get(asset_id) if asset_id else None
 
-                new_ops.append({
+                op_row = {
                     "user_id": user_id,
                     "portfolio_id": portfolio_id,
                     "type": op_type_id,
@@ -860,7 +909,12 @@ async def import_broker_portfolio(
                     "asset_id": asset_id,
                     "portfolio_asset_id": pa_id_for_op,
                     "transaction_id": None,
-                })
+                }
+                if abs(comm_cash) >= 1e-12:
+                    op_row["commission"] = comm_cash
+                if comm_cash_rub is not None:
+                    op_row["commission_rub"] = comm_cash_rub
+                new_ops.append(op_row)
 
         # ==================================================================
         # Отправляем в БД одним батчем
@@ -940,7 +994,7 @@ def _build_operations_batch(new_tx: list, new_ops: list, op_type_map: dict) -> l
         if not op_type_id:
             continue
         op_date = normalize_date_to_string(tx.get("transaction_date"), include_time=True) or ""
-        batch.append({
+        tx_payload = {
             "user_id": str(tx["user_id"]),
             "portfolio_id": tx["portfolio_id"],
             "operation_type": op_type_id,
@@ -951,11 +1005,16 @@ def _build_operations_batch(new_tx: list, new_ops: list, op_type_map: dict) -> l
             "payment": float(tx.get("payment") or 0),
             "amount": float(tx.get("payment") or 0),
             "currency_id": tx.get("currency_id"),
-        })
+        }
+        if tx.get("commission") is not None and abs(float(tx.get("commission") or 0)) >= 1e-12:
+            tx_payload["commission"] = float(tx["commission"])
+        if tx.get("commission_rub") is not None:
+            tx_payload["commission_rub"] = float(tx["commission_rub"])
+        batch.append(tx_payload)
 
     for op in new_ops:
         op_date = normalize_date_to_string(op["date"], include_time=True) or ""
-        batch.append({
+        op_payload = {
             "user_id": str(op["user_id"]),
             "portfolio_id": op["portfolio_id"],
             "operation_type": op["type"],
@@ -964,6 +1023,11 @@ def _build_operations_batch(new_tx: list, new_ops: list, op_type_map: dict) -> l
             "operation_date": op_date,
             "asset_id": op.get("asset_id"),
             "portfolio_asset_id": op.get("portfolio_asset_id"),
-        })
+        }
+        if op.get("commission") is not None and abs(float(op.get("commission") or 0)) >= 1e-12:
+            op_payload["commission"] = float(op["commission"])
+        if op.get("commission_rub") is not None:
+            op_payload["commission_rub"] = float(op["commission_rub"])
+        batch.append(op_payload)
 
     return batch

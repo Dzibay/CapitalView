@@ -94,6 +94,8 @@ BEGIN
         co.date AS op_date,
         co.transaction_id,
         co.asset_id,
+        co.commission AS co_commission,
+        co.commission_rub AS co_commission_rub,
         u.new_date,
         u.new_amount,
         u.new_quantity,
@@ -142,7 +144,9 @@ BEGIN
                 'amount',         COALESCE(v_row.new_amount, v_row.amount),
                 'currency_id',    COALESCE(v_row.currency_id, 1),
                 'operation_date', to_char(v_operation_date_ts, 'YYYY-MM-DD"T"HH24:MI:SS'),
-                'asset_id',       v_row.asset_id
+                'asset_id',       v_row.asset_id,
+                'commission',     COALESCE(v_row.co_commission, 0),
+                'commission_rub', v_row.co_commission_rub
             );
         END IF;
     END LOOP;

@@ -180,7 +180,23 @@ def _currency_key_from_position(pos: dict) -> Optional[str]:
     return None
 
 
-def _sum_payments_by_currency(transactions: List[dict]) -> Dict[str, float]:
+def _tx_commission_float(tx: dict) -> float:
+    try:
+        return float(tx.get("commission") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _tx_cash_flow_for_balance(tx: dict) -> float:
+    """Поток по строке выгрузки для сверки с кэшем в позициях: payment + commission (в валюте строки)."""
+    try:
+        p = float(tx.get("payment") or 0)
+    except (TypeError, ValueError):
+        p = 0.0
+    return p + _tx_commission_float(tx)
+
+
+def _sum_cash_flow_by_currency(transactions: List[dict]) -> Dict[str, float]:
     by_curr: Dict[str, float] = defaultdict(float)
     for tx in transactions:
         raw = tx.get("currency")
@@ -189,7 +205,7 @@ def _sum_payments_by_currency(transactions: List[dict]) -> Dict[str, float]:
         else:
             c = raw or "rub"
         c = _fmt_currency(c).lower().strip() or "rub"
-        by_curr[c] += float(tx.get("payment") or 0)
+        by_curr[c] += _tx_cash_flow_for_balance(tx)
     return dict(by_curr)
 
 
@@ -272,20 +288,20 @@ def emit_full_statistics(
     )
 
     print("\n" + "=" * 100)
-    print("БАЛАНС: ПОЗИЦИИ (брокер) vs СУММА payment ПО ОПЕРАЦИЯМ")
+    print("БАЛАНС: ПОЗИЦИИ (брокер) vs Σ(payment + commission) ПО ОПЕРАЦИЯМ ВЫГРУЗКИ")
     print("=" * 100)
     balance_rows = []
     for acc_name, acc in filtered.items():
         positions = acc.get("positions", [])
         txs = acc.get("transactions", [])
         pos_cash = _cash_balances_from_positions(positions)
-        pay_by = _sum_payments_by_currency(txs)
-        all_curr = sorted(set(pos_cash.keys()) | set(pay_by.keys()))
+        flow_by = _sum_cash_flow_by_currency(txs)
+        all_curr = sorted(set(pos_cash.keys()) | set(flow_by.keys()))
         if not all_curr:
             all_curr = ["rub"]
         for curr in all_curr:
             p_bal = pos_cash.get(curr, 0.0)
-            o_bal = pay_by.get(curr, 0.0)
+            o_bal = flow_by.get(curr, 0.0)
             diff = p_bal - o_bal
             ok = abs(diff) < 0.02
             balance_rows.append([
@@ -297,7 +313,7 @@ def emit_full_statistics(
                 "✓" if ok else "≠",
             ])
     print_table(
-        ["Счёт", "Валюта", "Позиция (кэш)", "Σ payment опер.", "Δ (поз − опер.)", ""],
+        ["Счёт", "Валюта", "Позиция (кэш)", "Σ pay+comm", "Δ (поз − опер.)", ""],
         balance_rows,
     )
 
@@ -309,8 +325,46 @@ def emit_full_statistics(
     type_rows = []
     for t, c in by_type.most_common():
         pay_sum = sum(float(x.get("payment") or 0) for x in all_tx if (x.get("type") or "—") == t)
-        type_rows.append([t, c, f"{pay_sum:,.2f}"])
-    print_table(["type", "шт.", "Σ payment"], type_rows)
+        comm_sum = sum(
+            float(x.get("commission") or 0)
+            for x in all_tx
+            if (x.get("type") or "—") == t
+        )
+        type_rows.append([t, c, f"{pay_sum:,.2f}", f"{comm_sum:,.2f}"])
+    print_table(["type", "шт.", "Σ payment", "Σ commission"], type_rows)
+
+    print("\n" + "=" * 100)
+    print("ОПЕРАЦИИ ВЫГРУЗКИ (payment и вложенная commission по строке)")
+    print("=" * 100)
+    _detail_limit = 600
+    detail_rows = []
+    for tx in sorted(all_tx, key=lambda x: (x.get("date") or ""), reverse=True):
+        try:
+            c_raw = float(tx.get("commission")) if tx.get("commission") is not None else None
+        except (TypeError, ValueError):
+            c_raw = None
+        if c_raw is not None and abs(c_raw) >= 1e-12:
+            comm_s = f"{c_raw:,.6f}".rstrip("0").rstrip(".").rstrip(",")
+        else:
+            comm_s = "—"
+        detail_rows.append(
+            [
+                (tx.get("date") or "")[:19],
+                (tx.get("account_name") or "")[:14],
+                str(tx.get("type") or "")[:12],
+                (tx.get("ticker") or "—")[:10],
+                f"{float(tx.get('payment') or 0):,.2f}",
+                comm_s,
+                _fmt_currency(tx.get("currency"))[:8],
+                str(tx.get("operation_id") or "")[:22],
+            ]
+        )
+    print_table(
+        ["Дата", "Счёт", "type", "Тикер", "payment", "commission", "currency", "operation_id"],
+        detail_rows[:_detail_limit],
+    )
+    if len(detail_rows) > _detail_limit:
+        print(f"... показано {_detail_limit} из {len(detail_rows)} строк")
 
     print("\n" + "=" * 100)
     print("СЫРОЙ ТИП TINKOFF → КЛАСС (частоты)")
@@ -531,11 +585,10 @@ def show_balance_analysis(broker_data: dict, account_substr: Optional[str] = Non
 
         balance_from_operations = 0.0
         for tx in transactions:
-            payment = tx.get("payment", 0)
             currency = _fmt_currency(tx.get("currency", "rub")).lower()
             if currency and currency not in ("rub", "rur", "руб"):
                 continue
-            balance_from_operations += float(payment)
+            balance_from_operations += _tx_cash_flow_for_balance(tx)
 
         print(f"💰 Баланс из операций: {balance_from_operations:,.2f} RUB")
 
@@ -727,6 +780,23 @@ def _raw_op_exec_quantity_price_payment(op: dict) -> Tuple[Optional[float], Opti
     )
 
 
+def _commission_sum_from_raw_children(op: dict) -> Optional[float]:
+    """Сумма payment у дочерних операций класса Commission (как в import_service._tinkoff_commission_by_parent)."""
+    total = 0.0
+    n = 0
+    for ch in op.get("child_operations") or []:
+        if not isinstance(ch, dict):
+            continue
+        otn = ch.get("operation_type")
+        if classify_tinkoff_operation(str(otn or "")) != "Commission":
+            continue
+        v = _money_dict_to_float(ch.get("payment"))
+        if v is not None:
+            total += v
+            n += 1
+    return total if n else None
+
+
 def merge_account_operations_for_gui(acc_name: str, acc_data: dict) -> List[dict]:
     """
     Сводная лента для вкладки «Операции»:
@@ -782,24 +852,26 @@ def merge_account_operations_for_gui(acc_name: str, acc_data: dict) -> List[dict
             if cls not in ("Buy", "Sell", "Amortization"):
                 continue
             pf, eq, payf = _raw_op_exec_quantity_price_payment(op)
-            rows.append(
-                {
-                    "account_name": acc_name,
-                    "date": op.get("date"),
-                    "type": cls,
-                    "ticker": op.get("ticker"),
-                    "isin": op.get("isin"),
-                    "price": pf,
-                    "quantity": eq,
-                    "payment": payf,
-                    "currency": op.get("currency"),
-                    "tinkoff_operation_type": otn,
-                    "operation_id": oid,
-                    "_gui_src": "только_API",
-                    "_gui_reason": "есть в get_operations, нет строки в transactions (сверка по operation_id)",
-                    "_raw_snapshot": op,
-                }
-            )
+            comm_ch = _commission_sum_from_raw_children(op)
+            row_api = {
+                "account_name": acc_name,
+                "date": op.get("date"),
+                "type": cls,
+                "ticker": op.get("ticker"),
+                "isin": op.get("isin"),
+                "price": pf,
+                "quantity": eq,
+                "payment": payf,
+                "currency": op.get("currency"),
+                "tinkoff_operation_type": otn,
+                "operation_id": oid,
+                "_gui_src": "только_API",
+                "_gui_reason": "есть в get_operations, нет строки в transactions (сверка по operation_id)",
+                "_raw_snapshot": op,
+            }
+            if comm_ch is not None:
+                row_api["commission"] = comm_ch
+            rows.append(row_api)
 
     return rows
 
@@ -1087,6 +1159,7 @@ def run_gui(initial_token: str = "") -> None:
                 "price",
                 "qty",
                 "payment",
+                "commission",
                 "cur",
                 "raw_type",
                 "reason",
@@ -1103,6 +1176,7 @@ def run_gui(initial_token: str = "") -> None:
                 "price": "Цена",
                 "qty": "Кол-во",
                 "payment": "Сумма",
+                "commission": "Комиссия",
                 "cur": "Вал.",
                 "raw_type": "operation_type",
                 "reason": "Примечание",
@@ -1122,6 +1196,8 @@ def run_gui(initial_token: str = "") -> None:
                     w = 168
                 elif c == "isin":
                     w = 100
+                elif c == "commission":
+                    w = 88
                 elif c == "reason":
                     w = 220
                 self.tree_ops.column(c, width=w, stretch=(c in ("raw_type", "reason")))
@@ -1466,6 +1542,7 @@ def run_gui(initial_token: str = "") -> None:
                 price = tx.get("price")
                 qty = tx.get("quantity")
                 pay = tx.get("payment")
+                comm = tx.get("commission")
                 oid = tx.get("operation_id")
                 oid_s = str(oid)[:18] if oid is not None and oid != "" else "—"
                 tick_full = tx.get("ticker") or ""
@@ -1485,6 +1562,7 @@ def run_gui(initial_token: str = "") -> None:
                         f"{float(price):,.4f}" if price is not None else "—",
                         f"{float(qty):,.6f}" if qty is not None else "—",
                         f"{float(pay or 0):,.2f}",
+                        f"{float(comm):,.4f}" if comm is not None else "—",
                         _fmt_currency(tx.get("currency"))[:8],
                         (str(tx.get("tinkoff_operation_type") or ""))[:48],
                         (str(tx.get("_gui_reason") or ""))[:90],
@@ -1589,6 +1667,7 @@ def run_gui(initial_token: str = "") -> None:
                 "price",
                 "quantity",
                 "payment",
+                "commission",
                 "currency",
                 "tinkoff_operation_type",
                 "_gui_reason",

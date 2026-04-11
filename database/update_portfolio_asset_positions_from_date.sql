@@ -221,7 +221,8 @@ BEGIN
         LOOP
             IF r_ev.sk = 0 THEN
                 UPDATE _fifo_work_pa w SET
-                    rem_qty = w.rem_qty * (r_ev.ra / r_ev.rb)
+                    rem_qty = w.rem_qty * (r_ev.ra / r_ev.rb),
+                    unit_price_quote = w.unit_price_quote * (r_ev.rb / r_ev.ra)
                 WHERE w.acquired_date < (r_ev.ts::date);
 
                 IF (SELECT count(*)::int FROM _fifo_work_pa WHERE rem_qty > 0) > 1 THEN
@@ -309,7 +310,8 @@ BEGIN
                 ORDER BY s.ratio_before, s.ratio_after
             LOOP
                 UPDATE _fifo_work_pa w SET
-                    rem_qty = w.rem_qty * (v_sp.ra / v_sp.rb)
+                    rem_qty = w.rem_qty * (v_sp.ra / v_sp.rb),
+                    unit_price_quote = w.unit_price_quote * (v_sp.rb / v_sp.ra)
                 WHERE w.acquired_date < v_d;
 
                 IF (SELECT count(*)::int FROM _fifo_work_pa WHERE rem_qty > 0) > 1 THEN
@@ -477,14 +479,31 @@ BEGIN
     ),
     commissions_daily AS (
         SELECT
-            co.date::date AS report_date,
-            SUM(ABS(COALESCE(co.amount_rub, co.amount)))::numeric AS commission_day
-        FROM cash_operations co
-        WHERE co.portfolio_id = v_portfolio_id
-          AND co.asset_id = v_asset_id
-          AND co.type IN (7)
-          AND co.date::date >= p_from_date
-        GROUP BY co.date::date
+            u.report_date,
+            SUM(u.commission_day)::numeric AS commission_day
+        FROM (
+            SELECT
+                co.date::date AS report_date,
+                SUM(ABS(COALESCE(co.amount_rub, co.amount)))::numeric AS commission_day
+            FROM cash_operations co
+            WHERE co.portfolio_id = v_portfolio_id
+              AND co.asset_id = v_asset_id
+              AND co.type IN (7)
+              AND co.date::date >= p_from_date
+            GROUP BY co.date::date
+            UNION ALL
+            SELECT
+                co.date::date AS report_date,
+                SUM(ABS(COALESCE(co.commission_rub, co.commission)))::numeric AS commission_day
+            FROM cash_operations co
+            WHERE co.portfolio_id = v_portfolio_id
+              AND co.asset_id = v_asset_id
+              AND co.type NOT IN (7)
+              AND COALESCE(co.commission, 0) <> 0
+              AND co.date::date >= p_from_date
+            GROUP BY co.date::date
+        ) u
+        GROUP BY u.report_date
     ),
     taxes_daily AS (
         SELECT
@@ -646,5 +665,5 @@ $$;
 
 COMMENT ON FUNCTION update_portfolio_asset_positions_from_date(bigint, date) IS
 'Пересчитывает portfolio_asset_daily_values ТОЛЬКО на даты событий (транзакции, сплиты asset_splits, изменения цен, кэш-операции, сегодня). '
-'Сплит: только rem_qty; unit_price_quote не умножается на коэффициент сплита (средняя в «ценах покупки»). cumulative_invested по rem_cost_rub. '
+'Сплит: rem_qty *= after/before, unit_price_quote *= before/after; rem_cost_rub (руб. в лоте) без изменения. '
 'Стоимость позиции = qty × (рынок+НКД) × курс / leverage. Спарсивный режим: запись только при изменении данных.';

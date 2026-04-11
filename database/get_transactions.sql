@@ -1,5 +1,5 @@
--- Старое имя функции (до рефакторинга схемы)
-DROP FUNCTION IF EXISTS get_user_transactions(uuid, integer, bigint, text, timestamp without time zone, timestamp without time zone);
+-- Смена RETURNS TABLE требует пересоздания
+DROP FUNCTION IF EXISTS get_transactions(uuid, integer, bigint, text, timestamp without time zone, timestamp without time zone);
 
 CREATE OR REPLACE FUNCTION get_transactions(
     p_user_id uuid,
