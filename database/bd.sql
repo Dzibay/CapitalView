@@ -171,6 +171,16 @@ CREATE TABLE public.asset_payouts (
   CONSTRAINT asset_payouts_type_id_fkey FOREIGN KEY (type_id) REFERENCES public.payout_types(id)
 );
 
+CREATE TABLE public.asset_splits (
+  asset_id bigint NOT NULL,
+  trade_date date NOT NULL,
+  ratio_before numeric(20,6) NOT NULL,
+  ratio_after numeric(20,6) NOT NULL,
+  CONSTRAINT asset_splits_pkey PRIMARY KEY (asset_id, trade_date),
+  CONSTRAINT asset_splits_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.assets(id) ON DELETE CASCADE,
+  CONSTRAINT asset_splits_ratio_positive CHECK (ratio_before > 0 AND ratio_after > 0)
+);
+
 CREATE TABLE public.asset_latest_prices (
   asset_id bigint NOT NULL,
   today_price numeric(20,6),

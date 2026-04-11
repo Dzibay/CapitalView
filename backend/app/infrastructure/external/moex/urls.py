@@ -8,6 +8,7 @@ MOEX_ISS_ROOT = "https://iss.moex.com/iss"
 MOEX_BASE_URL = f"{MOEX_ISS_ROOT}/engines/stock/markets"
 
 MOEX_SECURITIES_JSON = f"{MOEX_ISS_ROOT}/securities.json"
+MOEX_STOCK_SPLITS_JSON = f"{MOEX_ISS_ROOT}/statistics/engines/stock/splits.json"
 SHARES_SECURITIES_JSON = f"{MOEX_BASE_URL}/shares/securities.json"
 BONDS_ACTIVE_SECURITIES_JSON = f"{MOEX_BASE_URL}/bonds/securities.json"
 BONDS_HISTORY_TICKER_BASE = f"{MOEX_ISS_ROOT}/history/engines/stock/markets/bonds/securities"

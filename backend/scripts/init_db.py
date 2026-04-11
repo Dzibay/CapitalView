@@ -12,6 +12,8 @@
 
 После init.sql выполняется migrate_payout_types.sql (справочник payout_types и перенос
 asset_payouts.type → type_id на уже существующих базах).
+
+Для уже развёрнутой БД без таблицы сплитов: database/migrate_asset_splits.sql.
 """
 import sys
 from pathlib import Path
