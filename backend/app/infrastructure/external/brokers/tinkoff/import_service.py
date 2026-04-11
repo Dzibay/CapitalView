@@ -293,7 +293,9 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
                     # Проверяем, является ли это операцией выплаты дивидендов на карту
                     is_div_ext = op.operation_type.name == "OPERATION_TYPE_DIV_EXT"
 
+                    op_id = getattr(op, "id", None)
                     tx = {
+                        "operation_id": op_id,
                         "figi": figi,
                         "ticker": inst["ticker"] if inst else None,
                         "name": inst["name"] if inst else None,
@@ -311,6 +313,7 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
                         if classified in ("Buy", "Sell") and op_quantity == 0:
                             pay_skip = op.payment.units + op.payment.nano / 1e9 if op.payment else 0
                             transactions_skipped.append({
+                                "operation_id": op_id,
                                 "date": op.date.isoformat() if op.date else None,
                                 "tinkoff_operation_type": op.operation_type.name,
                                 "type": classified,
@@ -318,6 +321,7 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
                                 "figi": figi,
                                 "ticker": inst["ticker"] if inst else None,
                                 "name": inst["name"] if inst else None,
+                                "isin": inst["isin"] if inst else None,
                                 "quantity_api": quantity,
                                 "quantity_rest": quantity_rest,
                                 "executed_quantity": op_quantity,
@@ -380,6 +384,7 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
                         withdraw_amount = -abs(payment) - tax_amount
                         
                         withdraw_tx = {
+                            "operation_id": None,
                             "figi": None,
                             "ticker": None,
                             "name": None,

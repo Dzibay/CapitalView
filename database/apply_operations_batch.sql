@@ -26,6 +26,8 @@ DECLARE
     v_portfolio_asset_id bigint;
     v_created_operations jsonb := '[]'::jsonb;
     v_op_type_id bigint;
+    v_op_type_name text;
+    v_asset_ticker text;
     v_portfolio_exists boolean;
     v_op_record RECORD;
     v_first_buy_date timestamp without time zone;
@@ -494,7 +496,7 @@ BEGIN
                 RAISE EXCEPTION 'Портфель % не найден или не принадлежит пользователю', v_portfolio_id;
             END IF;
 
-            SELECT id INTO v_op_type_id
+            SELECT id, name INTO v_op_type_id, v_op_type_name
             FROM operations_type
             WHERE id = v_operation_type;
             
@@ -503,6 +505,11 @@ BEGIN
             END IF;
             
             IF v_asset_id IS NOT NULL AND v_operation_type IN (3, 4, 7, 8, v_amortization_op_type_id) THEN
+                SELECT ticker INTO v_asset_ticker
+                FROM assets
+                WHERE id = v_asset_id
+                LIMIT 1;
+
                 SELECT min(t.transaction_date)
                 INTO v_first_buy_date
                 FROM transactions t
@@ -512,12 +519,21 @@ BEGIN
                   AND t.transaction_type = 1;
                 
                 IF v_first_buy_date IS NULL THEN
-                    RAISE EXCEPTION 'Невозможно создать операцию по активу до первой покупки. Сначала создайте транзакцию покупки актива.';
+                    RAISE EXCEPTION
+                        'Операция «%» по активу %: в портфеле ещё нет ни одной покупки (Buy) этой бумаги. Частая причина при импорте: сделки покупки в выгрузке брокера без ISIN или с другим типом (перевод, зачисление), а дивиденд/купон приходит с ISIN.',
+                        COALESCE(v_op_type_name, v_operation_type::text),
+                        COALESCE(v_asset_ticker, 'id=' || v_asset_id::text);
                 END IF;
                 
-                IF v_operation_date < v_first_buy_date THEN
-                    RAISE EXCEPTION 'Невозможно создать операцию на дату % раньше первой покупки актива (%). Сначала создайте транзакцию покупки.', 
-                        v_operation_date, v_first_buy_date;
+                -- Сравнение по календарной дате: у брокера комиссия/налог часто приходят в тот же день,
+                -- но с меткой времени раньше сделки Buy — по timestamp это ложное «нарушение».
+                IF v_operation_date::date < v_first_buy_date::date THEN
+                    RAISE EXCEPTION
+                        'Операция «%» по % на % раньше календарной даты первой покупки в этом портфеле (%). Правило: дивиденд, купон, комиссия, налог и денежная амортизация не на дату раньше первой Buy. Если покупка была в тот же день — ок; если выплата реально раньше первой сделки — проверьте выгрузку (ISIN, тип Buy) или добавьте покупку вручную.',
+                        COALESCE(v_op_type_name, v_operation_type::text),
+                        COALESCE(v_asset_ticker, 'id=' || v_asset_id::text),
+                        v_operation_date,
+                        v_first_buy_date;
                 END IF;
             END IF;
 
