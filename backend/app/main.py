@@ -102,7 +102,7 @@ async def startup_event():
     invalidate_reference_cache()
     logger.info("Кэш справочника очищен при старте; загрузка из БД в init_reference_data_async")
     
-    # Опциональное обновление справочников (MOEX, дивиденды, купоны, крипто)
+    # Опциональное обновление справочников (MOEX, дивиденды, купоны, сплиты, крипто)
     # Включается через RUN_REFERENCE_UPDATES=1
     if os.getenv("RUN_REFERENCE_UPDATES", "").strip() in ("1", "true", "yes"):
         from scripts.run_reference_updates import run_all_updates

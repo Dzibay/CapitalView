@@ -139,16 +139,15 @@ BEGIN
         GROUP BY co.date::date
     ),
 
+    -- Накопление баланса без округления по шагам: иначе сумма по cash_operations
+    -- расходится с отображаемым балансом на десятки–сотни копеек при длинной истории.
     balance_accumulated AS (
         SELECT
             fd.report_date,
-            ROUND(
-                (v_base_balance::numeric + COALESCE(SUM(COALESCE(cod.daily_amount, 0)) OVER (
-                    ORDER BY fd.report_date
-                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-                ), 0))::numeric,
-                2
-            ) AS balance
+            (v_base_balance::numeric + COALESCE(SUM(COALESCE(cod.daily_amount, 0)) OVER (
+                ORDER BY fd.report_date
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ), 0))::numeric AS balance
         FROM filtered_dates fd
         LEFT JOIN cash_operations_daily cod ON cod.operation_date = fd.report_date
     )

@@ -1,5 +1,5 @@
 """
-Скрипт обновления справочных данных: MOEX активы, дивиденды, купоны, криптоактивы.
+Скрипт обновления справочных данных: MOEX активы, дивиденды, купоны, сплиты, криптоактивы.
 
 Запуск:
   python -m scripts.run_reference_updates
@@ -47,6 +47,7 @@ async def run_all_updates():
     from app.infrastructure.external.moex.update_moex_assets import import_moex_assets_async
     from app.infrastructure.external.moex.update_dividends import update_forecasts
     from app.infrastructure.external.moex.update_coupons import update_all_coupons
+    from app.infrastructure.external.moex.update_splits import update_splits_from_moex_async
     from app.infrastructure.external.crypto.update_crypto_assets import import_crypto_assets_async
     from app.core.reference_logging import reference_progress_enabled
 
@@ -55,6 +56,7 @@ async def run_all_updates():
     await _phase("moex_assets", import_moex_assets_async)
     await _phase("dividends", lambda: update_forecasts(show_progress=show_progress))
     await _phase("coupons", lambda: update_all_coupons(show_progress=show_progress))
+    await _phase("splits", update_splits_from_moex_async)
     await _phase("crypto_assets", import_crypto_assets_async)
 
     logger.info(

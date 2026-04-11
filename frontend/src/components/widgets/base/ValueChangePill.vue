@@ -61,9 +61,8 @@ const isNegative = computed(() => {
   line-height: inherit;
   gap: 0.12rem;
 }
-.value-change-pill :deep(.arrow-icon svg) {
-  width: 12px;
-  height: 12px;
+.value-change-pill :deep(.sign-prefix) {
+  font-size: 0.92em;
 }
 .value-change-pill :deep(.value-change.positive) {
   color: var(--positiveColor);

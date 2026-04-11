@@ -1,3 +1,5 @@
+DROP FUNCTION IF EXISTS get_cash_operations(uuid, bigint, timestamp, timestamp, integer);
+
 CREATE OR REPLACE FUNCTION get_cash_operations(
     p_user_id uuid,
     p_portfolio_id bigint DEFAULT NULL,
@@ -12,7 +14,9 @@ RETURNS TABLE (
     operation_type text,
     operation_type_id bigint,
     amount numeric(20,6),
-    amount_rub numeric(20,2),
+    amount_rub numeric(20,6),
+    commission numeric(20,6),
+    commission_rub numeric(20,6),
     currency_id bigint,
     currency_ticker text,
     currency_rate_to_rub numeric(20,6),
@@ -45,7 +49,9 @@ BEGIN
         END AS operation_type,
         ot.id AS operation_type_id,
         co.amount::numeric(20,6) AS amount,
-        COALESCE(co.amount_rub, co.amount::numeric(20,2))::numeric(20,2) AS amount_rub,
+        COALESCE(co.amount_rub, co.amount::numeric(20,6))::numeric(20,6) AS amount_rub,
+        COALESCE(co.commission, 0)::numeric(20,6) AS commission,
+        co.commission_rub::numeric(20,6) AS commission_rub,
         co.currency AS currency_id,
         cur.ticker AS currency_ticker,
         COALESCE(curr.curr_price, 1)::numeric(20,6) AS currency_rate_to_rub,

@@ -2,6 +2,7 @@
 Сервис импорта портфеля из Tinkoff
 """
 from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
 from t_tech.invest import Client, InstrumentIdType
 from t_tech.invest.exceptions import RequestError
 from grpc import StatusCode
@@ -95,6 +96,75 @@ OPERATION_CLASSIFICATION = {
 IMPORT_CANONICAL_TYPES = frozenset(OPERATION_CLASSIFICATION.values())
 
 
+def _normalize_tinkoff_operation_id(value: Any) -> Optional[str]:
+    """
+    Единый ключ для сопоставления id операции и parent_operation_id в одной выгрузке.
+    UUID приводим к lower(); строки — strip и снятие лишних кавычек.
+    """
+    if value is None:
+        return None
+    s = str(value).strip().strip('"').strip("'")
+    if not s:
+        return None
+    if len(s) == 36 and s[8] == "-" and s[13] == "-" and s[18] == "-" and s[23] == "-":
+        return s.lower()
+    return s
+
+
+def _tinkoff_buy_sell_zero_executed_quantity(op) -> bool:
+    """Buy/Sell с исполненным количеством 0 не попадают в transactions — комиссию к ним вшивать нельзя."""
+    cls = classify_tinkoff_operation(op.operation_type.name)
+    if cls not in ("Buy", "Sell"):
+        return False
+    quantity = getattr(op, "quantity", None)
+    quantity_rest = getattr(op, "quantity_rest", None)
+    try:
+        executed = float(quantity or 0) - float(quantity_rest or 0)
+    except (TypeError, ValueError):
+        return False
+    return executed == 0
+
+
+def _tinkoff_commission_by_parent(ops_raw) -> tuple[dict[str, float], set[str]]:
+    """
+    Дочерние операции-комиссии с parent_operation_id суммируются по id родителя.
+    Возвращает (сумма комиссии по нормализованному parent_id, id дочерних комиссий для пропуска).
+
+    Родитель должен быть в той же выгрузке. Если родитель — Buy/Sell с нулевым исполнением,
+    строки в transactions не будет: дочернюю комиссию не вшиваем и не пропускаем — она пойдёт
+    отдельной операцией Commission (как у брокера по кэшу).
+
+    Если родителя нет в выгрузке — комиссия тоже остаётся отдельной строкой (parent_key not in batch).
+    """
+    ids_in_batch: set[str] = set()
+    ops_by_id: Dict[str, Any] = {}
+    for op in ops_raw or []:
+        kid = _normalize_tinkoff_operation_id(getattr(op, "id", None))
+        if kid:
+            ids_in_batch.add(kid)
+            ops_by_id[kid] = op
+
+    by_parent: dict[str, float] = {}
+    skip_ids: set[str] = set()
+    for op in ops_raw or []:
+        if classify_tinkoff_operation(op.operation_type.name) != "Commission":
+            continue
+        parent_key = _normalize_tinkoff_operation_id(getattr(op, "parent_operation_id", None))
+        if not parent_key:
+            continue
+        if parent_key not in ids_in_batch:
+            continue
+        parent_op = ops_by_id.get(parent_key)
+        if parent_op is not None and _tinkoff_buy_sell_zero_executed_quantity(parent_op):
+            continue
+        pay = op.payment.units + op.payment.nano / 1e9 if op.payment else 0.0
+        by_parent[parent_key] = by_parent.get(parent_key, 0.0) + pay
+        cid = _normalize_tinkoff_operation_id(getattr(op, "id", None))
+        if cid:
+            skip_ids.add(cid)
+    return by_parent, skip_ids
+
+
 def classify_tinkoff_operation(operation_type_name: str) -> str:
     """Возвращает внутренний тип операции; при отсутствии в маппинге — Other."""
     return OPERATION_CLASSIFICATION.get(operation_type_name, "Other")
@@ -127,8 +197,83 @@ def resolve_instrument(client, figi, cache):
         return None
 
 
-def get_tinkoff_portfolio(token):
-    """Получает данные портфеля от брокера Tinkoff."""
+def _money_value_to_dict(mv) -> dict | None:
+    if mv is None:
+        return None
+    return {
+        "currency": mv.currency,
+        "units": int(mv.units),
+        "nano": int(mv.nano),
+    }
+
+
+def tinkoff_operation_to_raw_dict(op, client, instrument_cache: dict) -> dict:
+    """
+    Сериализация ответа get_operations в JSON-совместимый словарь (поля protobuf/dataclass API).
+    Добавляет ticker / instrument_name / isin по FIGI через resolve_instrument.
+    """
+    figi = getattr(op, "figi", None) or None
+    if figi == "":
+        figi = None
+    inst = resolve_instrument(client, figi, instrument_cache) if figi else None
+
+    ot = getattr(op, "operation_type", None)
+    operation_type_name = ot.name if ot is not None and hasattr(ot, "name") else str(ot)
+
+    st = getattr(op, "state", None)
+    state_name = st.name if st is not None and hasattr(st, "name") else (str(st) if st is not None else None)
+
+    trades_out = []
+    for tr in getattr(op, "trades", None) or []:
+        trades_out.append({
+            "trade_id": getattr(tr, "trade_id", None),
+            "date_time": tr.date_time.isoformat() if getattr(tr, "date_time", None) else None,
+            "quantity": getattr(tr, "quantity", None),
+            "price": _money_value_to_dict(getattr(tr, "price", None)),
+        })
+
+    child_ops = []
+    for ch in getattr(op, "child_operations", None) or []:
+        ch_ot = getattr(ch, "operation_type", None)
+        ch_ot_name = ch_ot.name if ch_ot is not None and hasattr(ch_ot, "name") else (str(ch_ot) if ch_ot is not None else None)
+        child_ops.append({
+            "instrument_uid": getattr(ch, "instrument_uid", None),
+            "payment": _money_value_to_dict(getattr(ch, "payment", None)),
+            "operation_type": ch_ot_name,
+        })
+
+    return {
+        "id": getattr(op, "id", None),
+        "parent_operation_id": getattr(op, "parent_operation_id", None),
+        "currency": getattr(op, "currency", None),
+        "payment": _money_value_to_dict(getattr(op, "payment", None)),
+        "price": _money_value_to_dict(getattr(op, "price", None)),
+        "state": state_name,
+        "quantity": getattr(op, "quantity", None),
+        "quantity_rest": getattr(op, "quantity_rest", None),
+        "figi": figi,
+        "instrument_type": getattr(op, "instrument_type", None),
+        "date": op.date.isoformat() if getattr(op, "date", None) else None,
+        "type": getattr(op, "type", None),
+        "operation_type": operation_type_name,
+        "trades": trades_out,
+        "asset_uid": getattr(op, "asset_uid", None),
+        "position_uid": getattr(op, "position_uid", None),
+        "instrument_uid": getattr(op, "instrument_uid", None),
+        "child_operations": child_ops,
+        "ticker": inst["ticker"] if inst else None,
+        "instrument_name": inst["name"] if inst else None,
+        "isin": inst["isin"] if inst else None,
+    }
+
+
+def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
+    """
+    Получает данные портфеля от брокера Tinkoff.
+
+    include_raw_operations: добавить в каждый счёт ключ operations_raw — список словарей
+    с максимально полным снимком операций из get_operations (удобно для отладки импорта).
+    """
     logger.info("Tinkoff portfolio import start")
 
     result = {}
@@ -208,6 +353,8 @@ def get_tinkoff_portfolio(token):
                                 tax_by_date_figi[tax_key] = []
                             tax_by_date_figi[tax_key].append(tax_payment)
 
+                commission_by_parent, commission_child_skip = _tinkoff_commission_by_parent(ops_raw)
+
                 for op in ops_raw:
                     figi = getattr(op, "figi", None)
                     price_obj = getattr(op, "price", None)
@@ -221,7 +368,13 @@ def get_tinkoff_portfolio(token):
                     # Проверяем, является ли это операцией выплаты дивидендов на карту
                     is_div_ext = op.operation_type.name == "OPERATION_TYPE_DIV_EXT"
 
+                    op_key = _normalize_tinkoff_operation_id(getattr(op, "id", None))
+                    if op_key and op_key in commission_child_skip:
+                        continue
+
+                    op_id = getattr(op, "id", None)
                     tx = {
+                        "operation_id": op_id,
                         "figi": figi,
                         "ticker": inst["ticker"] if inst else None,
                         "name": inst["name"] if inst else None,
@@ -239,6 +392,7 @@ def get_tinkoff_portfolio(token):
                         if classified in ("Buy", "Sell") and op_quantity == 0:
                             pay_skip = op.payment.units + op.payment.nano / 1e9 if op.payment else 0
                             transactions_skipped.append({
+                                "operation_id": op_id,
                                 "date": op.date.isoformat() if op.date else None,
                                 "tinkoff_operation_type": op.operation_type.name,
                                 "type": classified,
@@ -246,6 +400,7 @@ def get_tinkoff_portfolio(token):
                                 "figi": figi,
                                 "ticker": inst["ticker"] if inst else None,
                                 "name": inst["name"] if inst else None,
+                                "isin": inst["isin"] if inst else None,
                                 "quantity_api": quantity,
                                 "quantity_rest": quantity_rest,
                                 "executed_quantity": op_quantity,
@@ -286,6 +441,11 @@ def get_tinkoff_portfolio(token):
                             "currency": op.currency,
                         })
 
+                    if op_key:
+                        _comm = float(commission_by_parent.get(op_key, 0.0) or 0.0)
+                        if abs(_comm) >= 1e-12:
+                            tx["commission"] = _comm
+
                     transactions.append(tx)
                     
                     # Если это OPERATION_TYPE_DIV_EXT (выплата дивидендов на карту),
@@ -308,6 +468,7 @@ def get_tinkoff_portfolio(token):
                         withdraw_amount = -abs(payment) - tax_amount
                         
                         withdraw_tx = {
+                            "operation_id": None,
                             "figi": None,
                             "ticker": None,
                             "name": None,
@@ -322,13 +483,18 @@ def get_tinkoff_portfolio(token):
                         }
                         transactions.append(withdraw_tx)
 
-                result[acc_name] = {
+                entry = {
                     "account_id": acc_id,
                     "positions": positions,
                     "transactions": transactions,
                     "transactions_skipped": transactions_skipped,
                     "operations_raw_count": len(ops_raw),
                 }
+                if include_raw_operations:
+                    entry["operations_raw"] = [
+                        tinkoff_operation_to_raw_dict(op, client, instrument_cache) for op in ops_raw
+                    ]
+                result[acc_name] = entry
             except RequestError as e:
                 # Обработка других ошибок RequestError
                 logger.error(

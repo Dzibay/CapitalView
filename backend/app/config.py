@@ -4,7 +4,11 @@
 """
 import os
 from datetime import timedelta
+from pathlib import Path
+
 from dotenv import load_dotenv
+
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -91,6 +95,12 @@ class Config:
     # true / 1 / yes — implicit SSL (порт 465); иначе STARTTLS (например порт 587)
     _smtp_ssl = os.getenv("SMTP_SSL", "true").lower()
     SMTP_USE_IMPLICIT_SSL = _smtp_ssl in ("1", "true", "yes")
+
+    # Импорт с брокера: исторические тикеры → текущий тикер в справочнике (JSON, см. data/broker_ticker_aliases.json)
+    BROKER_TICKER_ALIASES_FILE = os.getenv(
+        "BROKER_TICKER_ALIASES_FILE",
+        str(_BACKEND_ROOT / "data" / "broker_ticker_aliases.json"),
+    )
 
     # Логирование
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

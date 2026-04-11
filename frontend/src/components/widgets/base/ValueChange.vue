@@ -10,6 +10,7 @@ const props = defineProps({
     type: Boolean,
     default: null // null = автоматическое определение
   },
+  /** Показывать префикс + / − перед значением */
   showArrow: {
     type: Boolean,
     default: true
@@ -29,7 +30,7 @@ const computedIsPositive = computed(() => {
 
 const formattedValue = computed(() => {
   const numValue = typeof props.value === 'string' ? parseFloat(props.value) : props.value
-  // Используем Math.abs() чтобы убрать знак минуса, так как стрелка уже показывает направление
+  // Math.abs(): знак показывает префикс + / −
   const absValue = Math.abs(numValue)
   
   if (props.format === 'percent') {
@@ -51,14 +52,12 @@ const formattedValue = computed(() => {
     class="value-change" 
     :class="{ 'positive': computedIsPositive, 'negative': !computedIsPositive }"
   >
-    <span v-if="showArrow" class="arrow-icon" :class="{ 'up': computedIsPositive, 'down': !computedIsPositive }">
-      <svg v-if="computedIsPositive" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="18 15 12 9 6 15"></polyline>
-      </svg>
-      <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
-    </span>
+    <span
+      v-if="showArrow"
+      class="sign-prefix"
+      :class="{ 'sign-prefix--positive': computedIsPositive, 'sign-prefix--negative': !computedIsPositive }"
+      aria-hidden="true"
+    >{{ computedIsPositive ? '+' : '−' }}</span>
     <span>{{ formattedValue }}</span>
   </div>
 </template>
@@ -80,16 +79,17 @@ const formattedValue = computed(() => {
   color: var(--negativeColor);
 }
 
-.arrow-icon {
-  display: flex;
-  align-items: center;
+.sign-prefix {
+  flex-shrink: 0;
+  font-weight: 600;
+  line-height: 1;
 }
 
-.arrow-icon.up {
+.sign-prefix--positive {
   color: var(--positiveColor);
 }
 
-.arrow-icon.down {
+.sign-prefix--negative {
   color: var(--negativeColor);
 }
 </style>

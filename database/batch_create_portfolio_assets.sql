@@ -16,11 +16,12 @@ BEGIN
         RETURN '{}'::jsonb;
     END IF;
 
-    -- Вставляем отсутствующие
+    -- Вставляем отсутствующие (только существующие assets — иначе FK)
     INSERT INTO portfolio_assets (portfolio_id, asset_id, quantity, average_price)
     SELECT p_portfolio_id, aid, 0, 0
     FROM unnest(p_asset_ids) AS aid
-    WHERE NOT EXISTS (
+    WHERE EXISTS (SELECT 1 FROM assets a WHERE a.id = aid)
+      AND NOT EXISTS (
         SELECT 1 FROM portfolio_assets pa
         WHERE pa.portfolio_id = p_portfolio_id AND pa.asset_id = aid
     )

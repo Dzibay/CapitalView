@@ -79,8 +79,24 @@ const centerInfo = ref({
   value: 0
 })
 
+const formatTwoDecimals = (value) => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '0,00'
+  return n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 const formatCurrency = (value) => {
-  return value.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 })
+  const n = Number(value)
+  if (!Number.isFinite(n)) {
+    return (0).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+  return n.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+/** Доля в процентах, округление до 2 знаков (сумма по сегментам может отличаться от 100.00 из-за округления). */
+function percentOfPart(value, totalValue) {
+  if (!(totalValue > 0)) return 0
+  return Math.round((Number(value) / totalValue) * 10000) / 100
 }
 
 function formatCenterDisplay(value) {
@@ -121,7 +137,7 @@ const chartOptions = computed(() => ({
           const label = data.labels[idx]
           const value = data.datasets[0].data[idx]
           const totalValue = total.value
-          const percentage = totalValue > 0 ? Math.round((value / totalValue) * 100) : 0
+          const percentage = percentOfPart(value, totalValue)
           centerInfo.value = { label, value, percentage }
         } else if (data?.datasets?.length) {
           centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
@@ -136,7 +152,7 @@ const chartOptions = computed(() => ({
       const label = data.labels[index]
       const value = data.datasets[0].data[index]
       const totalValue = total.value
-      const percentage = totalValue > 0 ? Math.round((value / totalValue) * 100) : 0
+      const percentage = percentOfPart(value, totalValue)
       centerInfo.value = { label, value, percentage }
     } else if (data?.datasets?.length) {
       centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
@@ -166,7 +182,7 @@ watch(
         <Doughnut :key="doughnutRemountKey" :data="chartData" :options="chartOptions" />
         <div v-if="centerInfo.label" class="chart-center">
           <span class="center-label">{{ centerInfo.label }}</span>
-          <span class="center-percentage">{{ centerInfo.percentage }}%</span>
+          <span class="center-percentage">{{ formatTwoDecimals(centerInfo.percentage) }}%</span>
           <span class="center-value">{{ formatCenterDisplay(centerInfo.value) }}</span>
         </div>
       </div>

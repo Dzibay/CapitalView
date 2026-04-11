@@ -93,20 +93,23 @@ async def apply_operations(
             price = float(op.get("price"))
             payment = float(price * quantity)
 
-            p_operations.append(
-                {
-                    "user_id": str(user_id),
-                    "portfolio_id": int(portfolio_id),
-                    "operation_type": operation_type,
-                    "operation_date": operation_date_str,
-                    "portfolio_asset_id": int(portfolio_asset_id),
-                    "asset_id": int(asset_id),
-                    "quantity": quantity,
-                    "price": price,
-                    "payment": payment,
-                    "amount": payment,
-                }
-            )
+            tx_po = {
+                "user_id": str(user_id),
+                "portfolio_id": int(portfolio_id),
+                "operation_type": operation_type,
+                "operation_date": operation_date_str,
+                "portfolio_asset_id": int(portfolio_asset_id),
+                "asset_id": int(asset_id),
+                "quantity": quantity,
+                "price": price,
+                "payment": payment,
+                "amount": payment,
+            }
+            if op.get("commission") is not None:
+                tx_po["commission"] = float(op["commission"])
+            if op.get("commission_rub") is not None:
+                tx_po["commission_rub"] = float(op["commission_rub"])
+            p_operations.append(tx_po)
 
             if op.get("create_deposit_operation") is True and operation_type == 1:
                 asset_row = await _asset_repository.get_by_id(asset_id) or {}

@@ -221,9 +221,11 @@ recent_transactions AS (
             'asset_name', tx.asset_name,
             'ticker', tx.ticker,
             'transaction_type', tx.transaction_type_name,
+            'transaction_type_id', tx.transaction_type_id,
             'price', tx.price,
             'quantity', tx.quantity,
             'transaction_date', tx.transaction_date,
+            'realized_pnl', tx.realized_pnl,
             'currency_ticker', tx.currency_ticker
         )
         ORDER BY tx.transaction_date DESC
@@ -243,9 +245,11 @@ recent_transactions AS (
                 WHEN 3 THEN 'Погашение'
                 ELSE 'Неизвестно'
             END AS transaction_type_name,
+            t.transaction_type AS transaction_type_id,
             t.price,
             t.quantity,
             t.transaction_date,
+            COALESCE(t.realized_pnl, 0)::numeric(20,6) AS realized_pnl,
             qa.ticker AS currency_ticker,
             ROW_NUMBER() OVER (PARTITION BY pa.portfolio_id ORDER BY t.transaction_date DESC) AS rn
         FROM transactions t

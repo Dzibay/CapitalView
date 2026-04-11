@@ -94,13 +94,11 @@ def compare_assets(existing_asset, new_asset):
 
     existing_props = parse_json_properties(existing_asset.get("properties"))
     new_props = parse_json_properties(new_asset.get("properties"))
-    existing_norm = normalize_properties(existing_props, new_type_name)
     new_norm = normalize_properties(new_props, new_type_name)
-    has_extra = len(existing_props) > len(existing_norm)
-
-    if existing_norm != new_norm or has_extra:
+    merged_props = {**existing_props, **new_norm}
+    if merged_props != existing_props:
         needs_update = True
-        update_data["properties"] = new_norm
+        update_data["properties"] = merged_props
         differences.append("properties")
 
     existing_quote = existing_asset.get("quote_asset_id")

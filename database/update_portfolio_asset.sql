@@ -38,4 +38,4 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION update_portfolio_asset(bigint) IS 'Пересчитывает quantity и average_price по открытым FIFO-лотам (fifo_lots); лоты синхронизируются с транзакциями через rebuild_fifo_for_portfolio_asset';
+COMMENT ON FUNCTION update_portfolio_asset(bigint) IS 'Пересчитывает quantity и average_price по открытым FIFO-лотам (fifo_lots). Сплит: remaining_qty *= after/before, price *= before/after (стоимость лота сохраняется). При нескольких лотах после сплита — слияние в один с WAC по уже скорректированным ценам.';

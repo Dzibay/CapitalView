@@ -31,6 +31,13 @@ DECLARE
     v_inv numeric;
     v_avg_quote numeric;
     v_has_tx boolean;
+    v_amt_rub numeric;
+    v_w_qty numeric;
+    v_w_cost numeric;
+    v_w_avg numeric;
+    v_w_acq date;
+    r_ev RECORD;
+    v_sp RECORD;
 BEGIN
     SELECT 
         pa.portfolio_id,
@@ -129,6 +136,12 @@ BEGIN
           AND co.date::date >= v_series_start
           AND co.date::date <= CURRENT_DATE
         UNION
+        SELECT s.trade_date AS d
+        FROM asset_splits s
+        WHERE s.asset_id = v_asset_id
+          AND s.trade_date >= v_series_start
+          AND s.trade_date <= CURRENT_DATE
+        UNION
         SELECT CURRENT_DATE AS d
     ) sub
     WHERE sub.d >= v_series_start AND sub.d <= CURRENT_DATE;
@@ -138,7 +151,8 @@ BEGIN
         id bigserial PRIMARY KEY,
         rem_qty numeric NOT NULL,
         rem_cost_rub numeric NOT NULL,
-        unit_price_quote numeric NOT NULL
+        unit_price_quote numeric NOT NULL,
+        acquired_date date NOT NULL
     );
 
     DROP TABLE IF EXISTS _fifo_daily_pa;
@@ -170,33 +184,86 @@ BEGIN
             );
         END LOOP;
     ELSE
-        FOR r_tx IN
-            SELECT
-                t.id,
-                t.transaction_date::date AS tx_date,
-                t.transaction_type AS tt,
-                t.quantity::numeric AS qty,
-                t.price::numeric AS price,
-                COALESCE(
+        FOR r_ev IN
+            SELECT *
+            FROM (
+                SELECT
+                    0 AS sk,
+                    s.trade_date::timestamp AS ts,
+                    0::bigint AS oid,
+                    s.ratio_before::numeric AS rb,
+                    s.ratio_after::numeric AS ra,
+                    NULL::bigint AS tt,
+                    NULL::numeric AS qty,
+                    NULL::numeric AS price,
+                    NULL::bigint AS tid,
+                    NULL::date AS tx_date
+                FROM asset_splits s
+                WHERE s.asset_id = v_asset_id
+                  AND s.trade_date < v_series_start
+                UNION ALL
+                SELECT
+                    1,
+                    t.transaction_date,
+                    t.id,
+                    NULL,
+                    NULL,
+                    t.transaction_type,
+                    t.quantity::numeric,
+                    t.price::numeric,
+                    t.id,
+                    t.transaction_date::date
+                FROM transactions t
+                WHERE t.portfolio_asset_id = p_portfolio_asset_id
+                  AND t.transaction_date::date < v_series_start
+            ) z
+            ORDER BY z.ts, z.sk, z.oid
+        LOOP
+            IF r_ev.sk = 0 THEN
+                UPDATE _fifo_work_pa w SET
+                    rem_qty = w.rem_qty * (r_ev.ra / r_ev.rb),
+                    unit_price_quote = w.unit_price_quote * (r_ev.rb / r_ev.ra)
+                WHERE w.acquired_date < (r_ev.ts::date);
+
+                IF (SELECT count(*)::int FROM _fifo_work_pa WHERE rem_qty > 0) > 1 THEN
+                    SELECT
+                        coalesce(sum(rem_qty), 0),
+                        coalesce(sum(rem_cost_rub), 0),
+                        CASE
+                            WHEN coalesce(sum(rem_qty), 0) > 0 THEN
+                                sum(rem_qty * unit_price_quote) / sum(rem_qty)
+                            ELSE 0::numeric
+                        END,
+                        min(acquired_date)
+                    INTO v_w_qty, v_w_cost, v_w_avg, v_w_acq
+                    FROM _fifo_work_pa
+                    WHERE rem_qty > 0;
+
+                    DELETE FROM _fifo_work_pa;
+
+                    IF coalesce(v_w_qty, 0) > 0 THEN
+                        INSERT INTO _fifo_work_pa (rem_qty, rem_cost_rub, unit_price_quote, acquired_date)
+                        VALUES (v_w_qty, v_w_cost, v_w_avg, v_w_acq);
+                    END IF;
+                END IF;
+
+            ELSIF r_ev.sk = 1 AND r_ev.tt = 1 THEN
+                SELECT COALESCE(
                     (
                         SELECT ABS(co.amount_rub)::numeric
                         FROM cash_operations co
-                        WHERE co.transaction_id = t.id
+                        WHERE co.transaction_id = r_ev.tid
                           AND co.type IN (1, 2)
                         LIMIT 1
                     ),
-                    t.quantity * t.price
-                )::numeric AS amount_rub
-            FROM transactions t
-            WHERE t.portfolio_asset_id = p_portfolio_asset_id
-              AND t.transaction_date::date < v_series_start
-            ORDER BY t.transaction_date, t.id
-        LOOP
-            IF r_tx.tt = 1 THEN
-                INSERT INTO _fifo_work_pa (rem_qty, rem_cost_rub, unit_price_quote)
-                VALUES (r_tx.qty, r_tx.amount_rub, r_tx.price);
-            ELSIF r_tx.tt IN (2, 3) THEN
-                v_sell_rem := r_tx.qty;
+                    r_ev.qty * r_ev.price
+                ) INTO v_amt_rub;
+
+                INSERT INTO _fifo_work_pa (rem_qty, rem_cost_rub, unit_price_quote, acquired_date)
+                VALUES (r_ev.qty, v_amt_rub, r_ev.price, r_ev.tx_date);
+
+            ELSIF r_ev.sk = 1 AND r_ev.tt IN (2, 3) THEN
+                v_sell_rem := r_ev.qty;
                 WHILE v_sell_rem > 0 LOOP
                     v_lot_id := NULL;
                     SELECT w.id, w.rem_qty, w.rem_cost_rub
@@ -235,6 +302,41 @@ BEGIN
         FOR v_d IN
             SELECT d FROM _event_dates_pa ORDER BY d
         LOOP
+            FOR v_sp IN
+                SELECT s.ratio_before::numeric AS rb, s.ratio_after::numeric AS ra
+                FROM asset_splits s
+                WHERE s.asset_id = v_asset_id
+                  AND s.trade_date = v_d
+                ORDER BY s.ratio_before, s.ratio_after
+            LOOP
+                UPDATE _fifo_work_pa w SET
+                    rem_qty = w.rem_qty * (v_sp.ra / v_sp.rb),
+                    unit_price_quote = w.unit_price_quote * (v_sp.rb / v_sp.ra)
+                WHERE w.acquired_date < v_d;
+
+                IF (SELECT count(*)::int FROM _fifo_work_pa WHERE rem_qty > 0) > 1 THEN
+                    SELECT
+                        coalesce(sum(rem_qty), 0),
+                        coalesce(sum(rem_cost_rub), 0),
+                        CASE
+                            WHEN coalesce(sum(rem_qty), 0) > 0 THEN
+                                sum(rem_qty * unit_price_quote) / sum(rem_qty)
+                            ELSE 0::numeric
+                        END,
+                        min(acquired_date)
+                    INTO v_w_qty, v_w_cost, v_w_avg, v_w_acq
+                    FROM _fifo_work_pa
+                    WHERE rem_qty > 0;
+
+                    DELETE FROM _fifo_work_pa;
+
+                    IF coalesce(v_w_qty, 0) > 0 THEN
+                        INSERT INTO _fifo_work_pa (rem_qty, rem_cost_rub, unit_price_quote, acquired_date)
+                        VALUES (v_w_qty, v_w_cost, v_w_avg, v_w_acq);
+                    END IF;
+                END IF;
+            END LOOP;
+
             FOR r_tx IN
                 SELECT
                     t.id,
@@ -258,8 +360,8 @@ BEGIN
                 ORDER BY t.transaction_date, t.id
             LOOP
                 IF r_tx.tt = 1 THEN
-                    INSERT INTO _fifo_work_pa (rem_qty, rem_cost_rub, unit_price_quote)
-                    VALUES (r_tx.qty, r_tx.amount_rub, r_tx.price);
+                    INSERT INTO _fifo_work_pa (rem_qty, rem_cost_rub, unit_price_quote, acquired_date)
+                    VALUES (r_tx.qty, r_tx.amount_rub, r_tx.price, r_tx.tx_date);
                 ELSIF r_tx.tt IN (2, 3) THEN
                     v_sell_rem := r_tx.qty;
                     WHILE v_sell_rem > 0 LOOP
@@ -377,14 +479,31 @@ BEGIN
     ),
     commissions_daily AS (
         SELECT
-            co.date::date AS report_date,
-            SUM(ABS(COALESCE(co.amount_rub, co.amount)))::numeric AS commission_day
-        FROM cash_operations co
-        WHERE co.portfolio_id = v_portfolio_id
-          AND co.asset_id = v_asset_id
-          AND co.type IN (7)
-          AND co.date::date >= p_from_date
-        GROUP BY co.date::date
+            u.report_date,
+            SUM(u.commission_day)::numeric AS commission_day
+        FROM (
+            SELECT
+                co.date::date AS report_date,
+                SUM(ABS(COALESCE(co.amount_rub, co.amount)))::numeric AS commission_day
+            FROM cash_operations co
+            WHERE co.portfolio_id = v_portfolio_id
+              AND co.asset_id = v_asset_id
+              AND co.type IN (7)
+              AND co.date::date >= p_from_date
+            GROUP BY co.date::date
+            UNION ALL
+            SELECT
+                co.date::date AS report_date,
+                SUM(ABS(COALESCE(co.commission_rub, co.commission)))::numeric AS commission_day
+            FROM cash_operations co
+            WHERE co.portfolio_id = v_portfolio_id
+              AND co.asset_id = v_asset_id
+              AND co.type NOT IN (7)
+              AND COALESCE(co.commission, 0) <> 0
+              AND co.date::date >= p_from_date
+            GROUP BY co.date::date
+        ) u
+        GROUP BY u.report_date
     ),
     taxes_daily AS (
         SELECT
@@ -545,6 +664,6 @@ END;
 $$;
 
 COMMENT ON FUNCTION update_portfolio_asset_positions_from_date(bigint, date) IS
-'Пересчитывает portfolio_asset_daily_values ТОЛЬКО на даты событий (транзакции, изменения цен, кэш-операции, сегодня). '
-'FIFO по транзакциям, стоимость = qty × (цена+НКД) × курс / leverage. '
-'Спарсивный режим: запись создаётся только при изменении данных, что устраняет дубликаты.';
+'Пересчитывает portfolio_asset_daily_values ТОЛЬКО на даты событий (транзакции, сплиты asset_splits, изменения цен, кэш-операции, сегодня). '
+'Сплит: rem_qty *= after/before, unit_price_quote *= before/after; rem_cost_rub (руб. в лоте) без изменения. '
+'Стоимость позиции = qty × (рынок+НКД) × курс / leverage. Спарсивный режим: запись только при изменении данных.';
