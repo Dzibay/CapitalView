@@ -258,62 +258,12 @@ const formatDate = formatDateForDisplay
 
 const COMMISSION_EPS = 1e-8
 
-// --- функции для отображения операций в выбранной валюте ---
-const OP_TYPE_BUY = 1
-const OP_TYPE_SELL = 2
-const OP_TYPE_AMORT = 9
-
-const resolveOperationTypeId = (op) => {
-  const id = Number(op.operation_type_id ?? op.operationTypeId)
-  if (Number.isFinite(id) && id > 0) return id
-  const slug = normalizeType(op.operation_type)
-  if (slug === 'buy') return OP_TYPE_BUY
-  if (slug === 'sell') return OP_TYPE_SELL
-  if (slug === 'amortization') return OP_TYPE_AMORT
-  return NaN
-}
-
-/**
- * Сумма для UI: для покупки/продажи/амортизации без включённой комиссии (как payment в apply_operations_batch).
- * Комиссия только в tooltip; поля amount / amount_rub в БД задают полный денежный поток.
- * @param {'ui'|'rub_stats'} mode — rub_stats: всегда в рублях для блоков сводки/калькулятора
- */
-const getOperationDisplayAmount = (op, mode = 'ui') => {
-  const useRub = mode === 'rub_stats' || selectedCurrency.value === 'RUB'
-  const typeId = resolveOperationTypeId(op)
-  const isTrade =
-    typeId === OP_TYPE_BUY || typeId === OP_TYPE_SELL || typeId === OP_TYPE_AMORT
-  const comm = Number(op.commission ?? 0)
-  const hasComm = Number.isFinite(comm) && Math.abs(comm) > COMMISSION_EPS
-  const native = Number(op.amount) || 0
-  const amountRub = Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
-  const commRubRaw = op.commission_rub
-  const commRub =
-    commRubRaw != null && commRubRaw !== '' ? Number(commRubRaw) : NaN
-  const hasCommRub = Number.isFinite(commRub) && Math.abs(commRub) > COMMISSION_EPS
-
-  if (!isTrade) {
-    return useRub ? amountRub : native
+// Сумма операции как в БД (get_cash_operations): без пересчёта с комиссией на фронте. Комиссия — в tooltip.
+const getOperationAmount = (op, { rubOnly = false } = {}) => {
+  if (rubOnly || selectedCurrency.value === 'RUB') {
+    return Number(op.amount_rub ?? op.amountRub ?? op.amount) || 0
   }
-
-  if (useRub) {
-    if (hasCommRub) {
-      if (typeId === OP_TYPE_BUY) return amountRub + commRub
-      return amountRub - commRub
-    }
-    if (native !== 0 && hasComm) {
-      const adjNative =
-        typeId === OP_TYPE_BUY ? native + comm : native - comm
-      return adjNative * (amountRub / native)
-    }
-    return amountRub
-  }
-
-  if (hasComm) {
-    if (typeId === OP_TYPE_BUY) return native + comm
-    return native - comm
-  }
-  return native
+  return Number(op.amount) || 0
 }
 
 // Нормализует код валюты (защита от некорректных значений типа "RUB000UTSTOM")
@@ -535,7 +485,7 @@ const applyFilter = () => {
         if (end && opDate > end) return false
       }
 
-      // Глобальный поиск по отображаемой сумме (без комиссии в сделках)
+      // Глобальный поиск по сумме как в БД (amount_rub / amount)
       if (hasTerm) {
         const opAmount = getOperationAmount(op)
         const searchableText = `${op.asset_name || ''} ${op.portfolio_name || ''} ${op.operation_type || ''} ${opAmount || ''} ${getOperationCurrency(op) || ''} ${formatDate(op.operation_date)}`.toLowerCase()
@@ -833,7 +783,7 @@ const summary = computed(() => {
       res.byType[slug].value += value
     }
   } else {
-    // Для операций суммируем по типам (рубли; для сделок — сумма без комиссии, как в колонке)
+    // Для операций суммируем по типам (рубли, amount_rub из БД)
     for (const op of filteredOperations.value) {
       const value = getOperationAmount(op, { rubOnly: true })
       const slug = normalizeType(op.operation_type)
@@ -909,7 +859,7 @@ const calculatorResult = computed(() => {
   return result !== null ? Math.round(result * 100) / 100 : 0
 })
 
-// Получение суммы по типу операции из отфильтрованных данных (рубли, без комиссии в сделках)
+// Получение суммы по типу операции из отфильтрованных данных (рубли, amount_rub)
 const getOperationTypeSum = (operationType) => {
   let sum = 0
   for (const op of filteredOperations.value) {
@@ -1317,11 +1267,11 @@ const periodFilterLabel = computed(() => {
                     position="top"
                   >
                     <span class="card-value num-font font-semibold">
-                    {{ formatOperationAmount(Math.abs(getOperationDisplayAmount(op)), getOperationCurrency(op)) }}
+                    {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
                   </span>
                   </Tooltip>
                   <span v-else class="card-value num-font font-semibold">
-                    {{ formatOperationAmount(Math.abs(getOperationDisplayAmount(op)), getOperationCurrency(op)) }}
+                    {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
                   </span>
                 </div>
               </div>
@@ -1420,10 +1370,10 @@ const periodFilterLabel = computed(() => {
                     :content="getOperationCommissionTooltipContent(op)"
                     position="top"
                   >
-                    <span class="op-amount-trigger">{{ formatOperationAmount(Math.abs(getOperationDisplayAmount(op)), getOperationCurrency(op)) }}</span>
+                    <span class="op-amount-trigger">{{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}</span>
                   </Tooltip>
                   <template v-else>
-                    {{ formatOperationAmount(Math.abs(getOperationDisplayAmount(op)), getOperationCurrency(op)) }}
+                    {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
                   </template>
                 </td>
                 <td class="text-right num-font">{{ getOperationCurrency(op) }}</td>
