@@ -1,9 +1,9 @@
 <script setup>
 import { ref, computed, provide } from 'vue'
-import { LANDING_DASH_REVEAL_KEY } from '../../../constants/landingDashboardReveal'
-import { WidgetContainer } from '../../widgets/base'
-import { TotalCapitalWidget, DividendsWidget, ReturnWidget } from '../../widgets/stats'
-import { PortfolioChartWidget, AssetAllocationWidget, PayoutsChartWidget } from '../../widgets/charts'
+import { LANDING_DASH_REVEAL_KEY } from '../../../../constants/landingDashboardReveal'
+import { WidgetContainer } from '../../../../components/widgets/base'
+import { TotalCapitalWidget, DividendsWidget, ReturnWidget } from '../../../../components/widgets/stats'
+import { PortfolioChartWidget, AssetAllocationWidget, PayoutsChartWidget } from '../../../../components/widgets/charts'
 import {
   landingDashboardTotalCapital,
   landingDashboardDividends,
@@ -11,7 +11,7 @@ import {
   landingDashboardPortfolioChart,
   landingDashboardAssetAllocation,
   landingDashboardPayouts
-} from '../../../content/landingDashboardMock'
+} from '../../../content/home/landingDashboardMock'
 
 const dashboardReveal = ref(true)
 provide(LANDING_DASH_REVEAL_KEY, dashboardReveal)

@@ -1,17 +1,17 @@
 import { ShieldCheck, Lock, Zap, Eye } from 'lucide-vue-next'
-import * as landingData from '../content/landingData'
+import * as landingData from '../content/home/landingData'
 
 const ICONS = {
   ShieldCheck,
   Lock,
   Zap,
-  Eye
+  Eye,
 }
 
 function mapIcons(items) {
   return items.map((item) => ({
     ...item,
-    icon: ICONS[item.icon]
+    icon: ICONS[item.icon],
   }))
 }
 
@@ -22,6 +22,6 @@ export function useLandingContent() {
     steps: landingData.steps,
     securityTabs: mapIcons(landingData.securityTabs),
     pricingFeatures: landingData.pricingFeatures,
-    faq: landingData.faq
+    faq: landingData.faq,
   }
 }

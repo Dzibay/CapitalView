@@ -54,8 +54,7 @@ function beforeEnterHomeAuthed(to, from, next) {
   next({ path: getSavedAppPathOrDefault(), replace: true })
 }
 
-// Lazy loading: главная и логин — eager (быстрая первая загрузка)
-const Home = () => import('../views/Home.vue');
+// Lazy loading: логин — eager (быстрая первая загрузка)
 const Login = () => import('../views/Login.vue');
 
 // Остальные маршруты — lazy (загружаются по требованию)
@@ -75,16 +74,147 @@ const AdminMessages = () => import('../views/AdminMessages.vue');
 const AdminUserPortfolios = () => import('../views/AdminUserPortfolios.vue');
 const ErrorStatus = () => import('../views/errors/ErrorStatus.vue');
 const NotFound404 = () => import('../views/errors/NotFound404.vue');
+const SitePublicLayout = () => import('../site/layouts/SitePublicLayout.vue');
+
+const publicIndexMeta = { robots: 'index, follow' };
 
 const routes = [
   {
     path: '/',
-    component: Home,
-    beforeEnter: beforeEnterHomeAuthed,
-    meta: {
-      title: 'CapitalView — учёт инвестиций, аналитика портфеля и дивидендный календарь',
-      robots: 'index, follow'
-    }
+    component: SitePublicLayout,
+    children: [
+      {
+        path: '',
+        name: 'site-home',
+        component: () => import('../site/home/HomePage.vue'),
+        beforeEnter: beforeEnterHomeAuthed,
+        meta: {
+          title: 'CapitalView — учёт инвестиций, аналитика портфеля и дивидендный календарь',
+          ...publicIndexMeta,
+        },
+      },
+      { path: 'features', redirect: { name: 'site-feature-portfolio' } },
+      {
+        path: 'features/portfolio',
+        name: 'site-feature-portfolio',
+        component: () => import('../site/pages/FeaturePortfolio.vue'),
+        meta: {
+          title: 'Учёт инвестиционного портфеля — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'features/analytics',
+        name: 'site-feature-analytics',
+        component: () => import('../site/pages/FeatureAnalytics.vue'),
+        meta: {
+          title: 'Аналитика и доходность портфеля — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'features/dividends',
+        name: 'site-feature-dividends',
+        component: () => import('../site/pages/FeatureDividends.vue'),
+        meta: {
+          title: 'Дивиденды и купоны — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'features/transactions',
+        name: 'site-feature-transactions',
+        component: () => import('../site/pages/FeatureTransactions.vue'),
+        meta: {
+          title: 'Сделки и история операций — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      { path: 'investments', redirect: { name: 'site-investment-stocks' } },
+      {
+        path: 'investments/stocks',
+        name: 'site-investment-stocks',
+        component: () => import('../site/pages/InvestmentStocks.vue'),
+        meta: {
+          title: 'Учёт инвестиций в акции — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'investments/bonds',
+        name: 'site-investment-bonds',
+        component: () => import('../site/pages/InvestmentBonds.vue'),
+        meta: {
+          title: 'Учёт инвестиций в облигации — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'investments/securities',
+        name: 'site-investment-securities',
+        component: () => import('../site/pages/InvestmentSecurities.vue'),
+        meta: {
+          title: 'Учёт ценных бумаг — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      { path: 'compare', redirect: { name: 'site-compare-apps' } },
+      {
+        path: 'compare/investment-tracking-apps',
+        name: 'site-compare-apps',
+        component: () => import('../site/pages/CompareApps.vue'),
+        meta: {
+          title: 'Сравнение сервисов учёта инвестиций — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      { path: 'guides', redirect: { name: 'site-guide-excel' } },
+      {
+        path: 'guides/investment-tracking-excel',
+        name: 'site-guide-excel',
+        component: () => import('../site/pages/GuideExcel.vue'),
+        meta: {
+          title: 'Учёт инвестиций в Excel — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'pricing',
+        name: 'site-pricing',
+        component: () => import('../site/pages/PricingPage.vue'),
+        meta: { title: 'Тарифы — CapitalView', ...publicIndexMeta },
+      },
+      {
+        path: 'free',
+        name: 'site-free',
+        component: () => import('../site/pages/FreePage.vue'),
+        meta: { title: 'Бесплатный учёт инвестиций — CapitalView', ...publicIndexMeta },
+      },
+      {
+        path: 'templates',
+        name: 'site-templates',
+        component: () => import('../site/pages/TemplatesPage.vue'),
+        meta: {
+          title: 'Шаблоны для учёта инвестиций — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'blog',
+        name: 'site-blog',
+        component: () => import('../site/pages/BlogIndex.vue'),
+        meta: { title: 'Блог — CapitalView', ...publicIndexMeta },
+      },
+      {
+        path: 'labs/header-style',
+        name: 'site-header-style-lab',
+        component: () => import('../site/pages/HeaderStyleLab.vue'),
+        meta: {
+          title: 'Варианты шапки и кнопок (черновик) — CapitalView',
+          robots: 'noindex, nofollow',
+        },
+      },
+    ],
   },
   {
     path: '/privacy',

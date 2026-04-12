@@ -1,5 +1,5 @@
 <script setup>
-import FaqAccordion from '../../faq/FaqAccordion.vue'
+import FaqAccordion from '../../../../components/faq/FaqAccordion.vue'
 
 defineProps({
   items: { type: Array, required: true },

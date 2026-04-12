@@ -33,10 +33,8 @@ export function useLandingReveal(rootRef) {
       })
     }, OBSERVER_OPTIONS)
 
-    // Начальная разметка
     observeAll(root)
 
-    // Важно для async-рендера секций: элементы .reveal могут появляться позже.
     mutationObserver?.disconnect()
     mutationObserver = new MutationObserver(() => observeAll(root))
     mutationObserver.observe(root, { childList: true, subtree: true })

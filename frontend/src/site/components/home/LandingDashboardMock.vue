@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, provide, nextTick } from 'vue'
-import { LANDING_DASH_REVEAL_KEY } from '../../constants/landingDashboardReveal'
+import { LANDING_DASH_REVEAL_KEY } from '../../../constants/landingDashboardReveal'
 import {
   LayoutDashboard,
   BarChart3,
@@ -10,15 +10,15 @@ import {
   Settings,
   Bell
 } from 'lucide-vue-next'
-import { WidgetContainer } from '../widgets/base'
+import { WidgetContainer } from '../../../components/widgets/base'
 import {
   TotalCapitalWidget,
   PortfolioProfitWidget,
   DividendsWidget,
   ReturnWidget,
   ConsolidatedStatsWidget
-} from '../widgets/stats'
-import { PortfolioChartWidget, AssetAllocationWidget } from '../widgets/charts'
+} from '../../../components/widgets/stats'
+import { PortfolioChartWidget, AssetAllocationWidget } from '../../../components/widgets/charts'
 import {
   landingDashboardTotalCapital,
   landingDashboardProfit,
@@ -27,7 +27,7 @@ import {
   landingDashboardPortfolioChart,
   landingDashboardAssetAllocation,
   landingDashboardUserPreview
-} from '../../content/landingDashboardMock'
+} from '../../content/home/landingDashboardMock'
 
 const props = defineProps({
   /**
