@@ -25,6 +25,7 @@ export const API_ENDPOINTS = {
     VERSION: '/reference/version',
     SEARCH_ASSETS: '/reference/assets/search',
     ASSET_META: (id) => `/reference/assets/${id}`,
+    ASSET_SPLITS: (id) => `/reference/assets/${id}/splits`,
   },
   PORTFOLIO: {
     BASE: '/portfolios/',

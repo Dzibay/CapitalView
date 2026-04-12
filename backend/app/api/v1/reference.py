@@ -11,6 +11,7 @@ from app.domain.services.reference_service import (
     get_reference_fingerprint_str,
     search_reference_assets,
     get_reference_asset_meta,
+    get_reference_asset_splits,
 )
 from app.utils.response import success_response
 
@@ -36,6 +37,18 @@ async def reference_asset_meta_route(
     if not meta:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Актив не найден")
     return ORJSONResponse(content=success_response(data={"asset": meta}))
+
+
+@router.get("/assets/{asset_id}/splits")
+async def reference_asset_splits_route(
+    asset_id: int,
+    _user: dict = Depends(get_current_user),
+):
+    meta = await get_reference_asset_meta(asset_id)
+    if not meta:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Актив не найден")
+    splits = await get_reference_asset_splits(asset_id)
+    return ORJSONResponse(content=success_response(data={"splits": splits}))
 
 
 @router.get("/version")

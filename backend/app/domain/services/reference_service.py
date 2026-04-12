@@ -267,6 +267,27 @@ async def get_reference_asset_meta(asset_id: int) -> dict | None:
     return _parse_asset_meta_rpc(await rpc_async("get_reference_asset_meta", {"p_asset_id": aid}))
 
 
+def _parse_asset_splits_rpc(raw) -> list:
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            return []
+    return []
+
+
+async def get_reference_asset_splits(asset_id: int) -> list:
+    if not asset_id:
+        return []
+    raw = await rpc_async("get_asset_splits", {"p_asset_id": int(asset_id)})
+    return _parse_asset_splits_rpc(raw)
+
+
 async def get_reference_data_cached():
     if redis_sync_available():
         if not redis_sync_get(REF_FINGERPRINT_KEY):

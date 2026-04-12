@@ -43,6 +43,17 @@ export async function fetchReferenceAssetMeta(assetId, options = {}) {
   return asset ?? null
 }
 
+/**
+ * Сплиты системного актива (asset_splits): trade_date, ratio_before, ratio_after.
+ */
+export async function fetchAssetSplits(assetId) {
+  const id = Number(assetId)
+  if (!id) return []
+  const res = await apiClient.get(API_ENDPOINTS.REFERENCE.ASSET_SPLITS(id))
+  const splits = res.data?.splits
+  return Array.isArray(splits) ? splits : []
+}
+
 /** Один Promise на параллельные fetchReferenceData (Strict Mode / layout + вид до конца загрузки). */
 let referenceFetchInFlight = null
 
