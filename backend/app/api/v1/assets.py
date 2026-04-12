@@ -5,7 +5,8 @@ API endpoints для работы с активами.
 from fastapi import APIRouter, Query, HTTPException, Depends
 from app.domain.services.assets_service import (
     delete_asset, create_asset, get_asset_info, get_portfolio_asset_info,
-    move_asset_to_portfolio, get_asset_daily_values, get_asset_in_all_portfolios
+    get_asset_detail_for_user, move_asset_to_portfolio, get_asset_daily_values,
+    get_asset_in_all_portfolios,
 )
 from app.domain.services.asset_price_service import (
     add_asset_price, add_asset_prices_batch, get_asset_price_history
@@ -174,6 +175,26 @@ async def get_asset_price_history_route(
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail=result.get("error", "Ошибка при получении истории цен")
+        )
+
+    return success_response(data=result)
+
+
+@router.get("/{asset_id}/detail")
+async def get_asset_detail_page_route(
+    asset_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """Детальная страница актива по asset_id (позиции и метаданные в разрезе user_id)."""
+    await check_asset_access(asset_id, user["id"])
+
+    result = await get_asset_detail_for_user(asset_id, user["id"])
+
+    if not result.get("success"):
+        status_code = HTTPStatus.NOT_FOUND if "не найден" in result.get("error", "") else HTTPStatus.INTERNAL_SERVER_ERROR
+        raise HTTPException(
+            status_code=status_code,
+            detail=result.get("error", "Ошибка при получении данных об активе")
         )
 
     return success_response(data=result)

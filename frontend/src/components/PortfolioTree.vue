@@ -160,9 +160,31 @@ const getDividendYield5Y = (asset) => {
   return (avgDividends / asset.last_price) * 100
 }
 
+/**
+ * ID строки в таблице assets (глобальный актив). Маршрут /assets/:id — только он.
+ * portfolio_asset_id сюда не подставлять: это другая сущность (позиция в портфеле).
+ */
+function resolveAssetIdForDetailRoute(asset) {
+  if (!asset || typeof asset !== "object") return null
+  const raw = asset.asset_id ?? asset.assetId
+  if (raw === null || raw === undefined || raw === "") return null
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 function goToAsset(asset) {
   if (props.readOnly) return
-  router.push(`/assets/${asset.portfolio_asset_id}`)
+  const id = resolveAssetIdForDetailRoute(asset)
+  if (id == null) {
+    if (import.meta.env.DEV) {
+      console.warn(
+        "[PortfolioTree] Пропуск перехода: нет валидного asset_id (ожидается поле asset_id с assets.id)",
+        asset
+      )
+    }
+    return
+  }
+  router.push(`/assets/${id}`)
 }
 
 function mobileAssetValueRub(asset) {
