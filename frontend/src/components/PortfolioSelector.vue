@@ -18,9 +18,12 @@ defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const isMobileBar = useMediaMaxWidth(768)
-const selectMinWidth = computed(() =>
-  isMobileBar.value ? 'min(200px, calc(100vw - 128px))' : '200px'
-)
+const isNarrowMobile = useMediaMaxWidth(480)
+/** Ширина совпадает с фиксированной колонкой `.header-mobile-end` в AppHeader */
+const selectMinWidth = computed(() => {
+  if (!isMobileBar.value) return '200px'
+  return isNarrowMobile.value ? '124px' : '148px'
+})
 
 const handleChange = (value) => {
   emit('update:modelValue', value ? Number(value) : null)

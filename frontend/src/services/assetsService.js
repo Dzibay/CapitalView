@@ -36,6 +36,12 @@ export default {
     return res.data;
   },
 
+  /** Детальная страница: данные по asset_id и текущему пользователю (позиции, графики, выплаты). */
+  async getAssetDetailPage(asset_id) {
+    const res = await apiClient.get(API_ENDPOINTS.ASSETS.GET_DETAIL(asset_id));
+    return res.data;
+  },
+
   async getAssetPriceHistory(asset_id, start_date = null, end_date = null, limit = 100000) {
     const params = { limit };
     if (start_date) params.start_date = start_date;

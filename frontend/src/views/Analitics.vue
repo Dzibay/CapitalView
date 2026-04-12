@@ -1,6 +1,5 @@
 <script setup>
 import { onMounted } from 'vue'
-import PortfolioSelector from '../components/PortfolioSelector.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
@@ -62,15 +61,7 @@ onMounted(async () => {
     <PageHeader 
       title="Финансовая аналитика"
       subtitle="Сводные показатели"
-    >
-      <template #actions>
-        <PortfolioSelector 
-          :portfolios="portfolios"
-          :modelValue="uiStore.selectedPortfolioId"
-          @update:modelValue="uiStore.setSelectedPortfolioId"
-        />
-      </template>
-    </PageHeader>
+    />
 
     <LoadingState v-if="isLoadingAnalytics" message="Загрузка аналитики..." />
 

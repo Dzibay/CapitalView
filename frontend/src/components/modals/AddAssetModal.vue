@@ -54,42 +54,14 @@
               <TrendingUp :size="16" class="label-icon" />
               Актив
             </label>
-            <div class="search-wrapper">
-              <Search :size="16" class="search-icon" />
-              <input
-                type="text"
-                v-model="searchQuery"
-                placeholder="Поиск по названию или тикеру (от 2 символов)..."
-                @input="onAssetSearchInput"
-                required
-                class="form-input search-input"
-              />
-              <ul
-                v-if="searchQuery.trim().length >= 2 && !form.asset_id"
-                class="dropdown"
-              >
-                <li v-if="searchLoading" class="create-new">
-                  <Loader2 :size="20" class="empty-icon spinner-icon" />
-                  <span>Поиск…</span>
-                </li>
-                <template v-else>
-                  <li
-                    v-for="a in searchResults"
-                    :key="a.id"
-                    @click="selectAsset(a)"
-                  >
-                    <div class="asset-info-row">
-                      <span class="asset-name">{{ a.name }}</span>
-                      <span class="asset-ticker">{{ a.ticker || '—' }}</span>
-                    </div>
-                  </li>
-                  <li v-if="searchResults.length === 0" class="create-new">
-                    <Search :size="20" class="empty-icon" />
-                    <span>Актив не найден. Выберите «Кастомный» для создания нового.</span>
-                  </li>
-                </template>
-              </ul>
-            </div>
+            <ReferenceAssetSearch
+              v-model="searchQuery"
+              variant="modal"
+              required
+              :locked="!!form.asset_id"
+              @user-input="onAssetSearchUserInput"
+              @select="selectAsset"
+            />
             <div v-if="form.asset_id" class="selected-asset">
               <CheckCircle2 :size="16" class="check-icon" />
               <span>Выбран: <strong>{{ searchQuery }}</strong></span>
@@ -144,6 +116,24 @@
             <span class="toggle-label-text">
               Использовать рыночную цену на дату добавления
             </span>
+          </div>
+
+          <div
+            v-if="assetTypeChoice === 'system' && hasAssetSplits"
+            class="toggle-wrapper split-price-toggle"
+          >
+            <ToggleSwitch
+              :model-value="adjustPriceForSplitHistory"
+              @update:model-value="onAdjustSplitPriceToggle"
+            />
+            <div class="toggle-content toggle-content--stack">
+              <span class="toggle-label-text">
+                Учитывать сплиты при расчёте цены
+              </span>
+              <small class="form-hint block split-price-hint">
+                История цены с учётом сплитов. Включите, если вводите количество до сплита.
+              </small>
+            </div>
           </div>
           
           <div v-if="assetTypeChoice === 'custom' && isCustomDepositType" class="form-row form-row-single">
@@ -248,10 +238,11 @@ import {
 import { Button, ToggleSwitch, DateInput } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
 import FormInput from '../base/FormInput.vue'
+import ReferenceAssetSearch from '../ReferenceAssetSearch.vue'
 import assetsService from '../../services/assetsService'
 import {
-  searchReferenceAssets,
   fetchReferenceAssetMeta,
+  fetchAssetSplits,
 } from '../../services/referenceService'
 import { useDashboardStore } from '../../stores/dashboard.store'
 import { useTransactionsStore } from '../../stores/transactions.store'
@@ -284,11 +275,7 @@ const form = reactive({ ...initialFormState })
 const saving = ref(false)           // индикатор сохранения
 const searchQuery = ref("")
 const assetTypeChoice = ref("system") // 'system' или 'custom' - по умолчанию системный
-const searchResults = ref([])
-const searchLoading = ref(false)
 const selectedAssetMeta = ref(null)
-let searchDebounceTimer = null
-let searchRequestSeq = 0
 
 // Использование рыночной цены для системных активов
 const useMarketPrice = ref(true) // Переключатель для автоматической загрузки рыночной цены (включен по умолчанию)
@@ -297,6 +284,13 @@ const loadingPrice = ref(false) // Состояние загрузки рыно�
 const priceHistoryCache = ref(null) // Кэш истории цен актива
 const isLoadingHistory = ref(false) // Флаг для предотвращения двойной загрузки истории
 const minDate = ref(null) // Минимальная дата (первая цена в истории)
+
+/** Сплиты выбранного актива (из asset_splits); для подстройки цены из истории */
+const assetSplits = ref([])
+/** Если true — цена из истории делится на Π(ratio_before/ratio_after) по сплитам после даты котировки */
+const adjustPriceForSplitHistory = ref(false)
+
+const hasAssetSplits = computed(() => assetSplits.value.length > 0)
 
 // Галочка для создания операции пополнения на сумму покупки (по умолчанию включена)
 const createDepositOperation = ref(true)
@@ -381,22 +375,69 @@ watch(
   { immediate: true }
 )
 
-function onAssetSearchInput() {
+function onAssetSearchUserInput() {
   form.asset_id = null
   selectedAssetMeta.value = null
 }
 
+function toYmd(raw) {
+  if (raw == null || raw === '') return ''
+  const s = String(raw)
+  return s.includes('T') ? s.split('T')[0] : s.slice(0, 10)
+}
+
+/**
+ * Произведение (ratio_before/ratio_after) по сплитам строго после даты котировки.
+ * Согласовано с расчётом стоимости позиции в БД (приведённая цена → номинация на дату).
+ */
+function splitFactorAfterQuoteDate(splits, quoteDateRaw) {
+  const qd = toYmd(quoteDateRaw)
+  if (!qd || !splits?.length) return 1
+  let f = 1
+  for (const s of splits) {
+    const sd = toYmd(s.trade_date)
+    if (sd && sd > qd) {
+      const rb = Number(s.ratio_before)
+      const ra = Number(s.ratio_after)
+      if (rb > 0 && ra > 0) f *= rb / ra
+    }
+  }
+  return f
+}
+
+function applySplitToHistoricalPrice(price, quoteTradeDate) {
+  if (!adjustPriceForSplitHistory.value || !assetSplits.value.length) return price
+  const p = Number(price)
+  if (!Number.isFinite(p) || p <= 0) return price
+  const factor = splitFactorAfterQuoteDate(assetSplits.value, quoteTradeDate)
+  if (!Number.isFinite(factor) || factor <= 0) return p
+  return p / factor
+}
+
+async function onAdjustSplitPriceToggle(value) {
+  adjustPriceForSplitHistory.value = value
+  if (
+    useMarketPrice.value &&
+    assetTypeChoice.value === 'system' &&
+    form.asset_id &&
+    form.date &&
+    hasAssetSplits.value
+  ) {
+    await loadMarketPrice(true)
+    lastMarketPrice.value = form.average_price
+  }
+}
+
 const resetAssetFields = () => {
-    clearTimeout(searchDebounceTimer)
     form.asset_id = null
     form.name = ''
     form.ticker = ''
     form.asset_type_id = null
     form.currency = null
     searchQuery.value = ''
-    searchResults.value = []
-    searchLoading.value = false
     selectedAssetMeta.value = null
+    assetSplits.value = []
+    adjustPriceForSplitHistory.value = false
 }
 
 const setAssetTypeChoice = (choice) => {
@@ -456,30 +497,6 @@ const submitForm = async () => {
   }
 }
 
-watch(searchQuery, () => {
-  if (form.asset_id) return
-  clearTimeout(searchDebounceTimer)
-  const q = searchQuery.value.trim()
-  if (q.length < 2) {
-    searchResults.value = []
-    searchLoading.value = false
-    return
-  }
-  searchLoading.value = true
-  searchDebounceTimer = setTimeout(async () => {
-    const seq = ++searchRequestSeq
-    try {
-      const items = await searchReferenceAssets(q, 25)
-      if (seq === searchRequestSeq) searchResults.value = items
-    } catch (e) {
-      console.error(e)
-      if (seq === searchRequestSeq) searchResults.value = []
-    } finally {
-      if (seq === searchRequestSeq) searchLoading.value = false
-    }
-  }, 280)
-})
-
 const selectAsset = async (asset) => {
   selectedAssetMeta.value = asset
   form.asset_id = asset.id
@@ -495,14 +512,25 @@ const selectAsset = async (asset) => {
   priceHistoryCache.value = null
   minDate.value = null
   lastMarketPrice.value = null
+  assetSplits.value = []
+  adjustPriceForSplitHistory.value = false
   
   // Загружаем историю цен для системного актива
   if (asset.user_id === null || asset.is_custom === false) {
+    try {
+      assetSplits.value = await fetchAssetSplits(asset.id)
+    } catch (e) {
+      console.error(e)
+      assetSplits.value = []
+    }
+    adjustPriceForSplitHistory.value = assetSplits.value.length > 0
+
     await loadPriceHistoryForDateRestriction()
     // Загружаем рыночную цену по умолчанию, если тумблер включен
     if (useMarketPrice.value && form.date) {
       await loadPriceHistory()
       await loadMarketPrice(true)
+      lastMarketPrice.value = form.average_price
     }
   }
 }
@@ -568,7 +596,7 @@ async function getAssetPriceOnDate(assetId, targetDate, cachedHistory = null) {
         if (priceDate <= targetDateNormalized) {
           const price = parseFloat(priceRecord.price)
           if (price && price > 0) {
-            return price
+            return applySplitToHistoricalPrice(price, priceRecord.trade_date)
           }
         }
       }
@@ -777,6 +805,10 @@ watch(() => form.asset_id, async (newAssetId, oldAssetId) => {
   if (newAssetId !== oldAssetId) {
     priceHistoryCache.value = null
     minDate.value = null
+    if (!newAssetId) {
+      assetSplits.value = []
+      adjustPriceForSplitHistory.value = false
+    }
     // Если переключатель включен и актив изменился, загружаем новую историю
     if (useMarketPrice.value && assetTypeChoice.value === 'system' && newAssetId && form.date) {
       loadPriceHistory().then(() => {
@@ -792,6 +824,8 @@ watch(assetTypeChoice, (newChoice) => {
     useMarketPrice.value = false
     priceHistoryCache.value = null
     minDate.value = null
+    assetSplits.value = []
+    adjustPriceForSplitHistory.value = false
   }
 })
 
@@ -869,114 +903,14 @@ setAssetTypeChoice('system')
   margin-top: 0;
 }
 
-.asset-search-block > .search-wrapper {
-  margin-bottom: 0;
+.asset-search-block > :deep(.ref-asset-search) {
   margin-top: 0;
+  margin-bottom: 0;
 }
 
 .asset-search-block > .selected-asset {
   margin-top: 10px;
   margin-bottom: 0;
-}
-
-.search-wrapper {
-  position: relative;
-}
-
-.search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: #9ca3af;
-  z-index: 1;
-}
-
-.search-input {
-  padding-left: 36px !important;
-}
-
-.dropdown {
-  position: absolute;
-  background: white;
-  border: 1px solid #e5e7eb;
-  width: 100%;
-  max-height: 180px;
-  overflow-y: auto;
-  z-index: 10;
-  margin-top: 4px;
-  padding: 4px 0;
-  list-style: none;
-  border-radius: 10px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.12), 0 4px 10px rgba(0,0,0,0.08);
-  animation: slideDown 0.2s ease;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.dropdown li {
-  padding: 12px 14px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  border-left: 3px solid transparent;
-}
-
-.asset-info-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-}
-
-.dropdown li:hover {
-  background: #f3f4f6;
-  border-left-color: #3b82f6;
-  padding-left: 11px;
-}
-
-.asset-name {
-  font-weight: 500;
-  color: #111827;
-  font-size: 13px;
-}
-
-.asset-ticker {
-  font-size: 12px;
-  color: #6b7280;
-  background: #f3f4f6;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-.dropdown .create-new {
-  color: #9ca3af;
-  padding: 16px 14px;
-  cursor: default;
-  text-align: center;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex-direction: column;
-}
-
-.empty-icon {
-  color: #d1d5db;
-  opacity: 0.6;
 }
 
 .selected-asset {
@@ -1158,6 +1092,22 @@ setAssetTypeChoice('system')
   color: #374151;
   font-weight: 500;
   flex: 1;
+}
+
+.toggle-content--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.split-price-hint {
+  margin-top: 0;
+  line-height: 1.35;
+  max-width: 100%;
+}
+
+.split-price-toggle {
+  align-items: flex-start;
 }
 
 .toggle-amount {

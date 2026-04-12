@@ -44,7 +44,12 @@ const router = useRouter()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 
-const portfolioAssetId = computed(() => parseInt(route.params.id))
+const routeAssetId = computed(() => {
+  const n = parseInt(route.params.id, 10)
+  return Number.isFinite(n) ? n : null
+})
+/** portfolio_asset_id, для которого пришли transactions/daily_values в первом ответе detail */
+const initialDetailPortfolioAssetId = ref(null)
 const isLoading = ref(false)
 const assetInfo = ref(null)
 const priceHistory = ref([])
@@ -57,11 +62,38 @@ const selectedChartType = ref('position') // 'position' | 'quantity' | 'price'
 const showMinMax = ref(false)
 const selectedTab = ref('general') // 'general' | 'analytics' | 'dividends'
 
-const tabs = [
+const tabDefinitions = [
   { id: 'general', label: 'Общее', icon: LayoutDashboard },
   { id: 'analytics', label: 'Аналитика', icon: BarChart3 },
   { id: 'dividends', label: 'Дивиденды', icon: Coins }
 ]
+
+/** Есть позиция хотя бы в одном портфеле — иначе аналитика по портфелю нечего показывать (см. get_asset_detail_for_user: portfolios = []). */
+const hasUserPositionAnalytics = computed(
+  () => Array.isArray(assetInAllPortfolios.value) && assetInAllPortfolios.value.length > 0
+)
+
+/** Вкладка выплат: только если в ответе есть история выплат по активу. */
+const hasPayoutHistoryForTab = computed(() => {
+  if (!assetInfo.value) return false
+  const raw = assetInfo.value.all_payouts ?? assetInfo.value.payouts
+  return Array.isArray(raw) && raw.length > 0
+})
+
+const visibleTabs = computed(() =>
+  tabDefinitions.filter((tab) => {
+    if (tab.id === 'analytics') return hasUserPositionAnalytics.value
+    if (tab.id === 'dividends') return hasPayoutHistoryForTab.value
+    return true
+  })
+)
+
+watch(visibleTabs, (tabs) => {
+  const ids = tabs.map((t) => t.id)
+  if (!ids.includes(selectedTab.value)) {
+    selectedTab.value = 'general'
+  }
+})
 
 const analyticsChartMetric = ref('position') // 'position' | 'quantity'
 
@@ -99,14 +131,12 @@ const portfolios = computed(() => dashboardStore.portfolios ?? [])
 
 // Поиск портфеля и актива в нем
 const portfolioAsset = computed(() => {
-  if (!assetInfo.value || !portfolios.value.length) return null
-  
+  if (!assetInfo.value?.asset_id || !portfolios.value.length) return null
+  const aid = assetInfo.value.asset_id
   for (const portfolio of portfolios.value) {
     if (portfolio.assets) {
-      const asset = portfolio.assets.find(a => a.portfolio_asset_id === portfolioAssetId.value)
-      if (asset) {
-        return { asset, portfolio }
-      }
+      const asset = portfolio.assets.find(a => a.asset_id === aid)
+      if (asset) return { asset, portfolio }
     }
   }
   return null
@@ -122,20 +152,29 @@ const portfolioOptions = computed(() => {
 
 // Выбранный портфель из списка всех портфелей
 const selectedPortfolioAsset = computed(() => {
+  if (!assetInAllPortfolios.value.length) return null
   if (!selectedPortfolioId.value) return assetInAllPortfolios.value[0] || null
   return assetInAllPortfolios.value.find(p => p.portfolio_id === selectedPortfolioId.value) || assetInAllPortfolios.value[0] || null
 })
 
+/** Для шапки (цена): выбранная позиция или «голый» актив без позиций в портфелях */
+const overviewAsset = computed(() => selectedPortfolioAsset.value || assetInfo.value)
+
 // Загрузка информации о портфельном активе (оптимизированная версия)
 async function loadAssetInfo() {
-  if (!portfolioAssetId.value) return
-  
+  if (routeAssetId.value == null) return
+
+  selectedPortfolioId.value = null
+  initialDetailPortfolioAssetId.value = null
+  portfolioTransactions.value = {}
+
   isLoading.value = true
   try {
-    const result = await assetsService.getPortfolioAssetInfo(portfolioAssetId.value)
+    const result = await assetsService.getAssetDetailPage(routeAssetId.value)
     if (result.success && result.portfolio_asset) {
       assetInfo.value = result.portfolio_asset
-      
+      initialDetailPortfolioAssetId.value = result.portfolio_asset.id ?? null
+
       // Получаем информацию о портфелях из того же запроса
       if (result.portfolios) {
         assetInAllPortfolios.value = result.portfolios
@@ -151,10 +190,10 @@ async function loadAssetInfo() {
             selectedPortfolioId.value = result.portfolios[0].portfolio_id
           }
         }
-        
-        // Сохраняем транзакции для текущего portfolio_asset_id
-        if (result.portfolio_asset.transactions) {
-          portfolioTransactions.value[portfolioAssetId.value] = result.portfolio_asset.transactions
+
+        // Сохраняем транзакции для portfolio_asset_id из ответа detail
+        if (result.portfolio_asset.id != null && result.portfolio_asset.transactions) {
+          portfolioTransactions.value[result.portfolio_asset.id] = result.portfolio_asset.transactions
         }
         
         // Загружаем транзакции для всех портфелей
@@ -261,8 +300,8 @@ async function loadPriceHistory(assetId) {
 
 // Загрузка истории стоимости позиции из portfolio_asset_daily_values
 async function loadAssetDailyValues() {
-  // Используем portfolio_asset_id из выбранного портфеля или текущего актива
-  const targetPortfolioAssetId = selectedPortfolioAsset.value?.portfolio_asset_id || portfolioAssetId.value
+  const targetPortfolioAssetId =
+    selectedPortfolioAsset.value?.portfolio_asset_id ?? initialDetailPortfolioAssetId.value
   
   if (!targetPortfolioAssetId) {
     assetDailyValues.value = []
@@ -297,8 +336,8 @@ const selectedPortfolioTransactions = computed(() => {
     return portfolioTransactions.value[selectedPortfolioAssetId]
   }
   
-  // Если выбранный портфель совпадает с текущим, используем транзакции из запроса
-  if (selectedPortfolioAssetId === portfolioAssetId.value) {
+  // Если выбранный портфель совпадает с тем, для которого загружен первичный detail
+  if (selectedPortfolioAssetId === initialDetailPortfolioAssetId.value) {
     return assetInfo.value?.transactions || []
   }
   
@@ -383,7 +422,11 @@ const chartData = computed(() => {
 
   const asset = selectedPortfolioAsset.value
   const leverage = asset.leverage || 1
-  const currencyRate = asset.currency_rate_to_rub || portfolioAsset.value?.asset.currency_rate_to_rub || 1
+  const currencyRate =
+    asset.currency_rate_to_rub ||
+    portfolioAsset.value?.asset?.currency_rate_to_rub ||
+    assetInfo.value?.currency_rate_to_rub ||
+    1
 
   let filteredPrices = priceHistory.value
   if (firstTransactionDate.value && selectedChartType.value !== 'price') {
@@ -592,7 +635,11 @@ const positionChartData = computed(() => {
 
   const asset = selectedPortfolioAsset.value
   const leverage = asset.leverage || 1
-  const currencyRate = asset.currency_rate_to_rub || portfolioAsset.value?.asset.currency_rate_to_rub || 1
+  const currencyRate =
+    asset.currency_rate_to_rub ||
+    portfolioAsset.value?.asset?.currency_rate_to_rub ||
+    assetInfo.value?.currency_rate_to_rub ||
+    1
 
   let filteredPrices = priceHistory.value
   if (firstTransactionDate.value) {
@@ -876,7 +923,7 @@ const aggregatedPortfolioMetrics = computed(() => {
 const headerUnitPriceDisplay = computed(() => {
   const pa = selectedPortfolioAsset.value
   const a = portfolioAsset.value?.asset
-  const src = pa || a
+  const src = pa || a || assetInfo.value
   if (!src) return '-'
   const u = effectiveUnitPriceInCurrency(src)
   if (u === 0 && src.last_price == null && !(Number(src.accrued_coupon) > 0)) return '-'
@@ -1194,12 +1241,13 @@ const profitLossItems = computed(() => {
   ]
 })
 
-// Изменение цены за день в процентах для выбранного портфеля
+// Изменение цены за день в процентах (выбранная позиция или актив без позиций)
 const selectedPriceChangePercent = computed(() => {
-  if (!selectedPortfolioAsset.value || !selectedPortfolioAsset.value.last_price) return 0
-  
-  const lastPrice = selectedPortfolioAsset.value.last_price
-  const dailyChange = selectedPortfolioAsset.value.daily_change || 0
+  const oa = overviewAsset.value
+  if (!oa || !oa.last_price) return 0
+
+  const lastPrice = oa.last_price
+  const dailyChange = oa.daily_change || 0
   
   if (lastPrice === 0) return 0
   
@@ -1763,7 +1811,7 @@ async function handlePortfolioChange(portfolioId) {
   <div class="asset-detail-page">
     <LoadingState v-if="isLoading || uiStore.loading" message="Загрузка данных об активе..." />
 
-    <PageLayout v-else-if="assetInfo && portfolioAsset">
+    <PageLayout v-else-if="assetInfo">
       <!-- Заголовок: кнопка назад слева, выбор портфеля справа -->
       <div class="asset-header">
         <button class="btn-back" @click="router.back()">
@@ -1772,7 +1820,7 @@ async function handlePortfolioChange(portfolioId) {
           </svg>
           Назад
         </button>
-        <div class="header-portfolio-selector">
+        <div v-if="portfolioOptions.length" class="header-portfolio-selector">
           <CustomSelect
             :modelValue="selectedPortfolioId || (assetInAllPortfolios[0]?.portfolio_id)"
             :options="portfolioOptions"
@@ -1792,11 +1840,14 @@ async function handlePortfolioChange(portfolioId) {
       <div class="asset-overview-block">
         <div class="asset-overview-top">
           <div class="asset-main-info">
-            <h1 class="asset-name">{{ portfolioAsset.asset.name }}</h1>
+            <h1 class="asset-name">{{ portfolioAsset?.asset?.name ?? assetInfo.name }}</h1>
             <div class="asset-meta">
-              <span class="meta-item ticker">{{ portfolioAsset.asset.ticker }}</span>
-              <span v-if="portfolioAsset.asset.leverage && portfolioAsset.asset.leverage > 1" class="meta-item">
-                ×{{ portfolioAsset.asset.leverage }}
+              <span class="meta-item ticker">{{ portfolioAsset?.asset?.ticker ?? assetInfo.ticker }}</span>
+              <span
+                v-if="(portfolioAsset?.asset?.leverage ?? assetInfo.leverage) > 1"
+                class="meta-item"
+              >
+                ×{{ portfolioAsset?.asset?.leverage ?? assetInfo.leverage }}
               </span>
             </div>
           </div>
@@ -1805,23 +1856,23 @@ async function handlePortfolioChange(portfolioId) {
               {{ headerUnitPriceDisplay }}
               <span v-if="assetCurrency" class="price-currency"> {{ getCurrencySymbol(assetCurrency) }}</span>
             </div>
-            <div v-if="selectedPortfolioAsset?.last_price" class="price-change">
+            <div v-if="overviewAsset?.last_price" class="price-change">
               <template
-                v-if="selectedPortfolioAsset.daily_change != null && selectedPortfolioAsset.daily_change !== 0"
+                v-if="overviewAsset.daily_change != null && overviewAsset.daily_change !== 0"
               >
                 <ValueChangePill
                   :value="selectedPriceChangePercent"
-                  :is-positive="selectedPortfolioAsset.daily_change >= 0"
+                  :is-positive="overviewAsset.daily_change >= 0"
                   format="percent"
                 />
                 <span class="price-change-currency">
-                  ({{ selectedPortfolioAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(selectedPortfolioAsset.daily_change) }})
+                  ({{ overviewAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(overviewAsset.daily_change) }})
                 </span>
               </template>
-              <template v-else-if="selectedPortfolioAsset.daily_change === 0">
+              <template v-else-if="overviewAsset.daily_change === 0">
                 <span class="price-change-flat">{{ Math.abs(selectedPriceChangePercent).toFixed(2) }}%</span>
                 <span class="price-change-currency">
-                  ({{ selectedPortfolioAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(selectedPortfolioAsset.daily_change) }})
+                  ({{ overviewAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(overviewAsset.daily_change) }})
                 </span>
               </template>
               <template v-else>
@@ -1866,7 +1917,7 @@ async function handlePortfolioChange(portfolioId) {
         <!-- Табы навигации -->
         <div class="asset-tabs" role="tablist">
           <button
-            v-for="tab in tabs"
+            v-for="tab in visibleTabs"
             :key="tab.id"
             type="button"
             role="tab"

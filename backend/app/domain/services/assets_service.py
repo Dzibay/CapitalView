@@ -159,6 +159,65 @@ async def get_asset_info(asset_id: int):
         return {"success": False, "error": str(e)}
 
 
+def _shape_portfolio_asset_detail_rpc(result: dict) -> dict:
+    """Преобразует JSON из get_portfolio_asset_detail / get_asset_detail_for_user в ответ API."""
+    portfolio_asset_data = result.get("portfolio_asset")
+    if not portfolio_asset_data:
+        return {"success": False, "error": "Данные портфельного актива не найдены"}
+
+    portfolio_asset = {
+        "id": portfolio_asset_data.get("portfolio_asset_id"),
+        "asset_id": portfolio_asset_data.get("asset_id"),
+        "portfolio_id": portfolio_asset_data.get("portfolio_id"),
+        "quantity": portfolio_asset_data.get("quantity"),
+        "leverage": portfolio_asset_data.get("leverage"),
+        "average_price": portfolio_asset_data.get("average_price"),
+        "last_price": portfolio_asset_data.get("last_price"),
+        "daily_change": portfolio_asset_data.get("daily_change"),
+        "currency_ticker": portfolio_asset_data.get("currency_ticker"),
+        "quote_asset_id": portfolio_asset_data.get("quote_asset_id"),
+        "currency_rate_to_rub": portfolio_asset_data.get("currency_rate_to_rub"),
+        "name": portfolio_asset_data.get("asset_name"),
+        "ticker": portfolio_asset_data.get("ticker"),
+        "type": portfolio_asset_data.get("asset_type"),
+        "transactions": result.get("transactions", []),
+        "transactions_count": len(result.get("transactions", [])),
+        "all_payouts": result.get("all_payouts", []),
+        "payouts_count": len(result.get("all_payouts", [])),
+        "daily_values": result.get("daily_values", []),
+        "cash_operations": result.get("cash_operations", []),
+        "price_history": result.get("price_history", []),
+        "asset_value": portfolio_asset_data.get("asset_value"),
+        "invested_value": portfolio_asset_data.get("invested_value"),
+        "realized_pnl": portfolio_asset_data.get("realized_pnl"),
+        "payouts": portfolio_asset_data.get("payouts"),
+        "commissions": portfolio_asset_data.get("commissions"),
+        "taxes": portfolio_asset_data.get("taxes"),
+        "total_pnl": portfolio_asset_data.get("total_pnl")
+    }
+
+    portfolios_data = result.get("portfolios", [])
+    for portfolio in portfolios_data:
+        portfolio_total = portfolio.get("portfolio_total_value") or 0
+        asset_value = portfolio.get("asset_value") or 0
+        try:
+            portfolio_total = float(portfolio_total) if portfolio_total is not None else 0
+            asset_value = float(asset_value) if asset_value is not None else 0
+        except (ValueError, TypeError):
+            portfolio_total = 0
+            asset_value = 0
+        if portfolio_total > 0:
+            portfolio["percentage_in_portfolio"] = round((asset_value / portfolio_total) * 100, 2)
+        else:
+            portfolio["percentage_in_portfolio"] = 0
+
+    return {
+        "success": True,
+        "portfolio_asset": portfolio_asset,
+        "portfolios": portfolios_data
+    }
+
+
 async def get_asset_daily_values(portfolio_asset_id: int, from_date: str = None, to_date: str = None):
     """Получает историю стоимости актива для графика."""
     try:
@@ -201,59 +260,40 @@ async def get_portfolio_asset_info(portfolio_asset_id: int, user_id: str):
         if not portfolio_asset_data:
             return {"success": False, "error": "Данные портфельного актива не найдены"}
 
-        portfolio_asset = {
-            "id": portfolio_asset_data.get("portfolio_asset_id"),
-            "asset_id": portfolio_asset_data.get("asset_id"),
-            "portfolio_id": portfolio_asset_data.get("portfolio_id"),
-            "quantity": portfolio_asset_data.get("quantity"),
-            "leverage": portfolio_asset_data.get("leverage"),
-            "average_price": portfolio_asset_data.get("average_price"),
-            "last_price": portfolio_asset_data.get("last_price"),
-            "daily_change": portfolio_asset_data.get("daily_change"),
-            "currency_ticker": portfolio_asset_data.get("currency_ticker"),
-            "quote_asset_id": portfolio_asset_data.get("quote_asset_id"),
-            "currency_rate_to_rub": portfolio_asset_data.get("currency_rate_to_rub"),
-            "name": portfolio_asset_data.get("asset_name"),
-            "ticker": portfolio_asset_data.get("ticker"),
-            "type": portfolio_asset_data.get("asset_type"),
-            "transactions": result.get("transactions", []),
-            "transactions_count": len(result.get("transactions", [])),
-            "all_payouts": result.get("all_payouts", []),
-            "payouts_count": len(result.get("all_payouts", [])),
-            "daily_values": result.get("daily_values", []),
-            "cash_operations": result.get("cash_operations", []),
-            "price_history": result.get("price_history", []),
-            "asset_value": portfolio_asset_data.get("asset_value"),
-            "invested_value": portfolio_asset_data.get("invested_value"),
-            "realized_pnl": portfolio_asset_data.get("realized_pnl"),
-            "payouts": portfolio_asset_data.get("payouts"),
-            "commissions": portfolio_asset_data.get("commissions"),
-            "taxes": portfolio_asset_data.get("taxes"),
-            "total_pnl": portfolio_asset_data.get("total_pnl")
-        }
-
-        portfolios_data = result.get("portfolios", [])
-        for portfolio in portfolios_data:
-            portfolio_total = portfolio.get("portfolio_total_value") or 0
-            asset_value = portfolio.get("asset_value") or 0
-            try:
-                portfolio_total = float(portfolio_total) if portfolio_total is not None else 0
-                asset_value = float(asset_value) if asset_value is not None else 0
-            except (ValueError, TypeError):
-                portfolio_total = 0
-                asset_value = 0
-            if portfolio_total > 0:
-                portfolio["percentage_in_portfolio"] = round((asset_value / portfolio_total) * 100, 2)
-            else:
-                portfolio["percentage_in_portfolio"] = 0
-
-        return {
-            "success": True,
-            "portfolio_asset": portfolio_asset,
-            "portfolios": portfolios_data
-        }
+        return _shape_portfolio_asset_detail_rpc(result)
     except Exception as e:
         logger.error(f"Ошибка при получении информации о портфельном активе: {e}")
+        return {"success": False, "error": str(e)}
+
+
+async def get_asset_detail_for_user(asset_id: int, user_id: str):
+    """Детальная страница актива по asset_id (и позициям пользователя), без обязательной привязки к portfolio_asset_id в URL."""
+    try:
+        if not user_id:
+            return {"success": False, "error": "user_id обязателен для получения информации об активе"}
+
+        result = await rpc_async("get_asset_detail_for_user", {
+            "p_asset_id": asset_id,
+            "p_user_id": user_id,
+            "p_include_price_history": True,
+            "p_price_history_limit": 100000
+        })
+
+        if not result:
+            return {"success": False, "error": "Актив не найден или доступ запрещён"}
+
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except json.JSONDecodeError:
+                return {"success": False, "error": "Некорректный ответ при получении деталей актива"}
+
+        shaped = _shape_portfolio_asset_detail_rpc(result)
+        if not shaped.get("success"):
+            return shaped
+        return shaped
+    except Exception as e:
+        logger.error(f"Ошибка при получении деталей актива по asset_id: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 

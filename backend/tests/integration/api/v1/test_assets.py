@@ -121,3 +121,34 @@ class TestAssetsPrice:
             )
             # Валидация может вернуть 400, но если валидация прошла, то должна быть 403
             assert response.status_code in [400, 403]
+
+
+@pytest.mark.integration
+@pytest.mark.api
+class TestAssetsDetailPage:
+    """Детальная страница по asset_id."""
+
+    def test_get_asset_detail_page_success(self, authenticated_client, mock_user):
+        from unittest.mock import patch
+
+        payload = {
+            "success": True,
+            "portfolio_asset": {
+                "id": 10,
+                "asset_id": 5,
+                "portfolio_id": 1,
+                "name": "Test",
+                "ticker": "TST",
+            },
+            "portfolios": [],
+        }
+
+        with patch("app.api.v1.assets.check_asset_access", return_value=None):
+            with patch(
+                "app.api.v1.assets.get_asset_detail_for_user",
+                return_value=payload,
+            ):
+                response = authenticated_client.get("/api/v1/assets/5/detail")
+                assert_success_response(response)
+                data = get_response_data(response)
+                assert data.get("portfolio_asset", {}).get("asset_id") == 5

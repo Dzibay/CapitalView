@@ -584,7 +584,7 @@ BEGIN
         ROUND(
             (
                 dp.quantity
-                * ud.unit_dirty
+                * uq.unit_for_qty_basis
                 * COALESCE(cr.rate_to_rub, 1)
                 / NULLIF(v_leverage, 0)
             ),
@@ -596,7 +596,7 @@ BEGIN
         ROUND(ac.taxes, 2) AS taxes,
         ROUND(
             (
-                ROUND(dp.quantity * ud.unit_dirty * COALESCE(cr.rate_to_rub, 1) / NULLIF(v_leverage, 0), 2)
+                ROUND(dp.quantity * uq.unit_for_qty_basis * COALESCE(cr.rate_to_rub, 1) / NULLIF(v_leverage, 0), 2)
                 - ROUND(dp.cumulative_invested, 2)
                 + ROUND(ac.realized_pnl, 2)
                 + ROUND(ac.payouts, 2)
@@ -652,7 +652,23 @@ BEGIN
             END,
             0::numeric
         ) AS unit_dirty
-    ) ud;
+    ) ud
+    CROSS JOIN LATERAL (
+        SELECT COALESCE(
+            (
+                SELECT EXP(
+                    SUM(LN((s.ratio_before / NULLIF(s.ratio_after, 0))::numeric))
+                )
+                FROM asset_splits s
+                WHERE s.asset_id = v_asset_id
+                  AND s.trade_date > dp.report_date
+            ),
+            1::numeric
+        ) AS split_adj_future
+    ) saf
+    CROSS JOIN LATERAL (
+        SELECT (ud.unit_dirty / NULLIF(saf.split_adj_future, 0)) AS unit_for_qty_basis
+    ) uq;
 
     DROP TABLE IF EXISTS _event_dates_pa;
     DROP TABLE IF EXISTS _fifo_work_pa;
@@ -666,4 +682,5 @@ $$;
 COMMENT ON FUNCTION update_portfolio_asset_positions_from_date(bigint, date) IS
 'Пересчитывает portfolio_asset_daily_values ТОЛЬКО на даты событий (транзакции, сплиты asset_splits, изменения цен, кэш-операции, сегодня). '
 'Сплит: rem_qty *= after/before, unit_price_quote *= before/after; rem_cost_rub (руб. в лоте) без изменения. '
-'Стоимость позиции = qty × (рынок+НКД) × курс / leverage. Спарсивный режим: запись только при изменении данных.';
+'Стоимость позиции: цена из asset_prices считается приведённой к текущей номинации бумаги; для report_date делим на Π(ratio_before/ratio_after) по сплитам с trade_date > report_date, '
+'чтобы согласовать с quantity в единицах «на эту дату». total_pnl от той же скорректированной цены. Спарсивный режим.';
