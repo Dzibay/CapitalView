@@ -7,7 +7,6 @@ import { getCurrencySymbol } from '../utils/currencySymbols'
 import { payoutAmountToRub } from '../utils/currencyRatesToRub'
 import { useUIStore } from '../stores/ui.store'
 import { getDescendantPortfolioIds } from '../utils/portfolioSubtree'
-import PortfolioSelector from '../components/PortfolioSelector.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
@@ -311,16 +310,7 @@ function formatPayoutRowDate(evt) {
     <PageHeader 
       title="Календарь выплат"
       subtitle="График дивидендов, купонов и амортизаций"
-    >
-      <template #actions>
-        <PortfolioSelector 
-          v-if="portfolios.length > 0"
-          :portfolios="portfolios"
-          :modelValue="uiStore.selectedPortfolioId"
-          @update:modelValue="uiStore.setSelectedPortfolioId"
-        />
-      </template>
-    </PageHeader>
+    />
 
     <LoadingState v-if="dividendsPageBlocking" />
 

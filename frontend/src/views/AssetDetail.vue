@@ -62,11 +62,38 @@ const selectedChartType = ref('position') // 'position' | 'quantity' | 'price'
 const showMinMax = ref(false)
 const selectedTab = ref('general') // 'general' | 'analytics' | 'dividends'
 
-const tabs = [
+const tabDefinitions = [
   { id: 'general', label: 'Общее', icon: LayoutDashboard },
   { id: 'analytics', label: 'Аналитика', icon: BarChart3 },
   { id: 'dividends', label: 'Дивиденды', icon: Coins }
 ]
+
+/** Есть позиция хотя бы в одном портфеле — иначе аналитика по портфелю нечего показывать (см. get_asset_detail_for_user: portfolios = []). */
+const hasUserPositionAnalytics = computed(
+  () => Array.isArray(assetInAllPortfolios.value) && assetInAllPortfolios.value.length > 0
+)
+
+/** Вкладка выплат: только если в ответе есть история выплат по активу. */
+const hasPayoutHistoryForTab = computed(() => {
+  if (!assetInfo.value) return false
+  const raw = assetInfo.value.all_payouts ?? assetInfo.value.payouts
+  return Array.isArray(raw) && raw.length > 0
+})
+
+const visibleTabs = computed(() =>
+  tabDefinitions.filter((tab) => {
+    if (tab.id === 'analytics') return hasUserPositionAnalytics.value
+    if (tab.id === 'dividends') return hasPayoutHistoryForTab.value
+    return true
+  })
+)
+
+watch(visibleTabs, (tabs) => {
+  const ids = tabs.map((t) => t.id)
+  if (!ids.includes(selectedTab.value)) {
+    selectedTab.value = 'general'
+  }
+})
 
 const analyticsChartMetric = ref('position') // 'position' | 'quantity'
 
@@ -1890,7 +1917,7 @@ async function handlePortfolioChange(portfolioId) {
         <!-- Табы навигации -->
         <div class="asset-tabs" role="tablist">
           <button
-            v-for="tab in tabs"
+            v-for="tab in visibleTabs"
             :key="tab.id"
             type="button"
             role="tab"

@@ -32,7 +32,6 @@ import {
   RecentTransactionsWidget 
 } from '../components/widgets/lists'
 import { WidgetContainer } from '../components/widgets/base'
-import PortfolioSelector from '../components/PortfolioSelector.vue'
 
 const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
@@ -174,15 +173,7 @@ onMounted(() => {
     <PageHeader 
       :title="`С возвращением, ${authStore.user?.name}`"
       subtitle="Главная"
-    >
-      <template #actions>
-        <PortfolioSelector 
-          :portfolios="portfolios"
-          :modelValue="uiStore.selectedPortfolioId"
-          @update:modelValue="uiStore.setSelectedPortfolioId"
-        />
-      </template>
-    </PageHeader>
+    />
 
     <div class="widgets-grid">
       <!-- Статы: на десктопе — 4 виджета, на мобильном — один сводный -->

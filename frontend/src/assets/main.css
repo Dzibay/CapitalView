@@ -3,7 +3,8 @@ html {
   width: 100%;
   font-size: 16px;
   --spacing: 25px;
-  --headerHeight: 100px;
+  /* Высота шапки дашборда (AppHeader + верх сайдбара); была 100px — избыточно для контента ~40px */
+  --headerHeight: 84px;
   --sidebarWidth : 260px;
   --sidebarWidthCollapsed: 80px;
   /* Нижняя навигация на мобильных (DashboardLayout + AppBottomNav) */
