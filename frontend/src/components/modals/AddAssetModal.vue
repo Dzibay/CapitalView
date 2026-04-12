@@ -54,42 +54,14 @@
               <TrendingUp :size="16" class="label-icon" />
               Актив
             </label>
-            <div class="search-wrapper">
-              <Search :size="16" class="search-icon" />
-              <input
-                type="text"
-                v-model="searchQuery"
-                placeholder="Поиск по названию или тикеру (от 2 символов)..."
-                @input="onAssetSearchInput"
-                required
-                class="form-input search-input"
-              />
-              <ul
-                v-if="searchQuery.trim().length >= 2 && !form.asset_id"
-                class="dropdown"
-              >
-                <li v-if="searchLoading" class="create-new">
-                  <Loader2 :size="20" class="empty-icon spinner-icon" />
-                  <span>Поиск…</span>
-                </li>
-                <template v-else>
-                  <li
-                    v-for="a in searchResults"
-                    :key="a.id"
-                    @click="selectAsset(a)"
-                  >
-                    <div class="asset-info-row">
-                      <span class="asset-name">{{ a.name }}</span>
-                      <span class="asset-ticker">{{ a.ticker || '—' }}</span>
-                    </div>
-                  </li>
-                  <li v-if="searchResults.length === 0" class="create-new">
-                    <Search :size="20" class="empty-icon" />
-                    <span>Актив не найден. Выберите «Кастомный» для создания нового.</span>
-                  </li>
-                </template>
-              </ul>
-            </div>
+            <ReferenceAssetSearch
+              v-model="searchQuery"
+              variant="modal"
+              required
+              :locked="!!form.asset_id"
+              @user-input="onAssetSearchUserInput"
+              @select="selectAsset"
+            />
             <div v-if="form.asset_id" class="selected-asset">
               <CheckCircle2 :size="16" class="check-icon" />
               <span>Выбран: <strong>{{ searchQuery }}</strong></span>
@@ -266,9 +238,9 @@ import {
 import { Button, ToggleSwitch, DateInput } from '../base'
 import CustomSelect from '../base/CustomSelect.vue'
 import FormInput from '../base/FormInput.vue'
+import ReferenceAssetSearch from '../ReferenceAssetSearch.vue'
 import assetsService from '../../services/assetsService'
 import {
-  searchReferenceAssets,
   fetchReferenceAssetMeta,
   fetchAssetSplits,
 } from '../../services/referenceService'
@@ -303,11 +275,7 @@ const form = reactive({ ...initialFormState })
 const saving = ref(false)           // индикатор сохранения
 const searchQuery = ref("")
 const assetTypeChoice = ref("system") // 'system' или 'custom' - по умолчанию системный
-const searchResults = ref([])
-const searchLoading = ref(false)
 const selectedAssetMeta = ref(null)
-let searchDebounceTimer = null
-let searchRequestSeq = 0
 
 // Использование рыночной цены для системных активов
 const useMarketPrice = ref(true) // Переключатель для автоматической загрузки рыночной цены (включен по умолчанию)
@@ -407,7 +375,7 @@ watch(
   { immediate: true }
 )
 
-function onAssetSearchInput() {
+function onAssetSearchUserInput() {
   form.asset_id = null
   selectedAssetMeta.value = null
 }
@@ -461,15 +429,12 @@ async function onAdjustSplitPriceToggle(value) {
 }
 
 const resetAssetFields = () => {
-    clearTimeout(searchDebounceTimer)
     form.asset_id = null
     form.name = ''
     form.ticker = ''
     form.asset_type_id = null
     form.currency = null
     searchQuery.value = ''
-    searchResults.value = []
-    searchLoading.value = false
     selectedAssetMeta.value = null
     assetSplits.value = []
     adjustPriceForSplitHistory.value = false
@@ -531,30 +496,6 @@ const submitForm = async () => {
     saving.value = false
   }
 }
-
-watch(searchQuery, () => {
-  if (form.asset_id) return
-  clearTimeout(searchDebounceTimer)
-  const q = searchQuery.value.trim()
-  if (q.length < 2) {
-    searchResults.value = []
-    searchLoading.value = false
-    return
-  }
-  searchLoading.value = true
-  searchDebounceTimer = setTimeout(async () => {
-    const seq = ++searchRequestSeq
-    try {
-      const items = await searchReferenceAssets(q, 25)
-      if (seq === searchRequestSeq) searchResults.value = items
-    } catch (e) {
-      console.error(e)
-      if (seq === searchRequestSeq) searchResults.value = []
-    } finally {
-      if (seq === searchRequestSeq) searchLoading.value = false
-    }
-  }, 280)
-})
 
 const selectAsset = async (asset) => {
   selectedAssetMeta.value = asset
@@ -962,114 +903,14 @@ setAssetTypeChoice('system')
   margin-top: 0;
 }
 
-.asset-search-block > .search-wrapper {
-  margin-bottom: 0;
+.asset-search-block > :deep(.ref-asset-search) {
   margin-top: 0;
+  margin-bottom: 0;
 }
 
 .asset-search-block > .selected-asset {
   margin-top: 10px;
   margin-bottom: 0;
-}
-
-.search-wrapper {
-  position: relative;
-}
-
-.search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: #9ca3af;
-  z-index: 1;
-}
-
-.search-input {
-  padding-left: 36px !important;
-}
-
-.dropdown {
-  position: absolute;
-  background: white;
-  border: 1px solid #e5e7eb;
-  width: 100%;
-  max-height: 180px;
-  overflow-y: auto;
-  z-index: 10;
-  margin-top: 4px;
-  padding: 4px 0;
-  list-style: none;
-  border-radius: 10px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.12), 0 4px 10px rgba(0,0,0,0.08);
-  animation: slideDown 0.2s ease;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.dropdown li {
-  padding: 12px 14px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  border-left: 3px solid transparent;
-}
-
-.asset-info-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-}
-
-.dropdown li:hover {
-  background: #f3f4f6;
-  border-left-color: #3b82f6;
-  padding-left: 11px;
-}
-
-.asset-name {
-  font-weight: 500;
-  color: #111827;
-  font-size: 13px;
-}
-
-.asset-ticker {
-  font-size: 12px;
-  color: #6b7280;
-  background: #f3f4f6;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-.dropdown .create-new {
-  color: #9ca3af;
-  padding: 16px 14px;
-  cursor: default;
-  text-align: center;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex-direction: column;
-}
-
-.empty-icon {
-  color: #d1d5db;
-  opacity: 0.6;
 }
 
 .selected-asset {

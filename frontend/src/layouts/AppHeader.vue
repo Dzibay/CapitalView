@@ -1,12 +1,12 @@
 <script setup>
-import { ref, computed, onUnmounted, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router';
-import { Bell, Search, Loader2 } from 'lucide-vue-next'
+import { Bell } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import PortfolioSelector from '../components/PortfolioSelector.vue'
 import MissedPayoutsModal from '../components/modals/MissedPayoutsModal.vue'
-import { searchReferenceAssets } from '../services/referenceService'
+import ReferenceAssetSearch from '../components/ReferenceAssetSearch.vue'
 
 defineProps({
   user: {
@@ -55,56 +55,9 @@ const handlePayoutsIgnored = () => {
 
 const hasNotifications = computed(() => missedPayoutsCount.value > 0)
 
-/** Поиск актива (та же логика, что в AddAssetModal: debounce 280ms, от 2 символов, searchReferenceAssets) */
 const headerSearchQuery = ref('')
-const headerSearchResults = ref([])
-const headerSearchLoading = ref(false)
-const headerSearchPanelOpen = ref(false)
-let headerSearchDebounceTimer = null
-let headerSearchRequestSeq = 0
-
-watch(headerSearchQuery, () => {
-  clearTimeout(headerSearchDebounceTimer)
-  const q = headerSearchQuery.value.trim()
-  if (q.length < 2) {
-    headerSearchResults.value = []
-    headerSearchLoading.value = false
-    return
-  }
-  headerSearchLoading.value = true
-  headerSearchDebounceTimer = setTimeout(async () => {
-    const seq = ++headerSearchRequestSeq
-    try {
-      const items = await searchReferenceAssets(q, 25)
-      if (seq === headerSearchRequestSeq) headerSearchResults.value = items
-    } catch (e) {
-      console.error(e)
-      if (seq === headerSearchRequestSeq) headerSearchResults.value = []
-    } finally {
-      if (seq === headerSearchRequestSeq) headerSearchLoading.value = false
-    }
-  }, 280)
-})
-
-onUnmounted(() => {
-  clearTimeout(headerSearchDebounceTimer)
-})
-
-function openHeaderSearchPanel() {
-  headerSearchPanelOpen.value = true
-}
-
-function closeHeaderSearchPanelSoon() {
-  setTimeout(() => {
-    headerSearchPanelOpen.value = false
-  }, 200)
-}
 
 function onSelectHeaderAsset(asset) {
-  headerSearchQuery.value = ''
-  headerSearchResults.value = []
-  headerSearchLoading.value = false
-  headerSearchPanelOpen.value = false
   router.push(`/assets/${asset.id}`)
 }
 </script>
@@ -120,44 +73,12 @@ function onSelectHeaderAsset(asset) {
     </div>
 
     <div v-if="user && !user?.is_admin" class="header-asset-search">
-      <div class="header-search-wrapper">
-        <Search :size="16" class="header-search-icon" />
-        <input
-          v-model="headerSearchQuery"
-          type="search"
-          class="header-search-input"
-          placeholder="Поиск актива (от 2 символов)…"
-          autocomplete="off"
-          @focus="openHeaderSearchPanel"
-          @blur="closeHeaderSearchPanelSoon"
-        />
-        <ul
-          v-if="headerSearchPanelOpen && headerSearchQuery.trim().length >= 2"
-          class="header-search-dropdown"
-        >
-          <li v-if="headerSearchLoading" class="header-search-dropdown-msg">
-            <Loader2 :size="18" class="header-search-spinner" />
-            <span>Поиск…</span>
-          </li>
-          <template v-else>
-            <li
-              v-for="a in headerSearchResults"
-              :key="a.id"
-              class="header-search-item"
-              @mousedown.prevent="onSelectHeaderAsset(a)"
-            >
-              <div class="header-search-item-row">
-                <span class="header-search-name">{{ a.name }}</span>
-                <span class="header-search-ticker">{{ a.ticker || '—' }}</span>
-              </div>
-            </li>
-            <li v-if="headerSearchResults.length === 0" class="header-search-dropdown-msg">
-              <Search :size="18" class="header-search-empty-icon" />
-              <span>Актив не найден</span>
-            </li>
-          </template>
-        </ul>
-      </div>
+      <ReferenceAssetSearch
+        v-model="headerSearchQuery"
+        variant="header"
+        input-type="search"
+        @select="onSelectHeaderAsset"
+      />
     </div>
 
     <div v-if="user" class="header-right">
@@ -249,135 +170,8 @@ function onSelectHeaderAsset(asset) {
   max-width: 440px;
 }
 
-.header-search-wrapper {
-  position: relative;
+.header-asset-search > :deep(.ref-asset-search) {
   width: 100%;
-}
-
-.header-search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: #9ca3af;
-  z-index: 1;
-}
-
-.header-search-input {
-  width: 100%;
-  height: 40px;
-  padding: 0 14px 0 38px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 10px;
-  font-size: 14px;
-  background: #fff;
-  color: #111827;
-  box-sizing: border-box;
-  font-family: inherit;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.header-search-input::placeholder {
-  color: #9ca3af;
-}
-
-.header-search-input:hover {
-  border-color: #d1d5db;
-}
-
-.header-search-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
-}
-
-.header-search-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  /* Правый край совпадает с полем — при min-width список расширяется влево, не наезжая на портфель */
-
-
-  width: max(100%, 260px);
-  max-width: min(400px, calc(100vw - 24px));
-  box-sizing: border-box;
-  margin: 0;
-  padding: 4px 0;
-  list-style: none;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.08);
-  max-height: min(280px, 50vh);
-  overflow-y: auto;
-  z-index: 1010;
-}
-
-.header-search-item {
-  padding: 10px 14px;
-  cursor: pointer;
-  border-left: 3px solid transparent;
-  transition: background 0.15s ease, border-color 0.15s ease, padding-left 0.15s ease;
-}
-
-.header-search-item:hover {
-  background: #f3f4f6;
-  border-left-color: #3b82f6;
-  padding-left: 11px;
-}
-
-.header-search-item-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-}
-
-.header-search-name {
-  font-weight: 500;
-  font-size: 13px;
-  color: #111827;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.header-search-ticker {
-  font-size: 12px;
-  color: #6b7280;
-  background: #f3f4f6;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.header-search-dropdown-msg {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 14px;
-  color: #9ca3af;
-  font-size: 12px;
-  cursor: default;
-}
-
-.header-search-spinner {
-  color: #3b82f6;
-  animation: header-search-spin 1s linear infinite;
-}
-
-.header-search-empty-icon {
-  color: #d1d5db;
-  opacity: 0.7;
-}
-
-@keyframes header-search-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 .header.header--sidebar-collapsed {
@@ -484,7 +278,7 @@ function onSelectHeaderAsset(asset) {
     overflow: visible;
   }
 
-  .header-search-input {
+  .header-asset-search :deep(.ref-asset-search__input--header) {
     font-size: 13px;
   }
 

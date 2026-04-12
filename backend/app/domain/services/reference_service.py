@@ -218,6 +218,22 @@ async def _ensure_assets_search_cache() -> None:
         logger.error("Справочник (ensure cache): %s", e, exc_info=True)
 
 
+# asset_types.id (init.sql): порядок в выдаче поиска; не в списке — в конец
+_ASSET_SEARCH_TYPE_ORDER = (1, 7, 6, 3, 2, 4, 5)
+
+
+def _asset_search_type_rank(asset_type_id) -> int:
+    """Индекс типа в _ASSET_SEARCH_TYPE_ORDER; неизвестный/битый id — len(...)."""
+    try:
+        tid = int(asset_type_id)
+    except (TypeError, ValueError):
+        return len(_ASSET_SEARCH_TYPE_ORDER)
+    try:
+        return _ASSET_SEARCH_TYPE_ORDER.index(tid)
+    except ValueError:
+        return len(_ASSET_SEARCH_TYPE_ORDER)
+
+
 async def search_reference_assets(query: str, limit: int = 25) -> list:
     q = (query or "").strip()
     if len(q) < 2:
@@ -238,7 +254,12 @@ async def search_reference_assets(query: str, limit: int = 25) -> list:
             or needle in (row.get("ticker") or "").lower()
         )
     ]
-    matches.sort(key=lambda r: (r.get("name") or "").lower())
+    matches.sort(
+        key=lambda r: (
+            _asset_search_type_rank(r.get("asset_type_id")),
+            (r.get("name") or "").lower(),
+        )
+    )
     return matches[:cap]
 
 
