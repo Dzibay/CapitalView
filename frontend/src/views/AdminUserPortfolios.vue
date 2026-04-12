@@ -6,7 +6,18 @@ import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import PortfolioTree from '../components/PortfolioTree.vue'
+import CustomSelect from '../components/base/CustomSelect.vue'
+import {
+  TotalCapitalWidget,
+  PortfolioProfitWidget,
+  DividendsWidget,
+  ReturnWidget,
+  ConsolidatedStatsWidget,
+} from '../components/widgets/stats'
+import { PortfolioChartWidget } from '../components/widgets/charts'
+import { WidgetContainer } from '../components/widgets/base'
 import { usePortfolio } from '../composables/usePortfolio'
+import { usePortfolioAnalytics } from '../composables/usePortfolioAnalytics'
 import { adminService } from '../services/adminService'
 import { fetchReferenceData } from '../services/referenceService'
 
@@ -19,8 +30,11 @@ const router = useRouter()
 
 const loading = ref(true)
 const error = ref('')
-const portfolios = ref([])
+const userPortfolios = ref([])
 const referenceData = ref({})
+/** Портфель, для которого считаются статы и график (не трогаем глобальный выбор в шапке). */
+const statsPortfolioId = ref(null)
+const phase2Ready = ref(false)
 
 const userLabel = computed(() => {
   const q = route.query
@@ -33,14 +47,37 @@ const userLabel = computed(() => {
 })
 
 const dashboardDataComputed = computed(() => ({
-  portfolios: portfolios.value,
+  portfolios: userPortfolios.value,
   recent_transactions: [],
   referenceData: referenceData.value,
 }))
 
 const { buildPortfolioTree } = usePortfolio(dashboardDataComputed, null)
 
-const portfolioTree = computed(() => buildPortfolioTree(portfolios.value))
+const portfolioTree = computed(() => buildPortfolioTree(userPortfolios.value))
+
+const portfolioAnalyticsFromList = computed(() =>
+  (userPortfolios.value || [])
+    .filter((p) => p.analytics && Object.keys(p.analytics).length > 0)
+    .map((p) => ({
+      portfolio_id: p.id,
+      portfolio_name: p.name,
+      ...p.analytics,
+    })),
+)
+
+const {
+  totalCapitalWidgetData,
+  profitWidgetData,
+  calculatedAnnualDividends,
+  returnData,
+  portfolioChartData,
+  selectedPortfolio,
+} = usePortfolioAnalytics({
+  portfolios: userPortfolios,
+  analytics: portfolioAnalyticsFromList,
+  selectedPortfolioId: statsPortfolioId,
+})
 
 const expandedPortfolios = ref([])
 const updatingPortfolios = ref(new Set())
@@ -65,10 +102,33 @@ function togglePortfolio(id) {
   }
 }
 
+function pickDefaultStatsPortfolioId(list) {
+  if (!list?.length) return null
+  const root = list.find((p) => !p.parent_portfolio_id)
+  return (root ?? list[0])?.id ?? null
+}
+
+watch(
+  () => userPortfolios.value,
+  (list) => {
+    if (!list?.length) {
+      statsPortfolioId.value = null
+      return
+    }
+    const ok =
+      statsPortfolioId.value != null &&
+      list.some((p) => p.id === statsPortfolioId.value)
+    if (!ok) {
+      statsPortfolioId.value = pickDefaultStatsPortfolioId(list)
+    }
+  },
+  { flush: 'sync' },
+)
+
 async function load() {
   error.value = ''
   loading.value = true
-  portfolios.value = []
+  userPortfolios.value = []
   try {
     const [refBundle, dashboard] = await Promise.all([
       fetchReferenceData({ bypassCache: false }).catch(() => null),
@@ -81,9 +141,9 @@ async function load() {
       error.value = 'Не удалось загрузить данные'
       return
     }
-    portfolios.value = dashboard.portfolios || []
+    userPortfolios.value = dashboard.portfolios || []
     expandedPortfolios.value = collectPortfolioIdsFromTree(
-      buildPortfolioTree(portfolios.value),
+      buildPortfolioTree(userPortfolios.value),
     )
   } catch (e) {
     const d = e.response?.data
@@ -98,7 +158,12 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  requestAnimationFrame(() => {
+    phase2Ready.value = true
+  })
+})
 watch(
   () => props.userId,
   () => load(),
@@ -139,14 +204,88 @@ function backToAdmin() {
         <p class="admin-ro-hint">
           Просмотр только для чтения: меню действий и переходы в карточки активов отключены.
         </p>
-        <PortfolioTree
-          :portfolios="portfolioTree"
-          :expanded-portfolios="expandedPortfolios"
-          :updating-portfolios="updatingPortfolios"
-          :show-sold-assets="showSoldAssets"
-          :read-only="true"
-          @toggle-portfolio="togglePortfolio"
-        />
+
+        <div v-if="selectedPortfolio" class="admin-stats-toolbar">
+          <CustomSelect
+            v-model="statsPortfolioId"
+            class="admin-stats-toolbar__select"
+            label="Портфель для графика и статистики"
+            :options="userPortfolios"
+            option-label="name"
+            option-value="id"
+            :show-empty-option="false"
+            placeholder="Выберите портфель"
+            min-width="min(100%, 280px)"
+            flex="1 1 auto"
+          />
+        </div>
+
+        <div v-if="selectedPortfolio" class="widgets-grid">
+          <div class="stats-desktop">
+            <WidgetContainer :grid-column="3" min-height="var(--widget-height-small)">
+              <TotalCapitalWidget
+                :total-amount="totalCapitalWidgetData.totalAmount"
+                :invested-amount="totalCapitalWidgetData.investedAmount"
+                :unrealized-pl="totalCapitalWidgetData.unrealizedPl"
+                :unrealized-percent="totalCapitalWidgetData.unrealizedPercent"
+              />
+            </WidgetContainer>
+            <WidgetContainer :grid-column="3" min-height="var(--widget-height-small)">
+              <PortfolioProfitWidget
+                :total-amount="profitWidgetData.totalAmount"
+                :total-profit="profitWidgetData.totalProfit"
+                :monthly-change="profitWidgetData.monthlyChange"
+                :invested-amount="profitWidgetData.investedAmount"
+                :analytics="profitWidgetData.analytics"
+              />
+            </WidgetContainer>
+            <WidgetContainer :grid-column="3" min-height="var(--widget-height-small)">
+              <DividendsWidget :annual-dividends="calculatedAnnualDividends" />
+            </WidgetContainer>
+            <WidgetContainer :grid-column="3" min-height="var(--widget-height-small)">
+              <ReturnWidget
+                :return-percent="returnData.returnPercent"
+                :return-percent-on-invested="returnData.returnPercentOnInvested"
+                :total-value="returnData.totalValue"
+                :total-invested="returnData.totalInvested"
+              />
+            </WidgetContainer>
+          </div>
+          <div class="stats-mobile">
+            <WidgetContainer grid-column="1" min-height="var(--widget-height-small)">
+              <ConsolidatedStatsWidget
+                :total-amount="totalCapitalWidgetData.totalAmount"
+                :invested-amount="totalCapitalWidgetData.investedAmount"
+                :total-profit="profitWidgetData.totalProfit"
+                :monthly-change="profitWidgetData.monthlyChange"
+                :analytics="profitWidgetData.analytics"
+                :annual-dividends="calculatedAnnualDividends"
+                :return-percent="returnData.returnPercent"
+                :return-percent-on-invested="returnData.returnPercentOnInvested"
+              />
+            </WidgetContainer>
+          </div>
+
+          <WidgetContainer
+            class="admin-chart-widget"
+            :grid-column="12"
+            min-height="var(--widget-height-large)"
+          >
+            <PortfolioChartWidget v-if="phase2Ready" :chart-data="portfolioChartData" />
+          </WidgetContainer>
+        </div>
+
+        <section class="admin-tree-section">
+          <h2 class="admin-tree-section__title">Структура портфелей</h2>
+          <PortfolioTree
+            :portfolios="portfolioTree"
+            :expanded-portfolios="expandedPortfolios"
+            :updating-portfolios="updatingPortfolios"
+            :show-sold-assets="showSoldAssets"
+            :read-only="true"
+            @toggle-portfolio="togglePortfolio"
+          />
+        </section>
       </div>
     </div>
   </PageLayout>
@@ -254,7 +393,97 @@ function backToAdmin() {
   max-width: 48rem;
 }
 
+.admin-stats-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  max-width: 100%;
+}
+
+.admin-stats-toolbar__select {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.widgets-grid {
+  display: grid;
+  gap: var(--spacing);
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-rows: min-content;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 1.5rem;
+}
+
+.stats-desktop {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--spacing);
+}
+
+.stats-mobile {
+  display: none;
+  grid-column: 1 / -1;
+}
+
+.admin-tree-section {
+  margin-top: 0.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--axis-grid, #e5e7eb);
+}
+
+.admin-tree-section__title {
+  margin: 0 0 0.875rem;
+  font-size: var(--text-heading-2-size, 1rem);
+  font-weight: 600;
+  color: var(--text-heading-2-color, var(--text-secondary, #374151));
+}
+
+@media (max-width: 1200px) {
+  .widgets-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .stats-desktop {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .stats-desktop :deep(.widget-container) {
+    grid-column: span 1 !important;
+  }
+
+  .widgets-grid > :deep(.widget-container) {
+    grid-column: 1 / -1 !important;
+  }
+}
+
 @media (max-width: 768px) {
+  .widgets-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .stats-desktop {
+    display: none;
+  }
+
+  .stats-mobile {
+    display: block;
+  }
+
+  .widgets-grid :deep(.widget-container) {
+    grid-column: 1 / -1 !important;
+  }
+
+  .admin-stats-toolbar {
+    margin-bottom: 1rem;
+  }
+
   .admin-page {
     padding-bottom: calc(var(--bottomNavHeight, 76px) + env(safe-area-inset-bottom, 0px) + 0.75rem);
   }

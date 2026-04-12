@@ -1,24 +1,58 @@
 // composables/usePortfolioAnalytics.js
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, toValue, isRef } from 'vue'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import { expandPortfolioHistoryForCharts } from '../utils/portfolioHistory'
 
 /**
+ * @typedef {object} PortfolioAnalyticsOverrides
+ * @property {import('vue').MaybeRefOrGetter<Array>} [portfolios] — список портфелей вместо dashboard store
+ * @property {import('vue').MaybeRefOrGetter<Array>} [analytics] — массив аналитики как в store (portfolio_id, …)
+ * @property {import('vue').Ref<*>} [selectedPortfolioId] — выбранный id вместо ui store (не трогаем глобальный выбор)
+ */
+
+/**
  * Composable для работы с аналитикой портфеля
  * Используется на страницах Dashboard и Analytics
+ *
+ * @param {PortfolioAnalyticsOverrides | null} [overrides]
  */
-export function usePortfolioAnalytics() {
+export function usePortfolioAnalytics(overrides = null) {
   const dashboardStore = useDashboardStore()
   const uiStore = useUIStore()
 
-  const portfolios = computed(() => dashboardStore.portfolios ?? [])
+  const externalSelection = isRef(overrides?.selectedPortfolioId)
+
+  const portfolios = computed(() => {
+    if (overrides?.portfolios != null) {
+      const v = toValue(overrides.portfolios)
+      return Array.isArray(v) ? v : []
+    }
+    return dashboardStore.portfolios ?? []
+  })
+
+  const analyticsList = computed(() => {
+    if (overrides?.analytics != null) {
+      const v = toValue(overrides.analytics)
+      return Array.isArray(v) ? v : []
+    }
+    return dashboardStore.analytics ?? []
+  })
+
+  const effectiveSelectedPortfolioId = computed(() => {
+    if (overrides?.selectedPortfolioId != null) {
+      return toValue(overrides.selectedPortfolioId)
+    }
+    return uiStore.selectedPortfolioId
+  })
+
   const selectedPortfolioAnalytics = ref(null)
   const isLoadingAnalytics = ref(false)
 
   // Получаем выбранный портфель
   const selectedPortfolio = computed(() => {
-    return portfolios.value.find(p => p.id === uiStore.selectedPortfolioId) || null
+    const id = effectiveSelectedPortfolioId.value
+    return portfolios.value.find(p => p.id === id) || null
   })
 
   // Функция для сбора всех id выбранного портфеля и его дочерних
@@ -35,9 +69,9 @@ export function usePortfolioAnalytics() {
 
   // Обновление выбранной аналитики
   async function updateSelectedAnalytics() {
-    const allAnalytics = dashboardStore.analytics ?? []
-    const currentId = uiStore.selectedPortfolioId
-    const portfoliosList = dashboardStore.portfolios ?? []
+    const allAnalytics = analyticsList.value
+    const currentId = effectiveSelectedPortfolioId.value
+    const portfoliosList = portfolios.value
     const portfolioExists =
       currentId != null && portfoliosList.some((p) => p.id === currentId)
 
@@ -46,7 +80,13 @@ export function usePortfolioAnalytics() {
 
     // Fallback и смена выбранного портфеля — только если id битый / портфеля нет в списке.
     // Пустой портфель (без активов) в analytics не попадает (см. dashboard.store) — выбор не трогаем.
-    if (!selectedPortfolioAnalytics.value && allAnalytics.length > 0 && !portfolioExists) {
+    // При внешнем selectedPortfolioId родитель сам выставляет корень / валидный id (админка).
+    if (
+      !externalSelection &&
+      !selectedPortfolioAnalytics.value &&
+      allAnalytics.length > 0 &&
+      !portfolioExists
+    ) {
       selectedPortfolioAnalytics.value = allAnalytics[0]
       if (currentId !== selectedPortfolioAnalytics.value.portfolio_id) {
         uiStore.setSelectedPortfolioId(selectedPortfolioAnalytics.value.portfolio_id)
@@ -74,9 +114,9 @@ export function usePortfolioAnalytics() {
 
   // Автозагрузка аналитики при изменении портфелей
   watch(
-    () => dashboardStore.portfolios,
-    async (portfolios) => {
-      if (portfolios?.length) {
+    portfolios,
+    async (list) => {
+      if (list?.length) {
         await safeLoadAnalytics()
       }
     },
@@ -85,7 +125,7 @@ export function usePortfolioAnalytics() {
 
   // Перерисовка при смене портфеля
   watch(
-    () => uiStore.selectedPortfolioId,
+    effectiveSelectedPortfolioId,
     async () => {
       await updateSelectedAnalytics()
     }
@@ -227,11 +267,12 @@ export function usePortfolioAnalytics() {
 
   // Данные для графика динамики капитала (в формате для PortfolioChartWidget)
   const portfolioChartData = computed(() => {
-    if (!uiStore.selectedPortfolioId) {
+    const sid = effectiveSelectedPortfolioId.value
+    if (sid == null) {
       return { labels: [], data_value: [], data_invested: [], data_balance: [] }
     }
 
-    const portfolio = portfolios.value.find(p => p.id === uiStore.selectedPortfolioId)
+    const portfolio = portfolios.value.find(p => p.id === sid)
     const ex = expandPortfolioHistoryForCharts(portfolio?.history)
     return {
       labels: ex.labels,
