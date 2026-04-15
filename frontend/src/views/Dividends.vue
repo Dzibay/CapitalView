@@ -74,9 +74,7 @@ const allDividends = computed(() => {
 
   const list = []
 
-  payoutPositions.value
-    .filter(asset => (asset.quantity || 0) > 0)
-    .forEach(asset => {
+  payoutPositions.value.forEach(asset => {
     const payouts = asset.payouts || []
 
     payouts.forEach(div => {
