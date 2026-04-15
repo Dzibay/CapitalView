@@ -5,11 +5,11 @@ import BaseChart from './BaseChart.vue'
 const props = defineProps({
   labels: {
     type: Array,
-    required: true
+    default: () => []
   },
   values: {
     type: Array,
-    required: true
+    default: () => []
   },
   colors: {
     type: Array,
@@ -39,6 +39,16 @@ const props = defineProps({
     type: String,
     default: 'vertical', // 'vertical' or 'horizontal'
     validator: (value) => ['vertical', 'horizontal'].includes(value)
+  },
+  /** Подпись доли в процентах в центре (по умолчанию — целое, ru-RU) */
+  formatPercentage: {
+    type: Function,
+    default: null
+  },
+  /** Растянуть график на высоту/ширину родителя (родитель задаёт размер, например 280×280px) */
+  fillParent: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -108,28 +118,45 @@ const chartOptions = computed(() => ({
   }
 }))
 
-watch(() => props.values, () => {
-  centerInfo.value = {
-    label: 'Всего',
-    value: total.value,
-    percentage: 100
-  }
-}, { immediate: true })
+watch(
+  () => [props.labels, props.values],
+  () => {
+    centerInfo.value = {
+      label: 'Всего',
+      value: total.value,
+      percentage: 100
+    }
+  },
+  { immediate: true, deep: true }
+)
+
+function chartHeight() {
+  return props.fillParent ? '100%' : props.height
+}
+
+function displayPercentage(pct) {
+  if (props.formatPercentage) return props.formatPercentage(pct)
+  const n = Math.round(Number(pct))
+  return Number.isFinite(n) ? n.toLocaleString('ru-RU') : '0'
+}
 </script>
 
 <template>
-  <div class="doughnut-container" :class="`layout-${layout}`">
+  <div
+    class="doughnut-container"
+    :class="[`layout-${layout}`, { 'fill-parent': fillParent }]"
+  >
     <div class="chart-section">
-      <div class="chart-wrapper" :style="{ height: height }">
+      <div class="chart-wrapper" :style="{ height: chartHeight() }">
         <BaseChart
           type="doughnut"
           :data="chartData"
           :options="chartOptions"
-          :height="height"
+          :height="chartHeight()"
         />
         <div v-if="cutout !== '0%'" class="chart-center">
           <span class="center-label">{{ centerInfo.label }}</span>
-          <span class="center-percentage">{{ centerInfo.percentage }}%</span>
+          <span class="center-percentage">{{ displayPercentage(centerInfo.percentage) }}%</span>
           <span v-if="formatValue" class="center-value">{{ formatValue(centerInfo.value) }}</span>
         </div>
       </div>
@@ -174,6 +201,22 @@ watch(() => props.values, () => {
   gap: 30px;
 }
 
+.doughnut-container.fill-parent {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.doughnut-container.fill-parent .chart-section {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.doughnut-container.fill-parent .chart-wrapper {
+  width: 100%;
+}
+
 .chart-section {
   position: relative;
   display: flex;
@@ -197,23 +240,21 @@ watch(() => props.values, () => {
 }
 
 .center-label {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-caption-size);
+  color: var(--text-tertiary);
   display: block;
-  margin-bottom: 4px;
 }
 
 .center-percentage {
-  font-size: 20px;
-  font-weight: 600;
-  color: #111827;
+  font-size: var(--text-value-size);
+  font-weight: var(--text-value-weight);
+  color: var(--text-primary);
   display: block;
-  margin-bottom: 4px;
 }
 
 .center-value {
-  font-size: 14px;
-  color: #4b5563;
+  font-size: var(--text-body-secondary-size);
+  color: var(--text-secondary);
   display: block;
 }
 
@@ -225,7 +266,7 @@ watch(() => props.values, () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  font-size: 13px;
+  font-size: var(--text-caption-size);
 }
 
 .legend-item {
@@ -243,12 +284,12 @@ watch(() => props.values, () => {
 
 .legend-label {
   flex: 1;
-  color: #111827;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .legend-value {
-  color: #6b7280;
-  font-size: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption-size);
 }
 </style>
