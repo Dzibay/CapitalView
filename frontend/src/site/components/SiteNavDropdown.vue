@@ -7,6 +7,11 @@ defineProps({
     type: String,
     required: true,
   },
+  /** Ссылка верхнего уровня (основная страница раздела) */
+  to: {
+    type: String,
+    required: true,
+  },
   /** Подсветка, если текущий маршрут внутри раздела */
   active: {
     type: Boolean,
@@ -47,15 +52,13 @@ function onFocusOut(ev) {
     @focusin="openMenu"
     @focusout="onFocusOut"
   >
-    <button
-      type="button"
+    <router-link
+      :to="to"
       class="site-nav-dropdown__trigger"
-      :aria-expanded="open"
-      aria-haspopup="true"
-      :aria-controls="menuId"
+      :aria-label="`Перейти в раздел: ${label}`"
     >
       {{ label }}
-    </button>
+    </router-link>
     <div
       :id="menuId"
       class="site-nav-dropdown__panel"
@@ -78,6 +81,7 @@ function onFocusOut(ev) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  text-decoration: none;
   font: inherit;
   font-family: var(--font-body, 'Plus Jakarta Sans', system-ui, sans-serif);
   font-size: 13px;

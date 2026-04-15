@@ -8,6 +8,10 @@ defineProps({
     type: String,
     default: '',
   },
+  highlightedKeywords: {
+    type: Array,
+    default: () => [],
+  },
   sections: {
     type: Array,
     default: () => [
@@ -32,6 +36,15 @@ defineProps({
   <article class="site-article">
     <h1 class="site-article__title">{{ title }}</h1>
     <p v-if="lead" class="site-article__lead">{{ lead }}</p>
+    <div v-if="highlightedKeywords.length" class="site-article__keywords" aria-label="Выделенные ключевые запросы">
+      <span
+        v-for="keyword in highlightedKeywords"
+        :key="keyword"
+        class="site-article__keyword-chip"
+      >
+        {{ keyword }}
+      </span>
+    </div>
     <section
       v-for="(block, i) in sections"
       :key="i"
@@ -45,8 +58,7 @@ defineProps({
 
 <style scoped>
 .site-article {
-  max-width: 720px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .site-article__title {
@@ -63,6 +75,26 @@ defineProps({
   line-height: 1.6;
   color: #475569;
   margin: 0 0 40px;
+}
+
+.site-article__keywords {
+  margin: -10px 0 32px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.site-article__keyword-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  color: #1d4ed8;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 600;
 }
 
 .site-article__section {

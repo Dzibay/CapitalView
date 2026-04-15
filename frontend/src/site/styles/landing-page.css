@@ -463,6 +463,13 @@ html.cv-landing-snap {
   background: var(--color-primary-light, rgba(59, 130, 246, 0.08));
 }
 
+.header-mobile__sheet .header-mobile__link--main {
+  font-weight: 600;
+  color: var(--color-text);
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.18);
+}
+
 .header-mobile__sheet .header-mobile__link:active {
   background: rgba(0, 0, 0, 0.04);
 }

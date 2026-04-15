@@ -62,6 +62,7 @@ onUnmounted(() => {
           v-for="group in siteNavTopMenu"
           :key="group.label"
           :label="group.label"
+          :to="group.to"
           :active="isGroupActive(group)"
         >
           <router-link
@@ -119,6 +120,13 @@ onUnmounted(() => {
                   >
                     <summary class="header-mobile__sub-summary">{{ group.label }}</summary>
                     <div class="header-mobile__sub-panel">
+                      <router-link
+                        :to="group.to"
+                        class="header-mobile__link header-mobile__link--main"
+                        @click="closeMobileMenu"
+                      >
+                        В раздел: {{ group.label }}
+                      </router-link>
                       <router-link
                         v-for="link in group.items"
                         :key="link.to"

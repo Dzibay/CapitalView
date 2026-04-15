@@ -99,7 +99,7 @@ const routes = [
         name: 'site-feature-portfolio',
         component: () => import('../site/pages/FeaturePortfolio.vue'),
         meta: {
-          title: 'Учёт инвестиционного портфеля — CapitalView',
+          title: 'Учёт инвестиций в CapitalView — обзор сервиса',
           ...publicIndexMeta,
         },
       },
@@ -165,9 +165,10 @@ const routes = [
         component: () => import('../site/pages/CompareApps.vue'),
         meta: {
           title: 'Сравнение сервисов учёта инвестиций — CapitalView',
-          ...publicIndexMeta,
+          robots: 'noindex, follow',
         },
       },
+      { path: 'pricing', redirect: { path: '/', hash: '#pricing' } },
       { path: 'guides', redirect: { name: 'site-guide-excel' } },
       {
         path: 'guides/investment-tracking-excel',
@@ -177,12 +178,6 @@ const routes = [
           title: 'Учёт инвестиций в Excel — CapitalView',
           ...publicIndexMeta,
         },
-      },
-      {
-        path: 'pricing',
-        name: 'site-pricing',
-        component: () => import('../site/pages/PricingPage.vue'),
-        meta: { title: 'Тарифы — CapitalView', ...publicIndexMeta },
       },
       {
         path: 'free',

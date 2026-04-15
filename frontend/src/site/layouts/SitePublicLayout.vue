@@ -4,6 +4,7 @@ import LandingHeader from '../components/home/LandingHeader.vue'
 import LandingFooter from '../components/home/LandingFooter.vue'
 
 import '../styles/landing-page.css'
+import '../styles/seo-pages.css'
 </script>
 
 <template>
