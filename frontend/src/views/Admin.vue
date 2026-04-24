@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, ArrowUpDown, RefreshCw } from 'lucide-vue-next'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import LoadingState from '../components/base/LoadingState.vue'
@@ -14,6 +14,7 @@ const adminStore = useAdminStore()
 const { overview, usersSeries, adminUsers, adminDataError } = storeToRefs(adminStore)
 
 const loading = ref(!adminStore.hasFreshAdminData)
+const refreshing = ref(false)
 
 /** По умолчанию: дата регистрации, новые сверху (по убыванию даты). */
 const usersSortKey = ref('created_at')
@@ -134,6 +135,19 @@ function openUserPortfolios(u) {
     },
   })
 }
+
+async function refreshAdminData() {
+  if (refreshing.value) return
+  adminStore.adminDataError = ''
+  refreshing.value = true
+  try {
+    await adminStore.fetchAdminData(true)
+  } catch {
+    /* ошибка в store */
+  } finally {
+    refreshing.value = false
+  }
+}
 </script>
 
 <template>
@@ -145,6 +159,22 @@ function openUserPortfolios(u) {
           <p class="admin-page__subtitle-line">Сводка по сервису</p>
         </div>
         <div class="admin-page__actions">
+          <button
+            type="button"
+            class="admin-page__to-app admin-page__refresh-portfolios"
+            :disabled="loading || refreshing"
+            title="Перезагрузить сводку и список пользователей (включая число портфелей)"
+            @click="refreshAdminData"
+          >
+            <RefreshCw
+              class="admin-page__refresh-icon"
+              :class="{ 'admin-page__refresh-icon--spin': refreshing }"
+              :size="16"
+              stroke-width="2.5"
+              aria-hidden="true"
+            />
+            Обновить портфели
+          </button>
           <button type="button" class="admin-page__to-app" @click="goMessages">
             Поддержка
           </button>
@@ -395,6 +425,32 @@ function openUserPortfolios(u) {
 .admin-page__to-app:focus-visible {
   outline: 2px solid var(--primary, #527de5);
   outline-offset: 2px;
+}
+
+.admin-page__refresh-portfolios {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.admin-page__refresh-icon {
+  flex-shrink: 0;
+}
+
+.admin-page__refresh-icon--spin {
+  animation: admin-overview-spin 0.85s linear infinite;
+}
+
+@keyframes admin-overview-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.admin-page__to-app:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .admin-error {
