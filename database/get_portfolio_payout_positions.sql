@@ -2,7 +2,10 @@
 -- Валюта сумм: ap.value, expected_total, received_total — в валюте котировки актива (currency_ticker = qa.ticker).
 -- Фронт: карточка показывает сумму в этой валюте; агрегаты по дню/месяцу — перевод в ₽ по справочнику.
 -- 1) Отсекаем выплаты до появления позиции: portfolio_assets.created_at::date.
--- 2) Будущие: payment_date IS NULL или payment_date > CURRENT_DATE (как в check_missed_payouts — в проверку неполученных не входят).
+-- 2) Будущие: payment_date IS NULL или payment_date > CURRENT_DATE. Кол-во на базовую дату из
+--    portfolio_asset_daily_values: если дата реестра (или last_buy для дивиденда) уже прошла —
+--    берём количество на эту дату (владелец реестра после продажи до выплаты всё ещё получает);
+--    иначе — снимок на CURRENT_DATE (актив уже продан → прогноз не показываем).
 -- 3) Прошедшие: та же логика, что check_missed_payouts (даты отсечки по type_id, quantity из
 --    portfolio_asset_daily_values, сумма из cash_operations ±14 дней, валюта/RUB, допуск 3%).
 -- 4) received / missed / future + объединённый payouts (с полем status) для обратной совместимости.
@@ -30,6 +33,9 @@ DECLARE
     v_quote_to_rub_rate numeric(20,6);
     v_operation_type_id bigint;
     v_status text;
+    v_entitlement_date date;
+    v_future_basis_date date;
+    v_qty_future numeric;
     v_obj jsonb;
     v_received jsonb;
     v_future jsonb;
@@ -121,8 +127,43 @@ BEGIN
                 );
             END IF;
 
-            -- Будущие / без даты выплаты — как в check_missed_payouts (не проверяем cash_operations)
+            -- Будущие / без даты выплаты — прогноз только при ненулевой позиции на базовую дату
             IF r_payout.payment_date IS NULL OR r_payout.payment_date > CURRENT_DATE THEN
+                v_entitlement_date := NULL;
+                IF r_payout.type_id = 2 THEN
+                    v_entitlement_date := r_payout.record_date;
+                ELSIF r_payout.type_id = 1 THEN
+                    v_entitlement_date := COALESCE(r_payout.record_date, r_payout.last_buy_date);
+                ELSE
+                    v_entitlement_date := COALESCE(
+                        r_payout.record_date,
+                        r_payout.last_buy_date,
+                        r_payout.payment_date
+                    );
+                END IF;
+
+                IF v_entitlement_date IS NOT NULL AND v_entitlement_date <= CURRENT_DATE THEN
+                    v_future_basis_date := v_entitlement_date;
+                ELSE
+                    v_future_basis_date := CURRENT_DATE;
+                END IF;
+
+                SELECT pav.quantity
+                INTO v_qty_future
+                FROM portfolio_asset_daily_values pav
+                WHERE pav.portfolio_asset_id = r_pa.pa_id
+                  AND pav.report_date <= v_future_basis_date
+                ORDER BY pav.report_date DESC
+                LIMIT 1;
+
+                IF v_qty_future IS NULL THEN
+                    v_qty_future := COALESCE(r_pa.quantity, 0);
+                END IF;
+
+                IF v_qty_future IS NULL OR v_qty_future <= 0 THEN
+                    CONTINUE;
+                END IF;
+
                 v_obj := jsonb_build_object(
                     'id', r_payout.id,
                     'last_buy_date', r_payout.last_buy_date,
@@ -131,7 +172,9 @@ BEGIN
                     'value', r_payout.value,
                     'dividend_yield', r_payout.dividend_yield,
                     'type', r_payout.type_code,
-                    'status', 'future'
+                    'status', 'future',
+                    'expected_total', COALESCE(r_payout.value, 0) * v_qty_future,
+                    'basis_quantity', v_qty_future
                 );
                 v_future := v_future || jsonb_build_array(v_obj);
                 v_payouts := v_payouts || jsonb_build_array(v_obj);
@@ -270,20 +313,22 @@ BEGIN
             v_payouts := v_payouts || jsonb_build_array(v_obj);
         END LOOP;
 
-        v_elem := jsonb_build_object(
-            'portfolio_id', r_pa.portfolio_id,
-            'portfolio_asset_id', r_pa.pa_id,
-            'asset_id', r_pa.asset_id,
-            'name', r_pa.asset_name,
-            'ticker', r_pa.asset_ticker,
-            'quantity', COALESCE(r_pa.quantity, 0),
-            'currency_ticker', r_pa.currency_ticker,
-            'received_payouts', v_received,
-            'future_payouts', v_future,
-            'missed_payouts', v_missed,
-            'payouts', v_payouts
-        );
-        v_positions := v_positions || jsonb_build_array(v_elem);
+        IF jsonb_array_length(v_payouts) > 0 THEN
+            v_elem := jsonb_build_object(
+                'portfolio_id', r_pa.portfolio_id,
+                'portfolio_asset_id', r_pa.pa_id,
+                'asset_id', r_pa.asset_id,
+                'name', r_pa.asset_name,
+                'ticker', r_pa.asset_ticker,
+                'quantity', COALESCE(r_pa.quantity, 0),
+                'currency_ticker', r_pa.currency_ticker,
+                'received_payouts', v_received,
+                'future_payouts', v_future,
+                'missed_payouts', v_missed,
+                'payouts', v_payouts
+            );
+            v_positions := v_positions || jsonb_build_array(v_elem);
+        END IF;
     END LOOP;
 
     RETURN json_build_object(
