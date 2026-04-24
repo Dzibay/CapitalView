@@ -8,6 +8,13 @@ export const API_ENDPOINTS = {
     SUPPORT_MESSAGES: '/admin/support-messages',
     SUPPORT_REPLY: '/admin/support-messages/reply',
     USER_DASHBOARD: (userId) => `/admin/users/${userId}/dashboard`,
+    USER_PORTFOLIO_REFRESH: (userId, portfolioId) =>
+      `/admin/users/${userId}/portfolios/${portfolioId}/refresh`,
+    USER_PORTFOLIO_CLEAR: (userId, portfolioId) =>
+      `/admin/users/${userId}/portfolios/${portfolioId}/clear`,
+    USER_PORTFOLIO_DELETE: (userId, portfolioId) =>
+      `/admin/users/${userId}/portfolios/${portfolioId}`,
+    USER_BROKER_SYNC: (userId) => `/admin/users/${userId}/portfolios/broker-sync`,
   },
   AUTH: {
     REGISTER: '/auth/register',
