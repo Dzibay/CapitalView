@@ -370,9 +370,10 @@ onMounted(() => {
 .messenger {
   display: grid;
   grid-template-columns: minmax(220px, 280px) 1fr;
+  grid-template-rows: minmax(0, 1fr);
   gap: 0;
-  min-height: 420px;
-  max-height: min(72vh, 640px);
+  height: clamp(420px, 72vh, 640px);
+  min-height: 0;
   border-radius: 16px;
   border: 1px solid var(--axis-grid, #e5e7eb);
   background: var(--bg-primary, #fff);
@@ -385,6 +386,7 @@ onMounted(() => {
   background: var(--bg-secondary, #f9fafb);
   overflow-y: auto;
   min-width: 0;
+  min-height: 0;
 }
 
 .messenger__empty-side {
@@ -450,6 +452,7 @@ onMounted(() => {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .messenger__placeholder {
@@ -483,8 +486,10 @@ onMounted(() => {
 }
 
 .messenger__scroll {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 0.75rem 1rem;
   display: flex;
   flex-direction: column;
@@ -638,7 +643,8 @@ onMounted(() => {
 
   .messenger {
     grid-template-columns: 1fr;
-    max-height: none;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: clamp(380px, min(72vh, 100dvh - 220px), 640px);
     min-height: 360px;
   }
 
