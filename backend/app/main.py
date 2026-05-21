@@ -23,7 +23,9 @@ app = FastAPI(
     description="API для управления инвестиционными портфелями",
     version="1.0.0",
     docs_url="/api/docs",
-    redoc_url="/api/redoc"
+    redoc_url="/api/redoc",
+    # Должен быть под /api — nginx проксирует только /api на backend
+    openapi_url="/api/openapi.json",
 )
 
 # Сохраняем состояние приложения
