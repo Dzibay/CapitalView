@@ -194,59 +194,52 @@ watch(route, () => {
 </template>
 
 <style>
-/* Глобальные переменные и стили для иконок */
+/* Institutional ink — матовый сайдбар без glass/glow */
 :root {
-  --sidebar-bg-color: #11101d;
-  --sidebar-item-hover-bg: #1d1b31;
-  --sidebar-text-color: #d1d5db;
-  --sidebar-text-color-hover: #ffffff;
-  --sidebar-primary: #527de5;
-  --sidebar-primary-gradient: linear-gradient(135deg, #527de5, #6b91ea);
-  --sidebar-accent: hsl(245, 58%, 96%);
+  --sidebar-bg-color: #12151a;
+  --sidebar-item-hover-bg: #1c2128;
+  --sidebar-text-color: #a8b0ba;
+  --sidebar-text-color-hover: #f2f4f6;
+  --sidebar-primary: #2f5f8f;
+  --sidebar-accent: #e8eef4;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
 }
 
-/* Применение размеров к SVG иконкам через CSS, а не классы */
 .sidebar__item-icon svg, .sidebar__submenu-toggle svg, .sidebar__logout-icon svg {
-    width: 1.5rem; /* 24px */
-    height: 1.5rem; /* 24px */
+    width: 1.25rem;
+    height: 1.25rem;
 }
 .sidebar__submenu-toggle svg {
-    width: 1.25rem; /* 20px */
-    height: 1.25rem; /* 20px */
+    width: 1.125rem;
+    height: 1.125rem;
 }
 .logo-svg {
-    width: 2rem; /* 32px */
-    height: 2rem; /* 32px */
+    width: 2rem;
+    height: 2rem;
     color: white;
 }
 .sidebar__logout-icon svg {
     color: white;
 }
 
-
-/* Основной контейнер */
 .sidebar {
   display: flex;
   position: fixed;
   height: 100%;
   flex-direction: column;
-  background: rgba(17, 16, 29, 0.95);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  background: var(--sidebar-bg-color);
   color: var(--sidebar-text-color);
   width: var(--sidebarWidth);
-  transition: width 0.3s ease-in-out;
+  transition: width 0.25s ease;
   z-index: 1000;
   overflow: visible;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 4px 0 40px -8px rgba(0, 0, 0, 0.4);
+  border-right: 1px solid var(--sidebar-border);
 }
 
 .sidebar--collapsed {
   width: var(--sidebarWidthCollapsed);
 }
 
-/* Утилиты для скрытия текста */
 .sidebar--collapsed .sidebar__title,
 .sidebar--collapsed .sidebar__item-name,
 .sidebar--collapsed .sidebar__section-title,
@@ -262,14 +255,13 @@ watch(route, () => {
     opacity: 0;
 }
 
-/* Шапка */
 .sidebar__header {
   display: flex;
   align-items: center;
-  gap: 0rem;
+  gap: 0;
   height: var(--headerHeight);
-  padding: 0 1.5rem; /* 24px */
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--sidebar-border);
 }
 
 .sidebar__logo-icon {
@@ -279,12 +271,9 @@ watch(route, () => {
   min-width: 40px;
 }
 
-
-
 .logo-img {
-  width: 48px;
-  height: 48px;
-  /* Чтобы логотип занимал больше площади, даже если в исходном файле есть поля */
+  width: 40px;
+  height: 40px;
   object-fit: cover;
   object-position: center;
   display: block;
@@ -294,28 +283,26 @@ watch(route, () => {
   display: flex;
   align-items: center;
   gap: 0;
-  font-size: 1.25rem; /* 20px */
-  font-weight: 800;
+  font-size: 1.0625rem;
+  font-weight: 600;
   white-space: nowrap;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 
 .title-part {
-  color: white;
-  transition: opacity 0.2s ease-in-out;
+  color: #f2f4f6;
+  transition: opacity 0.2s ease;
 }
 
 .title-part--accent {
-  background: var(--sidebar-primary-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #8eb0d0;
+  background: none;
+  -webkit-text-fill-color: unset;
 }
 
-/* Навигация */
 .sidebar__nav {
   flex-grow: 1;
-  padding: 1.5rem 0;
+  padding: 1.25rem 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -323,35 +310,34 @@ watch(route, () => {
 .sidebar__nav-content {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1.75rem;
 }
 
 .sidebar__section {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.125rem;
 }
 
 .sidebar__section-title {
-  padding: 0 1.5rem;
-  font-size: 0.6875rem; /* 11px */
-  font-weight: 700;
+  padding: 0 1.25rem;
+  font-size: 0.625rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.4);
-  margin-bottom: 0.25rem;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.32);
+  margin-bottom: 0.375rem;
 }
 
 .sidebar__nav-list {
   list-style: none;
-  padding: 0 0.75rem; /* 12px */
+  padding: 0 0.625rem;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.375rem; /* 6px */
+  gap: 0.125rem;
 }
 
-/* Контекст позиционирования для подменю */
 .sidebar__nav-list > li {
   position: relative;
 }
@@ -360,28 +346,27 @@ watch(route, () => {
   display: flex;
   align-items: center;
   position: relative;
-  height: 2.75rem; /* 44px */
-  border-radius: 0.875rem; /* 14px */
-  color: rgba(255, 255, 255, 0.7);
+  height: 2.5rem;
+  border-radius: var(--radius-sm, 6px);
+  color: rgba(255, 255, 255, 0.62);
   text-decoration: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.15s ease, color 0.15s ease;
   cursor: pointer;
   padding: 0 0.75rem;
-  font-size: 0.875rem; /* 14px */
+  font-size: 0.8125rem;
   font-weight: 500;
+  letter-spacing: -0.01em;
 }
 
 .sidebar__nav-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--sidebar-item-hover-bg);
   color: rgba(255, 255, 255, 0.9);
-  transform: translateX(2px);
 }
 
 .sidebar__nav-item--active {
-  background: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
+  background: rgba(47, 95, 143, 0.22);
+  color: #f2f4f6;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .sidebar-active-indicator {
@@ -389,48 +374,47 @@ watch(route, () => {
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 3px;
-  height: 1.5rem;
-  border-radius: 0 4px 4px 0;
-  background: var(--sidebar-primary-gradient);
-  box-shadow: 0 0 12px 2px hsla(245, 58%, 58%, 0.4);
+  width: 2px;
+  height: 1.125rem;
+  border-radius: 0;
+  background: var(--sidebar-primary);
+  box-shadow: none;
 }
 
 .sidebar__item-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
+  min-width: 28px;
   position: relative;
   color: inherit;
 }
 
 .sidebar__item-icon svg {
-  width: 20px;
-  height: 20px;
-  stroke-width: 2;
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.75;
   color: inherit;
 }
 
 .sidebar__nav-item--active .sidebar__item-icon {
-  color: #ffffff;
+  color: #c5d6e8;
 }
 
 .sidebar__nav-item:not(.sidebar__nav-item--active) .sidebar__item-icon {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .sidebar__item-name {
   white-space: nowrap;
-  transition: opacity 0.2s ease-in-out;
-  margin-left: 5px;
+  transition: opacity 0.2s ease;
+  margin-left: 6px;
 }
 
-/* Подменю */
 .sidebar__submenu-toggle {
   margin-left: auto;
-  margin-right: 1rem;
-  transition: transform 0.3s, opacity 0.2s;
+  margin-right: 0.75rem;
+  transition: transform 0.25s, opacity 0.2s;
 }
 
 .sidebar__submenu-toggle--open {
@@ -439,28 +423,26 @@ watch(route, () => {
 
 .sidebar__submenu {
   list-style: none;
-  margin: 0.5rem 0 0 2rem; /* 8px 0 0 32px */
   padding: 0;
   margin: 0;
   overflow: hidden;
   max-height: 0;
-  transition: max-height 0.3s ease-in-out;
+  transition: max-height 0.25s ease;
   z-index: 20000;
 }
 
-/* Применяется только когда сайдбар НЕ свёрнут */
 .sidebar:not(.sidebar--collapsed) .sidebar__submenu--open {
-  max-height: 24rem; /* Достаточно большое значение */
+  max-height: 24rem;
 }
 
 .sidebar__submenu-item {
   display: block;
-  padding: 0.5rem 1rem; /* 8px 16px */
-  border-radius: 0.5rem; /* 8px */
-  font-size: 0.875rem; /* 14px */
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.8125rem;
   color: var(--sidebar-text-color);
   text-decoration: none;
-  transition: background-color 0.2s, color 0.2s;
+  transition: background-color 0.15s, color 0.15s;
   white-space: nowrap;
 }
 
@@ -469,31 +451,25 @@ watch(route, () => {
   color: var(--sidebar-text-color-hover);
 }
 
-/* Стили всплывающего меню для свёрнутого сайдбара */
 .sidebar--collapsed .sidebar__submenu {
   position: absolute;
   left: 100%;
   top: 0;
-  z-index: 9999; /* Повышаем приоритет */
-  margin-left: 0.75rem; /* 12px gap */
-  padding: 0.5rem;
-  min-width: 190px;
-  background-color: var(--sidebar-item-hover-bg);
-  border-radius: 0.5rem;
-  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
-  
-  
-  /* Переопределение стилей развёрнутого режима */
-  max-height: none; 
-  
-  /* Скрыто по умолчанию */
+  z-index: 9999;
+  margin-left: 0.5rem;
+  padding: 0.375rem;
+  min-width: 180px;
+  background-color: var(--sidebar-bg-color);
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  max-height: none;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
 }
 
-/* Показ всплывающего меню при наведении */
 .sidebar--collapsed .sidebar__nav-list > li:hover > .sidebar__submenu {
   opacity: 1;
   visibility: visible;
@@ -501,41 +477,40 @@ watch(route, () => {
 }
 
 .sidebar__user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 0.5rem; /* 8px */
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm, 6px);
   object-fit: cover;
 }
 
 .sidebar__user-info {
-  margin-left: 0.75rem; /* 12px */
+  margin-left: 0.75rem;
   overflow: hidden;
   white-space: nowrap;
   transition: width 0.2s, opacity 0.2s;
 }
 
 .sidebar__user-name {
-  font-weight: 700;
-  font-size: 0.875rem; /* 14px */
-  color: white;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: #f2f4f6;
 }
 
 .sidebar__user-role {
-  font-size: 0.75rem; /* 12px */
-  color: #a0aec0;
+  font-size: 0.6875rem;
+  color: #7a8490;
 }
 
 .sidebar__logout {
   background: none;
   border: none;
   margin-left: auto;
-  transition: opacity 0.3s;
+  transition: opacity 0.2s;
 }
 .sidebar__logout:hover {
-  border: 1px solid grey;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Переходы */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease;
@@ -553,15 +528,14 @@ watch(route, () => {
 
 .fade-slide-enter-from {
   opacity: 0;
-  transform: translateX(-10px);
+  transform: translateX(-6px);
 }
 
 .fade-slide-leave-to {
   opacity: 0;
-  transform: translateX(-10px);
+  transform: translateX(-6px);
 }
 
-/* Мобильные: боковая панель отключена — навигация в нижней панели (AppBottomNav) */
 @media (max-width: 768px) {
   .sidebar {
     display: none !important;

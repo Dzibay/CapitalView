@@ -5,7 +5,6 @@
 # Виртуальное окружение
 venv/
 .env
-.env.example
 
 # Python cache
 __pycache__/
@@ -54,3 +53,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.swp
+
+# Generated CA bundle (certifi + Russian Trusted); keep only root/sub PEMs in git
+backend/certs/ca_bundle.pem

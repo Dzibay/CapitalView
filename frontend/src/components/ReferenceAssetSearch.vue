@@ -261,55 +261,55 @@ defineExpose({
 
 .ref-asset-search__input--modal {
   padding: 11px 14px 11px 36px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 10px;
+  border: 1px solid var(--border-subtle, #d8dee6);
+  border-radius: var(--radius-sm, 6px);
   font-size: 14px;
   background: #fff;
-  color: #111827;
-  transition: all 0.2s ease;
+  color: var(--text-primary, #0f1419);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .ref-asset-search__input--modal:hover {
-  border-color: #d1d5db;
-  background: #fafafa;
+  border-color: var(--border-strong, #c5ced8);
+  background: #fff;
 }
 
 .ref-asset-search__input--modal:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: var(--primary, #2f5f8f);
+  box-shadow: 0 0 0 2px rgba(47, 95, 143, 0.15);
   background: #fff;
 }
 
 .ref-asset-search__input--modal:disabled {
-  background: #f9fafb;
-  color: #9ca3af;
+  background: var(--bg-secondary, #eef1f4);
+  color: var(--text-quaternary, #8b939e);
   cursor: not-allowed;
 }
 
 .ref-asset-search__input--header {
   height: 40px;
   padding: 0 14px 0 38px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 10px;
+  border: 1px solid var(--border-subtle, #d8dee6);
+  border-radius: var(--radius-sm, 6px);
   font-size: 14px;
   background: #fff;
-  color: #111827;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  color: var(--text-primary, #0f1419);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .ref-asset-search__input--header::placeholder {
-  color: #9ca3af;
+  color: var(--text-quaternary, #8b939e);
 }
 
 .ref-asset-search__input--header:hover {
-  border-color: #d1d5db;
+  border-color: var(--border-strong, #c5ced8);
 }
 
 .ref-asset-search__input--header:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: var(--primary, #2f5f8f);
+  box-shadow: 0 0 0 2px rgba(47, 95, 143, 0.15);
 }
 
 .ref-asset-search__dropdown {
@@ -322,9 +322,9 @@ defineExpose({
   padding: 4px 0;
   list-style: none;
   background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--border-subtle, #d8dee6);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 12px 28px rgba(15, 20, 25, 0.1);
   max-height: min(280px, 50vh);
   overflow-y: auto;
   z-index: 1010;

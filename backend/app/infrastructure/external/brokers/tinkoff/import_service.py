@@ -3,9 +3,15 @@
 """
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
-from t_tech.invest import Client, InstrumentIdType
+from t_tech.invest import Client, InstrumentIdType, GetOperationsByCursorRequest
 from t_tech.invest.exceptions import RequestError
 from grpc import StatusCode
+
+from app.infrastructure.external.brokers.tinkoff.ssl_support import (
+    patch_tinkoff_grpc_channel,
+)
+
+patch_tinkoff_grpc_channel()
 
 from app.core.logging import get_logger
 
@@ -165,6 +171,27 @@ def _tinkoff_commission_by_parent(ops_raw) -> tuple[dict[str, float], set[str]]:
     return by_parent, skip_ids
 
 
+
+def _get_all_tinkoff_operations(client, account_id: str) -> list[Any]:
+    """Fetches the complete operation history using cursor pagination."""
+    operations: list[Any] = []
+    cursor = ""
+    seen_cursors: set[str] = set()
+    while True:
+        response = client.operations.get_operations_by_cursor(
+            GetOperationsByCursorRequest(account_id=account_id, cursor=cursor, limit=1000)
+        )
+        operations.extend(response.operations or [])
+        if not response.has_next:
+            break
+        next_cursor = response.next_cursor or ""
+        if not next_cursor or next_cursor in seen_cursors:
+            logger.warning("Tinkoff operations pagination stopped on repeated cursor account=%s", account_id)
+            break
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
+    return operations
+
 def classify_tinkoff_operation(operation_type_name: str) -> str:
     """Возвращает внутренний тип операции; при отсутствии в маппинге — Other."""
     return OPERATION_CLASSIFICATION.get(operation_type_name, "Other")
@@ -319,11 +346,7 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
 
                 # ОПЕРАЦИИ
                 try:
-                    ops_raw = client.operations.get_operations(
-                        account_id=acc_id,
-                        # from_=from_date,
-                        # to=now
-                    ).operations
+                    ops_raw = _get_all_tinkoff_operations(client, acc_id)
                 except RequestError as e:
                     # Если счет недоступен для получения операций, используем пустой список операций
                     if e.code == StatusCode.NOT_FOUND and e.details == "50004":

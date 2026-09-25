@@ -85,16 +85,37 @@ async def register(data: RegisterRequest):
             detail=ErrorMessages.USER_ALREADY_EXISTS,
         )
 
-    user = await create_user(data.email, data.password)
+    skip_verification = not Config.email_verification_required()
+    user = await create_user(data.email, data.password, email_verified=skip_verification)
     user_id = str(user["id"]) if isinstance(user, dict) else str(user[0]["id"])
+    if isinstance(user, list):
+        user = user[0]
+
+    if skip_verification:
+        await record_user_last_login(user_id)
+        access_token = create_access_token(identity=data.email)
+        logger.info("Local/dev registration without email verification email=%s", data.email)
+        return success_response(
+            data={
+                "access_token": access_token,
+                "token_type": "bearer",
+                "user": auth_user_payload(user),
+                "email_sent": False,
+                "email_verification_required": False,
+            },
+            message="??????????? ???????",
+            status_code=HTTPStatus.CREATED,
+        )
 
     await _create_and_send_token(user_id, data.email)
 
     return success_response(
-        data={"email_sent": True},
-        message="Письмо с подтверждением отправлено на email",
+        data={"email_sent": True, "email_verification_required": True},
+        message="?????? ? ?????????????? ?????????? ?? email",
         status_code=HTTPStatus.CREATED,
     )
+
+
 
 
 @router.get("/verify-email")
@@ -156,6 +177,12 @@ async def resend_verification(data: ResendVerificationRequest):
     if user.get("email_verified"):
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Email уже подтверждён")
 
+    if not Config.email_verification_required():
+        return success_response(
+            data={"email_sent": False, "email_verification_required": False},
+            message="????????????? email ? ????????? ?????? ?? ?????????",
+        )
+
     last_tokens = await table_select_async(
         "email_verification_tokens",
         filters={"user_id": str(user["id"])},
@@ -197,7 +224,7 @@ async def login(data: LoginRequest):
             detail=ErrorMessages.INVALID_CREDENTIALS,
         )
 
-    if not user.get("email_verified"):
+    if Config.email_verification_required() and not user.get("email_verified"):
         raise HTTPException(
             status_code=HTTPStatus.FORBIDDEN,
             detail="email_not_verified",

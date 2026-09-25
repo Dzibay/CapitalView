@@ -33,15 +33,16 @@ const props = defineProps({
 
 <style scoped>
 .widget {
-  background-color: #fff;
-  border-radius: 16px;
+  background-color: var(--surface, #fff);
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--border-subtle, #d8dee6);
   padding: 1rem 1.25rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
-  transition: box-shadow 0.2s;
+  transition: border-color 0.15s ease;
 }
 @media (max-width: 768px) {
   .widget {
@@ -50,7 +51,8 @@ const props = defineProps({
 }
 
 .widget:hover {
-  box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+  box-shadow: none;
+  border-color: var(--border-strong, #c5ced8);
 }
 
 .widget-header {
@@ -81,17 +83,17 @@ const props = defineProps({
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  background-color: #F3F4F6; /* Единый светло-серый фон */
-  color: #4B5563; /* Тёмно-серый цвет иконки */
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--bg-tertiary, #e4e8ed);
+  color: var(--text-secondary, #3d4654);
   flex-shrink: 0;
 }
 
 .widget-title-icon-placeholder {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  background-color: #F3F4F6;
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--bg-tertiary, #e4e8ed);
 }
 
 .widget-title h2 {

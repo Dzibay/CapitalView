@@ -76,9 +76,20 @@ const handleSubmit = async () => {
           : defaultAuthenticatedPath(loginRes.data?.user);
       await router.replace(redirectPath);
     } else {
-      await authService.register(email.value, password.value);
-      authService.logout();
-      enterVerificationMode();
+      const registerRes = await authService.register(email.value, password.value);
+      const token = registerRes?.data?.access_token;
+      if (token) {
+        localStorage.setItem('access_token', token);
+        const rawRedirect = router.currentRoute.value.query.redirect;
+        const redirectPath =
+          rawRedirect && String(rawRedirect).startsWith('/')
+            ? String(rawRedirect)
+            : defaultAuthenticatedPath(registerRes.data?.user);
+        await router.replace(redirectPath);
+      } else {
+        authService.logout();
+        enterVerificationMode();
+      }
     }
   } catch (err) {
     const data = err.response?.data;

@@ -29,13 +29,13 @@ async def get_user_by_id(user_id):
     return await _user_repository.get_by_id(user_id)
 
 
-async def create_user(email: str, password: str):
+async def create_user(email: str, password: str, email_verified: bool = False):
     """Создает нового пользователя."""
     hashed = bcrypt.generate_password_hash(password)
     return await _user_repository.create({
         "email": email,
         "password_hash": hashed,
-        "email_verified": False,
+        "email_verified": bool(email_verified),
     })
 
 

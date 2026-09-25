@@ -1,4 +1,59 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: capitalview-postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${DB_NAME:-capitalview}
+      POSTGRES_USER: ${DB_USER:-capitalview}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-capitalview} -d ${DB_NAME:-capitalview}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [capitalview]
+
+  redis:
+    image: redis:7-alpine
+    container_name: capitalview-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [capitalview]
+
+  db-init:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: capitalview-backend
+    container_name: capitalview-db-init
+    restart: "no"
+    env_file: .env
+    environment:
+      ENVIRONMENT: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      REFERENCE_SEED_ENABLED: ${REFERENCE_SEED_ENABLED:-true}
+      REFERENCE_PROGRESS: ${REFERENCE_PROGRESS:-0}
+    command: ["python", "-m", "scripts.bootstrap"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [capitalview]
+
   backend:
     build:
       context: .
@@ -8,15 +63,24 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      - ENVIRONMENT=production
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT:-5432}
-      - REDIS_URL=redis://redis:6379/0
+      ENVIRONMENT: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      RUN_REFERENCE_UPDATES: "0"
+    command: ["gunicorn", "app.main:app", "-w", "${WEB_WORKERS:-2}", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:5000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     depends_on:
+      db-init:
+        condition: service_completed_successfully
       redis:
-        condition: service_started
-    networks:
-      - capitalview
+        condition: service_healthy
+    networks: [capitalview]
 
   worker-task:
     image: capitalview-backend
@@ -24,16 +88,11 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "app.workers.task_worker_optimized"]
     env_file: .env
-    environment:
-      - ENVIRONMENT=production
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT:-5432}
-      - REDIS_URL=redis://redis:6379/0
+    environment: {ENVIRONMENT: production, DB_HOST: postgres, DB_PORT: 5432, REDIS_URL: redis://redis:6379/0}
     depends_on:
-      redis:
-        condition: service_started
-    networks:
-      - capitalview
+      db-init: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    networks: [capitalview]
 
   worker-moex-prices:
     image: capitalview-backend
@@ -41,16 +100,9 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "app.workers.moex_price_worker"]
     env_file: .env
-    environment:
-      - ENVIRONMENT=production
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT:-5432}
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_started
-    networks:
-      - capitalview
+    environment: {ENVIRONMENT: production, DB_HOST: postgres, DB_PORT: 5432, REDIS_URL: redis://redis:6379/0}
+    depends_on: {db-init: {condition: service_completed_successfully}}
+    networks: [capitalview]
 
   worker-currency-prices:
     image: capitalview-backend
@@ -58,16 +110,9 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "app.workers.currency_price_worker"]
     env_file: .env
-    environment:
-      - ENVIRONMENT=production
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT:-5432}
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_started
-    networks:
-      - capitalview
+    environment: {ENVIRONMENT: production, DB_HOST: postgres, DB_PORT: 5432, REDIS_URL: redis://redis:6379/0}
+    depends_on: {db-init: {condition: service_completed_successfully}}
+    networks: [capitalview]
 
   worker-crypto-prices:
     image: capitalview-backend
@@ -75,61 +120,61 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "app.workers.crypto_price_worker"]
     env_file: .env
-    environment:
-      - ENVIRONMENT=production
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT:-5432}
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_started
-    networks:
-      - capitalview
+    environment: {ENVIRONMENT: production, DB_HOST: postgres, DB_PORT: 5432, REDIS_URL: redis://redis:6379/0}
+    depends_on: {db-init: {condition: service_completed_successfully}}
+    networks: [capitalview]
 
-  # Caddy — reverse proxy с автоматическим SSL (Let's Encrypt)
-  caddy:
-    image: caddy:2-alpine
-    container_name: capitalview-caddy
+  reference-scheduler:
+    image: capitalview-backend
+    container_name: capitalview-reference-scheduler
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
+    command: ["python", "-m", "scripts.daily_reference_scheduler"]
+    env_file: .env
+    environment:
+      ENVIRONMENT: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      REFERENCE_PROGRESS: ${REFERENCE_PROGRESS:-0}
+      REFERENCE_UPDATE_INTERVAL_SECONDS: ${REFERENCE_UPDATE_INTERVAL_SECONDS:-86400}
     depends_on:
-      - frontend
-    networks:
-      - capitalview
+      db-init: {condition: service_completed_successfully}
+    networks: [capitalview]
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_BASE_URL=/api/v1
-        - VITE_YM_COUNTER_ID=${VITE_YM_COUNTER_ID}
-        - VITE_YANDEX_VERIFICATION_ID=${VITE_YANDEX_VERIFICATION_ID}
+        VITE_API_BASE_URL: /api/v1
+        VITE_YM_COUNTER_ID: ${VITE_YM_COUNTER_ID:-}
+        VITE_YANDEX_VERIFICATION_ID: ${VITE_YANDEX_VERIFICATION_ID:-}
     container_name: capitalview-frontend
     restart: unless-stopped
-    # Порт 80 не пробрасываем — Caddy проксирует на frontend:80
     depends_on:
-      - backend
-    networks:
-      - capitalview
+      backend: {condition: service_healthy}
+    networks: [capitalview]
 
-  redis:
-    image: redis:7-alpine
-    container_name: capitalview-redis
+  caddy:
+    image: caddy:2-alpine
+    container_name: capitalview-caddy
     restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
     volumes:
-      - redis_data:/data
-    networks:
-      - capitalview
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend: {condition: service_started}
+    networks: [capitalview]
 
 volumes:
+  pgdata:
   redis_data:
   caddy_data:
+  caddy_config:
 
 networks:
   capitalview:

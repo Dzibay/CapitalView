@@ -837,14 +837,7 @@ async def import_broker_portfolio(
                 comm_rub = None
                 if asset_id in currency_assets_map:
                     currency_id_for_tx = currency_assets_map[asset_id]
-                    price, payment = _convert_price_payment_to_rub_if_needed(
-                        asset_id, currency_assets_map, currency_rates, tx_date, price, payment,
-                    )
-                    if abs(comm_val) >= 1e-12:
-                        _, comm_val = _convert_price_payment_to_rub_if_needed(
-                            asset_id, currency_assets_map, currency_rates, tx_date, 0.0, comm_val,
-                        )
-                        comm_rub = round(comm_val, 6)
+                    # Keep transaction amounts in quote currency; SQL computes RUB values once.
                 elif abs(comm_val) >= 1e-12:
                     comm_rub = round(comm_val, 6)
 
@@ -881,19 +874,14 @@ async def import_broker_portfolio(
                     if not op_date_normalized:
                         continue
 
-                currency_id_for_op = 1
+                # ??? Deposit/Withdraw asset_id ???????????, ??????? ?????? ?????
+                # ?????????? ?? currency ????????, ????? USD/EUR ???????? ?????? RUB.
+                currency_id_for_op = ticker_to_quote.get(_fmt_currency_code(tx.get("currency")).upper(), 1)
                 comm_cash = float(tx.get("commission") or 0)
                 comm_cash_rub = None
                 if op_type_id not in (5, 6) and asset_id and asset_id in currency_assets_map:
                     currency_id_for_op = currency_assets_map[asset_id]
-                    _, payment = _convert_price_payment_to_rub_if_needed(
-                        asset_id, currency_assets_map, currency_rates, tx_date, 0.0, payment,
-                    )
-                    if abs(comm_cash) >= 1e-12:
-                        _, comm_cash = _convert_price_payment_to_rub_if_needed(
-                            asset_id, currency_assets_map, currency_rates, tx_date, 0.0, comm_cash,
-                        )
-                        comm_cash_rub = round(comm_cash, 6)
+                    # Keep cash amounts in quote currency; SQL computes RUB values once.
                 elif abs(comm_cash) >= 1e-12:
                     comm_cash_rub = round(comm_cash, 6)
 

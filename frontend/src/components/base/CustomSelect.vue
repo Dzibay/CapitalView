@@ -459,8 +459,8 @@ onUnmounted(() => {
 }
 
 .custom-select.is-open {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  border-color: var(--primary, #2f5f8f);
+  box-shadow: 0 0 0 2px rgba(47, 95, 143, 0.15);
   background: #fff;
 }
 

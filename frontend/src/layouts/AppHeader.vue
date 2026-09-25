@@ -136,9 +136,10 @@ function onSelectHeaderAsset(asset) {
   align-items: center;
   gap: 12px;
   padding: 12px var(--spacing);
-  background-color: #fff;
-  transition: left 0.3s ease-in-out;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  background-color: var(--surface, #fff);
+  transition: left 0.25s ease;
+  border-bottom: 1px solid var(--border-subtle, #d8dee6);
+  box-shadow: none;
   z-index: 999;
   overflow: visible;
 }
@@ -182,13 +183,14 @@ function onSelectHeaderAsset(asset) {
   border: none;
   cursor: pointer;
   padding: 0.5rem;
-  border-radius: 12px;
+  border-radius: var(--radius-sm, 6px);
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--text-secondary, #3d4654);
 }
 .burger-button:hover {
-  background-color: #f3f4f6;
+  background-color: var(--bg-tertiary, #e4e8ed);
 }
 .header-user-cluster {
   display: flex;
@@ -210,35 +212,35 @@ function onSelectHeaderAsset(asset) {
   border: none;
   cursor: pointer;
   padding: 8px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm, 6px);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
-  transition: all 0.2s ease;
+  color: var(--text-tertiary, #6b7380);
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .notifications-button:hover {
-  background-color: #f3f4f6;
-  color: #3b82f6;
+  background-color: var(--bg-tertiary, #e4e8ed);
+  color: var(--primary, #2f5f8f);
 }
 
 .notifications-button.has-notifications {
-  color: #3b82f6;
+  color: var(--primary, #2f5f8f);
 }
 
 .notification-badge {
   position: absolute;
   top: 4px;
   right: 4px;
-  background-color: #ef4444;
+  background-color: var(--danger, #d14343);
   color: white;
   font-size: 10px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 10px;
-  min-width: 18px;
-  height: 18px;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 8px;
+  min-width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -252,9 +254,10 @@ function onSelectHeaderAsset(asset) {
   flex-shrink: 0;
 }
 .avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border-subtle, #d8dee6);
 }
 
 @media (max-width: 768px) {

@@ -81,11 +81,11 @@ const handleClick = (event) => {
   justify-content: center;
   gap: 6px;
   font-size: 13px;
-  font-weight: 600;
-  border-radius: 10px;
+  font-weight: 500;
+  border-radius: var(--radius-sm, 6px);
   border: none;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   letter-spacing: -0.01em;
   white-space: nowrap;
   position: relative;
@@ -127,89 +127,90 @@ const handleClick = (event) => {
 
 /* Основной вариант */
 .btn-primary {
-  background: linear-gradient(135deg, #527de5, #6b91ea);
+  background: var(--primary, #2f5f8f);
   color: white;
-  box-shadow: 0 1px 2px rgba(82, 125, 229, 0.2);
+  box-shadow: none;
 }
 
 .btn-primary:hover:not(.btn-disabled) {
-  background: linear-gradient(135deg, #4568d4, #5a7fd9);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(82, 125, 229, 0.3);
+  background: var(--primary-hover, #264d75);
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-primary:active:not(.btn-disabled) {
-  transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(82, 125, 229, 0.2);
+  transform: none;
+  box-shadow: none;
+  background: var(--primary-dark, #1e3f61);
 }
 
 /* Вторичный вариант */
 .btn-secondary {
   background: white;
-  color: #374151;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  color: var(--text-secondary, #3d4654);
+  border: 1px solid var(--border-subtle, #d8dee6);
+  box-shadow: none;
 }
 
 .btn-secondary:hover:not(.btn-disabled) {
-  background: #f9fafb;
-  border-color: #d1d5db;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  background: var(--bg-secondary, #eef1f4);
+  border-color: var(--border-strong, #c5ced8);
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-secondary:active:not(.btn-disabled) {
-  transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transform: none;
+  box-shadow: none;
 }
 
 /* Контурный вариант */
 .btn-outline {
   background: transparent;
-  border: 1px solid #e5e7eb;
-  color: #6b7280;
+  border: 1px solid var(--border-subtle, #d8dee6);
+  color: var(--text-tertiary, #6b7380);
 }
 
 .btn-outline:hover:not(.btn-disabled) {
-  border-color: #527de5;
-  color: #527de5;
-  background: #f0f9ff;
-  transform: translateY(-1px);
+  border-color: var(--primary, #2f5f8f);
+  color: var(--primary, #2f5f8f);
+  background: rgba(47, 95, 143, 0.06);
+  transform: none;
 }
 
 .btn-outline:active:not(.btn-disabled) {
-  transform: translateY(0);
-  background: #e0f2fe;
+  transform: none;
+  background: rgba(47, 95, 143, 0.1);
 }
 
 /* Прозрачный вариант */
 .btn-ghost {
   background: transparent;
-  color: #6b7280;
+  color: var(--text-tertiary, #6b7380);
   border: none;
 }
 
 .btn-ghost:hover:not(.btn-disabled) {
-  background: #f9fafb;
-  color: #527de5;
+  background: var(--bg-tertiary, #e4e8ed);
+  color: var(--primary, #2f5f8f);
 }
 
 /* Вариант «опасность» */
 .btn-danger {
-  background: #ef4444;
+  background: var(--danger, #d14343);
   color: white;
-  box-shadow: 0 1px 2px rgba(239, 68, 68, 0.2);
+  box-shadow: none;
 }
 
 .btn-danger:hover:not(.btn-disabled) {
-  background: #dc2626;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  background: var(--danger-dark, #a83232);
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-danger:active:not(.btn-disabled) {
-  transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(239, 68, 68, 0.2);
+  transform: none;
+  box-shadow: none;
 }
 
 /* Иконка */

@@ -3,6 +3,7 @@
 """
 import os
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import Config
 from app.core import (
@@ -96,28 +97,9 @@ async def startup_event():
     await init_redis(Config.REDIS_URL)
     init_redis_sync(Config.REDIS_URL)
 
-    # Redis volume в Docker переживает рестарт контейнера: без сброса init_reference_data_async
-    # видит старый reference:fingerprint и не вызывает get_reference_cache_payload — клиенты
-    # получают устаревший справочник (например без currency_rates_to_rub после миграции SQL).
-    from app.domain.services.reference_service import invalidate_reference_cache
+    # Shared reference cache survives API restarts; db-init and scheduler invalidate it after writes.
+    # Heavy external API loading is intentionally kept out of the web process.
 
-    invalidate_reference_cache()
-    logger.info("Кэш справочника очищен при старте; загрузка из БД в init_reference_data_async")
-    
-    # Опциональное обновление справочников (MOEX, дивиденды, купоны, сплиты, крипто)
-    # Включается через RUN_REFERENCE_UPDATES=1
-    if os.getenv("RUN_REFERENCE_UPDATES", "").strip() in ("1", "true", "yes"):
-        from scripts.run_reference_updates import run_all_updates
-        from app.core.reference_logging import boost_reference_loggers_to_info
-
-        boost_reference_loggers_to_info()
-        logger.info("Запуск обновления справочных данных (RUN_REFERENCE_UPDATES=1)...")
-        await run_all_updates()
-        from app.domain.services.reference_service import invalidate_reference_cache
-        invalidate_reference_cache()  # Сброс кеша для загрузки свежих валют и криптовалют
-    
-    # Инициализация справочных данных при старте (асинхронно с таймаутом)
-    # Включает валюты (asset_type_id=7) и криптовалюты (asset_type_id=6) для операций
     from app.domain.services.reference_service import init_reference_data_async, init_brokers_async
     await init_reference_data_async()
     await init_brokers_async()
@@ -150,8 +132,26 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Liveness endpoint: process is running."""
     return {"status": "ok", "service": "CapitalView API"}
+
+
+@app.get("/health/ready")
+async def readiness_check():
+    """Readiness endpoint used by Docker after DB/bootstrap initialization."""
+    try:
+        from app.infrastructure.database.postgres_async import get_connection_pool
+
+        pool = await get_connection_pool()
+        async with pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        return {"status": "ready", "service": "CapitalView API"}
+    except Exception as exc:
+        logger.warning("Readiness check failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "service": "CapitalView API"},
+        )
 
 
 if __name__ == "__main__":

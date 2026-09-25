@@ -25,7 +25,7 @@ export default defineConfig({
     origin: 'http://localhost:5173', // можно указать, но обычно не нужно
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://127.0.0.1:5001',
         changeOrigin: true,
         secure: false,
       },
