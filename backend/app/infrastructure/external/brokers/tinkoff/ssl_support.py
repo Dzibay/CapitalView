@@ -22,6 +22,8 @@ def _russian_trusted_pem_paths() -> list[Path]:
     return [
         _CERTS_DIR / "russian_trusted_root_ca.pem",
         _CERTS_DIR / "russian_trusted_sub_ca.pem",
+        # opensource.tbank.ru / newer TLS hosts use Sub CA RSA2024 (serial 1005)
+        _CERTS_DIR / "russian_trusted_sub_ca_rsa2024.pem",
     ]
 
 

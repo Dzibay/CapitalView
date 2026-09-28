@@ -3,10 +3,26 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Системные зависимости для asyncpg
+# Системные зависимости для asyncpg + CA для opensource.tbank.ru
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Russian Trusted CA (Минцифры): нужен для pip (opensource.tbank.ru / t-tech-investments)
+# и runtime gRPC. Включаем Sub CA + Sub CA RSA2024 (актуальный intermediate T-Bank).
+COPY backend/certs/russian_trusted_root_ca.pem \
+     backend/certs/russian_trusted_sub_ca.pem \
+     backend/certs/russian_trusted_sub_ca_rsa2024.pem \
+     /usr/local/share/ca-certificates/tbank/
+RUN cat /etc/ssl/certs/ca-certificates.crt \
+        /usr/local/share/ca-certificates/tbank/russian_trusted_root_ca.pem \
+        /usr/local/share/ca-certificates/tbank/russian_trusted_sub_ca.pem \
+        /usr/local/share/ca-certificates/tbank/russian_trusted_sub_ca_rsa2024.pem \
+        > /etc/ssl/certs/ca-certificates-with-russian.crt
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates-with-russian.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates-with-russian.crt \
+    CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates-with-russian.crt
 
 # Копируем зависимости
 COPY backend/requirements.txt .
