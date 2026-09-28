@@ -9,7 +9,7 @@ from jose import JWTError, jwt
 from cachetools import TTLCache
 from app.config import Config
 from app.core.logging import get_logger
-from app.core.exceptions import UnauthorizedError, NotFoundError, ForbiddenError
+from app.core.exceptions import UnauthorizedError, NotFoundError, ForbiddenError, SubscriptionExpiredError
 from app.core.platform_admin import is_platform_admin_user
 from app.domain.services.user_service import get_user_by_email
 from app.constants import ErrorMessages
@@ -105,6 +105,28 @@ async def get_current_admin_user(user: dict = Depends(get_current_user)) -> dict
     if not is_platform_admin_user(user):
         raise ForbiddenError("Доступ к администрированию запрещён")
     return user
+
+
+async def get_current_subscriber(user: dict = Depends(get_current_user)) -> dict:
+    """
+    Пользователь с активной подпиской или пробным периодом.
+    Админы всегда проходят. Иначе — SUBSCRIPTION_EXPIRED без данных портфеля.
+    """
+    if is_platform_admin_user(user):
+        return user
+
+    from app.domain.services.billing_service import get_user_subscription_status
+
+    subscription = await get_user_subscription_status(str(user["id"]))
+    if subscription.get("has_access"):
+        return user
+
+    raise SubscriptionExpiredError(
+        details={
+            "subscription": subscription,
+            "redirect": "/billing",
+        }
+    )
 
 
 def invalidate_cached_user(email: Optional[str]) -> None:

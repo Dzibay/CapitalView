@@ -9,9 +9,11 @@
     python scripts/test_tinkoff_import.py --interactive      # меню + полный отчёт
     python scripts/test_tinkoff_import.py --raw-ticker SBER --account-index 1   # сырые операции API по тикеру и счёту
     python scripts/test_tinkoff_import.py --raw-ticker GAZP --raw-only -t TOKEN  # только блок сырых операций
-    python scripts/test_tinkoff_import.py --gui   # GUI: позиции (поиск), аналитика (файл/буфер), операции (фильтры, JSON/CSV)
+    python scripts/test_tinkoff_import.py --gui   # GUI: окно (по умолчанию с operations_raw)
+    python scripts/test_tinkoff_import.py --skip-raw-operations   # без operations_raw (сводка «Слито ком.» = —)
 
 Токен: аргумент --token / -t или переменная окружения TINKOFF_TOKEN (приоритет у аргумента).
+По умолчанию CLI запрашивает operations_raw, чтобы в сводке учесть дочерние комиссии, вшитые в родительскую операцию.
 """
 import argparse
 import io
@@ -32,6 +34,7 @@ from app.infrastructure.external.brokers.tinkoff import get_tinkoff_portfolio
 from app.infrastructure.external.brokers.tinkoff.import_service import (
     OPERATION_CLASSIFICATION,
     classify_tinkoff_operation,
+    _normalize_tinkoff_operation_id,
 )
 
 
@@ -252,6 +255,60 @@ def _raw_op_qty_equals_rest(op: dict) -> bool:
         return False
 
 
+def _raw_op_zero_executed_quantity(op: dict) -> bool:
+    """Как _tinkoff_buy_sell_zero_executed_quantity в import_service, для словаря operations_raw."""
+    q = op.get("quantity")
+    qr = op.get("quantity_rest")
+    try:
+        executed = float(q or 0) - float(qr or 0)
+    except (TypeError, ValueError):
+        return False
+    return executed == 0
+
+
+def tinkoff_commission_child_skip_ids_from_raw(ops_raw: Optional[List[dict]]) -> Set[str]:
+    """
+    id операций-комиссий, которые import_service не добавляет в transactions отдельной строкой:
+    сумма уходит в commission родителя (см. _tinkoff_commission_by_parent).
+    """
+    if not ops_raw:
+        return set()
+    ids_in_batch: Set[str] = set()
+    ops_by_id: Dict[str, dict] = {}
+    for op in ops_raw:
+        if not isinstance(op, dict):
+            continue
+        kid = _normalize_tinkoff_operation_id(op.get("id"))
+        if kid:
+            ids_in_batch.add(kid)
+            ops_by_id[kid] = op
+    skip_ids: Set[str] = set()
+    for op in ops_raw:
+        if not isinstance(op, dict):
+            continue
+        otn = str(op.get("operation_type") or "")
+        if classify_tinkoff_operation(otn) != "Commission":
+            continue
+        parent_key = _normalize_tinkoff_operation_id(op.get("parent_operation_id"))
+        if not parent_key or parent_key not in ids_in_batch:
+            continue
+        parent_op = ops_by_id.get(parent_key)
+        if parent_op is not None and _raw_op_zero_executed_quantity(parent_op):
+            continue
+        cid = _normalize_tinkoff_operation_id(op.get("id"))
+        if cid:
+            skip_ids.add(cid)
+    return skip_ids
+
+
+def _merged_commission_children_count(acc: dict) -> Optional[int]:
+    """Число слитых дочерних комиссий; None, если нет operations_raw (посчитать нельзя)."""
+    raw = acc.get("operations_raw")
+    if raw is None:
+        return None
+    return len(tinkoff_commission_child_skip_ids_from_raw(raw))
+
+
 def emit_full_statistics(
     broker_data: dict,
     account_substr: Optional[str] = None,
@@ -273,18 +330,39 @@ def emit_full_statistics(
         n_skip = len(acc.get("transactions_skipped") or [])
         n_tx = len(acc.get("transactions", []))
         n_api = int(acc.get("operations_raw_count") or 0)
+        n_merged = _merged_commission_children_count(acc)
+        if n_merged is not None:
+            merged_cell = str(n_merged)
+            delta_cmp = n_tx - n_api + n_merged
+        else:
+            merged_cell = "—"
+            delta_cmp = n_tx - n_api
         summary_rows.append([
             acc_name[:28],
             str(acc.get("account_id", ""))[:36],
             len(acc.get("positions", [])),
             n_tx,
             raw_c,
+            merged_cell,
             n_skip,
-            n_tx - n_api,
+            delta_cmp,
         ])
     print_table(
-        ["Счёт", "account_id", "Позиций", "В выгрузке", "В API", "Пропущено", "Δ выг−API"],
+        [
+            "Счёт",
+            "account_id",
+            "Позиций",
+            "В выгрузке",
+            "В API",
+            "Слито ком.",
+            "Пропущено",
+            "Δ сопост.",
+        ],
         summary_rows,
+    )
+    print(
+        "Δ сопост.: выгрузка − API + слитые комиссии (ожидаемо ≈ 0 с учётом синтетики и пропусков). "
+        "Без operations_raw «Слито ком.» = —, Δ совпадает с «сырой» разницей выгрузка−API."
     )
 
     print("\n" + "=" * 100)
@@ -386,35 +464,90 @@ def emit_full_statistics(
 
     raw_exported = sum(len(a.get("transactions", [])) for a in filtered.values())
     raw_api = sum(int(a.get("operations_raw_count") or 0) for a in filtered.values())
+    merged_list = [_merged_commission_children_count(a) for a in filtered.values()]
+    if all(x is not None for x in merged_list):
+        merged_total = sum(int(x) for x in merged_list)  # type: ignore[arg-type]
+        raw_api_cmp = raw_api - merged_total
+        delta_cmp = raw_exported - raw_api_cmp
+        merged_note = str(merged_total)
+    else:
+        raw_api_cmp = None
+        delta_cmp = None
+        merged_note = "— (нужен include_raw_operations / operations_raw)"
     print("\n" + "=" * 100)
     print("СЧЁТЧИКИ ОПЕРАЦИЙ: API vs ВЫГРУЗКА")
     print("=" * 100)
-    print_table(
-        ["Метрика", "Значение", "Комментарий"],
+    counter_rows = [
+        ["Сырых операций в API (Σ по счетам)", raw_api, "ответ get_operations, все строки"],
         [
-            ["Сырых операций в API (Σ по счетам)", raw_api, "ответ get_operations"],
-            ["Записей в transactions после обработки", raw_exported, "вкл. синтетику DIV_EXT"],
-            ["Разница (выгрузка − API)", raw_exported - raw_api, "< 0: пропуски; > 0: синтетика"],
+            "Дочерних комиссий, слитых в родителя (Σ)",
+            merged_note,
+            "отдельные строки в transactions не создаются; commission у родителя",
         ],
+    ]
+    if raw_api_cmp is not None:
+        counter_rows.append(
+            ["API для сравнения с выгрузкой (Σ)", raw_api_cmp, "сырой API − слитые комиссии"],
+        )
+    counter_rows.extend(
+        [
+            ["Записей в transactions после обработки", raw_exported, "вкл. синтетику DIV_EXT"],
+            [
+                "Разница (выгрузка − сырой API)",
+                raw_exported - raw_api,
+                "отрицательна при слиянии комиссий — это норма",
+            ],
+        ]
     )
+    if delta_cmp is not None:
+        counter_rows.append(
+            [
+                "Разница (выгрузка − API сопоставимый)",
+                delta_cmp,
+                "≈ −пропуски + синтетика; мелкие расхождения — см. пропуски по счетам",
+            ],
+        )
+    print_table(["Метрика", "Значение", "Комментарий"], counter_rows)
 
     # Пропущенные при импорте (не попали в transactions) — при выгрузке < API обязательны; показываем всегда, если есть
     for acc_name, acc in filtered.items():
         n_api = int(acc.get("operations_raw_count") or 0)
         n_exp = len(acc.get("transactions", []))
+        n_merged_acc = _merged_commission_children_count(acc)
         skipped = acc.get("transactions_skipped") or []
         if not skipped:
             if n_api > n_exp:
-                print("\n" + "=" * 100)
-                print(
-                    f"⚠️  Счёт «{acc_name}»: в API {n_api} операций, в выгрузке {n_exp}, "
-                    "но transactions_skipped пуст (нужен актуальный import_service с записью пропусков)."
-                )
-                print("=" * 100)
+                if n_merged_acc is None:
+                    print("\n" + "=" * 100)
+                    print(
+                        f"⚠️  Счёт «{acc_name}»: в API {n_api} операций, в выгрузке {n_exp}, "
+                        "но transactions_skipped пуст (без operations_raw не видно, слиты ли комиссии)."
+                    )
+                    print("=" * 100)
+                else:
+                    n_syn = sum(
+                        1
+                        for tx in acc.get("transactions", [])
+                        if str(tx.get("tinkoff_operation_type") or "").startswith("SYNTHETIC")
+                    )
+                    # n_exp ≈ n_api − слитые комиссии − пропуски + синтетика
+                    residual = (n_api - n_exp) - n_merged_acc + n_syn
+                    if residual != 0:
+                        print("\n" + "=" * 100)
+                        print(
+                            f"⚠️  Счёт «{acc_name}»: в API {n_api} операций, в выгрузке {n_exp}, "
+                            "transactions_skipped пуст, остаток после учёта слитых комиссий и синтетики не 0 "
+                            f"({residual}: слито ком. {n_merged_acc}, синтетика {n_syn})."
+                        )
+                        print("=" * 100)
             continue
         hint = ""
         if n_api > n_exp:
-            hint = f" (API {n_api} > выгрузка {n_exp}: не хватает {n_api - n_exp} относительно «сырых»)"
+            gap = n_api - n_exp
+            hint = f" (сырой API больше выгрузки на {gap}"
+            if n_merged_acc is not None and n_merged_acc > 0:
+                hint += f"; из них слитых дочерних комиссий {n_merged_acc}"
+            hint += ")"
         skipped_eq_rest = [s for s in skipped if _skipped_qty_equals_rest(s)]
         skipped_detail = [s for s in skipped if not _skipped_qty_equals_rest(s)]
 
@@ -448,22 +581,27 @@ def emit_full_statistics(
     for acc_name, acc in filtered.items():
         n_api = int(acc.get("operations_raw_count") or 0)
         n_exp = len(acc.get("transactions", []))
+        n_merged_syn = _merged_commission_children_count(acc)
+        n_api_cmp = n_api - (n_merged_syn or 0) if n_merged_syn is not None else n_api
         synthetic = [
             tx for tx in acc.get("transactions", [])
             if str(tx.get("tinkoff_operation_type") or "").startswith("SYNTHETIC")
         ]
         if not synthetic:
-            if n_exp > n_api:
+            if n_exp > n_api_cmp:
                 print("\n" + "=" * 100)
                 print(
-                    f"⚠️  Счёт «{acc_name}»: выгрузка {n_exp} > API {n_api}, "
+                    f"⚠️  Счёт «{acc_name}»: выгрузка {n_exp} > сопоставимый API {n_api_cmp} (сырой API {n_api}), "
                     "но синтетических строк (SYNTHETIC*) нет — проверьте логику импорта."
                 )
                 print("=" * 100)
             continue
         hint = ""
-        if n_exp > n_api:
-            hint = f" (выгрузка {n_exp} > API {n_api}: лишних {n_exp - n_api} относительно «сырых»)"
+        if n_exp > n_api_cmp:
+            hint = (
+                f" (выгрузка {n_exp} > сопоставимый API {n_api_cmp}: +{n_exp - n_api_cmp}; "
+                f"сырой API {n_api})"
+            )
         print("\n" + "=" * 100)
         print(f"ДОБАВЛЕНО В ВЫГРУЗКУ — синтетические операции: счёт «{acc_name}» ({len(synthetic)} шт.){hint}")
         print("=" * 100)
@@ -1859,6 +1997,11 @@ def main():
         action="store_true",
         help="Только блок сырых операций (--raw-ticker), без полной сводки и без интерактива.",
     )
+    parser.add_argument(
+        "--skip-raw-operations",
+        action="store_true",
+        help="Не запрашивать operations_raw у API (быстрее; в сводке «Слито ком.» и сопоставимый API будут «—»).",
+    )
     args = parser.parse_args()
 
     if args.raw_only and not (args.raw_ticker and args.raw_ticker.strip()):
@@ -1885,9 +2028,10 @@ def main():
     print("=" * 80)
 
     try:
-        want_raw = bool(args.raw_ticker and args.raw_ticker.strip())
+        need_raw_ticker = bool(args.raw_ticker and args.raw_ticker.strip())
+        include_raw = need_raw_ticker or (not args.raw_only and not args.skip_raw_operations)
         print("\n📥 Получаем данные от брокера Tinkoff...")
-        broker_data = get_tinkoff_portfolio(token, include_raw_operations=want_raw)
+        broker_data = get_tinkoff_portfolio(token, include_raw_operations=include_raw)
 
         if not broker_data:
             print("⚠️  Портфель пуст (нет доступных счетов)")
@@ -1954,7 +2098,7 @@ def main():
                 print(f"📊 Всего позиций: {total_positions}")
                 print(f"📊 Всего операций в выгрузке: {total_transactions}")
 
-        if want_raw:
+        if need_raw_ticker:
             show_raw_operations_for_ticker(broker_data, args.raw_ticker.strip(), acc_substr, acc_index)
 
         if not args.raw_only:

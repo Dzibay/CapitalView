@@ -105,6 +105,21 @@ class Config:
     # Логирование
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     
+
+    @staticmethod
+    def email_verification_required() -> bool:
+        """
+        ????? ?? ????????????? email.
+        ? development ?? ????????? ?????????; ? production ? ????????.
+        ????? override: REQUIRE_EMAIL_VERIFICATION=0|1.
+        """
+        raw = os.getenv("REQUIRE_EMAIL_VERIFICATION", "").strip().lower()
+        if raw in ("0", "false", "no", "off"):
+            return False
+        if raw in ("1", "true", "yes", "on"):
+            return True
+        return os.getenv("ENVIRONMENT", "development").strip().lower() == "production"
+
     @staticmethod
     def validate():
         """Проверяет наличие обязательных переменных окружения."""

@@ -303,6 +303,9 @@ INSERT INTO assets (id, asset_type_id, user_id, name, ticker, quote_asset_id) OV
 SELECT 1, 7, NULL, 'Российский рубль', 'RUB', 1
 WHERE NOT EXISTS (SELECT 1 FROM assets WHERE id = 1);
 
+-- ????? OVERRIDING SYSTEM VALUE sequence ?? ?????????? ???? ? ????? USD ??????? id=1.
+SELECT setval(pg_get_serial_sequence('assets', 'id'), (SELECT COALESCE(MAX(id), 1) FROM assets));
+
 -- Остальные валюты — по ticker (без фиксированного id, чтобы не конфликтовать с MOEX и др.)
 INSERT INTO assets (asset_type_id, user_id, name, ticker, quote_asset_id)
 SELECT 7, NULL, 'Доллар США', 'USD', 1

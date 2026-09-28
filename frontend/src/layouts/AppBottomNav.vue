@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.store'
 import {
   LayoutDashboard,
@@ -11,17 +11,39 @@ import {
   Settings,
   Shield,
   MessageSquare,
+  CreditCard,
+  Headphones,
 } from 'lucide-vue-next'
 
 const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
+
+const locked = computed(() =>
+  Boolean(
+    authStore.user &&
+    !authStore.user.is_admin &&
+    authStore.user.subscription &&
+    authStore.user.subscription.has_access === false
+  )
+)
 
 const items = computed(() => {
   if (authStore.user?.is_admin) {
     return [
       { to: '/admin', label: 'Админ', icon: Shield },
       { to: '/admin/messages', label: 'Письма', icon: MessageSquare },
+      { to: '/admin/billing', label: 'Биллинг', icon: CreditCard },
       { to: '/settings', label: 'Настройки', icon: Settings },
+    ]
+  }
+  if (locked.value) {
+    return [
+      { to: '/billing', label: 'Подписка', icon: CreditCard },
+      { to: '/support', label: 'Поддержка', icon: Headphones },
+      { to: '/settings', label: 'Настройки', icon: Settings },
+      { to: '/dashboard', label: 'Дашборд', icon: LayoutDashboard, locked: true },
+      { to: '/assets', label: 'Активы', icon: Briefcase, locked: true },
     ]
   }
   return [
@@ -40,6 +62,12 @@ function isActive(link) {
   }
   return route.path === link || route.path.startsWith(`${link}/`)
 }
+
+function onNavClick(item, event) {
+  if (!item.locked) return
+  event.preventDefault()
+  router.push('/billing')
+}
 </script>
 
 <template>
@@ -47,10 +75,14 @@ function isActive(link) {
     <div class="bottom-nav__inner">
       <router-link
         v-for="item in items"
-        :key="item.to"
-        :to="item.to"
+        :key="item.to + item.label"
+        :to="item.locked ? '/billing' : item.to"
         class="bottom-nav__item"
-        :class="{ 'bottom-nav__item--active': isActive(item.to) }"
+        :class="{
+          'bottom-nav__item--active': !item.locked && isActive(item.to),
+          'bottom-nav__item--locked': item.locked,
+        }"
+        @click="onNavClick(item, $event)"
       >
         <span class="bottom-nav__icon-wrap">
           <component :is="item.icon" :size="22" class="bottom-nav__icon" stroke-width="2" />
@@ -77,9 +109,9 @@ function isActive(link) {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    padding-left: calc(10px + env(safe-area-inset-left, 0px));
-    padding-right: calc(10px + env(safe-area-inset-right, 0px));
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: 0;
     overflow-x: hidden;
     pointer-events: none;
   }
@@ -90,21 +122,18 @@ function isActive(link) {
     align-items: stretch;
     justify-content: space-between;
     gap: 2px;
-    margin: 0 0 10px;
+    margin: 0;
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    padding: 8px 6px 10px;
-    min-height: calc(var(--bottomNavHeight) - 10px);
+    padding: 6px 4px calc(8px + env(safe-area-inset-bottom, 0px));
+    min-height: calc(var(--bottomNavHeight) - 4px);
     box-sizing: border-box;
-    background: rgba(17, 16, 29, 0.92);
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
-    border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow:
-      0 -8px 32px rgba(0, 0, 0, 0.35),
-      0 1px 0 rgba(255, 255, 255, 0.06) inset;
+    background: #12151a;
+    border-radius: 0;
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: none;
   }
 
   .bottom-nav__item {
@@ -114,33 +143,32 @@ function isActive(link) {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 3px;
     padding: 4px 2px;
     text-decoration: none;
-    color: rgba(255, 255, 255, 0.55);
+    color: rgba(255, 255, 255, 0.45);
     font-size: 0.625rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    border-radius: 14px;
-    transition:
-      color 0.2s ease,
-      background 0.2s ease,
-      transform 0.2s ease;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    border-radius: var(--radius-sm, 6px);
+    transition: color 0.15s ease, background 0.15s ease;
     -webkit-tap-highlight-color: transparent;
   }
 
   .bottom-nav__item:active {
-    transform: scale(0.96);
+    transform: none;
+    opacity: 0.85;
   }
 
   .bottom-nav__item--active {
-    color: #fff;
-    background: linear-gradient(
-      145deg,
-      rgba(82, 125, 229, 0.35) 0%,
-      rgba(107, 145, 234, 0.2) 100%
-    );
-    box-shadow: 0 0 0 1px rgba(82, 125, 229, 0.35);
+    color: #e8eef4;
+    background: rgba(47, 95, 143, 0.28);
+    box-shadow: none;
+  }
+
+  .bottom-nav__item--locked {
+    opacity: 0.35;
+    filter: grayscale(0.4);
   }
 
   .bottom-nav__icon-wrap {
@@ -174,10 +202,10 @@ function isActive(link) {
   }
 
   .bottom-nav__inner {
-    margin: 0 0 8px;
-    padding: 6px 4px 8px;
+    margin: 0;
+    padding: 6px 4px calc(8px + env(safe-area-inset-bottom, 0px));
     gap: 0;
-    border-radius: 16px;
+    border-radius: 0;
   }
 
   .bottom-nav__item {

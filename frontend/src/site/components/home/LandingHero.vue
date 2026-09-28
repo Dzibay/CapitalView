@@ -3,6 +3,17 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { ArrowRight, Check } from 'lucide-vue-next'
 import { gsap } from 'gsap'
 
+const props = defineProps({
+  trialDays: { type: Number, default: 14 },
+})
+
+function daysLabel(n) {
+  const d = Number(n) || 0
+  if (d % 10 === 1 && d % 100 !== 11) return `${d} день`
+  if (d % 10 >= 2 && d % 10 <= 4 && (d % 100 < 10 || d % 100 >= 20)) return `${d} дня`
+  return `${d} дней`
+}
+
 const heroCenterRef = ref(null)
 const titleWordsLine1 = ['Учёт', 'инвестиций']
 const titleWordsLine2 = ['в', 'одном', 'месте']
@@ -65,7 +76,7 @@ onUnmounted(() => {
         <div ref="heroCenterRef" class="hero-center">
           <div class="hero-badge">
             <Check :size="14" :stroke-width="2.5" />
-            Сервис временно бесплатный
+            Пробный период {{ daysLabel(props.trialDays) }}
           </div>
           <h1 id="hero-scene-title" class="hero-scene-title">
             <span class="hero-line">
@@ -87,7 +98,7 @@ onUnmounted(() => {
           </p>
           <div class="hero-scene-cta">
             <router-link to="/login" class="btn-hero-primary">
-              Начать бесплатно
+              Начать пробный период
               <ArrowRight :size="18" />
             </router-link>
             <a href="#how-it-works" class="btn-hero-ghost">Как это работает</a>

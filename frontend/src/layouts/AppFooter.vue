@@ -34,8 +34,8 @@ const currentYear = new Date().getFullYear()
 <style scoped>
 .app-footer {
   margin-top: auto;
-  border-top: 1px solid #eef0f2;
-  background: linear-gradient(180deg, #f9fafb 0%, #f3f4f6 100%);
+  border-top: 1px solid var(--border-subtle, #d8dee6);
+  background: var(--canvas, #eef1f4);
 }
 
 .footer-inner {
@@ -64,22 +64,22 @@ const currentYear = new Date().getFullYear()
 
 .logo {
   font-size: 16px;
-  font-weight: 700;
-  color: #1e293b;
-  letter-spacing: -0.3px;
+  font-weight: 600;
+  color: var(--text-primary, #0f1419);
+  letter-spacing: -0.03px;
 }
 
 .logo-accent {
-  color: #5478EA;
+  color: var(--primary, #2f5f8f);
 }
 
 .version {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--text-quaternary, #8b939e);
   font-weight: 500;
-  background: #eef0f2;
+  background: var(--bg-tertiary, #e4e8ed);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm, 6px);
 }
 
 .footer-links {
@@ -98,7 +98,7 @@ const currentYear = new Date().getFullYear()
 }
 
 .footer-links a:hover {
-  color: #5478EA;
+  color: var(--primary, #2f5f8f);
 }
 
 .divider {

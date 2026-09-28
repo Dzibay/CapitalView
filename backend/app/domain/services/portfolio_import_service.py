@@ -603,7 +603,9 @@ def _convert_price_payment_to_rub_if_needed(
     payment: float,
 ) -> Tuple[float, float]:
     """
-    Для активов с валютной котировкой (не RUB) пересчитывает цену и payment в рубли по курсу на дату.
+    Для активов с валютной котировкой: брокер отдаёт price/payment в RUB —
+    переводим в валюту котировки (деление на курс quote→RUB на дату).
+    SQL затем считает amount_rub = payment_quote × курс.
     """
     if not asset_id or asset_id not in currency_assets_map:
         return price, payment
@@ -617,8 +619,6 @@ def _convert_price_payment_to_rub_if_needed(
     rate = _find_currency_rate(currency_rates, quote_asset_id, date_str)
     if not rate or rate <= 0:
         return price, payment
-    # payment в рублях с полной точностью (как у API nano), иначе сумма по многим операциям
-    # расходится с остатком кэша в позициях на десятки копеек.
     return round(price / rate, 6), round(payment / rate, 6)
 
 
@@ -832,6 +832,8 @@ async def import_broker_portfolio(
                     price = round(float(tx.get("price") or 0), 6)
                     qty = round(float(tx.get("quantity") or 0), 6)
 
+                # Цена и payment от брокера в RUB; для FX-активов переводим в quote,
+                # currency_id = quote (как до 5b129d0). SQL считает amount_rub = payment × курс.
                 currency_id_for_tx = 1
                 comm_val = float(tx.get("commission") or 0)
                 comm_rub = None

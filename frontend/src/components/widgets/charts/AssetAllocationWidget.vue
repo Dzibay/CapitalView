@@ -1,13 +1,10 @@
 <script setup>
-import { ref, computed, watch, inject, onMounted, unref, useSlots } from 'vue'
+import { computed, inject, onMounted, ref, unref, watch, useSlots } from 'vue'
 import { PieChart } from 'lucide-vue-next'
-import { Doughnut } from 'vue-chartjs'
-import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, DoughnutController } from 'chart.js'
+import DoughnutChart from '../../charts/DoughnutChart.vue'
 import Widget from '../base/Widget.vue'
 import EmptyState from '../base/EmptyState.vue'
 import { LANDING_DASH_REVEAL_KEY } from '../../../constants/landingDashboardReveal'
-
-ChartJS.register(Title, Tooltip, Legend, ArcElement, DoughnutController)
 
 // Props
 const props = defineProps({
@@ -73,30 +70,19 @@ onMounted(() => {
   if (props.scrollReveal && src != null && unref(src)) bumpDoughnut()
 })
 
-const centerInfo = ref({
-  label: 'Всего',
-  percentage: 100,
-  value: 0
-})
-
-const formatTwoDecimals = (value) => {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '0,00'
-  return n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+function formatWholePercent(value) {
+  const n = Math.round(Number(value))
+  if (!Number.isFinite(n)) return '0'
+  return n.toLocaleString('ru-RU')
 }
 
 const formatCurrency = (value) => {
   const n = Number(value)
+  const opts = { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 0 }
   if (!Number.isFinite(n)) {
-    return (0).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return (0).toLocaleString('ru-RU', opts)
   }
-  return n.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-/** Доля в процентах, округление до 2 знаков (сумма по сегментам может отличаться от 100.00 из-за округления). */
-function percentOfPart(value, totalValue) {
-  if (!(totalValue > 0)) return 0
-  return Math.round((Number(value) / totalValue) * 10000) / 100
+  return n.toLocaleString('ru-RU', opts)
 }
 
 function formatCenterDisplay(value) {
@@ -104,10 +90,11 @@ function formatCenterDisplay(value) {
   return formatCurrency(value)
 }
 
-const chartData = computed(() => ({
-  labels: props.assetAllocation?.labels ?? [],
-  datasets: props.assetAllocation?.datasets ?? []
-}))
+const doughnutLabels = computed(() => props.assetAllocation?.labels ?? [])
+const doughnutValues = computed(() => props.assetAllocation?.datasets?.[0]?.data ?? [])
+const doughnutColors = computed(
+  () => props.assetAllocation?.datasets?.[0]?.backgroundColor ?? []
+)
 
 const total = computed(() => {
   if (!props.assetAllocation?.datasets?.length) return 0
@@ -119,57 +106,6 @@ const hasRenderableData = computed(() => {
   if (!a?.labels?.length || !a.datasets?.[0]?.data?.length) return false
   return total.value > 0
 })
-
-const chartOptions = computed(() => ({
-  responsive: true,
-  maintainAspectRatio: false,
-  cutout: '75%',
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      enabled: false,
-      external(context) {
-        const tooltipModel = context.tooltip
-        const data = props.assetAllocation
-
-        if (tooltipModel.dataPoints?.length && data?.datasets?.length) {
-          const idx = tooltipModel.dataPoints[0].dataIndex
-          const label = data.labels[idx]
-          const value = data.datasets[0].data[idx]
-          const totalValue = total.value
-          const percentage = percentOfPart(value, totalValue)
-          centerInfo.value = { label, value, percentage }
-        } else if (data?.datasets?.length) {
-          centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
-        }
-      }
-    }
-  },
-  onHover: (event, activeElements, chart) => {
-    const data = props.assetAllocation
-    if (activeElements && activeElements.length > 0 && data?.datasets?.length) {
-      const index = activeElements[0].index
-      const label = data.labels[index]
-      const value = data.datasets[0].data[index]
-      const totalValue = total.value
-      const percentage = percentOfPart(value, totalValue)
-      centerInfo.value = { label, value, percentage }
-    } else if (data?.datasets?.length) {
-      centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
-    }
-  }
-}))
-
-// Инициализация и обновление centerInfo при изменении данных
-watch(
-  () => props.assetAllocation,
-  () => {
-    if (hasRenderableData.value) {
-      centerInfo.value = { label: 'Всего', value: total.value, percentage: 100 }
-    }
-  },
-  { immediate: true, deep: true }
-)
 </script>
 
 <template>
@@ -179,12 +115,17 @@ watch(
     </template>
     <div v-if="hasRenderableData" class="allocation-container">
       <div class="chart-wrapper">
-        <Doughnut :key="doughnutRemountKey" :data="chartData" :options="chartOptions" />
-        <div v-if="centerInfo.label" class="chart-center">
-          <span class="center-label">{{ centerInfo.label }}</span>
-          <span class="center-percentage">{{ formatTwoDecimals(centerInfo.percentage) }}%</span>
-          <span class="center-value">{{ formatCenterDisplay(centerInfo.value) }}</span>
-        </div>
+        <DoughnutChart
+          :key="doughnutRemountKey"
+          fill-parent
+          :labels="doughnutLabels"
+          :values="doughnutValues"
+          :colors="doughnutColors"
+          :format-value="formatCenterDisplay"
+          :format-percentage="formatWholePercent"
+          :show-legend="false"
+          cutout="75%"
+        />
       </div>
 
       <div class="legends">
@@ -217,34 +158,6 @@ watch(
   height: 280px;
   max-width: 100%;
   flex-shrink: 0;
-}
-
-.chart-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  pointer-events: none;
-}
-
-.center-label {
-  font-size: var(--text-caption-size);
-  color: var(--text-tertiary);
-  display: block;
-}
-
-.center-percentage {
-  font-size: var(--text-value-size);
-  font-weight: var(--text-value-weight);
-  color: var(--text-primary);
-  display: block;
-}
-
-.center-value {
-  font-size: var(--text-body-secondary-size);
-  color: var(--text-secondary);
-  display: block;
 }
 
 .legends {

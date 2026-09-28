@@ -1,11 +1,12 @@
 <script setup>
 import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ChevronLeft } from 'lucide-vue-next'
+import { ChevronLeft, RefreshCw } from 'lucide-vue-next'
 import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import LoadingState from '../components/base/LoadingState.vue'
 import PortfolioTree from '../components/PortfolioTree.vue'
+import ContextMenu from '../components/base/ContextMenu.vue'
 import CustomSelect from '../components/base/CustomSelect.vue'
 import {
   TotalCapitalWidget,
@@ -166,11 +167,115 @@ onMounted(() => {
 })
 watch(
   () => props.userId,
-  () => load(),
+  () => {
+    actionMessage.value = ''
+    actionError.value = ''
+    load()
+  },
 )
 
 function backToAdmin() {
   router.push('/admin')
+}
+
+const brokerSyncLoading = ref(false)
+const actionMessage = ref('')
+const actionError = ref('')
+
+async function refreshAllBrokerPortfolios() {
+  actionMessage.value = ''
+  actionError.value = ''
+  brokerSyncLoading.value = true
+  try {
+    const data = await adminService.adminBrokerSyncUserPortfolios(props.userId)
+    const n = data?.count ?? 0
+    actionMessage.value =
+      n > 0
+        ? `Поставлено в очередь задач импорта: ${n}. Данные обновятся после выполнения воркера.`
+        : data?.message || 'Нет портфелей с сохранённым ключом брокера.'
+  } catch (e) {
+    const d = e.response?.data
+    actionError.value =
+      (typeof d?.error === 'string' && d.error) ||
+      (typeof d?.detail === 'string' && d.detail) ||
+      e.message ||
+      'Не удалось поставить задачи импорта'
+  } finally {
+    brokerSyncLoading.value = false
+  }
+}
+
+async function onRefreshPortfolio(portfolioId) {
+  if (!portfolioId) return
+  if (updatingPortfolios.value.has(portfolioId)) return
+  actionMessage.value = ''
+  actionError.value = ''
+  updatingPortfolios.value.add(portfolioId)
+  try {
+    await adminService.adminRefreshUserPortfolio(props.userId, portfolioId)
+    actionMessage.value = 'Пересчёт портфеля выполнен.'
+    await load()
+  } catch (e) {
+    const d = e.response?.data
+    actionError.value =
+      (typeof d?.error === 'string' && d.error) ||
+      (typeof d?.detail === 'string' && d.detail) ||
+      e.message ||
+      'Ошибка обновления портфеля'
+  } finally {
+    updatingPortfolios.value.delete(portfolioId)
+  }
+}
+
+async function onClearPortfolio(portfolioId) {
+  if (!portfolioId) return
+  if (
+    !window.confirm(
+      'Очистить портфель? Будут удалены позиции, операции и связанные данные по этому портфелю.',
+    )
+  ) {
+    return
+  }
+  actionMessage.value = ''
+  actionError.value = ''
+  try {
+    await adminService.adminClearUserPortfolio(props.userId, portfolioId)
+    actionMessage.value = 'Портфель очищен.'
+    await load()
+  } catch (e) {
+    const d = e.response?.data
+    actionError.value =
+      (typeof d?.error === 'string' && d.error) ||
+      (typeof d?.detail === 'string' && d.detail) ||
+      e.message ||
+      'Ошибка очистки'
+  }
+}
+
+async function onDeletePortfolio(portfolioId) {
+  if (!portfolioId) return
+  if (
+    !window.confirm(
+      'Удалить портфель? Доступно только для вложенного портфеля (не корневого).',
+    )
+  ) {
+    return
+  }
+  actionMessage.value = ''
+  actionError.value = ''
+  try {
+    await adminService.adminDeleteUserPortfolio(props.userId, portfolioId)
+    actionMessage.value = 'Портфель удалён.'
+    await load()
+  } catch (e) {
+    const d = e.response?.data
+    const detail = typeof d?.detail === 'string' ? d.detail : ''
+    actionError.value =
+      (typeof d?.error === 'string' && d.error) ||
+      detail ||
+      e.message ||
+      'Ошибка удаления'
+  }
 }
 </script>
 
@@ -188,6 +293,23 @@ function backToAdmin() {
             {{ userLabel }}
           </p>
         </div>
+        <div class="admin-user-actions">
+          <button
+            type="button"
+            class="admin-page__to-app admin-user-actions__btn"
+            :disabled="loading || brokerSyncLoading"
+            @click="refreshAllBrokerPortfolios"
+          >
+            <RefreshCw
+              class="admin-user-actions__icon"
+              :class="{ 'admin-user-actions__icon--spin': brokerSyncLoading }"
+              :size="16"
+              stroke-width="2.5"
+              aria-hidden="true"
+            />
+            Обновить портфели
+          </button>
+        </div>
       </header>
 
       <LoadingState v-if="loading" message="Загрузка портфелей…" />
@@ -202,7 +324,14 @@ function backToAdmin() {
 
       <div v-else class="admin-panel">
         <p class="admin-ro-hint">
-          Просмотр только для чтения: меню действий и переходы в карточки активов отключены.
+          Меню «⋯» у портфеля: обновить пересчёт, очистить данные, удалить вложенный портфель.
+          Импорт из брокера — кнопкой «Обновить портфели» выше (если у пользователя сохранён API-ключ).
+        </p>
+        <p v-if="actionMessage" class="admin-action-msg" role="status">
+          {{ actionMessage }}
+        </p>
+        <p v-if="actionError" class="admin-action-err" role="alert">
+          {{ actionError }}
         </p>
 
         <div v-if="selectedPortfolio" class="admin-stats-toolbar">
@@ -283,9 +412,16 @@ function backToAdmin() {
             :updating-portfolios="updatingPortfolios"
             :show-sold-assets="showSoldAssets"
             :read-only="true"
+            :portfolios-menu-only="true"
             @toggle-portfolio="togglePortfolio"
           />
         </section>
+
+        <ContextMenu
+          @clear-portfolio="onClearPortfolio"
+          @refresh-portfolio="onRefreshPortfolio"
+          @delete-portfolio="onDeletePortfolio"
+        />
       </div>
     </div>
   </PageLayout>
@@ -307,6 +443,76 @@ function backToAdmin() {
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1.25rem;
+}
+
+.admin-user-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-self: flex-start;
+  margin-top: 0.125rem;
+}
+
+.admin-user-actions__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--axis-border, #d1d5db);
+  background: var(--bg-primary, #fff);
+  color: var(--primary, #527de5);
+  font-size: var(--text-caption-size, 0.875rem);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.admin-user-actions__btn:hover:not(:disabled) {
+  border-color: var(--primary, #527de5);
+  background: rgba(82, 125, 229, 0.06);
+  color: var(--primary-hover, #4568d4);
+}
+
+.admin-user-actions__btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.admin-user-actions__icon--spin {
+  animation: admin-port-spin 0.85s linear infinite;
+}
+
+@keyframes admin-port-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.admin-action-msg {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: rgba(13, 148, 136, 0.08);
+  color: var(--text-secondary, #374151);
+  font-size: var(--text-caption-size, 0.875rem);
+  line-height: 1.45;
+}
+
+.admin-action-err {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: var(--danger-dark, #b91c1c);
+  border: 1px solid #fecaca;
+  font-size: var(--text-caption-size, 0.875rem);
+  line-height: 1.45;
 }
 
 

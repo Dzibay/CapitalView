@@ -66,6 +66,9 @@ async def run_all_updates():
     )
 
 
+
+    return phases_failed
+
 if __name__ == "__main__":
     from app.config import Config
     from app.utils.async_runner import run_async

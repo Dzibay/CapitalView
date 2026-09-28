@@ -6,11 +6,13 @@ const LAST_APP_PATH_REGEXES = [
   /^\/dashboard$/,
   /^\/admin$/,
   /^\/admin\/messages$/,
+  /^\/admin\/billing$/,
   /^\/admin\/users\/[^/]+$/,
   /^\/analitics$/,
   /^\/transactions$/,
   /^\/dividends$/,
   /^\/settings$/,
+  /^\/billing$/,
   /^\/support$/,
   /^\/assets$/,
   /^\/assets\/[^/]+$/
@@ -27,6 +29,15 @@ function isAdminShellPath(path) {
   const normalized = path.split('?')[0].split('#')[0]
   if (normalized === '/settings' || normalized.startsWith('/settings/')) return true
   if (normalized === '/admin' || normalized.startsWith('/admin/')) return true
+  return false
+}
+
+/** Страницы, доступные без активной подписки. */
+function isBillingAllowedPath(path) {
+  const normalized = path.split('?')[0].split('#')[0]
+  if (normalized === '/billing' || normalized.startsWith('/billing/')) return true
+  if (normalized === '/settings' || normalized.startsWith('/settings/')) return true
+  if (normalized === '/support' || normalized.startsWith('/support/')) return true
   return false
 }
 
@@ -71,7 +82,9 @@ const Dividends = () => import('../views/Dividends.vue');
 const Settings = () => import('../views/Settings.vue');
 const Admin = () => import('../views/Admin.vue');
 const AdminMessages = () => import('../views/AdminMessages.vue');
+const AdminBilling = () => import('../views/AdminBilling.vue');
 const AdminUserPortfolios = () => import('../views/AdminUserPortfolios.vue');
+const Billing = () => import('../views/Billing.vue');
 const ErrorStatus = () => import('../views/errors/ErrorStatus.vue');
 const NotFound404 = () => import('../views/errors/NotFound404.vue');
 const SitePublicLayout = () => import('../site/layouts/SitePublicLayout.vue');
@@ -130,7 +143,7 @@ const routes = [
           ...publicIndexMeta,
         },
       },
-      { path: 'investments', redirect: { name: 'site-investment-stocks' } },
+      { path: 'investments', redirect: { name: 'site-investment-securities' } },
       {
         path: 'investments/stocks',
         name: 'site-investment-stocks',
@@ -183,7 +196,7 @@ const routes = [
         path: 'free',
         name: 'site-free',
         component: () => import('../site/pages/FreePage.vue'),
-        meta: { title: 'Бесплатный учёт инвестиций — CapitalView', ...publicIndexMeta },
+        meta: { title: 'Пробный учёт инвестиций — CapitalView', ...publicIndexMeta },
       },
       {
         path: 'templates',
@@ -199,15 +212,6 @@ const routes = [
         name: 'site-blog',
         component: () => import('../site/pages/BlogIndex.vue'),
         meta: { title: 'Блог — CapitalView', ...publicIndexMeta },
-      },
-      {
-        path: 'labs/header-style',
-        name: 'site-header-style-lab',
-        component: () => import('../site/pages/HeaderStyleLab.vue'),
-        meta: {
-          title: 'Варианты шапки и кнопок (черновик) — CapitalView',
-          robots: 'noindex, nofollow',
-        },
       },
     ],
   },
@@ -248,6 +252,11 @@ const routes = [
         meta: { title: 'Сообщения в поддержку — CapitalView', requiresAdmin: true },
       },
       {
+        path: '/admin/billing',
+        component: AdminBilling,
+        meta: { title: 'Биллинг — CapitalView', requiresAdmin: true },
+      },
+      {
         path: '/admin/users/:userId',
         component: AdminUserPortfolios,
         props: true,
@@ -268,6 +277,7 @@ const routes = [
       { path: '/transactions', component: Transactions, meta: { title: 'Сделки — CapitalView' } },
       { path: '/dividends', component: Dividends, meta: { title: 'Дивиденды и купоны — CapitalView' } },
       { path: '/settings', component: Settings, meta: { title: 'Настройки — CapitalView' } },
+      { path: '/billing', component: Billing, meta: { title: 'Подписка — CapitalView' } },
       { path: '/support', component: Support, meta: { title: 'Поддержка — CapitalView' } }
     ]
   },
@@ -351,6 +361,15 @@ router.beforeEach(async (to, from, next) => {
         !isAdminShellPath(to.path)
       ) {
         next({ path: '/admin', replace: true })
+        return
+      }
+      if (
+        !user.is_admin &&
+        user.subscription &&
+        user.subscription.has_access === false &&
+        !isBillingAllowedPath(to.path)
+      ) {
+        next({ path: '/billing', replace: true })
         return
       }
       // Токен валиден, разрешаем доступ

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query, HTTPException, Depends
 from app.domain.services.transactions_service import get_transactions, delete_transactions_batch
 from app.domain.services.access_control_service import check_multiple_transactions_access
 from app.constants import HTTPStatus
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_subscriber as get_current_user
 from app.infrastructure.cache import invalidate
 from app.utils.response import success_response
 from app.utils.date import parse_date_range

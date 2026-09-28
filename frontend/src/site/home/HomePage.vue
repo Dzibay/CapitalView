@@ -4,6 +4,7 @@ import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useLandingContent } from '../composables/useLandingContent'
 import { useLandingReveal } from '../composables/useLandingReveal'
+import { billingService } from '../../services/billingService'
 import LandingHero from '../components/home/LandingHero.vue'
 import LandingHeroBlocksOverlay from '../components/home/LandingHeroBlocksOverlay.vue'
 import LandingDashboardMock from '../components/home/LandingDashboardMock.vue'
@@ -32,6 +33,8 @@ const LandingFaqSection = defineAsyncComponent(() =>
 const rootRef = ref(null)
 const heroSectionRef = ref(null)
 const dashboardOverlapRef = ref(null)
+const trialDays = ref(14)
+const publicTariffs = ref([])
 
 provide('landingHeroScrollTrigger', heroSectionRef)
 
@@ -43,6 +46,16 @@ const isMobile = ref(false)
 
 onMounted(() => {
   isMobile.value = window.innerWidth < 768
+})
+
+onMounted(async () => {
+  try {
+    const data = await billingService.fetchPublic()
+    trialDays.value = Number(data.trial_days) || 14
+    publicTariffs.value = data.tariffs || []
+  } catch {
+    // лендинг работает и с дефолтным пробным периодом
+  }
 })
 
 onMounted(async () => {
@@ -92,7 +105,7 @@ const {
       <div class="landing-hero-bg" aria-hidden="true" />
       <section ref="heroSectionRef" class="landing-hero-section">
         <LandingHeroBlocksOverlay v-if="!isMobile" />
-        <LandingHero />
+        <LandingHero :trial-days="trialDays" />
       </section>
 
       <div
@@ -119,7 +132,11 @@ const {
       />
       <LandingStepsSection :items="steps" />
       <LandingSecuritySection :tabs="securityTabs" />
-      <LandingPricingSection :features="pricingFeatures" />
+      <LandingPricingSection
+        :features="pricingFeatures"
+        :trial-days="trialDays"
+        :tariffs="publicTariffs"
+      />
       <LandingFaqSection :items="faq" />
     </div>
   </div>

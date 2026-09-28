@@ -40,6 +40,14 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  /**
+   * Режим админки: меню «⋯» только у портфелей; активы без меню и без перехода в карточку.
+   * Имеет смысл вместе с readOnly: true.
+   */
+  portfoliosMenuOnly: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits([
@@ -173,7 +181,7 @@ function resolveAssetIdForDetailRoute(asset) {
 }
 
 function goToAsset(asset) {
-  if (props.readOnly) return
+  if (props.readOnly || props.portfoliosMenuOnly) return
   const id = resolveAssetIdForDetailRoute(asset)
   if (id == null) {
     if (import.meta.env.DEV) {
@@ -232,7 +240,7 @@ function mobilePlTotalClass(asset) {
           <span v-if="updatingPortfolios && unref(updatingPortfolios).has(portfolio.id)" class="spinner">⏳</span>
         </div>
         <button
-          v-if="!readOnly"
+          v-if="!readOnly || portfoliosMenuOnly"
           type="button"
           class="menu-btn icon-btn"
           @click.stop="openMenu($event, 'portfolio', portfolio)"
@@ -260,7 +268,7 @@ function mobilePlTotalClass(asset) {
                   <th class="col-right">Див (5л)</th>
                   <th class="col-right">P&L (Всё)</th>
                   <th class="col-right">P&L (День)</th>
-                  <th v-if="!readOnly" class="col-actions"></th>
+                  <th v-if="!readOnly && !portfoliosMenuOnly" class="col-actions"></th>
                 </tr>
               </thead>
               <tbody>
@@ -271,7 +279,7 @@ function mobilePlTotalClass(asset) {
                 >
                   <td
                     class="cell-name"
-                    :class="{ clickable: !readOnly }"
+                    :class="{ clickable: !readOnly && !portfoliosMenuOnly }"
                     @click="goToAsset(asset)"
                   >
                     <div class="asset-main">
@@ -319,7 +327,7 @@ function mobilePlTotalClass(asset) {
                   <td class="col-right num-font" :class="asset.daily_change >= 0 ? 'text-green' : 'text-red'">
                     {{ asset.last_price ? (asset.daily_change / asset.last_price * 100).toFixed(2) : '0.00' }}%
                   </td>
-                  <td v-if="!readOnly" class="col-actions center">
+                  <td v-if="!readOnly && !portfoliosMenuOnly" class="col-actions center">
                     <button
                       type="button"
                       class="menu-btn icon-btn"
@@ -340,7 +348,7 @@ function mobilePlTotalClass(asset) {
               class="m-asset-row"
               :class="{
                 'sold-asset': (asset.quantity || 0) === 0,
-                'm-asset-row--clickable': !readOnly,
+                'm-asset-row--clickable': !readOnly && !portfoliosMenuOnly,
               }"
               @click="goToAsset(asset)"
             >
@@ -365,7 +373,7 @@ function mobilePlTotalClass(asset) {
                 >{{ mobilePlTotalPct(asset) }}%</span>
               </div>
               <button
-                v-if="!readOnly"
+                v-if="!readOnly && !portfoliosMenuOnly"
                 type="button"
                 class="menu-btn icon-btn m-asset-menu"
                 aria-label="Действия с активом"
@@ -389,6 +397,7 @@ function mobilePlTotalClass(asset) {
               :updatingPortfolios="updatingPortfolios"
               :showSoldAssets="showSoldAssets"
               :read-only="readOnly"
+              :portfolios-menu-only="portfoliosMenuOnly"
               @togglePortfolio="$emit('togglePortfolio', $event)"
               @removeAsset="$emit('removeAsset', $event)"
               @deletePortfolio="$emit('deletePortfolio', $event)"

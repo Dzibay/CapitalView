@@ -20,6 +20,33 @@ export const adminService = {
     return res.data?.dashboard ?? null
   },
 
+  async adminRefreshUserPortfolio(userId, portfolioId) {
+    const res = await apiClient.post(
+      API_ENDPOINTS.ADMIN.USER_PORTFOLIO_REFRESH(userId, portfolioId),
+    )
+    return res.data
+  },
+
+  async adminClearUserPortfolio(userId, portfolioId) {
+    const res = await apiClient.post(
+      API_ENDPOINTS.ADMIN.USER_PORTFOLIO_CLEAR(userId, portfolioId),
+    )
+    return res.data
+  },
+
+  async adminDeleteUserPortfolio(userId, portfolioId) {
+    const res = await apiClient.delete(
+      API_ENDPOINTS.ADMIN.USER_PORTFOLIO_DELETE(userId, portfolioId),
+    )
+    return res.data
+  },
+
+  /** Очередь импорта по всем портфелям пользователя с сохранённым ключом брокера. */
+  async adminBrokerSyncUserPortfolios(userId) {
+    const res = await apiClient.post(API_ENDPOINTS.ADMIN.USER_BROKER_SYNC(userId))
+    return res.data
+  },
+
   async fetchSupportMessages() {
     const res = await apiClient.get(API_ENDPOINTS.ADMIN.SUPPORT_MESSAGES)
     const raw = res.data?.support_messages
@@ -32,5 +59,32 @@ export const adminService = {
       message,
     })
     return res.data?.chat_message ?? null
+  },
+
+  async fetchBilling() {
+    const res = await apiClient.get(API_ENDPOINTS.ADMIN.BILLING)
+    return {
+      settings: res.data?.settings ?? null,
+      tariffs: Array.isArray(res.data?.tariffs) ? res.data.tariffs : [],
+    }
+  },
+
+  async updateBillingSettings(payload) {
+    const res = await apiClient.put(API_ENDPOINTS.ADMIN.BILLING_SETTINGS, payload)
+    return res.data?.settings ?? null
+  },
+
+  async createTariff(payload) {
+    const res = await apiClient.post(API_ENDPOINTS.ADMIN.BILLING_TARIFFS, payload)
+    return res.data?.tariff ?? null
+  },
+
+  async updateTariff(id, payload) {
+    const res = await apiClient.put(API_ENDPOINTS.ADMIN.BILLING_TARIFF(id), payload)
+    return res.data?.tariff ?? null
+  },
+
+  async deleteTariff(id) {
+    await apiClient.delete(API_ENDPOINTS.ADMIN.BILLING_TARIFF(id))
   },
 }

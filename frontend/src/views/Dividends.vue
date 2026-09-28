@@ -74,9 +74,7 @@ const allDividends = computed(() => {
 
   const list = []
 
-  payoutPositions.value
-    .filter(asset => (asset.quantity || 0) > 0)
-    .forEach(asset => {
+  payoutPositions.value.forEach(asset => {
     const payouts = asset.payouts || []
 
     payouts.forEach(div => {
@@ -104,6 +102,22 @@ const allDividends = computed(() => {
           ? parseFloat(div.dividend_yield)
           : null
 
+      const basisQtyRaw =
+        div.basis_quantity != null && div.basis_quantity !== ''
+          ? parseFloat(div.basis_quantity)
+          : null
+      const basisQty =
+        basisQtyRaw != null && Number.isFinite(basisQtyRaw)
+          ? basisQtyRaw
+          : asset.quantity || 0
+
+      const totalAmount =
+        div.expected_total != null && div.expected_total !== ''
+          ? parseFloat(div.expected_total)
+          : parseFloat(div.value) * basisQty
+
+      if (!Number.isFinite(totalAmount) || totalAmount <= 0) return
+
       list.push({
         id: div.id || `${asset.asset_id ?? asset.portfolio_asset_id}-${mainDateStr}-${div.value}`,
 
@@ -119,10 +133,7 @@ const allDividends = computed(() => {
         currency: asset.currency_ticker || div.currency || 'RUB',
 
         /** Сумма позиции по выплате в той же валюте (для ₽-итогов — через payoutAmountToRub) */
-        totalAmount:
-          div.expected_total != null && div.expected_total !== ''
-            ? parseFloat(div.expected_total)
-            : parseFloat(div.value) * (asset.quantity || 0),
+        totalAmount,
 
         dividendYield: Number.isFinite(dy) ? dy : null,
 

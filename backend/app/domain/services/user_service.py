@@ -29,14 +29,18 @@ async def get_user_by_id(user_id):
     return await _user_repository.get_by_id(user_id)
 
 
-async def create_user(email: str, password: str):
+async def create_user(email: str, password: str, email_verified: bool = False):
     """Создает нового пользователя."""
     hashed = bcrypt.generate_password_hash(password)
-    return await _user_repository.create({
+    user = await _user_repository.create({
         "email": email,
         "password_hash": hashed,
-        "email_verified": False,
+        "email_verified": bool(email_verified),
     })
+    if user:
+        from app.domain.services.billing_service import start_trial_for_user
+        await start_trial_for_user(str(user["id"]))
+    return user
 
 
 async def create_or_get_user_oauth(email: str, name: str = None):
@@ -51,8 +55,11 @@ async def create_or_get_user_oauth(email: str, name: str = None):
     data = {"email": email}
     if name:
         data["name"] = name
-    return await _user_repository.create(data)
-
+    user = await _user_repository.create(data)
+    if user:
+        from app.domain.services.billing_service import start_trial_for_user
+        await start_trial_for_user(str(user["id"]))
+    return user
 
 async def update_user(user_id: str, name: str = None, email: str = None):
     """Обновляет данные пользователя. При смене имени сбрасываются Redis-кэш дашборда и in-memory кэш пользователя."""

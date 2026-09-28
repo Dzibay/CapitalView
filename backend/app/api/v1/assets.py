@@ -16,7 +16,7 @@ from app.domain.services.access_control_service import (
 )
 from app.domain.models.asset_models import AddAssetPriceRequest, MoveAssetRequest, BatchAddPriceRequest
 from app.constants import HTTPStatus
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_subscriber as get_current_user
 from app.infrastructure.cache import invalidate
 from app.utils.response import success_response
 from app.core.logging import get_logger
