@@ -48,6 +48,8 @@ const hoveredItem = ref(null);
 const logoSrc = ref('/site-logo.webp');
 
 function buildMenuSections(user) {
+  const locked = Boolean(user && !user.is_admin && user.subscription && user.subscription.has_access === false)
+
   if (user?.is_admin) {
     return [
       {
@@ -68,16 +70,16 @@ function buildMenuSections(user) {
     {
       title: 'МЕНЮ',
       items: [
-        { name: 'Дашборд', link: '/dashboard', icon: LayoutDashboard },
-        { name: 'Аналитика', link: '/analitics', icon: BarChart3 },
+        { name: 'Дашборд', link: '/dashboard', icon: LayoutDashboard, locked },
+        { name: 'Аналитика', link: '/analitics', icon: BarChart3, locked },
       ],
     },
     {
       title: 'ФИНАНСЫ',
       items: [
-        { name: 'Активы', link: '/assets', icon: Briefcase },
-        { name: 'Дивиденды', link: '/dividends', icon: Coins },
-        { name: 'Операции', link: '/transactions', icon: ArrowLeftRight },
+        { name: 'Активы', link: '/assets', icon: Briefcase, locked },
+        { name: 'Дивиденды', link: '/dividends', icon: Coins, locked },
+        { name: 'Операции', link: '/transactions', icon: ArrowLeftRight, locked },
       ],
     },
     {
@@ -162,6 +164,7 @@ watch(route, () => {
       <ul class="sidebar__nav-list">
             <li v-for="item in section.items" :key="item.name">
           <router-link
+            v-if="!item.locked"
             :to="item.link"
             class="sidebar__nav-item"
             :class="{ 'sidebar__nav-item--active': item.active }"
@@ -187,6 +190,19 @@ watch(route, () => {
                   <span v-if="!collapsed || mobileOpen" class="sidebar__item-name">{{ item.name }}</span>
                 </Transition>
           </router-link>
+          <div
+            v-else
+            class="sidebar__nav-item sidebar__nav-item--locked"
+            :title="'Доступно после оформления подписки'"
+            aria-disabled="true"
+          >
+            <div class="sidebar__item-icon">
+              <component :is="item.icon" :size="20" />
+            </div>
+            <Transition name="fade">
+              <span v-if="!collapsed || mobileOpen" class="sidebar__item-name">{{ item.name }}</span>
+            </Transition>
+          </div>
             </li>
           </ul>
         </div>
@@ -370,6 +386,14 @@ watch(route, () => {
   background: rgba(47, 95, 143, 0.22);
   color: #f2f4f6;
   font-weight: 600;
+}
+
+.sidebar__nav-item--locked {
+  opacity: 0.38;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(0.4);
+  color: var(--sidebar-text-color);
 }
 
 .sidebar-active-indicator {

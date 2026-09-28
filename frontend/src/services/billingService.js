@@ -16,6 +16,8 @@ export const billingService = {
       subscription: res.data?.subscription ?? null,
       tariffs: Array.isArray(res.data?.tariffs) ? res.data.tariffs : [],
       trial_days: Number(res.data?.trial_days ?? 14),
+      timeline: res.data?.timeline ?? null,
+      registered_at: res.data?.registered_at ?? null,
     }
   },
 

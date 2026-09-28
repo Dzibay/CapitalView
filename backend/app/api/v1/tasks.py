@@ -10,7 +10,7 @@ from app.domain.services.task_service import (
     import_task_belongs_to_user,
 )
 from app.constants import HTTPStatus
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_subscriber as get_current_user
 from app.utils.response import success_response
 import logging
 

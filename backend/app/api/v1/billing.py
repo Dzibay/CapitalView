@@ -9,8 +9,8 @@ from app.core.dependencies import get_current_user
 from app.core.logging import get_logger
 from app.domain.services.billing_service import (
     create_user_payment,
+    get_billing_me,
     get_public_billing_info,
-    get_user_subscription_status,
     handle_yookassa_webhook,
 )
 from app.infrastructure.external.yookassa.client import YooKassaError
@@ -35,12 +35,8 @@ async def billing_public():
 
 @router.get("/me")
 async def billing_me(user: dict = Depends(get_current_user)):
-    status = await get_user_subscription_status(str(user["id"]))
-    public = await get_public_billing_info()
-    return success_response(
-        data={"subscription": status, "tariffs": public["tariffs"], "trial_days": public["trial_days"]},
-        message="OK",
-    )
+    data = await get_billing_me(str(user["id"]), user)
+    return success_response(data=data, message="OK")
 
 
 @router.post("/payments", status_code=201)

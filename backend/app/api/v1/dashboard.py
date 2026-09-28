@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import ORJSONResponse
 import time
 from app.domain.services.dashboard_service import get_dashboard_data
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_subscriber as get_current_user
 from app.utils.response import success_response
 from app.core.logging import get_logger
 

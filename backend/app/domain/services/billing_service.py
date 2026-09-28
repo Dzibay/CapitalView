@@ -258,13 +258,105 @@ async def get_user_subscription_status(user_id: str) -> dict:
         if trows:
             tariff = _tariff_row(trows[0])
 
+    access_ends = None
+    if status == "trial":
+        access_ends = row.get("trial_ends_at")
+    elif status == "active":
+        access_ends = row.get("current_period_ends_at")
+    else:
+        access_ends = row.get("current_period_ends_at") or row.get("trial_ends_at")
+
     return {
         "status": status,
         "has_access": _has_access(status),
         "trial_ends_at": _serialize_dt(row.get("trial_ends_at")),
         "current_period_ends_at": _serialize_dt(row.get("current_period_ends_at")),
+        "access_ends_at": _serialize_dt(access_ends),
         "tariff_id": int(tariff_id) if tariff_id else None,
         "tariff": tariff,
+    }
+
+
+async def get_user_billing_timeline(user_id: str, subscription: Optional[dict] = None) -> dict:
+    """Шкала: регистрация → платежи → истечение; сегодня и дней осталось."""
+    uid = str(user_id)
+    users = await table_select_async("users", select="id, created_at", filters={"id": uid}, limit=1)
+    registered_at = users[0].get("created_at") if users else None
+
+    if subscription is None:
+        subscription = await get_user_subscription_status(uid)
+
+    payments = await table_select_async(
+        "payments",
+        select="*",
+        filters={"user_id": uid, "status": "succeeded"},
+        order={"column": "created_at", "desc": False},
+        limit=200,
+    )
+
+    events: List[dict] = []
+    if registered_at:
+        events.append({
+            "type": "registration",
+            "at": _serialize_dt(registered_at),
+            "label": "Регистрация",
+        })
+
+    payment_items = []
+    for p in payments or []:
+        amount = float(p.get("amount_rub") or 0)
+        item = {
+            "type": "payment",
+            "at": _serialize_dt(p.get("created_at")),
+            "label": f"Оплата {amount:.0f} ₽",
+            "amount_rub": amount,
+            "payment_id": int(p["id"]),
+            "tariff_id": int(p["tariff_id"]) if p.get("tariff_id") else None,
+        }
+        events.append(item)
+        payment_items.append(item)
+
+    access_ends_raw = subscription.get("access_ends_at")
+    if access_ends_raw:
+        events.append({
+            "type": "expires",
+            "at": access_ends_raw,
+            "label": "Окончание доступа" if subscription.get("has_access") else "Доступ истёк",
+        })
+
+    now = _utcnow()
+    ends = _as_aware(
+        datetime.fromisoformat(access_ends_raw.replace("Z", "+00:00"))
+        if isinstance(access_ends_raw, str)
+        else access_ends_raw
+    ) if access_ends_raw else None
+
+    days_left = None
+    if ends:
+        delta = ends.date() - now.date()
+        days_left = delta.days
+
+    return {
+        "registered_at": _serialize_dt(registered_at),
+        "access_ends_at": access_ends_raw,
+        "today": _serialize_dt(now),
+        "days_left": days_left,
+        "has_access": bool(subscription.get("has_access")),
+        "events": events,
+        "payments": payment_items,
+    }
+
+
+async def get_billing_me(user_id: str, user_row: Optional[dict] = None) -> dict:
+    subscription = await get_user_subscription_status(user_id)
+    public = await get_public_billing_info()
+    timeline = await get_user_billing_timeline(user_id, subscription)
+    return {
+        "subscription": subscription,
+        "tariffs": public["tariffs"],
+        "trial_days": public["trial_days"],
+        "timeline": timeline,
+        "registered_at": timeline.get("registered_at"),
     }
 
 

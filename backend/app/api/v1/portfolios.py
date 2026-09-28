@@ -3,7 +3,7 @@ API endpoints для работы с портфелями.
 Версия 1.
 """
 from fastapi import APIRouter, Depends, HTTPException
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_subscriber as get_current_user
 from app.utils.response import success_response
 from app.infrastructure.database.database_service import table_select_async, table_insert_async, rpc_async
 from app.domain.services.portfolio_service import (

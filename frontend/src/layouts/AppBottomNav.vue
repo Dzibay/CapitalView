@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.store'
 import {
   LayoutDashboard,
@@ -12,10 +12,21 @@ import {
   Shield,
   MessageSquare,
   CreditCard,
+  Headphones,
 } from 'lucide-vue-next'
 
 const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
+
+const locked = computed(() =>
+  Boolean(
+    authStore.user &&
+    !authStore.user.is_admin &&
+    authStore.user.subscription &&
+    authStore.user.subscription.has_access === false
+  )
+)
 
 const items = computed(() => {
   if (authStore.user?.is_admin) {
@@ -24,6 +35,15 @@ const items = computed(() => {
       { to: '/admin/messages', label: 'Письма', icon: MessageSquare },
       { to: '/admin/billing', label: 'Биллинг', icon: CreditCard },
       { to: '/settings', label: 'Настройки', icon: Settings },
+    ]
+  }
+  if (locked.value) {
+    return [
+      { to: '/billing', label: 'Подписка', icon: CreditCard },
+      { to: '/support', label: 'Поддержка', icon: Headphones },
+      { to: '/settings', label: 'Настройки', icon: Settings },
+      { to: '/dashboard', label: 'Дашборд', icon: LayoutDashboard, locked: true },
+      { to: '/assets', label: 'Активы', icon: Briefcase, locked: true },
     ]
   }
   return [
@@ -42,6 +62,12 @@ function isActive(link) {
   }
   return route.path === link || route.path.startsWith(`${link}/`)
 }
+
+function onNavClick(item, event) {
+  if (!item.locked) return
+  event.preventDefault()
+  router.push('/billing')
+}
 </script>
 
 <template>
@@ -49,10 +75,14 @@ function isActive(link) {
     <div class="bottom-nav__inner">
       <router-link
         v-for="item in items"
-        :key="item.to"
-        :to="item.to"
+        :key="item.to + item.label"
+        :to="item.locked ? '/billing' : item.to"
         class="bottom-nav__item"
-        :class="{ 'bottom-nav__item--active': isActive(item.to) }"
+        :class="{
+          'bottom-nav__item--active': !item.locked && isActive(item.to),
+          'bottom-nav__item--locked': item.locked,
+        }"
+        @click="onNavClick(item, $event)"
       >
         <span class="bottom-nav__icon-wrap">
           <component :is="item.icon" :size="22" class="bottom-nav__icon" stroke-width="2" />
@@ -134,6 +164,11 @@ function isActive(link) {
     color: #e8eef4;
     background: rgba(47, 95, 143, 0.28);
     box-shadow: none;
+  }
+
+  .bottom-nav__item--locked {
+    opacity: 0.35;
+    filter: grayscale(0.4);
   }
 
   .bottom-nav__icon-wrap {
