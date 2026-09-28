@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUIStore } from '../stores/ui.store';
 import { authService } from '../services/authService.js';
@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Headphones,
   CreditCard,
+  Sparkles,
 } from 'lucide-vue-next';
 
 const route = useRoute();
@@ -46,6 +47,67 @@ const hoveredItem = ref(null);
 // Картинка логотипа для сайдбара.
 // Ожидается в `frontend/public`
 const logoSrc = ref('/site-logo.webp');
+
+function daysWord(n) {
+  const abs = Math.abs(n)
+  const mod10 = abs % 10
+  const mod100 = abs % 100
+  let unit = 'дней'
+  if (mod10 === 1 && mod100 !== 11) unit = 'день'
+  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) unit = 'дня'
+  return `${abs} ${unit}`
+}
+
+function daysUntil(iso) {
+  if (!iso) return null
+  const end = new Date(iso).getTime()
+  if (Number.isNaN(end)) return null
+  return Math.ceil((end - Date.now()) / 86400000)
+}
+
+const promo = computed(() => {
+  const user = props.user
+  if (!user || user.is_admin) return null
+  const sub = user.subscription
+  if (!sub) return null
+
+  const endsAt = sub.access_ends_at || sub.trial_ends_at || sub.current_period_ends_at
+  const left = daysUntil(endsAt)
+
+  if (sub.status === 'trial' && sub.has_access) {
+    return {
+      tone: 'trial',
+      title: 'Пробный период',
+      text: left != null && left > 0
+        ? `Ещё ${daysWord(left)}. Оформите тариф без паузы в доступе.`
+        : 'Оформите тариф, чтобы сохранить доступ к портфелю.',
+      cta: 'К тарифам',
+    }
+  }
+
+  if (sub.has_access && left != null && left <= 7) {
+    return {
+      tone: 'ending',
+      title: left <= 0 ? 'Истекает сегодня' : `Осталось ${daysWord(left)}`,
+      text: 'Продлите подписку заранее — доступ не прервётся.',
+      cta: 'Продлить',
+    }
+  }
+
+  if (sub.has_access === false) {
+    return {
+      tone: 'expired',
+      title: 'Доступ закрыт',
+      text: 'Оформите подписку, чтобы снова открыть портфель.',
+      cta: 'Оформить',
+    }
+  }
+
+  return null
+})
+
+const showPromoExpanded = computed(() => Boolean(promo.value) && (!props.collapsed || props.mobileOpen))
+const showPromoCollapsed = computed(() => Boolean(promo.value) && props.collapsed && !props.mobileOpen)
 
 function buildMenuSections(user) {
   const locked = Boolean(user && !user.is_admin && user.subscription && user.subscription.has_access === false)
@@ -208,6 +270,25 @@ watch(route, () => {
         </div>
       </div>
     </nav>
+
+    <div v-if="showPromoExpanded" class="sidebar__promo" :class="`sidebar__promo--${promo.tone}`">
+      <div class="sidebar__promo-icon">
+        <Sparkles :size="14" :stroke-width="2.25" />
+      </div>
+      <p class="sidebar__promo-title">{{ promo.title }}</p>
+      <p class="sidebar__promo-text">{{ promo.text }}</p>
+      <router-link to="/billing" class="sidebar__promo-cta">{{ promo.cta }}</router-link>
+    </div>
+
+    <router-link
+      v-else-if="showPromoCollapsed"
+      to="/billing"
+      class="sidebar__promo-mini"
+      :class="`sidebar__promo-mini--${promo.tone}`"
+      :title="promo.title"
+    >
+      <Sparkles :size="16" :stroke-width="2.25" />
+    </router-link>
 
   </aside>
 </template>
@@ -536,6 +617,122 @@ watch(route, () => {
 }
 .sidebar__logout:hover {
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.sidebar__promo {
+  margin: 0 0.75rem 0.875rem;
+  padding: 0.875rem 0.875rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(165deg, rgba(47, 95, 143, 0.28), rgba(28, 33, 40, 0.9));
+}
+
+.sidebar__promo--ending {
+  background: linear-gradient(165deg, rgba(196, 138, 26, 0.22), rgba(28, 33, 40, 0.92));
+  border-color: rgba(196, 138, 26, 0.22);
+}
+
+.sidebar__promo--expired {
+  background: linear-gradient(165deg, rgba(209, 67, 67, 0.2), rgba(28, 33, 40, 0.92));
+  border-color: rgba(209, 67, 67, 0.2);
+}
+
+.sidebar__promo-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-bottom: 0.5rem;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #c5d6e8;
+}
+
+.sidebar__promo--ending .sidebar__promo-icon {
+  color: #f0d29a;
+}
+
+.sidebar__promo--expired .sidebar__promo-icon {
+  color: #f0b4b4;
+}
+
+.sidebar__promo-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: #f2f4f6;
+  letter-spacing: -0.01em;
+}
+
+.sidebar__promo-text {
+  margin: 0 0 0.75rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.sidebar__promo-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  border-radius: 8px;
+  background: #2f5f8f;
+  color: #fff;
+  text-decoration: none;
+  font-size: 0.75rem;
+  font-weight: 650;
+  transition: background 0.15s ease;
+}
+
+.sidebar__promo-cta:hover {
+  background: #3a6fa3;
+}
+
+.sidebar__promo--ending .sidebar__promo-cta {
+  background: #a87a1c;
+}
+
+.sidebar__promo--ending .sidebar__promo-cta:hover {
+  background: #c48a1a;
+}
+
+.sidebar__promo--expired .sidebar__promo-cta {
+  background: #b83c3c;
+}
+
+.sidebar__promo--expired .sidebar__promo-cta:hover {
+  background: #d14343;
+}
+
+.sidebar__promo-mini {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 0.875rem;
+  border-radius: 10px;
+  background: rgba(47, 95, 143, 0.35);
+  color: #c5d6e8;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.sidebar__promo-mini:hover {
+  background: rgba(47, 95, 143, 0.55);
+}
+
+.sidebar__promo-mini--ending {
+  background: rgba(196, 138, 26, 0.28);
+  color: #f0d29a;
+}
+
+.sidebar__promo-mini--expired {
+  background: rgba(209, 67, 67, 0.28);
+  color: #f0b4b4;
 }
 
 .fade-enter-active,

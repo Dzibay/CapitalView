@@ -479,11 +479,14 @@ async def activate_subscription_from_payment(local_payment_id: int) -> None:
     sub_rows = await table_select_async(
         "user_subscriptions", select="*", filters={"user_id": user_id}, limit=1
     )
+    # Не обрезаем оставшиеся дни: новый период стартует от max(сейчас, конец доступа).
+    # Учитываем и trial, и paid period — иначе оплата во время trial «съедает» остаток пробного.
     base = now
     if sub_rows:
-        current_end = _as_aware(sub_rows[0].get("current_period_ends_at"))
-        if sub_rows[0].get("status") == "active" and current_end and current_end > now:
-            base = current_end
+        for key in ("trial_ends_at", "current_period_ends_at"):
+            end = _as_aware(sub_rows[0].get(key))
+            if end and end > base:
+                base = end
 
     period_end = base + timedelta(days=period_days)
     patch = {
