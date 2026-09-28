@@ -130,12 +130,19 @@ def _tinkoff_operation_type_name(op: Any) -> str:
 
 
 def _tinkoff_operation_currency(op: Any) -> Optional[str]:
-    """Operation.currency или currency из payment у OperationItem."""
+    """
+    Валюта расчёта операции: payment.currency (сумма), затем Operation.currency,
+    затем price.currency. Для OperationItem top-level currency нет.
+    """
+    payment = getattr(op, "payment", None)
+    pay_cur = getattr(payment, "currency", None) if payment is not None else None
+    if pay_cur:
+        return pay_cur
     currency = getattr(op, "currency", None)
     if currency:
         return currency
-    payment = getattr(op, "payment", None)
-    return getattr(payment, "currency", None) if payment is not None else None
+    price = getattr(op, "price", None)
+    return getattr(price, "currency", None) if price is not None else None
 
 
 def _tinkoff_executed_quantity(op: Any) -> float:
@@ -489,17 +496,20 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
                                 "price": 0,  # Будет рассчитано из payment / quantity в portfolio_service
                                 "quantity": op_quantity if op_quantity > 0 else 0,
                                 "payment": payment,
+                                "currency": op_currency,
                             })
                         else:
                             # Для Buy и Sell сохраняем и price (цена единицы актива) и payment (общая сумма операции)
                             # price используется в транзакции, payment - в cash_operation
                             # Они могут отличаться из-за накопленного купонного дохода (НКД) у облигаций
+                            # currency — валюта расчёта брокера (часто RUB даже для USD-активов)
                             tx_price = price_obj.units + price_obj.nano / 1e9 if price_obj else None
                             tx_payment = op.payment.units + op.payment.nano / 1e9 if op.payment else 0
                             tx.update({
                                 "price": tx_price,
                                 "quantity": op_quantity,
                                 "payment": tx_payment,
+                                "currency": op_currency,
                             })
                     # Денежные операции
                     else:

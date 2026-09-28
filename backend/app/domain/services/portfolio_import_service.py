@@ -832,13 +832,21 @@ async def import_broker_portfolio(
                     price = round(float(tx.get("price") or 0), 6)
                     qty = round(float(tx.get("quantity") or 0), 6)
 
-                currency_id_for_tx = 1
+                # Валюта суммы — от брокера (payment.currency); иначе quote актива.
+                # Tinkoff часто отдаёт RUB даже для активов с quote_asset USD/EUR.
+                broker_cur = _fmt_currency_code(tx.get("currency"))
+                if broker_cur:
+                    currency_id_for_tx = _quote_asset_id_for_broker_instrument(
+                        {"currency": broker_cur}, ticker_to_quote
+                    )
+                elif asset_id in currency_assets_map:
+                    currency_id_for_tx = currency_assets_map[asset_id]
+                else:
+                    currency_id_for_tx = 1
+
                 comm_val = float(tx.get("commission") or 0)
                 comm_rub = None
-                if asset_id in currency_assets_map:
-                    currency_id_for_tx = currency_assets_map[asset_id]
-                    # Keep transaction amounts in quote currency; SQL computes RUB values once.
-                elif abs(comm_val) >= 1e-12:
+                if currency_id_for_tx == 1 and abs(comm_val) >= 1e-12:
                     comm_rub = round(comm_val, 6)
 
                 tx_type_id = {"Buy": 1, "Sell": 2, "Amortization": 3}[tx_type]
@@ -874,15 +882,20 @@ async def import_broker_portfolio(
                     if not op_date_normalized:
                         continue
 
-                # ??? Deposit/Withdraw asset_id ???????????, ??????? ?????? ?????
-                # ?????????? ?? currency ????????, ????? USD/EUR ???????? ?????? RUB.
-                currency_id_for_op = ticker_to_quote.get(_fmt_currency_code(tx.get("currency")).upper(), 1)
+                # Валюта суммы — от брокера; иначе quote актива (не для Deposit/Withdraw).
+                broker_cur = _fmt_currency_code(tx.get("currency"))
+                if broker_cur:
+                    currency_id_for_op = _quote_asset_id_for_broker_instrument(
+                        {"currency": broker_cur}, ticker_to_quote
+                    )
+                elif op_type_id not in (5, 6) and asset_id and asset_id in currency_assets_map:
+                    currency_id_for_op = currency_assets_map[asset_id]
+                else:
+                    currency_id_for_op = 1
+
                 comm_cash = float(tx.get("commission") or 0)
                 comm_cash_rub = None
-                if op_type_id not in (5, 6) and asset_id and asset_id in currency_assets_map:
-                    currency_id_for_op = currency_assets_map[asset_id]
-                    # Keep cash amounts in quote currency; SQL computes RUB values once.
-                elif abs(comm_cash) >= 1e-12:
+                if currency_id_for_op == 1 and abs(comm_cash) >= 1e-12:
                     comm_cash_rub = round(comm_cash, 6)
 
                 pa_id_for_op = pa_map.get(asset_id) if asset_id else None
