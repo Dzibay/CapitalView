@@ -126,6 +126,10 @@ function goMessages() {
   router.push('/admin/messages')
 }
 
+function goBilling() {
+  router.push('/admin/billing')
+}
+
 function openUserPortfolios(u) {
   router.push({
     path: `/admin/users/${u.id}`,
@@ -177,6 +181,9 @@ async function refreshAdminData() {
           </button>
           <button type="button" class="admin-page__to-app" @click="goMessages">
             Поддержка
+          </button>
+          <button type="button" class="admin-page__to-app" @click="goBilling">
+            Биллинг
           </button>
           <button type="button" class="admin-page__to-app" @click="goSettings">
             Настройки

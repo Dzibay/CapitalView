@@ -11,6 +11,7 @@ import {
   Settings,
   Shield,
   MessageSquare,
+  CreditCard,
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -21,6 +22,7 @@ const items = computed(() => {
     return [
       { to: '/admin', label: 'Админ', icon: Shield },
       { to: '/admin/messages', label: 'Письма', icon: MessageSquare },
+      { to: '/admin/billing', label: 'Биллинг', icon: CreditCard },
       { to: '/settings', label: 'Настройки', icon: Settings },
     ]
   }

@@ -13,6 +13,7 @@ import {
   Shield,
   MessageSquare,
   Headphones,
+  CreditCard,
 } from 'lucide-vue-next';
 
 const route = useRoute();
@@ -54,6 +55,7 @@ function buildMenuSections(user) {
         items: [
           { name: 'Статистика', link: '/admin', icon: Shield, exact: true },
           { name: 'Сообщения', link: '/admin/messages', icon: MessageSquare },
+          { name: 'Биллинг', link: '/admin/billing', icon: CreditCard },
         ],
       },
       {
@@ -81,6 +83,7 @@ function buildMenuSections(user) {
     {
       title: 'ДОПОЛНИТЕЛЬНО',
       items: [
+        { name: 'Подписка', link: '/billing', icon: CreditCard },
         { name: 'Поддержка', link: '/support', icon: Headphones },
         { name: 'Настройки', link: '/settings', icon: Settings },
       ],

@@ -7,7 +7,7 @@ import PageLayout from '../layouts/PageLayout.vue'
 import PageHeader from '../layouts/PageHeader.vue'
 import Widget from '../components/widgets/base/Widget.vue'
 import WidgetContainer from '../components/widgets/base/WidgetContainer.vue'
-import { User, Lock, LogOut, MessageCircle } from 'lucide-vue-next'
+import { User, Lock, LogOut, MessageCircle, CreditCard } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -186,6 +186,17 @@ const savePassword = async () => {
             :disabled="isLoadingProfile"
           >
             {{ isLoadingProfile ? 'Сохранение...' : 'Сохранить изменения' }}
+          </button>
+        </Widget>
+      </WidgetContainer>
+
+      <WidgetContainer v-if="!authStore.user?.is_admin" :gridColumn="6" minHeight="auto">
+        <Widget title="Подписка" :icon="CreditCard">
+          <p class="oauth-password-hint">
+            Управление тарифом, пробным периодом и оплатой через ЮKassa.
+          </p>
+          <button type="button" class="btn-primary" @click="router.push('/billing')">
+            Открыть тарифы
           </button>
         </Widget>
       </WidgetContainer>

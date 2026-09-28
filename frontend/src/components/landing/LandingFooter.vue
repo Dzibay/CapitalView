@@ -11,7 +11,7 @@
         <div class="footer-col">
           <h4>Продукт</h4>
           <router-link :to="{ path: '/', hash: '#features' }">Возможности</router-link>
-          <router-link :to="{ path: '/', hash: '#pricing' }">Бесплатно</router-link>
+          <router-link :to="{ path: '/', hash: '#pricing' }">Тарифы</router-link>
           <router-link :to="{ path: '/', hash: '#integrations' }">Интеграции</router-link>
         </div>
         <div class="footer-col">

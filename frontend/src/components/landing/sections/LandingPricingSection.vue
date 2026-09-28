@@ -2,16 +2,32 @@
 import { ArrowRight, Check } from 'lucide-vue-next'
 
 defineProps({
-  features: { type: Array, required: true }
+  trialDays: { type: Number, default: 14 },
+  features: { type: Array, required: true },
+  tariffs: { type: Array, default: () => [] },
 })
+
+function formatPrice(v) {
+  return Number(v || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })
+}
+
+function daysLabel(n) {
+  const d = Number(n) || 0
+  if (d % 10 === 1 && d % 100 !== 11) return `${d} день`
+  if (d % 10 >= 2 && d % 10 <= 4 && (d % 100 < 10 || d % 100 >= 20)) return `${d} дня`
+  return `${d} дней`
+}
 </script>
 
 <template>
   <section id="pricing" class="section snap-section">
     <div class="container">
       <div class="pricing-hero reveal">
-        <h2 class="pricing-heading">Бесплатный трекер<br>инвестиций</h2>
-        <p class="pricing-sub">Учёт инвестиций, аналитика портфеля, дивидендный календарь — все функции доступны без ограничений. Начните прямо сейчас.</p>
+        <h2 class="pricing-heading">Тарифы и<br>пробный период</h2>
+        <p class="pricing-sub">
+          Новым пользователям доступен пробный период {{ daysLabel(trialDays) }} —
+          полный доступ ко всем функциям без ограничений.
+        </p>
 
         <div class="pricing-checklist">
           <span v-for="feat in features" :key="feat" class="pricing-check-item">
@@ -20,8 +36,16 @@ defineProps({
           </span>
         </div>
 
+        <div v-if="tariffs.length" class="tariff-row">
+          <article v-for="t in tariffs" :key="t.id" class="tariff-card">
+            <h3>{{ t.name }}</h3>
+            <p class="price">{{ formatPrice(t.price_rub) }} ₽ <span>/ {{ t.period_days }} дн.</span></p>
+            <p v-if="t.description" class="desc">{{ t.description }}</p>
+          </article>
+        </div>
+
         <router-link to="/login" class="pricing-cta">
-          Начать бесплатно
+          Попробовать {{ daysLabel(trialDays) }}
           <ArrowRight :size="18" :stroke-width="2" />
         </router-link>
       </div>
@@ -49,7 +73,7 @@ defineProps({
   font-size: 17px;
   line-height: 1.6;
   color: var(--color-text-secondary);
-  max-width: 480px;
+  max-width: 520px;
   margin: 0 auto 32px;
 }
 
@@ -58,7 +82,7 @@ defineProps({
   justify-content: center;
   gap: 24px;
   flex-wrap: wrap;
-  margin-bottom: 36px;
+  margin-bottom: 28px;
 }
 
 .pricing-check-item {
@@ -72,6 +96,48 @@ defineProps({
 
 .pricing-check-item svg {
   color: var(--color-success);
+}
+
+.tariff-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.tariff-card {
+  min-width: 200px;
+  max-width: 280px;
+  flex: 1;
+  padding: 16px 18px;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 16px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.tariff-card h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.price {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.price span {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.desc {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
 }
 
 .pricing-cta {
