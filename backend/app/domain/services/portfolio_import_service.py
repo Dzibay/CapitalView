@@ -594,6 +594,39 @@ def _find_currency_rate(currency_rates: dict, quote_asset_id: int, date_str: str
     return None
 
 
+def _convert_settlement_price_to_quote(
+    asset_id: Optional[int],
+    currency_assets_map: Dict[int, int],
+    currency_rates: dict,
+    tx_date: Any,
+    price: float,
+    settlement_currency_id: int,
+) -> float:
+    """
+    transactions.price / average_price хранятся в валюте котировки актива (quote).
+    Tinkoff часто отдаёт цену и payment в RUB даже для USD/CNY бумаг — тогда
+    делим цену на курс quote→RUB на дату сделки. Payment не трогаем.
+    """
+    if not asset_id or asset_id not in currency_assets_map:
+        return price
+    quote_asset_id = int(currency_assets_map[asset_id])
+    if settlement_currency_id == quote_asset_id:
+        return price
+    # Цена в RUB, котировка актива — валюта: price_quote = price_rub / rate
+    if settlement_currency_id == 1 and quote_asset_id != 1:
+        tx_date_obj = parse_date(tx_date)
+        if not tx_date_obj:
+            return price
+        date_str = (
+            tx_date_obj.date() if isinstance(tx_date_obj, datetime) else tx_date_obj
+        ).isoformat()
+        rate = _find_currency_rate(currency_rates, quote_asset_id, date_str)
+        if not rate or rate <= 0:
+            return price
+        return round(price / rate, 6)
+    return price
+
+
 def _convert_price_payment_to_rub_if_needed(
     asset_id: Optional[int],
     currency_assets_map: Dict[int, int],
@@ -602,24 +635,15 @@ def _convert_price_payment_to_rub_if_needed(
     price: float,
     payment: float,
 ) -> Tuple[float, float]:
-    """
-    Для активов с валютной котировкой (не RUB) пересчитывает цену и payment в рубли по курсу на дату.
-    """
+    """Устарело: раньше ошибочно называлось «в рубли», по сути price/rate → quote."""
     if not asset_id or asset_id not in currency_assets_map:
         return price, payment
     quote_asset_id = currency_assets_map[asset_id]
-    tx_date_obj = parse_date(tx_date)
-    if not tx_date_obj:
-        return price, payment
-    date_str = (
-        tx_date_obj.date() if isinstance(tx_date_obj, datetime) else tx_date_obj
-    ).isoformat()
-    rate = _find_currency_rate(currency_rates, quote_asset_id, date_str)
-    if not rate or rate <= 0:
-        return price, payment
-    # payment в рублях с полной точностью (как у API nano), иначе сумма по многим операциям
-    # расходится с остатком кэша в позициях на десятки копеек.
-    return round(price / rate, 6), round(payment / rate, 6)
+    converted = _convert_settlement_price_to_quote(
+        asset_id, currency_assets_map, currency_rates, tx_date, price, 1,
+    )
+    # payment не конвертируем здесь
+    return converted, payment
 
 
 async def _asset_ids_that_exist(asset_ids: List[int]) -> set[int]:
@@ -832,12 +856,31 @@ async def import_broker_portfolio(
                     price = round(float(tx.get("price") or 0), 6)
                     qty = round(float(tx.get("quantity") or 0), 6)
 
-                # Валюта суммы — от брокера (payment.currency); иначе quote актива.
-                # Tinkoff часто отдаёт RUB даже для активов с quote_asset USD/EUR.
-                broker_cur = _fmt_currency_code(tx.get("currency"))
-                if broker_cur:
+                # Цена сделки часто в валюте расчёта (RUB), а average_price нужна в quote актива.
+                price_cur = _fmt_currency_code(tx.get("price_currency") or tx.get("currency"))
+                if price_cur:
+                    price_currency_id = _quote_asset_id_for_broker_instrument(
+                        {"currency": price_cur}, ticker_to_quote
+                    )
+                elif asset_id in currency_assets_map:
+                    price_currency_id = currency_assets_map[asset_id]
+                else:
+                    price_currency_id = 1
+
+                price = _convert_settlement_price_to_quote(
+                    asset_id,
+                    currency_assets_map,
+                    currency_rates,
+                    tx_date,
+                    price,
+                    price_currency_id,
+                )
+
+                # currency_id у сделки — валюта payment (для amount_rub), не валюта price после конвертации.
+                pay_cur = _fmt_currency_code(tx.get("currency")) or price_cur
+                if pay_cur:
                     currency_id_for_tx = _quote_asset_id_for_broker_instrument(
-                        {"currency": broker_cur}, ticker_to_quote
+                        {"currency": pay_cur}, ticker_to_quote
                     )
                 elif asset_id in currency_assets_map:
                     currency_id_for_tx = currency_assets_map[asset_id]
