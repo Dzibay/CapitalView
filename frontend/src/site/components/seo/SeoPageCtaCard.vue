@@ -9,7 +9,7 @@ defineProps({
     required: true,
   },
   primaryTo: {
-    type: String,
+    type: [String, Object],
     default: '/login',
   },
   primaryText: {
@@ -17,7 +17,7 @@ defineProps({
     default: 'Зарегистрироваться',
   },
   secondaryTo: {
-    type: String,
+    type: [String, Object],
     default: '/templates',
   },
   secondaryText: {
