@@ -6,7 +6,7 @@ import LandingIcon from './LandingIcon.vue'
 import { formatRub, prefersReducedMotion } from './useLandingMotion'
 
 gsap.registerPlugin(ScrollTrigger)
-const emit = defineEmits(['demo'])
+const emit = defineEmits(['demo', 'ready'])
 
 /* ---------- данные дашборда ---------- */
 const CLASSES = [
@@ -281,6 +281,7 @@ onMounted(async () => {
 
   if (reduced) {
     Object.assign(L, Object.fromEntries(CHIPS.map((_, i) => ['l' + i, 1])))
+    emit('ready')
     return
   }
 
@@ -337,6 +338,8 @@ onMounted(async () => {
   }, root.value)
   ScrollTrigger.sort()
   ScrollTrigger.refresh()
+  // разметка страницы окончательная (pin-отступы расставлены) — можно прыгать по якорям
+  emit('ready')
 
   io = new IntersectionObserver(([e]) => (e.isIntersecting ? startLive() : stopLive()), { threshold: 0.05 })
   io.observe(root.value)

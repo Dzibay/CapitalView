@@ -60,4 +60,31 @@ export const adminService = {
     })
     return res.data?.chat_message ?? null
   },
+
+  async fetchBilling() {
+    const res = await apiClient.get(API_ENDPOINTS.ADMIN.BILLING)
+    return {
+      settings: res.data?.settings ?? null,
+      tariffs: Array.isArray(res.data?.tariffs) ? res.data.tariffs : [],
+    }
+  },
+
+  async updateBillingSettings(payload) {
+    const res = await apiClient.put(API_ENDPOINTS.ADMIN.BILLING_SETTINGS, payload)
+    return res.data?.settings ?? null
+  },
+
+  async createTariff(payload) {
+    const res = await apiClient.post(API_ENDPOINTS.ADMIN.BILLING_TARIFFS, payload)
+    return res.data?.tariff ?? null
+  },
+
+  async updateTariff(id, payload) {
+    const res = await apiClient.put(API_ENDPOINTS.ADMIN.BILLING_TARIFF(id), payload)
+    return res.data?.tariff ?? null
+  },
+
+  async deleteTariff(id) {
+    await apiClient.delete(API_ENDPOINTS.ADMIN.BILLING_TARIFF(id))
+  },
 }

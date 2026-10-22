@@ -3,7 +3,7 @@ API endpoints для аналитики.
 Версия 1.
 """
 from fastapi import APIRouter, Depends
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_subscriber as get_current_user
 from app.utils.response import success_response
 from app.domain.services.analytics_service import get_user_portfolios_analytics
 from app.core.logging import get_logger

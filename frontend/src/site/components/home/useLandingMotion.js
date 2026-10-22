@@ -30,11 +30,14 @@ export function useSmoothScroll() {
     lenis = null
   })
 
-  function scrollTo(target) {
-    const el = typeof target === 'string' ? document.querySelector(target) : target
+  function scrollTo(target, { immediate = false } = {}) {
+    let el = target
+    if (typeof target === 'string') {
+      try { el = document.querySelector(target) } catch { return }
+    }
     if (!el) return
-    if (lenis) lenis.scrollTo(el, { offset: -20 })
-    else el.scrollIntoView({ behavior: 'smooth' })
+    if (lenis) lenis.scrollTo(el, { offset: -20, immediate })
+    else el.scrollIntoView({ behavior: immediate ? 'auto' : 'smooth' })
   }
 
   return { scrollTo, getLenis: () => lenis }

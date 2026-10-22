@@ -1,0 +1,400 @@
+.cv-landing .seo-page {
+  width: 100%;
+  color: var(--color-text, #0f172a);
+}
+
+.cv-landing .seo-page > * + * {
+  margin-top: clamp(28px, 4vw, 44px);
+}
+
+/* Более «воздушный» шаг между крупными блоками на справочных SEO-страницах */
+.cv-landing .seo-page.seo-help-page > * + * {
+  margin-top: clamp(40px, 6vw, 72px);
+}
+
+/* Заголовок оглавления — общий для вариантов TOC */
+.cv-landing .seo-help-page .seo-toc__title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+/* Вариант editorial: без «карточки», стрелки, спокойные ссылки.
+   Не задавать margin-block-start — отступ от hero задаётся у article > * + * */
+.cv-landing .seo-help-page .seo-toc--editorial {
+  margin-inline: 0;
+  margin-block-end: 4px;
+  padding: 0;
+  max-width: 36rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cv-landing .seo-help-page .seo-toc--editorial .seo-toc__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cv-landing .seo-help-page .seo-toc--editorial .seo-toc__list li {
+  position: relative;
+  padding-left: 1.1rem;
+}
+
+.cv-landing .seo-help-page .seo-toc--editorial .seo-toc__list li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  top: 0.1em;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.cv-landing .seo-help-page .seo-toc--editorial .seo-toc__list a {
+  color: #334155;
+  font-weight: 500;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.cv-landing .seo-help-page .seo-toc--editorial .seo-toc__list a:hover {
+  color: #2563eb;
+  border-bottom-color: rgba(37, 99, 235, 0.35);
+}
+
+.cv-landing .seo-help-page .seo-toc--editorial .seo-toc__list a:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.cv-landing .seo-tip {
+  margin: 14px 0 0;
+  padding: 12px 14px 12px 16px;
+  border-left: 4px solid rgba(59, 130, 246, 0.8);
+  border-radius: 0 12px 12px 0;
+  background: rgba(239, 246, 255, 0.72);
+  color: #334155;
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+.cv-landing .seo-section a.seo-inline-link {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cv-landing .seo-section a.seo-inline-link:hover {
+  text-decoration: underline;
+}
+
+.cv-landing .seo-article-cards {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+  margin-bottom: 4px;
+  max-width: 100%;
+}
+
+/* Последовательность шагов */
+.cv-landing .seo-step-flow {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  max-width: 100%;
+}
+
+/* Сетка 2×2 в стиле текстовой колонки блоков #features (LandingAnalyticsSection) */
+.cv-landing .seo-step-flow--grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(28px, 4vw, 48px) clamp(20px, 3vw, 40px);
+  align-items: start;
+}
+
+.cv-landing .seo-step-flow__item {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.cv-landing .seo-step-flow__tile {
+  padding: clamp(8px, 1.2vw, 16px) 0 0;
+}
+
+/* Как .block-num / .block-heading / .block-desc на лендинге */
+.cv-landing .seo-step-flow__num {
+  font-family: var(--font-display, 'Raleway', system-ui, sans-serif);
+  font-weight: 100;
+  font-size: clamp(52px, 8vw, 80px);
+  line-height: 1;
+  color: rgba(59, 130, 246, 0.08);
+  letter-spacing: -0.06em;
+  margin: 0 0 -8px;
+}
+
+.cv-landing .seo-step-flow__heading {
+  font-family: var(--font-display, 'Raleway', system-ui, sans-serif);
+  font-weight: 300;
+  font-size: clamp(24px, 3vw, 38px);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+  margin: 0 0 14px;
+}
+
+.cv-landing .seo-step-flow__desc {
+  font-family: var(--font-body, 'Plus Jakarta Sans', system-ui, sans-serif);
+  font-size: 16px;
+  line-height: 1.7;
+  color: #64748b;
+  max-width: 460px;
+}
+
+.cv-landing .seo-step-flow__desc > :first-child {
+  margin-top: 0;
+}
+
+.cv-landing .seo-step-flow__desc > :last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .cv-landing .seo-step-flow--grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cv-landing .seo-step-flow__num {
+    font-size: 56px;
+  }
+}
+
+@media (max-width: 600px) {
+  .cv-landing .seo-step-flow__heading {
+    font-size: 26px;
+  }
+}
+
+/* Режим stack: компактные карточки и стрелки */
+.cv-landing .seo-step-flow__card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.cv-landing .seo-step-flow__index {
+  flex-shrink: 0;
+  min-width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: linear-gradient(145deg, #eff6ff 0%, #e0e7ff 100%);
+  color: #3730a3;
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.cv-landing .seo-step-flow__body {
+  min-width: 0;
+  flex: 1;
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: #334155;
+}
+
+.cv-landing .seo-step-flow__body > :first-child {
+  margin-top: 0;
+}
+
+.cv-landing .seo-step-flow__body > :last-child {
+  margin-bottom: 0;
+}
+
+.cv-landing .seo-step-flow__connector {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 10px;
+  color: #94a3b8;
+}
+
+.cv-landing .seo-step-flow__item:last-child .seo-step-flow__connector {
+  display: none;
+}
+
+.cv-landing .seo-step-flow__arrow {
+  display: block;
+  opacity: 0.92;
+}
+
+.cv-landing .seo-help-page .seo-faq-accordion {
+  margin-top: 4px;
+}
+
+.cv-landing .seo-help-page .seo-faq-accordion .faq-accordion {
+  max-width: 100%;
+}
+
+.cv-landing .seo-hero {
+  box-sizing: border-box;
+  padding: 0 0 clamp(4px, 1.2vw, 12px);
+}
+
+.cv-landing .seo-hero__content {
+  width: 100%;
+}
+
+.cv-landing .seo-hero__lead {
+  margin: 0;
+  max-width: 880px;
+  color: #334155;
+  font-size: clamp(1rem, 1.6vw, 1.08rem);
+  line-height: 1.72;
+  white-space: pre-line;
+}
+
+.cv-landing .seo-hero__eyebrow {
+  margin: 0 0 10px;
+  display: inline-flex;
+  align-items: center;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.cv-landing .seo-hero h1 {
+  margin: 0 0 12px;
+  font-size: clamp(2rem, 4.4vw, 3rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+}
+
+.cv-landing .seo-section {
+  padding: 0;
+}
+
+.cv-landing .seo-section h2 {
+  margin: 0 0 10px;
+  font-size: clamp(1.28rem, 2.2vw, 1.85rem);
+  line-height: 1.2;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.cv-landing .seo-section h3 {
+  margin: 18px 0 8px;
+  font-size: clamp(1.02rem, 1.5vw, 1.18rem);
+  line-height: 1.3;
+  color: #0f172a;
+}
+
+.cv-landing .seo-section p {
+  margin: 0 0 12px;
+  color: #334155;
+  line-height: 1.75;
+}
+
+.cv-landing .seo-section ul,
+.cv-landing .seo-section ol {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  color: #334155;
+  line-height: 1.75;
+}
+
+.cv-landing .seo-checklist {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cv-landing .seo-checklist li {
+  position: relative;
+  padding: 8px 0 8px 26px;
+  color: #334155;
+  line-height: 1.65;
+}
+
+.cv-landing .seo-checklist li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 16px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.85);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+}
+
+.cv-landing .seo-visual {
+  margin: 0;
+}
+
+.cv-landing .seo-visual__placeholder {
+  min-height: 240px;
+  border-radius: 16px;
+  border: 1px dashed rgba(148, 163, 184, 0.55);
+  background: rgba(248, 250, 252, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 18px;
+  color: #334155;
+  font-weight: 600;
+}
+
+.cv-landing .seo-visual figcaption {
+  margin-top: 10px;
+  color: #64748b;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.cv-landing .seo-cta__actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cv-landing .seo-cta {
+  padding: clamp(10px, 1.6vw, 14px) 0 0;
+}
+
+.cv-landing .seo-cta h2 {
+  margin: 0 0 10px;
+  color: #0f172a;
+  font-size: clamp(1.28rem, 2.2vw, 1.85rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.cv-landing .seo-cta p {
+  margin: 0 0 14px;
+  color: #334155;
+  line-height: 1.75;
+}

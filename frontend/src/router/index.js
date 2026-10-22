@@ -6,11 +6,13 @@ const LAST_APP_PATH_REGEXES = [
   /^\/dashboard$/,
   /^\/admin$/,
   /^\/admin\/messages$/,
+  /^\/admin\/billing$/,
   /^\/admin\/users\/[^/]+$/,
   /^\/analitics$/,
   /^\/transactions$/,
   /^\/dividends$/,
   /^\/settings$/,
+  /^\/billing$/,
   /^\/support$/,
   /^\/assets$/,
   /^\/assets\/[^/]+$/
@@ -27,6 +29,15 @@ function isAdminShellPath(path) {
   const normalized = path.split('?')[0].split('#')[0]
   if (normalized === '/settings' || normalized.startsWith('/settings/')) return true
   if (normalized === '/admin' || normalized.startsWith('/admin/')) return true
+  return false
+}
+
+/** Страницы, доступные без активной подписки. */
+function isBillingAllowedPath(path) {
+  const normalized = path.split('?')[0].split('#')[0]
+  if (normalized === '/billing' || normalized.startsWith('/billing/')) return true
+  if (normalized === '/settings' || normalized.startsWith('/settings/')) return true
+  if (normalized === '/support' || normalized.startsWith('/support/')) return true
   return false
 }
 
@@ -54,8 +65,7 @@ function beforeEnterHomeAuthed(to, from, next) {
   next({ path: getSavedAppPathOrDefault(), replace: true })
 }
 
-// Lazy loading: главная и логин — eager (быстрая первая загрузка)
-const Home = () => import('../views/Home.vue');
+// Lazy loading: логин — eager (быстрая первая загрузка)
 const Login = () => import('../views/Login.vue');
 
 // Остальные маршруты — lazy (загружаются по требованию)
@@ -72,19 +82,139 @@ const Dividends = () => import('../views/Dividends.vue');
 const Settings = () => import('../views/Settings.vue');
 const Admin = () => import('../views/Admin.vue');
 const AdminMessages = () => import('../views/AdminMessages.vue');
+const AdminBilling = () => import('../views/AdminBilling.vue');
 const AdminUserPortfolios = () => import('../views/AdminUserPortfolios.vue');
+const Billing = () => import('../views/Billing.vue');
 const ErrorStatus = () => import('../views/errors/ErrorStatus.vue');
 const NotFound404 = () => import('../views/errors/NotFound404.vue');
+const SitePublicLayout = () => import('../site/layouts/SitePublicLayout.vue');
+
+const publicIndexMeta = { robots: 'index, follow' };
 
 const routes = [
+  // Главная — самостоятельная страница со своей шапкой и подвалом (без SitePublicLayout)
   {
     path: '/',
-    component: Home,
+    name: 'site-home',
+    component: () => import('../site/home/HomePage.vue'),
     beforeEnter: beforeEnterHomeAuthed,
     meta: {
       title: 'CapitalView — учёт инвестиций, аналитика портфеля и дивидендный календарь',
-      robots: 'index, follow'
-    }
+      ...publicIndexMeta,
+    },
+  },
+  {
+    path: '/',
+    component: SitePublicLayout,
+    children: [
+      { path: 'features', redirect: { name: 'site-feature-portfolio' } },
+      {
+        path: 'features/portfolio',
+        name: 'site-feature-portfolio',
+        component: () => import('../site/pages/FeaturePortfolio.vue'),
+        meta: {
+          title: 'Учёт инвестиций в CapitalView — обзор сервиса',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'features/analytics',
+        name: 'site-feature-analytics',
+        component: () => import('../site/pages/FeatureAnalytics.vue'),
+        meta: {
+          title: 'Аналитика и доходность портфеля — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'features/dividends',
+        name: 'site-feature-dividends',
+        component: () => import('../site/pages/FeatureDividends.vue'),
+        meta: {
+          title: 'Дивиденды и купоны — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'features/transactions',
+        name: 'site-feature-transactions',
+        component: () => import('../site/pages/FeatureTransactions.vue'),
+        meta: {
+          title: 'Сделки и история операций — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      { path: 'investments', redirect: { name: 'site-investment-securities' } },
+      {
+        path: 'investments/stocks',
+        name: 'site-investment-stocks',
+        component: () => import('../site/pages/InvestmentStocks.vue'),
+        meta: {
+          title: 'Учёт инвестиций в акции — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'investments/bonds',
+        name: 'site-investment-bonds',
+        component: () => import('../site/pages/InvestmentBonds.vue'),
+        meta: {
+          title: 'Учёт инвестиций в облигации — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'investments/securities',
+        name: 'site-investment-securities',
+        component: () => import('../site/pages/InvestmentSecurities.vue'),
+        meta: {
+          title: 'Учёт ценных бумаг — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      { path: 'compare', redirect: { name: 'site-compare-apps' } },
+      {
+        path: 'compare/investment-tracking-apps',
+        name: 'site-compare-apps',
+        component: () => import('../site/pages/CompareApps.vue'),
+        meta: {
+          title: 'Сравнение сервисов учёта инвестиций — CapitalView',
+          robots: 'noindex, follow',
+        },
+      },
+      { path: 'pricing', redirect: { path: '/', hash: '#pricing' } },
+      { path: 'guides', redirect: { name: 'site-guide-excel' } },
+      {
+        path: 'guides/investment-tracking-excel',
+        name: 'site-guide-excel',
+        component: () => import('../site/pages/GuideExcel.vue'),
+        meta: {
+          title: 'Учёт инвестиций в Excel — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'free',
+        name: 'site-free',
+        component: () => import('../site/pages/FreePage.vue'),
+        meta: { title: 'Пробный учёт инвестиций — CapitalView', ...publicIndexMeta },
+      },
+      {
+        path: 'templates',
+        name: 'site-templates',
+        component: () => import('../site/pages/TemplatesPage.vue'),
+        meta: {
+          title: 'Шаблоны для учёта инвестиций — CapitalView',
+          ...publicIndexMeta,
+        },
+      },
+      {
+        path: 'blog',
+        name: 'site-blog',
+        component: () => import('../site/pages/BlogIndex.vue'),
+        meta: { title: 'Блог — CapitalView', ...publicIndexMeta },
+      },
+    ],
   },
   {
     path: '/privacy',
@@ -123,6 +253,11 @@ const routes = [
         meta: { title: 'Сообщения в поддержку — CapitalView', requiresAdmin: true },
       },
       {
+        path: '/admin/billing',
+        component: AdminBilling,
+        meta: { title: 'Биллинг — CapitalView', requiresAdmin: true },
+      },
+      {
         path: '/admin/users/:userId',
         component: AdminUserPortfolios,
         props: true,
@@ -143,6 +278,7 @@ const routes = [
       { path: '/transactions', component: Transactions, meta: { title: 'Сделки — CapitalView' } },
       { path: '/dividends', component: Dividends, meta: { title: 'Дивиденды и купоны — CapitalView' } },
       { path: '/settings', component: Settings, meta: { title: 'Настройки — CapitalView' } },
+      { path: '/billing', component: Billing, meta: { title: 'Подписка — CapitalView' } },
       { path: '/support', component: Support, meta: { title: 'Поддержка — CapitalView' } }
     ]
   },
@@ -226,6 +362,15 @@ router.beforeEach(async (to, from, next) => {
         !isAdminShellPath(to.path)
       ) {
         next({ path: '/admin', replace: true })
+        return
+      }
+      if (
+        !user.is_admin &&
+        user.subscription &&
+        user.subscription.has_access === false &&
+        !isBillingAllowedPath(to.path)
+      ) {
+        next({ path: '/billing', replace: true })
         return
       }
       // Токен валиден, разрешаем доступ

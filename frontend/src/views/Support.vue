@@ -8,7 +8,7 @@ import SupportChatPanel from '../components/support/SupportChatPanel.vue'
 import { supportFaq } from '../content/supportFaq'
 import { CircleHelp, MessageCircle } from 'lucide-vue-next'
 
-import '../components/landing/landing-page.css'
+import '../site/styles/landing-page.css'
 </script>
 
 <template>

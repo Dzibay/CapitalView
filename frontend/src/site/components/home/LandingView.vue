@@ -9,7 +9,8 @@ import LandingBento from './LandingBento.vue'
 import LandingAssets3D from './LandingAssets3D.vue'
 import LandingRebalancer from './LandingRebalancer.vue'
 import { useSmoothScroll, useLandingFonts, prefersReducedMotion } from './useLandingMotion'
-import { securityTabs, pricingFeatures, faq } from '../../content/landingData'
+import { securityTabs, pricingFeatures, faq } from '../../content/home/landingData'
+import { billingService } from '../../../services/billingService'
 
 gsap.registerPlugin(ScrollTrigger)
 useLandingFonts('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap')
@@ -29,10 +30,16 @@ function go(href) {
   menuOpen.value = false
   scrollTo(href)
 }
+// прямой заход по якорю (/#pricing, редирект с /pricing): роутер скроллит раньше,
+// чем hero закрепит первый экран, поэтому переходим сами, когда разметка готова
+function onHeroReady() {
+  if (location.hash.length > 1) scrollTo(location.hash, { immediate: true })
+  onScroll()
+}
 
 const stats = [
   { v: 60, suffix: ' сек', t: 'от регистрации до готового дашборда' },
-  { v: 0, prefix: '', suffix: ' ₽', t: 'все функции, без пробного периода' },
+  { v: 6, suffix: '', t: 'классов активов в одном дашборде' },
   { v: 100, suffix: '%', t: 'операций загружаются из брокера сами' },
   { v: 152, prefix: '', suffix: '-ФЗ', t: 'хранение персональных данных' }
 ]
@@ -42,6 +49,23 @@ const manifestoWords = manifesto.split(' ')
 
 const secIcons = { readonly: 'eye', encryption: 'lock', api: 'plug', privacy: 'eye-off' }
 const priceList = [...pricingFeatures, 'Мультивалютность и курсы ЦБ', 'Конструктор портфеля']
+
+// пробный период и тарифы — из биллинга (как было в старом HomePage)
+const trialDays = ref(14)
+const tariffs = ref([])
+function daysLabel(n) {
+  const d = Number(n) || 0
+  if (d % 10 === 1 && d % 100 !== 11) return `${d} день`
+  if (d % 10 >= 2 && d % 10 <= 4 && (d % 100 < 10 || d % 100 >= 20)) return `${d} дня`
+  return `${d} дней`
+}
+const formatPrice = (v) => Number(v || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })
+billingService.fetchPublic().then((data) => {
+  trialDays.value = data.trial_days
+  tariffs.value = data.tariffs
+}).catch(() => {
+  // лендинг работает и с дефолтным пробным периодом
+})
 const openFaq = ref(0)
 
 const root = ref(null)
@@ -150,7 +174,7 @@ onUnmounted(() => {
     </header>
 
     <main>
-      <LandingHero @demo="go('#flow')" />
+      <LandingHero @demo="go('#flow')" @ready="onHeroReady" />
 
       <!-- STATS -->
       <section class="lp-stats">
@@ -217,25 +241,28 @@ onUnmounted(() => {
       </section>
 
       <!-- PRICING -->
-      <section class="lp-price">
+      <section id="pricing" class="lp-price">
         <div class="lp-container lp-price__grid">
           <header class="lp-head">
             <span class="lp-eyebrow">Стоимость</span>
-            <h2 class="lp-h2">Все функции.<br /><span class="lp-grad">Ноль рублей.</span></h2>
-            <p class="lp-sub">Сервис временно полностью бесплатный: без пробного периода, без привязки карты и без ограничений по числу портфелей.</p>
+            <h2 class="lp-h2">Все функции.<br /><span class="lp-grad">{{ daysLabel(trialDays) }} бесплатно.</span></h2>
+            <p class="lp-sub">Пробный период — полный доступ ко всем функциям без ограничений по числу портфелей. Дальше — подписка по удобному тарифу.</p>
           </header>
           <div class="lp-price__wrap">
             <div class="lp-price__card">
               <div class="lp-price__top">
                 <span class="lp-price__plan">Полный доступ</span>
-                <span class="lp-price__badge">Бесплатно сейчас</span>
+                <span class="lp-price__badge">Пробный период</span>
               </div>
-              <div class="lp-price__amount"><b>0 ₽</b><span>/ месяц</span></div>
+              <div class="lp-price__amount"><b>0 ₽</b><span>первые {{ daysLabel(trialDays) }}</span></div>
               <ul class="lp-price__list">
                 <li v-for="f in priceList" :key="f"><span><LandingIcon name="check" :size="13" :stroke="2.2" /></span>{{ f }}</li>
               </ul>
+              <ul v-if="tariffs.length" class="lp-price__tariffs">
+                <li v-for="t in tariffs" :key="t.id"><span>{{ t.name }}</span><b>{{ formatPrice(t.price_rub) }} ₽ <small>/ {{ t.period_days }} дн.</small></b></li>
+              </ul>
               <router-link to="/login" class="lp-btn lp-btn--dark lp-btn--lg lp-btn--block">
-                Создать аккаунт <LandingIcon name="arrow" :size="18" :stroke="1.8" />
+                Попробовать бесплатно <LandingIcon name="arrow" :size="18" :stroke="1.8" />
               </router-link>
             </div>
           </div>
@@ -522,6 +549,10 @@ onUnmounted(() => {
 .lp-price__amount span { font-size: 16px; color: var(--lp-muted); }
 .lp-price__list { list-style: none; margin: 0 0 32px; padding: 24px 0 0; border-top: 1px solid var(--lp-line); display: grid; gap: 14px; }
 .lp-price__list li { display: flex; align-items: center; gap: 12px; font-size: 15px; color: var(--lp-ink-2); }
+.lp-price__tariffs { list-style: none; margin: -12px 0 28px; padding: 0; display: grid; gap: 8px; }
+.lp-price__tariffs li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 16px; border-radius: 14px; background: rgba(11,13,18,.035); font-size: 14px; color: var(--lp-ink-2); }
+.lp-price__tariffs b { font-weight: 600; color: var(--lp-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lp-price__tariffs small { font-weight: 400; color: var(--lp-muted); }
 .lp-price__list li span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(15,159,99,.1); color: var(--lp-green); flex: none; }
 
 /* ===== faq ===== */

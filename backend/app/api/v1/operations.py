@@ -18,7 +18,7 @@ from app.domain.models.operation_models import (
     UpdateOperationsBatchRequest,
 )
 from app.constants import HTTPStatus, SuccessMessages
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_subscriber as get_current_user
 from app.infrastructure.cache import invalidate
 from app.utils.response import success_response
 from app.utils.date import parse_date_range

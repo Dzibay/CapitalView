@@ -206,3 +206,105 @@ async def admin_user_broker_sync_portfolios(
         data={"tasks": tasks, "count": len(tasks)},
         message="Задачи поставлены в очередь" if tasks else "Нет портфелей с API-ключом брокера",
     )
+
+
+# ---------------------------------------------------------------------------
+# Billing / ЮKassa
+# ---------------------------------------------------------------------------
+
+
+class BillingSettingsBody(BaseModel):
+    trial_days: int | None = Field(None, ge=0, le=3650)
+    yookassa_shop_id: str | None = None
+    yookassa_secret_key: str | None = None
+
+
+class TariffBody(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: str = ""
+    price_rub: float = Field(..., ge=0)
+    period_days: int = Field(..., gt=0, le=3650)
+    is_active: bool = True
+    sort_order: int = 0
+    features: list[str] = Field(default_factory=list)
+
+
+class TariffUpdateBody(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = None
+    price_rub: float | None = Field(None, ge=0)
+    period_days: int | None = Field(None, gt=0, le=3650)
+    is_active: bool | None = None
+    sort_order: int | None = None
+    features: list[str] | None = None
+
+
+@router.get("/billing")
+async def admin_billing_get(_: dict = Depends(get_current_admin_user)):
+    from app.domain.services.billing_service import admin_billing_snapshot
+
+    payload = await admin_billing_snapshot()
+    return success_response(data=payload, message="OK")
+
+
+@router.put("/billing/settings")
+async def admin_billing_settings(
+    body: BillingSettingsBody,
+    _: dict = Depends(get_current_admin_user),
+):
+    from app.domain.services.billing_service import update_billing_settings
+
+    try:
+        settings = await update_billing_settings(
+            trial_days=body.trial_days,
+            yookassa_shop_id=body.yookassa_shop_id,
+            yookassa_secret_key=body.yookassa_secret_key,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return success_response(data={"settings": settings}, message="Настройки сохранены")
+
+
+@router.post("/billing/tariffs", status_code=201)
+async def admin_create_tariff(
+    body: TariffBody,
+    _: dict = Depends(get_current_admin_user),
+):
+    from app.domain.services.billing_service import create_tariff
+
+    try:
+        tariff = await create_tariff(body.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return success_response(data={"tariff": tariff}, message="Тариф создан", status_code=201)
+
+
+@router.put("/billing/tariffs/{tariff_id}")
+async def admin_update_tariff(
+    tariff_id: int,
+    body: TariffUpdateBody,
+    _: dict = Depends(get_current_admin_user),
+):
+    from app.domain.services.billing_service import update_tariff
+
+    try:
+        tariff = await update_tariff(tariff_id, body.model_dump(exclude_unset=True))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return success_response(data={"tariff": tariff}, message="Тариф обновлён")
+
+
+@router.delete("/billing/tariffs/{tariff_id}")
+async def admin_delete_tariff(
+    tariff_id: int,
+    _: dict = Depends(get_current_admin_user),
+):
+    from app.domain.services.billing_service import delete_tariff
+
+    try:
+        await delete_tariff(tariff_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return success_response(message="Тариф удалён")

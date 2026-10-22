@@ -28,7 +28,7 @@ from app.constants import HTTPStatus, ErrorMessages, SuccessMessages
 from app.utils.response import success_response
 from app.utils.jwt import create_access_token
 from app.core.dependencies import get_current_user
-from app.core.platform_admin import auth_user_payload
+from app.core.platform_admin import auth_user_payload_with_billing
 from app.infrastructure.database.database_service import (
     table_insert_async, table_select_async, table_update_async,
 )
@@ -99,7 +99,7 @@ async def register(data: RegisterRequest):
             data={
                 "access_token": access_token,
                 "token_type": "bearer",
-                "user": auth_user_payload(user),
+                "user": await auth_user_payload_with_billing(user),
                 "email_sent": False,
                 "email_verification_required": False,
             },
@@ -238,7 +238,7 @@ async def login(data: LoginRequest):
         data={
             "access_token": access_token,
             "token_type": "bearer",
-            "user": auth_user_payload(user),
+            "user": await auth_user_payload_with_billing(user),
         },
         message=SuccessMessages.LOGIN_SUCCESS,
     )
@@ -248,7 +248,7 @@ async def login(data: LoginRequest):
 async def check_token(user: dict = Depends(get_current_user)):
     """Проверка валидности JWT токена."""
     return success_response(
-        data={"user": auth_user_payload(user)},
+        data={"user": await auth_user_payload_with_billing(user)},
         message="Token valid",
     )
 
@@ -272,7 +272,7 @@ async def update_profile(
             )
 
         return success_response(
-            data={"user": auth_user_payload(updated_user)},
+            data={"user": await auth_user_payload_with_billing(updated_user)},
             message="Профиль успешно обновлен",
         )
     except ValueError as e:
@@ -390,7 +390,7 @@ async def change_password(
             new_password=data.new_password,
         )
         return success_response(
-            data={"user": auth_user_payload(updated)},
+            data={"user": await auth_user_payload_with_billing(updated)},
             message="Пароль успешно изменён",
         )
     except ValueError as e:

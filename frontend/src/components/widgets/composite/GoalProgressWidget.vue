@@ -444,9 +444,9 @@ const formatAmountShort = (value) => {
 
 <template>
   <Widget title="Прогноз достижения цели" :icon="Hash">
-    <template #header>
+    <template v-if="hasGoal" #header>
       <div class="header-controls">
-        <button @click="openModal" class="edit-button">
+        <button type="button" @click="openModal" class="edit-button">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
@@ -525,6 +525,21 @@ const formatAmountShort = (value) => {
         />
       </div>
     </template>
+
+    <div v-else class="goal-empty" role="button" tabindex="0" @click="openModal" @keydown.enter.prevent="openModal">
+      <div class="goal-empty__bg" aria-hidden="true" />
+      <div class="goal-empty__veil" aria-hidden="true" />
+      <div class="goal-empty__content">
+        <p class="goal-empty__eyebrow">Ваш финансовый ориентир</p>
+        <h3 class="goal-empty__title">Задайте цель капитала</h3>
+        <p class="goal-empty__text">
+          Увидите прогноз, срок достижения и сколько нужно откладывать каждый месяц.
+        </p>
+        <button type="button" class="goal-empty__cta" @click.stop="openModal">
+          Задать цель
+        </button>
+      </div>
+    </div>
 
     <EditGoalModal
       :show="showModal"
@@ -710,6 +725,104 @@ const formatAmountShort = (value) => {
   max-width: 100%;
 }
 
+.goal-empty {
+  position: relative;
+  min-height: 280px;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+}
+
+.goal-empty__bg {
+  position: absolute;
+  inset: 0;
+  background:
+    url('/goal-empty-bg.png') center / cover no-repeat;
+  transform: scale(1.02);
+  transition: transform 0.5s ease;
+  z-index: 0;
+}
+
+.goal-empty:hover .goal-empty__bg {
+  transform: scale(1.06);
+}
+
+.goal-empty__veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(
+      160deg,
+      rgba(15, 28, 46, 0.55) 0%,
+      rgba(32, 58, 92, 0.42) 45%,
+      rgba(20, 40, 68, 0.58) 100%
+    );
+}
+
+.goal-empty__content {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  padding: 2rem 1.5rem;
+  max-width: 360px;
+  color: #fff;
+}
+
+.goal-empty__eyebrow {
+  margin: 0 0 0.5rem;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.goal-empty__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: #fff;
+}
+
+.goal-empty__text {
+  margin: 0 0 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.goal-empty__cta {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 0.75rem 1.5rem;
+  background: #fff;
+  color: #1e3a5f;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.goal-empty__cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+
+.goal-empty:focus-visible {
+  outline: 2px solid #5478EA;
+  outline-offset: 2px;
+}
+
 @media (max-width: 768px) {
   .goal-summary {
     flex-direction: column;
@@ -726,6 +839,9 @@ const formatAmountShort = (value) => {
     height: 260px;
     width: 100%;
   }
+  .goal-empty {
+    min-height: 240px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -738,6 +854,9 @@ const formatAmountShort = (value) => {
   }
   .projection-chart {
     height: 220px;
+  }
+  .goal-empty__title {
+    font-size: 1.15rem;
   }
 }
 </style>

@@ -63,6 +63,14 @@ apiClient.interceptors.response.use(
         }
       }
     }
+
+    if (error.response?.status === 403) {
+      const data = error.response?.data
+      const code = data?.error_code || data?.detail?.error_code
+      if (code === 'SUBSCRIPTION_EXPIRED' && !window.location.pathname.startsWith('/billing')) {
+        window.location.href = '/billing'
+      }
+    }
     return Promise.reject(error);
   }
 );

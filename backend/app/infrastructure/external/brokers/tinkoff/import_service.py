@@ -502,14 +502,18 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
                             # Для Buy и Sell сохраняем и price (цена единицы актива) и payment (общая сумма операции)
                             # price используется в транзакции, payment - в cash_operation
                             # Они могут отличаться из-за накопленного купонного дохода (НКД) у облигаций
-                            # currency — валюта расчёта брокера (часто RUB даже для USD-активов)
+                            # currency — валюта расчёта (payment); price_currency — валюта цены (часто тоже RUB)
                             tx_price = price_obj.units + price_obj.nano / 1e9 if price_obj else None
                             tx_payment = op.payment.units + op.payment.nano / 1e9 if op.payment else 0
+                            price_currency = None
+                            if price_obj is not None:
+                                price_currency = getattr(price_obj, "currency", None)
                             tx.update({
                                 "price": tx_price,
                                 "quantity": op_quantity,
                                 "payment": tx_payment,
                                 "currency": op_currency,
+                                "price_currency": price_currency or op_currency,
                             })
                     # Денежные операции
                     else:

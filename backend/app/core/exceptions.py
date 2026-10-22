@@ -90,6 +90,18 @@ class ForbiddenError(AppException):
         )
 
 
+class SubscriptionExpiredError(AppException):
+    """Подписка истекла — данные портфеля недоступны."""
+
+    def __init__(self, details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message="Подписка истекла. Оформите тариф, чтобы продолжить.",
+            status_code=HTTPStatus.FORBIDDEN,
+            details=details or {},
+            error_code="SUBSCRIPTION_EXPIRED",
+        )
+
+
 class ConflictError(AppException):
     """Конфликт данных (например, дубликат)."""
     
