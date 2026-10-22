@@ -1,8 +1,8 @@
 import { Camera, Color, Mesh, PlaneGeometry, Scene, ShaderMaterial, Vector2, WebGLRenderer } from 'three'
 
 /**
- * Светлый «жидкий» градиент на весь экран: несколько мягких пятен цвета,
- * доменное искажение шумом и пятно, которое тянется за курсором.
+ * «Жидкий» mesh-градиент: несколько мягких пятен цвета, доменное искажение шумом
+ * и пятно, которое тянется за курсором. Палитра задаётся опциями.
  */
 const vert = /* glsl */ `
 varying vec2 vUv;
@@ -21,6 +21,8 @@ uniform vec3 uBase;
 uniform vec3 uC1;
 uniform vec3 uC2;
 uniform vec3 uC3;
+uniform vec3 uC4;
+uniform float uGrain;
 
 vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
 vec2 mod289(vec2 x){return x-floor(x*(1./289.))*289.;}
@@ -54,19 +56,25 @@ void main(){
   vec2 c2 = vec2(aspect * (0.18 + 0.1 * cos(t * 1.4)), 0.3 + 0.1 * sin(t * 2.2) + s * 0.5);
   vec2 c3 = vec2(aspect * (0.55 + 0.12 * sin(t * 1.1 + 2.0)), 0.12 + 0.08 * cos(t * 1.7));
 
+  vec2 c4 = vec2(aspect * (0.42 + 0.14 * cos(t * 1.3 + 1.0)), 0.62 + 0.1 * sin(t * 1.9));
+
   vec3 col = uBase;
-  col = mix(col, uC1, blob(w, c1, 0.75) * 0.85);
-  col = mix(col, uC2, blob(w, c2, 0.7) * 0.75);
-  col = mix(col, uC3, blob(w, c3, 0.6) * 0.6);
-  col = mix(col, uC1 * 0.92 + 0.06, blob(w, m, 0.38) * 0.55 * uMouseAmt);
+  col = mix(col, uC1, blob(w, c1, 0.8) * 0.9);
+  col = mix(col, uC2, blob(w, c2, 0.72) * 0.8);
+  col = mix(col, uC3, blob(w, c3, 0.62) * 0.75);
+  col = mix(col, uC4, blob(w, c4, 0.5) * 0.6);
+  col = mix(col, mix(uC2, uC3, 0.5), blob(w, m, 0.4) * 0.5 * uMouseAmt);
 
   float g = fract(sin(dot(gl_FragCoord.xy + uTime, vec2(12.9898, 78.233))) * 43758.5453);
-  col += (g - 0.5) * 0.035;
+  col += (g - 0.5) * uGrain;
   gl_FragColor = vec4(col, 1.0);
 }
 `
 
-export function createFluidBg(canvas) {
+const DEFAULTS = { base: '#f6f7fb', c1: '#4f6bff', c2: '#9b8cff', c3: '#62d2ff', c4: '#ffc2a1', grain: 0.03 }
+
+export function createFluidBg(canvas, options = {}) {
+  const o = { ...DEFAULTS, ...options }
   const renderer = new WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'low-power' })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25))
   const scene = new Scene()
@@ -77,10 +85,12 @@ export function createFluidBg(canvas) {
     uMouse: { value: new Vector2(0.7, 0.6) },
     uMouseAmt: { value: 0 },
     uScroll: { value: 0 },
-    uBase: { value: new Color('#f3f0e9') },
-    uC1: { value: new Color('#bcd0ff') },
-    uC2: { value: new Color('#e3f5b8') },
-    uC3: { value: new Color('#ffd8c8') }
+    uBase: { value: new Color(o.base) },
+    uC1: { value: new Color(o.c1) },
+    uC2: { value: new Color(o.c2) },
+    uC3: { value: new Color(o.c3) },
+    uC4: { value: new Color(o.c4) },
+    uGrain: { value: o.grain }
   }
   const mesh = new Mesh(
     new PlaneGeometry(2, 2),
@@ -93,8 +103,8 @@ export function createFluidBg(canvas) {
   let last = performance.now()
 
   function resize() {
-    const w = window.innerWidth
-    const h = window.innerHeight
+    const w = canvas.clientWidth || window.innerWidth
+    const h = canvas.clientHeight || window.innerHeight
     renderer.setSize(w, h, false)
     uniforms.uRes.value.set(w, h)
   }
@@ -116,8 +126,9 @@ export function createFluidBg(canvas) {
     uniforms,
     resize,
     setPointer(x, y) {
-      target.x = x / window.innerWidth
-      target.y = 1 - y / window.innerHeight
+      const r = canvas.getBoundingClientRect()
+      target.x = (x - r.left) / (r.width || 1)
+      target.y = 1 - (y - r.top) / (r.height || 1)
       target.amt = 1
     },
     clearPointer() { target.amt = 0 },
