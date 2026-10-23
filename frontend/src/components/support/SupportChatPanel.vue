@@ -1,7 +1,7 @@
 <script setup>
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Send } from 'lucide-vue-next'
+import { MessageCircle, Send } from 'lucide-vue-next'
 import { useAuthStore } from '../../stores/auth.store'
 import { supportService } from '../../services/supportService'
 
@@ -108,302 +108,129 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="support-chat" :class="{ 'support-chat--embedded': embedded }">
-    <div v-if="!embedded" class="support-chat__head">
-      <h2 class="support-chat__title">Чат с поддержкой</h2>
-      <p class="support-chat__lead">
-        Напишите вопрос — ответит администратор сервиса. История сохраняется в этом окне.
-      </p>
+  <div class="sc" :class="{ 'sc--embedded': embedded }">
+    <div v-if="!embedded" class="sc__head">
+      <h2 class="sc__title">Чат с поддержкой</h2>
+      <p class="sc__lead">Напишите вопрос — ответит администратор сервиса. История сохраняется в этом окне.</p>
     </div>
-    <p v-else class="support-chat__hint">
-      Напишите вопрос — ответит администратор. История сохраняется здесь.
-    </p>
 
-    <div v-if="!authStore.isAuthenticated" class="support-chat__gate">
-      <p class="support-chat__gate-text">
-        Чтобы написать в поддержку, войдите в аккаунт — так мы сможем связать переписку с вашими данными.
-      </p>
-      <button type="button" class="support-chat__btn" @click="goLogin">Войти</button>
+    <div v-if="!authStore.isAuthenticated" class="sc__gate">
+      <p>Чтобы написать в поддержку, войдите в аккаунт — так мы сможем связать переписку с вашими данными.</p>
+      <button type="button" class="cv-btn cv-btn--primary" @click="goLogin">Войти</button>
     </div>
 
     <template v-else>
-      <div ref="listRef" class="support-chat__messages" role="log" aria-live="polite">
-        <div v-if="loading && messages.length === 0" class="support-chat__status">Загрузка…</div>
-        <div v-else-if="!loading && messages.length === 0" class="support-chat__empty">
-          Пока нет сообщений. Напишите нам — мы ответим в этом чате.
+      <div ref="listRef" class="sc__messages" role="log" aria-live="polite">
+        <div v-if="loading && messages.length === 0" class="sc__status">Загрузка…</div>
+        <div v-else-if="!loading && messages.length === 0" class="sc__empty">
+          <span class="sc__empty-ic"><MessageCircle :size="20" /></span>
+          <b>Пока нет сообщений</b>
+          <span>Опишите вопрос — ответ придёт сюда же.</span>
         </div>
         <div
           v-for="m in messages"
           :key="m.id"
-          class="support-chat__row"
-          :class="{ 'support-chat__row--user': !m.is_from_admin, 'support-chat__row--admin': m.is_from_admin }"
+          class="sc__row"
+          :class="m.is_from_admin ? 'is-admin' : 'is-user'"
         >
-          <div class="support-chat__bubble">
-            <p class="support-chat__text">{{ m.message }}</p>
-            <time class="support-chat__time" :datetime="m.created_at">{{ formatTime(m.created_at) }}</time>
+          <span v-if="m.is_from_admin" class="sc__who">Поддержка CapitalView</span>
+          <div class="sc__bubble">
+            <p class="sc__text">{{ m.message }}</p>
           </div>
+          <time class="sc__time" :datetime="m.created_at">{{ formatTime(m.created_at) }}</time>
         </div>
       </div>
 
-      <div v-if="error" class="support-chat__error" role="alert">{{ error }}</div>
+      <p v-if="error" class="cv-note cv-note--err" role="alert">{{ error }}</p>
 
-      <div class="support-chat__composer">
+      <form class="sc__composer" @submit.prevent="send">
         <textarea
           v-model="draft"
-          class="support-chat__input"
-          rows="3"
+          class="sc__input"
+          rows="2"
           maxlength="5000"
           placeholder="Ваше сообщение…"
+          aria-label="Сообщение в поддержку"
           :disabled="sending"
           @keydown.enter.exact.prevent="send"
         />
-        <div class="support-chat__composer-foot">
-          <span class="support-chat__counter">{{ draft.length }} / 5000</span>
-          <button
-            type="button"
-            class="support-chat__send"
-            :disabled="sending || !draft.trim()"
-            @click="send"
-          >
-            <Send :size="18" stroke-width="2" aria-hidden="true" />
+        <div class="sc__foot">
+          <span class="sc__counter">
+            <span class="sc__kbd-hint">Enter — отправить, Shift+Enter — новая строка ·</span>
+            <span class="cv-num">{{ draft.length }} / 5000</span>
+          </span>
+          <button type="submit" class="cv-btn cv-btn--primary cv-btn--sm" :disabled="sending || !draft.trim()">
+            <Send :size="14" aria-hidden="true" />
             {{ sending ? 'Отправка…' : 'Отправить' }}
           </button>
         </div>
-      </div>
+      </form>
     </template>
   </div>
 </template>
 
 <style scoped>
-.support-chat {
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
+.sc { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 720px; margin: 0 auto; min-width: 0; }
+.sc--embedded { max-width: none; margin: 0; height: 100%; }
+
+.sc__head { margin-bottom: 1.5rem; text-align: center; }
+.sc__title { margin: 0 0 .5rem; font-size: 1.75rem; font-weight: 500; letter-spacing: -0.02em; color: var(--cv-ink, inherit); }
+.sc__lead { margin: 0; color: var(--cv-mut, inherit); }
+
+.sc__gate {
+  display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 28px 20px; text-align: center;
+  border-radius: var(--cv-r); box-shadow: inset 0 0 0 1px var(--cv-line);
+}
+.sc__gate p { margin: 0; max-width: 420px; font-size: 13px; line-height: 1.55; color: var(--cv-mut); }
+
+.sc__messages {
+  display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto;
+  min-height: 280px; max-height: 440px; padding: 16px; overflow-y: auto; overscroll-behavior: contain;
+  border-radius: var(--cv-r); background: rgba(0, 0, 0, .18); box-shadow: inset 0 0 0 1px var(--cv-line);
+}
+.sc__status { margin: auto; font-size: 13px; color: var(--cv-mut); }
+.sc__empty { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: auto; text-align: center; font-size: 12.5px; color: var(--cv-mut); }
+.sc__empty b { font-size: 13.5px; font-weight: 600; color: var(--cv-ink); }
+.sc__empty-ic {
+  display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 4px; border-radius: 12px;
+  color: var(--cv-accent-ink); background: var(--cv-accent-soft);
 }
 
-.support-chat--embedded {
-  max-width: none;
-  margin: 0;
-  --font-display: inherit;
-  --font-body: inherit;
-  --color-text: var(--text-primary, #0f172a);
-  --color-text-secondary: var(--text-tertiary, #64748b);
-  --color-primary: var(--primary, #3b82f6);
-  --color-primary-hover: var(--primary-hover, #2563eb);
+.sc__row { display: flex; flex-direction: column; gap: 4px; max-width: min(78%, 520px); }
+.sc__row.is-user { align-self: flex-end; align-items: flex-end; }
+.sc__row.is-admin { align-self: flex-start; align-items: flex-start; }
+.sc__who { padding: 0 4px; font-size: 11.5px; font-weight: 550; color: var(--cv-mut); }
+.sc__bubble { padding: 10px 14px; border-radius: 16px; }
+.sc__row.is-user .sc__bubble {
+  border-bottom-right-radius: 6px; color: #fff;
+  background: linear-gradient(180deg, #6f7ffd, #5866ee);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16);
 }
-
-.support-chat__hint {
-  margin: 0 0 1rem;
-  font-size: var(--text-caption-size, 0.875rem);
-  line-height: 1.5;
-  color: var(--text-secondary, var(--lx-ink-2, #64748b));
+.sc__row.is-admin .sc__bubble {
+  border-bottom-left-radius: 6px; color: var(--cv-ink);
+  background: var(--cv-elev); box-shadow: inset 0 0 0 1px var(--cv-line-2);
 }
+.sc__text { margin: 0; color: inherit; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sc__time { padding: 0 4px; font-size: 11px; color: var(--cv-dim); font-variant-numeric: tabular-nums; }
 
-.support-chat__head {
-  text-align: center;
-  margin-bottom: 2rem;
+.sc__composer {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 10px 14px;
+  border-radius: var(--cv-r); background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px var(--cv-line-2);
+  transition: box-shadow .2s var(--cv-ease);
 }
-
-.support-chat__title {
-  margin: 0 0 0.75rem;
-  font-family: var(--font-display);
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  font-weight: 300;
-  letter-spacing: -0.02em;
-  color: var(--color-text);
+.sc__composer:focus-within { box-shadow: inset 0 0 0 1px var(--cv-accent-line), 0 0 0 3px var(--cv-accent-soft); }
+.sc__input {
+  width: 100%; min-height: 44px; padding: 4px 0 0; border: 0; resize: vertical;
+  font: inherit; font-size: 13.5px; line-height: 1.5; color: var(--cv-ink); background: transparent;
 }
-
-.support-chat__lead {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.6;
-  color: var(--color-text-secondary);
-}
-
-.support-chat__gate {
-  padding: 1.75rem 1.5rem;
-  border-radius: 16px;
-  border: 1px dashed var(--lx-line, rgba(15, 23, 42, 0.12));
-  background: var(--lx-fill, rgba(248, 250, 252, 0.9));
-  text-align: center;
-}
-
-.support-chat__gate-text {
-  margin: 0 0 1.25rem;
-  font-size: 0.9375rem;
-  line-height: 1.55;
-  color: var(--color-text-secondary);
-}
-
-.support-chat__btn {
-  padding: 0.65rem 1.5rem;
-  border-radius: 999px;
-  border: none;
-  background: var(--color-primary);
-  color: #fff;
-  font-family: var(--font-body);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease, transform 0.15s ease;
-}
-
-.support-chat__btn:hover {
-  background: var(--color-primary-hover);
-}
-
-.support-chat__btn:active {
-  transform: scale(0.98);
-}
-
-.support-chat__messages {
-  max-height: min(52vh, 420px);
-  overflow-y: auto;
-  padding: 0.5rem 0.25rem 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-  border: 1px solid var(--lx-line, rgba(15, 23, 42, 0.06));
-  border-radius: 16px;
-  background: var(--lx-fill, rgba(255, 255, 255, 0.65));
-  margin-bottom: 1rem;
-}
-
-.support-chat__status,
-.support-chat__empty {
-  padding: 1.25rem;
-  text-align: center;
-  font-size: 0.9rem;
-  color: var(--color-text-secondary);
-}
-
-.support-chat__row {
-  display: flex;
-  width: 100%;
-}
-
-.support-chat__row--user {
-  justify-content: flex-end;
-}
-
-.support-chat__row--admin {
-  justify-content: flex-start;
-}
-
-.support-chat__bubble {
-  max-width: min(88%, 420px);
-  padding: 0.65rem 0.85rem 0.5rem;
-  border-radius: 14px;
-  box-sizing: border-box;
-}
-
-.support-chat__row--user .support-chat__bubble {
-  background: linear-gradient(135deg, var(--lx-accent-soft, rgba(59, 130, 246, 0.14)), var(--lx-accent-soft, rgba(59, 130, 246, 0.06)));
-  border: 1px solid var(--lx-accent-line, rgba(59, 130, 246, 0.2));
-}
-
-.support-chat__row--admin .support-chat__bubble {
-  background: var(--lx-fill, rgba(241, 245, 249, 0.95));
-  border: 1px solid var(--lx-line, rgba(15, 23, 42, 0.08));
-}
-
-.support-chat__text {
-  margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  color: var(--color-text);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.support-chat__time {
-  display: block;
-  margin-top: 0.35rem;
-  font-size: 0.7rem;
-  color: var(--color-text-secondary);
-  opacity: 0.85;
-}
-
-.support-chat__error {
-  padding: 0.65rem 0.85rem;
-  margin-bottom: 0.75rem;
-  border-radius: 10px;
-  background: var(--lx-down-soft, rgba(239, 68, 68, 0.08));
-  color: var(--lx-down, #b91c1c);
-  font-size: 0.85rem;
-}
-
-.support-chat__composer {
-  border: 1px solid var(--lx-line, rgba(15, 23, 42, 0.08));
-  border-radius: 16px;
-  padding: 0.75rem;
-  background: var(--lx-fill, rgba(255, 255, 255, 0.85));
-}
-
-.support-chat__input {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--lx-line, rgba(15, 23, 42, 0.1));
-  border-radius: 12px;
-  padding: 0.65rem 0.75rem;
-  font-family: var(--font-body);
-  font-size: 0.9rem;
-  resize: vertical;
-  min-height: 72px;
-  background: var(--lx-surface, #fff);
-  color: var(--color-text);
-}
-
-.support-chat__input:focus {
-  outline: 2px solid var(--lx-accent, rgba(59, 130, 246, 0.35));
-  outline-offset: 1px;
-}
-
-.support-chat__input:disabled {
-  opacity: 0.65;
-}
-
-.support-chat__composer-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-top: 0.65rem;
-}
-
-.support-chat__counter {
-  font-size: 0.75rem;
-  color: var(--color-text-secondary);
-}
-
-.support-chat__send {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.55rem 1.1rem;
-  border-radius: 999px;
-  border: none;
-  background: var(--color-primary);
-  color: #fff;
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease, opacity 0.2s ease;
-}
-
-.support-chat__send:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-}
-
-.support-chat__send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-@media (max-width: 480px) {
-  .support-chat__messages {
-    max-height: 48vh;
-  }
+.sc__input:focus { outline: none; }
+.sc__input::placeholder { color: var(--cv-dim); }
+.sc__input:disabled { opacity: .6; }
+.sc__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sc__counter { display: flex; gap: 6px; min-width: 0; font-size: 11.5px; color: var(--cv-dim); }
+@media (max-width: 600px) {
+  .sc__messages { max-height: 60vh; padding: 12px; }
+  .sc__row { max-width: 88%; }
+  .sc__kbd-hint { display: none; }
 }
 </style>

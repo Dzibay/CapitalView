@@ -1,41 +1,26 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  Building2,
-  TrendingDown,
-  Hash,
-  History,
-  LineChart,
-  Coins,
-  LayoutDashboard,
-  BarChart3
-} from 'lucide-vue-next'
+import { ArrowLeft } from 'lucide-vue-next'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
-import MultiLineChart from '../components/charts/MultiLineChart.vue'
-import { 
-  PeriodFilters, 
-  WidgetContainer, 
-  MetricsWidget, 
-  ValueChangePill, 
-  ChartPeriodSummary,
-  Widget 
-} from '../components/widgets/base'
-import { AssetPortfolioStatsWidget } from '../components/widgets/composite'
-import { OperationsListWidget } from '../components/widgets/lists'
 import CustomSelect from '../components/base/CustomSelect.vue'
-import ChartVariantSelect from '../components/base/ChartVariantSelect.vue'
-import ChartOptionsMenu from '../components/base/ChartOptionsMenu.vue'
-import LoadingState from '../components/base/LoadingState.vue'
 import assetsService from '../services/assetsService'
 import operationsService from '../services/operationsService'
-import PageLayout from '../layouts/PageLayout.vue'
-import { PayoutsChartWidget, AssetAllocationWidget } from '../components/widgets/charts'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
-import { getCurrencySymbol } from '../utils/currencySymbols'
 import { effectiveUnitPriceInCurrency } from '../utils/effectiveAssetPrice'
+import CvPageHead from '../cabinet/ui/CvPageHead.vue'
+import CvKpiStrip from '../cabinet/ui/CvKpiStrip.vue'
+import CvWidget from '../cabinet/ui/CvWidget.vue'
+import CvSegmented from '../cabinet/ui/CvSegmented.vue'
+import DashboardSkeleton from '../cabinet/dashboard/DashboardSkeleton.vue'
+import AssetSeriesWidget from '../cabinet/asset/AssetSeriesWidget.vue'
+import PayoutYearsChart from '../cabinet/asset/PayoutYearsChart.vue'
+import { OP_GROUPS, groupOf } from '../cabinet/operations/opKinds'
+import { PAYOUT_KINDS } from '../cabinet/dividends/payoutTypes'
+import { SERIES } from '../cabinet/palette'
+import { money, moneyIn, pct, num, axisMoney } from '../cabinet/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -58,15 +43,7 @@ const assetDailyValues = ref([]) // История стоимости позиц
 const assetInAllPortfolios = ref([])
 const selectedPortfolioId = ref(null)
 const selectedPeriod = ref('All')
-const selectedChartType = ref('position') // 'position' | 'quantity' | 'price'
-const showMinMax = ref(false)
-const selectedTab = ref('general') // 'general' | 'analytics' | 'dividends'
-
-const tabDefinitions = [
-  { id: 'general', label: 'Общее', icon: LayoutDashboard },
-  { id: 'analytics', label: 'Аналитика', icon: BarChart3 },
-  { id: 'dividends', label: 'Дивиденды', icon: Coins }
-]
+const selectedChartType = ref('position') // для устаревшего комбинированного chartData
 
 /** Есть позиция хотя бы в одном портфеле — иначе аналитика по портфелю нечего показывать (см. get_asset_detail_for_user: portfolios = []). */
 const hasUserPositionAnalytics = computed(
@@ -80,51 +57,11 @@ const hasPayoutHistoryForTab = computed(() => {
   return Array.isArray(raw) && raw.length > 0
 })
 
-const visibleTabs = computed(() =>
-  tabDefinitions.filter((tab) => {
-    if (tab.id === 'analytics') return hasUserPositionAnalytics.value
-    if (tab.id === 'dividends') return hasPayoutHistoryForTab.value
-    return true
-  })
-)
-
-watch(visibleTabs, (tabs) => {
-  const ids = tabs.map((t) => t.id)
-  if (!ids.includes(selectedTab.value)) {
-    selectedTab.value = 'general'
-  }
-})
-
 const analyticsChartMetric = ref('position') // 'position' | 'quantity'
 
-const assetChartMenuOptions = computed(() => [
-  { id: 'minmax', label: 'Min / Max', modelValue: showMinMax.value }
-])
-
-const analyticsChartVariants = [
-  { value: 'position', label: 'Стоимость позиции' },
-  { value: 'quantity', label: 'Количество' }
-]
-
-const analyticsChartMenuOptions = computed(() => [
-  { id: 'minmax', label: 'Min / Max', modelValue: showMinMax.value }
-])
-
-function onAssetChartOptionToggle(id, val) {
-  if (id === 'minmax') showMinMax.value = val
-}
-
-function onAnalyticsChartMenuToggle(id, val) {
-  if (id === 'minmax') showMinMax.value = val
-}
 const cashOperations = ref([]) // Все операции из cash_operations (выплаты, комиссии, налоги и т.д.)
 const portfolioTransactions = ref({}) // Транзакции для каждого portfolio_asset_id
 
-const chartTypeOptions = [
-  { value: 'position', label: 'Стоимость позиции' },
-  { value: 'quantity', label: 'Количество' },
-  { value: 'price', label: 'Цена единицы' }
-]
 
 // Получаем информацию о портфеле из dashboardStore для расчета вклада
 const portfolios = computed(() => dashboardStore.portfolios ?? [])
@@ -1805,27 +1742,217 @@ watch(selectedPortfolioId, async (newPortfolioId, oldPortfolioId) => {
 async function handlePortfolioChange(portfolioId) {
   selectedPortfolioId.value = portfolioId
 }
+
+// ── Карточка актива в стиле кабинета ────────────────────────────────────────
+const assetName = computed(() => portfolioAsset.value?.asset?.name ?? assetInfo.value?.name ?? '')
+const assetTicker = computed(() => portfolioAsset.value?.asset?.ticker ?? assetInfo.value?.ticker ?? '')
+const assetType = computed(() => assetInfo.value?.type || portfolioAsset.value?.asset?.type || '')
+const assetLeverage = computed(() => Number(portfolioAsset.value?.asset?.leverage ?? assetInfo.value?.leverage) || 1)
+
+/** Цена единицы (чистая + НКД) в валюте бумаги; дешёвые бумаги — с 4 знаками */
+const unitPrice = computed(() => {
+  const src = selectedPortfolioAsset.value || portfolioAsset.value?.asset || assetInfo.value
+  return src ? effectiveUnitPriceInCurrency(src) : 0
+})
+const priceDigits = computed(() => (unitPrice.value !== 0 && Math.abs(unitPrice.value) < 1 ? 4 : 2))
+const fmtPrice = (v, opts = {}) => moneyIn(v, assetCurrency.value, { digits: priceDigits.value, ...opts })
+const dailyChange = computed(() => Number(overviewAsset.value?.daily_change) || 0)
+const tone = (v) => (v > 0 ? 'cv-up' : v < 0 ? 'cv-down' : '')
+
+const pageMeta = computed(() => [
+  assetTicker.value,
+  assetLeverage.value > 1 ? `плечо ×${assetLeverage.value}` : '',
+  assetCurrency.value !== 'RUB' ? `котируется в ${assetCurrency.value}` : '',
+  portfolioOptions.value.length === 1 ? `в портфеле «${portfolioOptions.value[0].label}»` : '',
+].filter(Boolean))
+
+const kpis = computed(() => {
+  const hasQuote = !!overviewAsset.value?.last_price
+  const list = [{
+    key: 'price',
+    label: 'Цена',
+    value: unitPrice.value,
+    format: (v) => fmtPrice(v),
+    delta: hasQuote ? selectedPriceChangePercent.value : null,
+    note: hasQuote ? fmtPrice(dailyChange.value, { sign: true }) : 'нет котировки',
+  }]
+  const m = aggregatedPortfolioMetrics.value
+  if (m) {
+    list.push(
+      { key: 'qty', label: 'Количество', value: m.totalQuantity, format: (v) => `${num(v, 6)} шт` },
+      { key: 'value', label: 'Стоимость', value: m.totalValueRub, format: (v) => money(v) },
+      {
+        key: 'share',
+        label: 'Доля в портфеле',
+        value: m.shareInPortfolioPercent ?? 0,
+        format: (v) => (m.shareInPortfolioPercent == null ? '—' : pct(v, { sign: false, digits: 2 })),
+      },
+      {
+        key: 'pnl',
+        label: 'Общая прибыль',
+        value: m.totalPnl,
+        format: (v) => money(v, { sign: true }),
+        tone: m.totalPnl > 0 ? 'up' : m.totalPnl < 0 ? 'down' : undefined,
+      },
+    )
+  }
+  return list
+})
+
+// график: цена всегда, стоимость и количество — если бумага есть в портфеле
+const chartMetric = ref('price')
+const seriesMetrics = computed(() => {
+  const list = []
+  const price = priceChartData.value
+  const pos = positionChartData.value
+  const qty = quantityChartData.value
+  if (price.labels.length > 1) {
+    list.push({
+      value: 'price', label: 'Цена', title: 'Цена единицы',
+      dates: price.labels, values: price.datasets[0].data,
+      format: (v) => fmtPrice(v), axis: (v) => num(v, priceDigits.value),
+    })
+  }
+  if (hasUserPositionAnalytics.value && pos.labels.length > 1) {
+    list.push({
+      value: 'position', label: 'Стоимость', title: 'Стоимость позиции',
+      dates: pos.labels, values: pos.datasets[0].data,
+      format: (v) => money(v), axis: axisMoney,
+    })
+  }
+  if (hasUserPositionAnalytics.value && qty.labels.length > 1) {
+    list.push({
+      value: 'quantity', label: 'Количество', title: 'Количество',
+      dates: qty.labels, values: qty.datasets[0].data,
+      format: (v) => `${num(v, 6)} шт`, axis: (v) => num(v, 2),
+    })
+  }
+  return list
+})
+watch(seriesMetrics, (list) => {
+  if (list.length && !list.some((m) => m.value === chartMetric.value)) chartMetric.value = list[0].value
+})
+
+/** Разложение общей прибыли: рост цены, продажи, выплаты, комиссии */
+const pnlParts = computed(() => {
+  const pa = selectedPortfolioAsset.value
+  if (!pa) return null
+  const rows = [
+    { key: 'unr', label: 'Рост цены', value: selectedProfitLoss.value?.profit || 0 },
+    { key: 'real', label: 'Прибыль от продаж', value: realizedProfit.value || 0 },
+    { key: 'pay', label: 'Выплаты', value: Number(pa.payouts) || 0 },
+    { key: 'fee', label: 'Комиссии', value: -Math.abs(Number(pa.commissions) || 0) },
+  ]
+  const max = Math.max(1, ...rows.map((r) => Math.abs(r.value)))
+  return {
+    invested: selectedProfitLoss.value?.invested || 0,
+    current: selectedProfitLoss.value?.currentValue || 0,
+    total: selectedTotalProfit.value?.total || 0,
+    rows: rows.map((r) => ({ ...r, w: (Math.abs(r.value) / max) * 100 })),
+  }
+})
+
+const SCOPE_OPTIONS = [
+  { value: 'portfolio', label: 'Портфель' },
+  { value: 'all_assets', label: 'Все' },
+]
+const shareInfo = computed(() => {
+  const a = contributionAssetAllocation.value
+  if (!a) return null
+  const [asset, rest] = a.datasets[0].data
+  const total = asset + rest
+  return { asset, total, share: total > 0 ? (asset / total) * 100 : 0 }
+})
+const positionFacts = computed(() => {
+  const pa = selectedPortfolioAsset.value
+  if (!pa) return []
+  const g = selectedPriceGrowth.value
+  return [
+    { label: 'Средняя цена', value: fmtPrice(Number(pa.average_price) || 0) },
+    { label: 'Текущая цена', value: fmtPrice(unitPrice.value) },
+    { label: 'Цена к средней', value: g ? pct(g.percent) : '—', tone: g ? tone(g.percent) : '' },
+    { label: 'Вложено', value: money(pnlParts.value?.invested || 0) },
+  ]
+})
+
+// операции по позиции
+const OP_SIGN = { buy: -1, sell: 1, payout: 1, fee: -1, deposit: 1, withdraw: -1, other: 0 }
+const SLUG_LABEL = {
+  buy: 'Покупка', sell: 'Продажа', amortization: 'Погашение', dividend: 'Дивиденды', coupon: 'Купоны',
+  deposit: 'Пополнение', withdraw: 'Вывод', commission: 'Комиссия', tax: 'Налог',
+}
+const opRows = computed(() => allOperations.value.map((op) => {
+  const slug = normalizeType(op.operationType, op.type)
+  const group = groupOf(slug)
+  const amount = Math.abs(Number(op.amount) || 0)
+  const label = getOperationTypeLabel(op)
+  return {
+    id: op.id,
+    date: op.date,
+    // транзакции могут прийти со строковым типом («Покупка») — тогда подпись берём по нормализованному типу
+    label: label === 'Операция' ? SLUG_LABEL[slug] || label : label,
+    group,
+    color: OP_GROUPS[group].color,
+    qty: Number(op.quantity) || 0,
+    price: Number(op.price) || 0,
+    amount: (OP_SIGN[group] ?? 0) * amount || amount,
+    currency: op.currency || 'RUB',
+    income: group === 'payout',
+  }
+}))
+const opsLimit = ref(10)
+
+// выплаты на одну бумагу
+const payoutKind = (t) => {
+  const s = String(t || '').toLowerCase()
+  if (s.includes('купон') || s.includes('coupon')) return 'coupon'
+  if (s.includes('аморт') || s.includes('amort')) return 'amortization'
+  return 'dividend'
+}
+const payoutChartRows = computed(() => payoutTableRows.value
+  .map(({ p, status }) => {
+    const raw = p.payment_date || p.date || p.record_date
+    const d = raw ? new Date(raw) : null
+    if (!d || Number.isNaN(d.getTime())) return null
+    return { date: d, kind: payoutKind(p.type), value: Math.abs(Number(p.value) || 0), forecast: status.key === 'forecast' }
+  })
+  .filter(Boolean))
+const payoutSummary = computed(() => {
+  const yearAgo = Date.now() - 365 * 86400000
+  const rows = payoutChartRows.value
+  const last12 = rows.filter((r) => !r.forecast && r.date.getTime() > yearAgo).reduce((s, r) => s + r.value, 0)
+  const next = rows.filter((r) => r.forecast).sort((a, b) => a.date - b.date)[0] || null
+  return { last12, yieldPct: unitPrice.value ? (last12 / unitPrice.value) * 100 : null, next }
+})
+const payoutsLimit = ref(8)
+
+// каскадное появление — когда пришли данные актива
+const intro = ref(false)
+watch(() => assetInfo.value?.asset_id, (id) => {
+  if (!id) return
+  intro.value = true
+  opsLimit.value = 10
+  payoutsLimit.value = 8
+  setTimeout(() => { intro.value = false }, 1600)
+})
 </script>
 
 <template>
-  <div class="asset-detail-page">
-    <LoadingState v-if="isLoading || uiStore.loading" message="Загрузка данных об активе..." />
+  <div class="ad">
+    <button type="button" class="ad__back cv-btn cv-btn--ghost cv-btn--sm" @click="router.back()">
+      <ArrowLeft :size="15" /> Назад
+    </button>
 
-    <PageLayout v-else-if="assetInfo">
-      <!-- Заголовок: кнопка назад слева, выбор портфеля справа -->
-      <div class="asset-header">
-        <button class="btn-back" @click="router.back()">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6"></polyline>
-          </svg>
-          Назад
-        </button>
-        <div v-if="portfolioOptions.length" class="header-portfolio-selector">
+    <DashboardSkeleton v-if="isLoading || uiStore.loading" />
+
+    <template v-else-if="assetInfo">
+      <CvPageHead :eyebrow="assetType || 'Актив'" :title="assetName" :meta="pageMeta">
+        <template v-if="portfolioOptions.length > 1" #actions>
           <CustomSelect
-            :modelValue="selectedPortfolioId || (assetInAllPortfolios[0]?.portfolio_id)"
+            :modelValue="selectedPortfolioId || assetInAllPortfolios[0]?.portfolio_id"
             :options="portfolioOptions"
             label=""
-            placeholder="Выберите портфель"
+            placeholder="Портфель"
             :show-empty-option="false"
             option-label="label"
             option-value="value"
@@ -1833,1117 +1960,258 @@ async function handlePortfolioChange(portfolioId) {
             :flex="'none'"
             @update:modelValue="handlePortfolioChange"
           />
-        </div>
-      </div>
+        </template>
+      </CvPageHead>
 
-      <!-- Блок с названием актива, ценой, ключевыми метриками и табами -->
-      <div class="asset-overview-block">
-        <div class="asset-overview-top">
-          <div class="asset-main-info">
-            <h1 class="asset-name">{{ portfolioAsset?.asset?.name ?? assetInfo.name }}</h1>
-            <div class="asset-meta">
-              <span class="meta-item ticker">{{ portfolioAsset?.asset?.ticker ?? assetInfo.ticker }}</span>
-              <span
-                v-if="(portfolioAsset?.asset?.leverage ?? assetInfo.leverage) > 1"
-                class="meta-item"
-              >
-                ×{{ portfolioAsset?.asset?.leverage ?? assetInfo.leverage }}
-              </span>
+      <div class="cv-grid" :class="{ 'is-intro': intro }">
+        <CvKpiStrip class="is-xl" :items="kpis" :style="{ '--i': 0 }" />
+
+        <AssetSeriesWidget
+          v-if="seriesMetrics.length"
+          v-model:metric="chartMetric"
+          class="is-xl"
+          :metrics="seriesMetrics"
+          :style="{ '--i': 1 }"
+        />
+
+        <CvWidget v-if="pnlParts" class="is-l" title="Из чего складывается прибыль" :style="{ '--i': 2 }">
+          <div class="pl">
+            <dl class="pl__top">
+              <div><dt>Вложено</dt><dd class="cv-num">{{ money(pnlParts.invested) }}</dd></div>
+              <div><dt>Стоит сейчас</dt><dd class="cv-num">{{ money(pnlParts.current) }}</dd></div>
+            </dl>
+            <ul class="pl__rows">
+              <li v-for="r in pnlParts.rows" :key="r.key">
+                <span class="pl__label">{{ r.label }}</span>
+                <span class="pl__track"><i :class="{ 'is-neg': r.value < 0 }" :style="{ width: `${r.w}%` }" /></span>
+                <b class="cv-num" :class="tone(r.value)">{{ money(r.value, { sign: true }) }}</b>
+              </li>
+            </ul>
+            <div class="pl__total">
+              <span>Общая прибыль</span>
+              <b class="cv-num" :class="tone(pnlParts.total)">{{ money(pnlParts.total, { sign: true }) }}</b>
             </div>
           </div>
-          <div class="asset-price-info">
-            <div class="price-main">
-              {{ headerUnitPriceDisplay }}
-              <span v-if="assetCurrency" class="price-currency"> {{ getCurrencySymbol(assetCurrency) }}</span>
-            </div>
-            <div v-if="overviewAsset?.last_price" class="price-change">
-              <template
-                v-if="overviewAsset.daily_change != null && overviewAsset.daily_change !== 0"
-              >
-                <ValueChangePill
-                  :value="selectedPriceChangePercent"
-                  :is-positive="overviewAsset.daily_change >= 0"
-                  format="percent"
-                />
-                <span class="price-change-currency">
-                  ({{ overviewAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(overviewAsset.daily_change) }})
-                </span>
-              </template>
-              <template v-else-if="overviewAsset.daily_change === 0">
-                <span class="price-change-flat">{{ Math.abs(selectedPriceChangePercent).toFixed(2) }}%</span>
-                <span class="price-change-currency">
-                  ({{ overviewAsset.daily_change >= 0 ? '+' : '' }}{{ formatCurrency(overviewAsset.daily_change) }})
-                </span>
-              </template>
-              <template v-else>
-                <span class="price-change-flat">—</span>
-                <span class="price-change-currency">—</span>
-              </template>
-            </div>
-          </div>
-        </div>
+        </CvWidget>
 
-        <!-- Ключевые метрики по выбранному портфелю -->
-        <dl class="asset-key-metrics" v-if="aggregatedPortfolioMetrics">
-          <div class="key-metric left-metric-item">
-            <dt class="key-metric-label">Количество</dt>
-            <dd class="key-metric-value">{{ aggregatedPortfolioMetrics.totalQuantity }}</dd>
+        <CvWidget v-if="selectedPortfolioAsset" class="is-s is-full-md" title="Позиция" :style="{ '--i': 3 }">
+          <template #actions>
+            <CvSegmented v-model="contributionScope" :options="SCOPE_OPTIONS" size="sm" aria-label="Доля от" />
+          </template>
+          <div class="pos">
+            <div v-if="shareInfo" class="pos__share">
+              <span class="pos__label">Доля {{ contributionScope === 'portfolio' ? 'в портфеле' : 'во всех активах' }}</span>
+              <b class="pos__big cv-num">{{ pct(shareInfo.share, { sign: false, digits: 2 }) }}</b>
+              <span class="pos__bar"><i :style="{ width: `${Math.max(0.8, shareInfo.share)}%`, background: SERIES[0] }" /></span>
+              <small class="cv-num">{{ money(shareInfo.asset) }} из {{ money(shareInfo.total) }}</small>
+            </div>
+            <dl class="pos__facts">
+              <div v-for="f in positionFacts" :key="f.label">
+                <dt>{{ f.label }}</dt>
+                <dd class="cv-num" :class="f.tone">{{ f.value }}</dd>
+              </div>
+            </dl>
           </div>
-          <div class="key-metric right-metric-item">
-            <dt class="key-metric-label">Стоимость</dt>
-            <dd class="key-metric-value">{{ formatOperationAmount(aggregatedPortfolioMetrics.totalValueRub, 'RUB') }}</dd>
-          </div>
-          <div class="key-metric left-metric-item">
-            <dt class="key-metric-label">Доля</dt>
-            <dd class="key-metric-value">
-              {{
-                aggregatedPortfolioMetrics.shareInPortfolioPercent != null
-                  ? `${aggregatedPortfolioMetrics.shareInPortfolioPercent.toFixed(2)}%`
-                  : '—'
-              }}
-            </dd>
-          </div>
-          <div class="key-metric right-metric-item">
-            <dt class="key-metric-label">Общая прибыль</dt>
-            <dd
-              class="key-metric-value"
-              :class="aggregatedPortfolioMetrics.isProfit ? 'text-green' : 'text-red'"
-            >
-              {{ formatOperationAmount(aggregatedPortfolioMetrics.totalPnl, 'RUB') }}
-            </dd>
-          </div>
-        </dl>
+        </CvWidget>
 
-        <!-- Табы навигации -->
-        <div class="asset-tabs" role="tablist">
+        <CvWidget v-if="hasUserPositionAnalytics" class="is-xl" title="Операции" :style="{ '--i': 4 }" flush>
+          <div v-if="opRows.length" class="ad__tablewrap">
+            <table class="ad__table">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Тип</th>
+                  <th class="r c-hide-s">Кол-во</th>
+                  <th class="r c-hide-s">Цена</th>
+                  <th class="r">Сумма</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in opRows.slice(0, opsLimit)" :key="r.id">
+                  <td class="c-date cv-num">{{ formatDate(r.date) }}</td>
+                  <td>
+                    <span class="ad__type"><i :style="{ background: r.color }" />{{ r.label }}</span>
+                    <small v-if="r.qty" class="ad__sub cv-num">{{ num(r.qty, 6) }} шт по {{ fmtPrice(r.price) }}</small>
+                  </td>
+                  <td class="r cv-num c-mut c-hide-s">{{ r.qty ? num(r.qty, 6) : '—' }}</td>
+                  <td class="r cv-num c-mut c-hide-s">{{ r.price ? fmtPrice(r.price) : '—' }}</td>
+                  <td class="r cv-num c-amt" :class="{ 'cv-up': r.income }">{{ moneyIn(r.amount, r.currency, { digits: 2, sign: true }) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="ad__empty">По этой позиции ещё нет операций.</p>
           <button
-            v-for="tab in visibleTabs"
-            :key="tab.id"
+            v-if="opRows.length > opsLimit"
             type="button"
-            role="tab"
-            :aria-selected="selectedTab === tab.id"
-            :class="['asset-tab', { active: selectedTab === tab.id }]"
-            @click="selectedTab = tab.id"
+            class="cv-btn cv-btn--ghost cv-btn--sm ad__more"
+            @click="opsLimit += 20"
           >
-            <component :is="tab.icon" class="asset-tab-icon" :size="18" aria-hidden="true" />
-            <span class="asset-tab-label">{{ tab.label }}</span>
+            Показать ещё {{ Math.min(20, opRows.length - opsLimit) }} из {{ opRows.length - opsLimit }}
           </button>
-        </div>
+        </CvWidget>
+
+        <CvWidget v-if="payoutChartRows.length" class="is-xl" title="Выплаты на одну бумагу" :style="{ '--i': 5 }">
+          <div class="pys">
+            <dl class="pys__sum">
+              <div><dt>За последние 12 месяцев</dt><dd class="cv-num">{{ fmtPrice(payoutSummary.last12) }}</dd></div>
+              <div>
+                <dt>Доходность к текущей цене</dt>
+                <dd class="cv-num">{{ payoutSummary.yieldPct != null ? pct(payoutSummary.yieldPct, { sign: false, digits: 2 }) : '—' }}</dd>
+              </div>
+              <div>
+                <dt>Следующая выплата</dt>
+                <dd class="cv-num">
+                  <template v-if="payoutSummary.next">{{ fmtPrice(payoutSummary.next.value) }} <small>{{ formatDate(payoutSummary.next.date) }}</small></template>
+                  <template v-else>—</template>
+                </dd>
+              </div>
+            </dl>
+            <PayoutYearsChart :rows="payoutChartRows" :format="(v) => fmtPrice(v)" />
+          </div>
+        </CvWidget>
+
+        <CvWidget v-if="payoutTableRows.length" class="is-xl" title="История выплат" :style="{ '--i': 6 }" flush>
+          <div class="ad__tablewrap">
+            <table class="ad__table">
+              <thead>
+                <tr>
+                  <th>Статус</th>
+                  <th>Отсечка</th>
+                  <th class="c-hide-s">Тип</th>
+                  <th class="c-hide-m">Купить до</th>
+                  <th class="c-hide-m">Выплата</th>
+                  <th class="r">На бумагу</th>
+                  <th class="r c-hide-s">Доходность</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="({ p, status }, i) in payoutTableRows.slice(0, payoutsLimit)" :key="p.id ?? `payout-${i}`">
+                  <td><span class="ad__status" :class="`is-${status.key}`">{{ status.label }}</span></td>
+                  <td class="c-date cv-num">{{ p.record_date ? formatDate(p.record_date) : '—' }}</td>
+                  <td class="c-hide-s">
+                    <span class="ad__type"><i :style="{ background: PAYOUT_KINDS[payoutKind(p.type)].color }" />{{ PAYOUT_KINDS[payoutKind(p.type)].one }}</span>
+                  </td>
+                  <td class="c-date cv-num c-hide-m">{{ p.last_buy_date ? formatDate(p.last_buy_date) : '—' }}</td>
+                  <td class="c-date cv-num c-hide-m">{{ (p.payment_date || p.date) ? formatDate(p.payment_date || p.date) : '—' }}</td>
+                  <td class="r cv-num c-amt">{{ fmtPrice(Math.abs(Number(p.value) || 0)) }}</td>
+                  <td class="r cv-num c-mut c-hide-s">{{ p.dividend_yield != null && p.dividend_yield !== '' && !Number.isNaN(Number(p.dividend_yield)) ? pct(Number(p.dividend_yield), { sign: false, digits: 2 }) : '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <button
+            v-if="payoutTableRows.length > payoutsLimit"
+            type="button"
+            class="cv-btn cv-btn--ghost cv-btn--sm ad__more"
+            @click="payoutsLimit += 20"
+          >
+            Показать ещё {{ Math.min(20, payoutTableRows.length - payoutsLimit) }} из {{ payoutTableRows.length - payoutsLimit }}
+          </button>
+        </CvWidget>
       </div>
+    </template>
 
-      <!-- ===================== TAB: Общее ===================== -->
-      <template v-if="selectedTab === 'general'">
-        <!-- График цены и описание актива -->
-        <div class="widgets-grid">
-          <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-large)">
-            <Widget title="История цены" :icon="LineChart">
-              <template #header>
-                <ChartOptionsMenu
-                  :options="assetChartMenuOptions"
-                  @toggle="onAssetChartOptionToggle"
-                />
-              </template>
-              <template #subheader>
-                <PeriodFilters
-                  :modelValue="selectedPeriod"
-                  @update:modelValue="selectedPeriod = $event"
-                />
-                <ChartPeriodSummary
-                  :startDate="priceChartPeriodStats.startDate"
-                  :endDate="priceChartPeriodStats.endDate"
-                  :changeValue="priceChartPeriodStats.changeValue"
-                  :changePercent="priceChartPeriodStats.changePercent"
-                  :formatValue="formatPriceChangeValue"
-                  unit=""
-                />
-              </template>
-              <div class="asset-chart-body">
-                <div class="chart-container">
-                  <MultiLineChart
-                    v-if="priceChartData.labels.length"
-                    :chartData="priceChartData"
-                    :period="selectedPeriod"
-                    chartType="price"
-                    :formatCurrency="formatPriceCurrency"
-                    :showMinMaxGuides="showMinMax"
-                  />
-                  <div v-else class="no-chart-data">Нет данных для отображения графика</div>
-                </div>
-              </div>
-            </Widget>
-          </WidgetContainer>
-        </div>
-      </template>
-
-      <!-- ===================== TAB: Аналитика ===================== -->
-      <template v-if="selectedTab === 'analytics'">
-        <!-- График: стоимость позиции или количество (переключение в меню ⋯) -->
-        <div class="widgets-grid">
-          <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-large)">
-            <Widget :title="analyticsChartTitle" :icon="LineChart">
-              <template #header>
-                <ChartVariantSelect
-                  v-model="analyticsChartMetric"
-                  :options="analyticsChartVariants"
-                />
-                <ChartOptionsMenu
-                  :options="analyticsChartMenuOptions"
-                  @toggle="onAnalyticsChartMenuToggle"
-                />
-              </template>
-              <template #subheader>
-                <PeriodFilters
-                  :modelValue="selectedPeriod"
-                  @update:modelValue="selectedPeriod = $event"
-                />
-                <ChartPeriodSummary
-                  :startDate="analyticsChartPeriodStats.startDate"
-                  :endDate="analyticsChartPeriodStats.endDate"
-                  :changeValue="analyticsChartPeriodStats.changeValue"
-                  :changePercent="analyticsChartPeriodStats.changePercent"
-                  :formatValue="formatAnalyticsChangeValue"
-                  unit=""
-                />
-              </template>
-              <div class="asset-chart-body">
-                <div class="chart-container">
-                  <MultiLineChart
-                    v-if="analyticsChartData.labels.length"
-                    :chartData="analyticsChartData"
-                    :period="selectedPeriod"
-                    :chartType="analyticsChartYType"
-                    :formatCurrency="analyticsChartFormatter"
-                    :showMinMaxGuides="analyticsChartMetric === 'position' && showMinMax"
-                  />
-                  <div v-else class="no-chart-data">Нет данных для отображения графика</div>
-                </div>
-              </div>
-            </Widget>
-          </WidgetContainer>
-        </div>
-
-        <!-- Показатели аналитики -->
-        <div class="widgets-grid">
-          <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-            <AssetAllocationWidget
-              title="Вклад в портфель"
-              :asset-allocation="contributionAssetAllocation"
-              :empty-message="contributionEmptyMessage"
-              :format-center-value="formatContributionCenterRub"
-            >
-              <template #header>
-                <ChartVariantSelect
-                  v-model="contributionScope"
-                  :options="contributionScopeOptions"
-                />
-              </template>
-            </AssetAllocationWidget>
-          </WidgetContainer>
-
-          <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-            <MetricsWidget title="Прибыль и убытки" :icon="TrendingDown" :items="profitLossItems" />
-          </WidgetContainer>
-
-          <WidgetContainer :gridColumn="4" minHeight="var(--widget-height-medium)">
-            <MetricsWidget title="Основная информация" :icon="Building2" :items="basicInfoItems" />
-          </WidgetContainer>
-        </div>
-
-        <!-- Операции -->
-        <div class="widgets-grid">
-          <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
-            <Widget title="Операции" :icon="History">
-              <div class="table-container">
-                <table class="transactions-table">
-                  <thead>
-                    <tr>
-                      <th>Дата</th>
-                      <th>Тип</th>
-                      <th class="text-right">Кол-во</th>
-                      <th class="text-right">Цена</th>
-                      <th class="text-right">Сумма</th>
-                      <th class="text-right">Валюта</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="op in allOperations" :key="op.id" class="tx-row">
-                      <td class="td-date">{{ formatDate(op.date) }}</td>
-                      <td>
-                        <span :class="['badge', 'badge-' + normalizeType(op.operationType, op.type)]">
-                          {{ getOperationTypeLabel(op) }}
-                        </span>
-                      </td>
-                      <td class="text-right num-font">{{ op.quantity || '—' }}</td>
-                      <td class="text-right num-font">{{ op.price ? op.price.toLocaleString() : '—' }}</td>
-                      <td class="text-right num-font font-semibold" :class="op.amount >= 0 ? 'text-green' : 'text-red'">
-                        {{ formatOperationAmount(Math.abs(op.amount || 0), op.currency || 'RUB') }}
-                      </td>
-                      <td class="text-right num-font">{{ op.currency || 'RUB' }}</td>
-                    </tr>
-                    <tr v-if="allOperations.length === 0">
-                      <td colspan="6" class="empty-cell">
-                        <div class="empty-state">
-                          <span class="empty-icon">🔍</span>
-                          <p>Операции не найдены</p>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </Widget>
-          </WidgetContainer>
-        </div>
-      </template>
-
-      <!-- ===================== TAB: Дивиденды ===================== -->
-      <template v-if="selectedTab === 'dividends'">
-        <div class="widgets-grid">
-          <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
-            <PayoutsChartWidget
-              title="Выплаты по периодам"
-              :payouts="assetDividendPayoutsChartSeries"
-              :currency="assetCurrency"
-              mode="all"
-            />
-          </WidgetContainer>
-          <WidgetContainer :gridColumn="12" minHeight="var(--widget-height-medium)">
-            <Widget title="История выплат" :icon="Coins">
-              <div class="table-container">
-                <table class="transactions-table payouts-history-table">
-                  <thead>
-                    <tr>
-                      <th>Статус</th>
-                      <th>Дата отсечки</th>
-                      <th>Тип выплаты</th>
-                      <th>Дата последней покупки</th>
-                      <th>Дата выплаты</th>
-                      <th class="text-right">Сумма</th>
-                      <th class="text-right">Доходность, %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="({ p, status }, idx) in payoutTableRows"
-                      :key="p.id ?? `payout-${idx}`"
-                      class="tx-row"
-                    >
-                      <td>
-                        <span
-                          class="payout-status-badge"
-                          :class="{
-                            'payout-status-badge--paid': status.key === 'paid',
-                            'payout-status-badge--forecast': status.key === 'forecast',
-                            'payout-status-badge--unknown': status.key === 'unknown'
-                          }"
-                        >
-                          {{ status.label }}
-                        </span>
-                      </td>
-                      <td class="td-date">{{ p.record_date ? formatDate(p.record_date) : '—' }}</td>
-                      <td>
-                        <span :class="['badge', 'badge-' + normalizeType(p.type)]">
-                          {{ getPayoutTypeLabel(p.type) }}
-                        </span>
-                      </td>
-                      <td class="td-date">{{ p.last_buy_date ? formatDate(p.last_buy_date) : '—' }}</td>
-                      <td class="td-date">{{ (p.payment_date || p.date) ? formatDate(p.payment_date || p.date) : '—' }}</td>
-                      <td class="text-right num-font font-semibold text-green">
-                        {{ formatOperationAmount(Math.abs(Number(p.value) || 0), assetCurrency) }}
-                      </td>
-                      <td class="text-right num-font">{{ formatPayoutDividendYield(p.dividend_yield) }}</td>
-                    </tr>
-                    <tr v-if="payoutTableRows.length === 0">
-                      <td colspan="7" class="empty-cell">
-                        <div class="empty-state">
-                          <span class="empty-icon">🔍</span>
-                          <p>Нет данных о выплатах</p>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </Widget>
-          </WidgetContainer>
-        </div>
-      </template>
-
-    </PageLayout>
-
-    <div v-else class="error-state">
-      <p>Актив не найден</p>
-      <button class="btn-primary" @click="router.back()">Вернуться назад</button>
+    <div v-else class="ad__missing cv-card">
+      <b>Актив не найден</b>
+      <p>Возможно, его удалили или ссылка устарела.</p>
+      <button type="button" class="cv-btn cv-btn--primary" @click="router.push('/assets')">К списку активов</button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.asset-detail-page {
-  min-height: 100vh;
-  background: var(--lx-transparent, #f8fafc);
+.ad { padding-bottom: 8px; }
+.ad__back { gap: 6px; margin: 18px 0 -14px -8px; color: var(--cv-mut); }
+.ad__back:hover { color: var(--cv-ink); }
+
+/* ── прибыль ─────────────────────────────────────────────────────────── */
+.pl { display: flex; flex-direction: column; gap: 18px; }
+.pl__top { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0; }
+.pl__top div { display: flex; flex-direction: column; gap: 4px; }
+.pl__top dt, .pos__label, .pos__facts dt, .pys__sum dt { font-size: 12px; color: var(--cv-mut); }
+.pl__top dd { margin: 0; font-family: var(--cv-display); font-size: 22px; font-weight: 600; letter-spacing: -0.02em; color: var(--cv-ink); }
+.pl__rows { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.pl__rows li { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; align-items: center; gap: 14px; font-size: 13px; }
+.pl__label { color: var(--cv-ink-2); }
+.pl__track { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .04); overflow: hidden; }
+.pl__track i { display: block; height: 100%; border-radius: 3px; background: var(--cv-accent); transition: width .8s var(--cv-ease); }
+.pl__track i.is-neg { background: repeating-linear-gradient(135deg, #8a8d99 0 2px, transparent 2px 5px); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+.pl__rows b { min-width: 110px; text-align: right; font-weight: 600; color: var(--cv-ink); }
+.pl__total { display: flex; justify-content: space-between; align-items: baseline; padding-top: 14px; border-top: 1px solid var(--cv-line); font-size: 13px; color: var(--cv-mut); }
+.pl__total b { font-family: var(--cv-display); font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--cv-ink); }
+
+/* ── позиция ─────────────────────────────────────────────────────────── */
+.pos { display: flex; flex-direction: column; gap: 18px; }
+.pos__share { display: flex; flex-direction: column; gap: 6px; }
+.pos__big { font-family: var(--cv-display); font-size: 26px; font-weight: 600; letter-spacing: -0.03em; color: var(--cv-ink); line-height: 1.1; }
+.pos__bar { height: 8px; margin-top: 4px; border-radius: 4px; background: rgba(255, 255, 255, .05); overflow: hidden; }
+.pos__bar i { display: block; height: 100%; border-radius: 4px; transition: width .8s var(--cv-ease); }
+.pos__share small { font-size: 12px; color: var(--cv-dim); }
+.pos__facts { display: flex; flex-direction: column; margin: 0; }
+.pos__facts div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--cv-line); }
+.pos__facts dd { margin: 0; font-size: 13px; font-weight: 600; color: var(--cv-ink); }
+
+/* ── выплаты ─────────────────────────────────────────────────────────── */
+.pys { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.pys__sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 24px; margin: 0; }
+.pys__sum div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pys__sum dd { margin: 0; font-family: var(--cv-display); font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--cv-ink); white-space: nowrap; }
+.pys__sum dd small { margin-left: 4px; font-family: inherit; font-size: 12.5px; font-weight: 500; letter-spacing: 0; color: var(--cv-dim); }
+
+/* ── таблицы ─────────────────────────────────────────────────────────── */
+.ad__tablewrap { overflow-x: auto; }
+.ad__table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ad__table th {
+  padding: 10px 12px; text-align: left; white-space: nowrap;
+  font-size: 11px; font-weight: 550; letter-spacing: .06em; text-transform: uppercase; color: var(--cv-dim);
+  border-top: 1px solid var(--cv-line); border-bottom: 1px solid var(--cv-line);
 }
-
-.widgets-grid {
-  display: grid;
-  gap: var(--spacing);
-  grid-template-columns: repeat(12, 1fr);
-  grid-auto-rows: min-content;
-  margin-top: 2rem;
+.ad__table td { padding: 11px 12px; color: var(--cv-ink-2); border-bottom: 1px solid var(--cv-line); vertical-align: middle; }
+.ad__table tbody tr { transition: background .15s; }
+.ad__table tbody tr:hover { background: var(--cv-hover); }
+.ad__table tbody tr:last-child td { border-bottom: 0; }
+.ad__table .r { text-align: right; }
+.ad__table th:first-child, .ad__table td:first-child { padding-left: 20px; }
+.ad__table th:last-child, .ad__table td:last-child { padding-right: 20px; }
+.c-date { white-space: nowrap; color: var(--cv-mut) !important; }
+.c-mut { color: var(--cv-mut) !important; white-space: nowrap; }
+.c-amt { font-weight: 600; color: var(--cv-ink) !important; white-space: nowrap; }
+.c-amt.cv-up { color: var(--cv-up) !important; }
+.ad__type { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; color: var(--cv-ink-2); }
+.ad__type i { width: 7px; height: 7px; flex: none; border-radius: 2px; }
+.ad__sub { display: none; margin-top: 3px; font-size: 11.5px; color: var(--cv-dim); white-space: nowrap; }
+.ad__status {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px;
+  font-size: 11.5px; font-weight: 550; white-space: nowrap;
+  color: var(--cv-ink-2); background: rgba(255, 255, 255, .05);
 }
+.ad__status.is-forecast { color: var(--cv-accent-ink); background: var(--cv-accent-soft); box-shadow: inset 0 0 0 1px var(--cv-accent-line); }
+.ad__status.is-unknown { color: var(--cv-dim); }
+.ad__empty { margin: 0; padding: 28px 20px; text-align: center; font-size: 13px; color: var(--cv-mut); }
+.ad__more { margin: 6px 14px 4px; }
 
+.ad__missing { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 40px; padding: 48px 24px; text-align: center; }
+.ad__missing b { font-size: 16px; color: var(--cv-ink); }
+.ad__missing p { margin: 0 0 10px; font-size: 13px; color: var(--cv-mut); }
 
-.error-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 60vh;
-  gap: 1rem;
-}
-
-
-/* Заголовок */
-.asset-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-  gap: 1rem;
-}
-
-.header-portfolio-selector {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.btn-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  background: transparent;
-  border: none;
-  border-radius: 0.375rem;
-  cursor: pointer;
-  font-size: 0.875rem;
-  color: var(--lx-ink-2, #6b7280);
-  transition: all 0.2s;
-}
-
-.btn-back:hover {
-  background: var(--lx-fill, #f3f4f6);
-  color: var(--lx-ink, #111827);
-}
-
-/* Блок с названием актива, ценой, метриками и табами */
-.asset-overview-block {
-  border: 1px solid transparent;
-  background:
-    linear-gradient(180deg, var(--cv-surface-2, white), var(--cv-surface, white)) padding-box,
-    var(--cv-card-border, transparent) border-box;
-  padding: 1.5rem 1.5rem 0rem;
-  border-radius: var(--cv-r-lg, 12px);
-  box-shadow: var(--cv-card-shadow, 0 4px 10px rgba(0,0,0,0.05));
-  margin-bottom: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.asset-overview-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 2rem;
-  padding-bottom: 1rem;
-}
-
-.asset-name {
-  font-family: var(--cv-display, inherit);
-  font-size: clamp(26px, 2.5vw, 34px);
-  font-weight: 550;
-  letter-spacing: -0.035em;
-  color: var(--lx-ink, #111827);
-  margin: 0 0 0.35rem 0;
-  line-height: 1.12;
-}
-
-.asset-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.meta-item {
-  font-size: 0.8125rem;
-  color: var(--lx-mut, #9ca3af);
-  font-weight: 400;
-}
-
-.meta-item.ticker {
-  color: var(--lx-ink-2, #6b7280);
-  font-weight: 500;
-}
-
-.asset-price-info {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.375rem;
-}
-
-.price-main {
-  font-family: var(--cv-display, inherit);
-  font-size: 1.75rem;
-  font-weight: 550;
-  letter-spacing: -0.03em;
-  color: var(--lx-ink, #111827);
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-}
-
-.price-currency {
-  font-size: 1.25rem;
-  color: var(--lx-ink-2, #6b7280);
-  font-weight: 500;
-}
-
-.price-change {
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.price-change-currency {
-  color: var(--lx-ink-2, #6b7280);
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.price-change-flat {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--lx-ink-2, #6b7280);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Ключевые метрики в overview */
-.asset-key-metrics {
-  display: flex;
-  gap: 2rem;
-  padding: 0.75rem 0;
-  border-top: 1px solid var(--lx-line, #f3f4f6);
-  flex-wrap: wrap;
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.key-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-}
-
-@media (max-width: 768px) {
-  .left-metric-item {
-    align-items: flex-start;
-  }
-
-  .right-metric-item {
-    align-items: flex-end;
-  }
-}
-
-.key-metric-label {
-  font-size: 0.6875rem;
-  color: var(--lx-mut, #9ca3af);
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
-  font-weight: 500;
-}
-
-.key-metric-value {
-  font-size: 0.9375rem;
-  font-weight: 550;
-  color: var(--lx-ink, #111827);
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Табы навигации */
-.asset-tabs {
-  display: flex;
-  justify-content: flex-start;
-  align-items: flex-end;
-  gap: 0.25rem;
-  border-top: 1px solid var(--lx-line, #f3f4f6);
-  margin: 0 -1.5rem;
-  padding: 0 1.5rem;
-  box-sizing: border-box;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scroll-snap-type: x proximity;
-  scrollbar-width: thin;
+@media (max-width: 1024px) {
+  .c-hide-m { display: none; }
 }
 @media (max-width: 768px) {
-  .asset-tabs {
-    gap: 0rem;
-    justify-content: space-between;
-  }
-}
-
-.asset-tabs::-webkit-scrollbar {
-  height: 4px;
-}
-
-.asset-tabs::-webkit-scrollbar-thumb {
-  background: var(--lx-fill, #e5e7eb);
-  border-radius: 4px;
-}
-
-.asset-tab {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  flex: 0 0 auto;
-  width: fit-content;
-  max-width: 100%;
-  padding: 0.75rem 1rem;
-  margin: 0;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--lx-ink-2, #6b7280);
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
-  white-space: nowrap;
-  scroll-snap-align: start;
-  box-sizing: border-box;
-}
-
-.asset-tab-icon {
-  flex-shrink: 0;
-  color: inherit;
-}
-
-.asset-tab:first-child {
-  padding-left: 0;
-}
-
-.asset-tab:last-child {
-  padding-right: 0;
-}
-
-.asset-tab:focus-visible {
-  outline: 2px solid var(--lx-accent, #3b82f6);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-.asset-tab:hover,
-.asset-tab.active {
-  color: var(--lx-accent-ink, #3b82f6);
-  border-bottom-color: var(--lx-accent, #3b82f6);
-}
-
-@media (max-width: 640px) {
-  .asset-overview-top {
-    gap: 1rem;
-  }
-
-  .asset-key-metrics {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 1rem;
-    row-gap: 0.875rem;
-  }
-
-  .asset-tabs {
-    overflow-x: visible;
-    scroll-snap-type: none;
-  }
-
-  .asset-tab {
-    flex: unset;
-    scroll-snap-align: unset;
-    font-size: 0.75rem;
-    gap: 0.25rem;
-    padding: 0.75rem 0.35rem;
-    min-width: 0;
-  }
-
-  .asset-tab :deep(svg) {
-    width: 15px;
-    height: 15px;
-  }
-}
-
-.section-title {
-  font-size: 1rem;
-  font-weight: 400;
-  color: var(--lx-ink-2, #6B7280);
-  margin: 0;
-}
-
-.metrics-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  height: 100%;
-}
-
-.stat-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 0.5rem 0;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--lx-line, #f3f4f6);
-}
-
-.stat-item:last-child {
-  border-bottom: none;
-}
-
-.stat-item.profit .stat-value {
-  color: var(--positiveColor, var(--lx-up, #1CBD88));
-}
-
-.stat-item.loss .stat-value {
-  color: var(--negativeColor, var(--lx-down, #EF4444));
-}
-
-.stat-label {
-  color: var(--lx-ink-2, #6b7280);
-  font-size: 0.875rem;
-  flex: 1;
-}
-
-.stat-value {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
-  color: var(--lx-ink, #111827);
-  text-align: right;
-}
-
-.portfolio-name {
-  font-size: 0.875rem;
-  color: var(--lx-ink-2, #6b7280);
-  font-weight: 500;
-}
-
-.asset-description-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 200px;
-  color: var(--lx-mut, #9ca3af);
-  font-size: 0.875rem;
-}
-
-.info-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.info-card {
-  background: var(--lx-surface, white);
-  padding: 1.5rem;
-  border-radius: 0.75rem;
-  border: 1px solid var(--lx-line, #e5e7eb);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.info-card.profit .card-value {
-  color: var(--lx-up, #10b981);
-}
-
-.info-card.loss .card-value {
-  color: var(--lx-down, #ef4444);
-}
-
-.card-label {
-  font-size: 0.875rem;
-  color: var(--lx-ink-2, #6b7280);
-  margin-bottom: 0.5rem;
-}
-
-.card-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--lx-ink, #111827);
-}
-
-.card-value .percentage {
-  font-size: 1rem;
-  margin-left: 0.5rem;
-}
-
-.chart-section {
-  background: var(--lx-surface, white);
-  padding: 1.5rem;
-  border-radius: 0.75rem;
-  border: 1px solid var(--lx-line, #e5e7eb);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  margin-bottom: 2rem;
-  margin-top: 0;
-}
-
-.transactions-section h2,
-.payouts-section h2 {
-  margin: 0 0 1.5rem 0;
-  font-size: 1rem;
-  font-weight: 400;
-  color: var(--lx-ink-2, #6B7280);
-}
-
-.asset-chart-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.asset-chart-header-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.asset-chart-body {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  gap: 0.75rem;
-}
-
-.asset-chart-period-row {
-  flex-shrink: 0;
-}
-
-.chart-container {
-  flex: 1;
-  min-height: 360px;
-  position: relative;
-}
-
-.no-chart-data {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--lx-ink-2, #6b7280);
-}
-
-
-.transactions-section {
-  background: var(--lx-surface, white);
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-  margin-top: 2rem;
-}
-
-.transactions-section h2 {
-  margin: 0 0 1.5rem 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--lx-ink, #111827);
-}
-
-.transactions-table {
-  overflow-x: auto;
-}
-
-.transactions-table table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.transactions-table th {
-  text-align: left;
-  padding: 0.75rem;
-  border-bottom: 2px solid var(--lx-line, #e5e7eb);
-  color: var(--lx-ink-2, #6b7280);
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-
-.transactions-table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid var(--lx-line, #f3f4f6);
-  color: var(--lx-ink, #111827);
-}
-
-/* История выплат (в стиле таблицы операций) */
-.payouts-section {
-  background: var(--lx-surface, white);
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-  margin-top: 2rem;
-}
-
-.payouts-section h2 {
-  margin: 0 0 1.5rem 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--lx-ink, #111827);
-}
-
-.payouts-table {
-  overflow-x: auto;
-}
-
-.payouts-table table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.payouts-table th {
-  text-align: left;
-  padding: 0.75rem;
-  border-bottom: 2px solid var(--lx-line, #e5e7eb);
-  color: var(--lx-ink-2, #6b7280);
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-
-.payouts-table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid var(--lx-line, #f3f4f6);
-  color: var(--lx-ink, #111827);
-}
-
-/* Badges для типов операций (как на странице Transactions) */
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.badge-buy {
-  background: var(--lx-fill, #dcfce7);
-  color: var(--lx-up, #166534);
-}
-
-.badge-sell {
-  background: var(--lx-fill, #fee2e2);
-  color: var(--lx-down, #991b1b);
-}
-
-.badge-dividend {
-  background: var(--lx-accent-soft, rgba(37, 99, 235, 0.1));
-  color: var(--payout-dividends, var(--lx-accent-ink, #2563eb));
-}
-
-.badge-coupon {
-  background: var(--lx-accent-soft, rgba(6, 182, 212, 0.1));
-  color: var(--payout-coupons, var(--lx-accent-ink, #06b6d4));
-}
-
-.badge-amortization {
-  background: var(--lx-warn-soft, rgba(251, 146, 60, 0.1));
-  color: var(--payout-amortizations, var(--lx-warn, #fb923c));
-}
-
-.payout-status-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: none;
-}
-
-.payout-status-badge--paid {
-  background: var(--lx-fill, #dcfce7);
-  color: var(--lx-up, #166534);
-}
-
-.payout-status-badge--forecast {
-  background: var(--lx-fill, #e0e7ff);
-  color: var(--lx-accent-ink, #3730a3);
-}
-
-.payout-status-badge--unknown {
-  background: var(--lx-fill, #f3f4f6);
-  color: var(--lx-ink-2, #6b7280);
-}
-
-.badge-other {
-  background: var(--lx-fill, #f3f4f6);
-  color: var(--lx-ink-2, #4b5563);
-}
-
-.badge-deposit {
-  background: var(--lx-fill-2, #ccfbf1);
-  color: var(--lx-accent-ink, #0f766e);
-}
-
-.badge-withdraw {
-  background: var(--lx-fill, #ffedd5);
-  color: var(--lx-down, #9a3412);
-}
-
-.badge-tax {
-  background: var(--lx-fill, #fee2e2);
-  color: var(--lx-down, #991b1b);
-}
-
-.badge-commission {
-  background: var(--lx-fill-2, #fef3c7);
-  color: var(--lx-warn, #92400e);
-}
-
-/* Стили таблицы */
-.table-container {
-  overflow-x: auto;
-}
-
-.transactions-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.transactions-table th {
-  text-align: left;
-  padding: 12px 16px;
-  background: var(--lx-surface, #f9fafb);
-  color: var(--lx-ink-2, #6b7280);
-  font-weight: 600;
-  font-size: 12px;
-  text-transform: uppercase;
-  border-bottom: 1px solid var(--lx-line, #e5e7eb);
-}
-
-.transactions-table th.text-right {
-  text-align: right;
-}
-
-.transactions-table td {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--lx-line, #f3f4f6);
-  vertical-align: middle;
-}
-
-.transactions-table tr:last-child td {
-  border-bottom: none;
-}
-
-.transactions-table tr:hover {
-  background: var(--lx-surface, #f9fafb);
-}
-
-.td-date {
-  color: var(--lx-ink, #374151);
-  white-space: nowrap;
-}
-
-.text-right {
-  text-align: right !important;
-}
-
-.num-font {
-  font-family: inherit; font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  letter-spacing: -0.5px;
-}
-
-.font-semibold {
-  font-weight: 600;
-}
-
-.text-green {
-  color: var(--lx-up, #059669);
-}
-
-.text-red {
-  color: var(--lx-down, #dc2626);
-}
-
-.empty-cell {
-  text-align: center;
-  padding: 40px;
-}
-
-.empty-state {
-  color: var(--lx-mut, #9ca3af);
-}
-
-.empty-icon {
-  font-size: 32px;
-  display: block;
-  margin-bottom: 8px;
-  opacity: 0.5;
-}
-
-.btn-primary {
-  padding: 0.75rem 1.5rem;
-  background: var(--lx-accent, #3b82f6);
-  color: white;
-  border: none;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  font-weight: 600;
-  transition: background 0.2s;
-}
-
-.btn-primary:hover {
-  background: var(--lx-accent, #2563eb);
-}
-
-@media (max-width: 1200px) {
-  .widgets-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 768px) {
-  .widgets-grid {
-    margin-top: 1rem;
-  }
-
-  .content-wrapper {
-    padding: 1rem;
-  }
-
-  .asset-name {
-    font-size: 1.5rem;
-  }
-
-  .chart-container {
-    min-height: 280px;
-  }
+  .ad__back { margin-bottom: -18px; }
+  .pl__rows li { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
+  .pl__track { grid-column: 1 / -1; grid-row: 2; }
+  .pl__rows b { min-width: 0; }
+  .pys__sum { grid-template-columns: 1fr 1fr; }
+  .pys__sum div:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .ad :deep(.cv-w__actions) { flex-wrap: wrap; justify-content: flex-end; flex: 1 1 100%; }
+  .c-hide-s { display: none; }
+  .ad__sub { display: block; }
+  .ad__table th:first-child, .ad__table td:first-child { padding-left: 14px; }
+  .ad__table th:last-child, .ad__table td:last-child { padding-right: 14px; }
+  .ad__table th, .ad__table td { padding-left: 8px; padding-right: 8px; }
 }
 </style>
-

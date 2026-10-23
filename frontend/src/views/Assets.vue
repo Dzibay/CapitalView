@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { storeToRefs } from 'pinia';
 import { useDashboardStore } from '../stores/dashboard.store';
 import { useUIStore } from '../stores/ui.store';
@@ -15,19 +15,20 @@ import MoveAssetModal from "../components/modals/MoveAssetModal.vue";
 import ImportPortfolioModal from "../components/modals/ImportPortfolioModal.vue";
 import ImportStatusModal from "../components/modals/ImportStatusModal.vue";
 import AddPortfolioModal from "../components/modals/AddPortfolioModal.vue";
-import PortfolioTree from '../components/PortfolioTree.vue';
 import ContextMenu from '../components/base/ContextMenu.vue';
 import { useModals } from '../composables/useModal';
-import { usePortfolio } from '../composables/usePortfolio';
 import portfolioService from '../services/portfolioService';
-import { Button, ToggleSwitch } from '../components/base';
-import LoadingState from '../components/base/LoadingState.vue';
-import PageLayout from '../layouts/PageLayout.vue';
-import PageHeader from '../layouts/PageHeader.vue';
+import CvPageHead from '../cabinet/ui/CvPageHead.vue';
+import CvKpiStrip from '../cabinet/ui/CvKpiStrip.vue';
+import DashboardSkeleton from '../cabinet/dashboard/DashboardSkeleton.vue';
+import StructureBar from '../cabinet/assets/StructureBar.vue';
+import HoldingsPanel from '../cabinet/assets/HoldingsPanel.vue';
+import { toHolding } from '../cabinet/assets/holdings';
+import { flattenPortfolioTree } from '../cabinet/portfolioTree';
+import { money, pct, plural } from '../cabinet/format';
 
 const selectedAsset = ref(null);
 
-// Используем stores вместо inject
 const dashboardStore = useDashboardStore();
 const uiStore = useUIStore();
 const assetsStore = useAssetsStore();
@@ -91,7 +92,7 @@ const importPortfolio = async (data, showStatusModal = true) => {
       data.portfolioId,
       data.portfolio_name
     );
-    
+
     // Если нужно показать модалку статуса, открываем её
     if (showStatusModal) {
       currentImportTaskId.value = result.task_id;
@@ -103,10 +104,9 @@ const importPortfolio = async (data, showStatusModal = true) => {
 };
 
 // Обработчики для модалки статуса
-const handleImportComplete = async (result) => {
-  // Обновляем данные после успешного импорта
+const handleImportComplete = async () => {
+  // Обновляем данные после успешного импорта; модалка закроется сама
   await reloadDashboard();
-  // Модалка закроется автоматически через 2 секунды (в компоненте)
 };
 
 const handleImportError = (errorMessage) => {
@@ -134,11 +134,9 @@ const reloadDashboard = async () => {
   await dashboardStore.reloadDashboard();
 };
 
-// Раскрытые портфели и showSoldAssets хранятся в ui.store (с авто-persistence)
-const { expandedPortfolios, showSoldAssets } = storeToRefs(uiStore)
-const togglePortfolio = (id) => uiStore.togglePortfolio(id)
+// showSoldAssets хранится в ui.store (с авто-persistence)
+const { showSoldAssets } = storeToRefs(uiStore)
 
-// Используем композабл для управления модалками
 const { modals, open: openModal, close: closeModal } = useModals([
   'addAsset',
   'addPortfolio',
@@ -152,36 +150,17 @@ const { modals, open: openModal, close: closeModal } = useModals([
 // ID текущей задачи импорта
 const currentImportTaskId = ref(null);
 
-
-
-// Используем композабл для работы с портфелями
-// Передаем computed ref для dashboardData из store
-const dashboardDataComputed = computed(() => ({
-  portfolios: dashboardStore.portfolios,
-  recent_transactions: dashboardStore.recentTransactions,
-  referenceData: dashboardStore.referenceData
-}));
-const { portfolios: portfolioList, buildPortfolioTree } = usePortfolio(dashboardDataComputed, null);
-
-/* === Парсинг данных === */
-const parsedDashboard = computed(() => {
-  const portfolios = dashboardStore.portfolios ?? [];
-  const portfolioTree = buildPortfolioTree(portfolios);
-  return {
-    portfolios,
-    portfolioTree,
-    reference: dashboardStore.referenceData ?? {},
-  };
-});
+const portfolios = computed(() => dashboardStore.portfolios ?? []);
+const reference = computed(() => dashboardStore.referenceData ?? {});
 
 // Функция обновления всех портфелей с подключением
 const updatingPortfolios = ref(new Set());
+const refreshingAll = ref(false);
 
 const refreshPortfolios = async () => {
-  const portfolios = dashboardStore.portfolios ?? [];
-  
-  // Создаем массив промисов для асинхронных вызовов
-  const importPromises = portfolios.map(async (p) => {
+  if (refreshingAll.value) return
+  refreshingAll.value = true
+  const importPromises = portfolios.value.map(async (p) => {
     if (!p.connection?.broker_id) return
     updatingPortfolios.value.add(p.id)
     try {
@@ -200,11 +179,15 @@ const refreshPortfolios = async () => {
     }
   });
 
-  // Ждем завершения всех промисов
-  await Promise.all(importPromises);
-  await reloadDashboard();
+  try {
+    await Promise.all(importPromises);
+    await reloadDashboard();
+  } finally {
+    refreshingAll.value = false
+  }
 };
 
+const hasBroker = computed(() => portfolios.value.some((p) => p.connection?.broker_id));
 
 // Обработчики для контекстного меню
 const handleAddTransaction = (asset) => {
@@ -213,10 +196,9 @@ const handleAddTransaction = (asset) => {
 };
 
 const handleAddPrice = (asset) => {
-  // Проверяем, что актив является кастомным (is_custom === true)
+  // Цену можно менять только у кастомного актива (is_custom === true)
   const assetData = asset?.asset || asset;
   if (assetData?.is_custom === false || asset?.is_custom === false) {
-    // Системный актив - не позволяем изменять цену
     console.warn('Попытка изменить цену системного актива:', assetData)
     return;
   }
@@ -225,11 +207,9 @@ const handleAddPrice = (asset) => {
 };
 
 const handleMoveAsset = (asset) => {
-  // Убеждаемся, что у актива есть portfolio_id
-  // Если его нет, пытаемся найти портфель по portfolio_asset_id
+  // У актива должен быть portfolio_id — если его нет, ищем портфель по portfolio_asset_id
   if (!asset.portfolio_id && asset.portfolio_asset_id) {
-    // Ищем портфель, содержащий этот актив
-    const portfolio = parsedDashboard.value.portfolios.find(p => 
+    const portfolio = portfolios.value.find(p =>
       p.assets && p.assets.some(a => a.portfolio_asset_id === asset.portfolio_asset_id)
     )
     if (portfolio) {
@@ -239,404 +219,187 @@ const handleMoveAsset = (asset) => {
   selectedAsset.value = asset;
   openModal('moveAsset');
 };
+
+// ── выбранная ветка дерева ────────────────────────────────────────────────
+const nodes = computed(() => {
+  const flat = flattenPortfolioTree(portfolios.value)
+  const start = flat.findIndex((n) => n.portfolio.id === uiStore.selectedPortfolioId)
+  if (start < 0) return flat
+  const base = flat[start].depth
+  const out = [flat[start]]
+  for (let i = start + 1; i < flat.length && flat[i].depth > base; i++) out.push(flat[i])
+  return out.map((n) => ({ ...n, depth: n.depth - base }))
+})
+const selectedPortfolio = computed(() => nodes.value[0]?.portfolio || null)
+
+const holdings = computed(() =>
+  nodes.value.flatMap(({ portfolio }) => (portfolio.assets || []).map((a) => toHolding(a, portfolio)).filter((r) => !r.sold)),
+)
+const cash = computed(() => nodes.value.reduce((s, n) => s + (Number(n.portfolio.balance) || 0), 0))
+
+const kpis = computed(() => {
+  const value = holdings.value.reduce((s, r) => s + r.value, 0)
+  const profit = holdings.value.reduce((s, r) => s + r.profit, 0)
+  const day = holdings.value.reduce((s, r) => s + r.day, 0)
+  const invested = value - profit
+  const prev = value - day
+  return [
+    { key: 'value', label: 'Стоимость позиций', value, format: (v) => money(v), note: `${holdings.value.length} ${plural(holdings.value.length, 'позиция', 'позиции', 'позиций')}` },
+    { key: 'cash', label: 'Свободные деньги', value: cash.value, format: (v) => money(v), note: value + cash.value > 0 ? `${pct((cash.value / (value + cash.value)) * 100, { sign: false })} капитала` : '' },
+    { key: 'profit', label: 'Прибыль с покупки', value: profit, format: (v) => money(v, { sign: true }), tone: profit > 0 ? 'up' : profit < 0 ? 'down' : '', note: invested > 0 ? `${pct((profit / invested) * 100)} к вложенному` : '' },
+    { key: 'day', label: 'За день', value: day, format: (v) => money(v, { sign: true }), tone: day > 0 ? 'up' : day < 0 ? 'down' : '', note: prev > 0 ? pct((day / prev) * 100, { digits: 2 }) : '' },
+  ]
+})
+
+const meta = computed(() => {
+  const n = nodes.value.length
+  const list = [`${n} ${plural(n, 'портфель', 'портфеля', 'портфелей')}`]
+  const types = new Set(holdings.value.map((r) => r.type)).size
+  if (types) list.push(`${types} ${plural(types, 'тип активов', 'типа активов', 'типов активов')}`)
+  return list
+})
+
+const activeTasks = computed(() => importTasksStore.getActiveTasks())
+
+// каскадное появление — только при первом показе
+const intro = ref(true)
+onMounted(() => setTimeout(() => { intro.value = false }, 1600))
 </script>
 
 <template>
-  <PageLayout>
-    <PageHeader 
-      title="Мои Активы"
-      subtitle="Управление портфелями и активами"
-    >
+  <div class="as">
+    <CvPageHead :eyebrow="selectedPortfolio?.name || 'Портфели'" title="Активы" :meta="portfolios.length ? meta : []">
       <template #actions>
-        <ToggleSwitch 
-          v-model="showSoldAssets" 
-          label="Показать проданные активы"
-        />
+        <button type="button" class="cv-btn" @click="openModal('import')">
+          <Upload :size="15" /> Импорт
+        </button>
+        <button
+          v-if="hasBroker"
+          type="button"
+          class="cv-btn cv-btn--icon as__refresh"
+          :class="{ 'is-busy': refreshingAll }"
+          title="Обновить портфели из брокеров"
+          aria-label="Обновить портфели из брокеров"
+          @click="refreshPortfolios"
+        >
+          <RefreshCw :size="15" />
+        </button>
+        <button type="button" class="cv-btn" @click="openModal('addPortfolio')">
+          <FolderPlus :size="15" /> Портфель
+        </button>
+        <button type="button" class="cv-btn cv-btn--primary" @click="openModal('addAsset')">
+          <Plus :size="15" /> Добавить актив
+        </button>
       </template>
-      <template #menu>
-        <div class="buttons-group">
-          <Button variant="primary" @click="openModal('addAsset')">
-            <template #icon>
-              <Plus :size="16" />
-            </template>
-            Добавить актив
-          </Button>
-          <Button variant="secondary" @click="openModal('addPortfolio')">
-            <template #icon>
-              <FolderPlus :size="16" />
-            </template>
-            Создать портфель
-          </Button>
-          <div class="divider-vertical"></div>
-          <div class="button-group-unified">
-            <Button variant="outline" @click="openModal('import')" class="btn-group-left">
-              <template #icon>
-                <Upload :size="16" />
-              </template>
-              Импорт
-            </Button>
-            <Button variant="outline" @click="refreshPortfolios" icon-only title="Обновить портфели" class="btn-group-right btn-refresh">
-              <template #icon>
-                <RefreshCw :size="16" />
-              </template>
-            </Button>
-          </div>
-        </div>
-      </template>
-    </PageHeader>
+    </CvPageHead>
 
-      <AddAssetModal v-if="modals.addAsset" @close="closeModal('addAsset')" :onSave="addAsset" :referenceData="parsedDashboard.reference" :portfolios="parsedDashboard.portfolios"/>
-      <AddPortfolioModal v-if="modals.addPortfolio" @close="closeModal('addPortfolio')" :onSave="addPortfolio" :portfolios="parsedDashboard.portfolios"/>
-      <AddTransactionModal v-if="modals.addTransaction" :asset="selectedAsset" :onSubmit="addTransaction" @close="closeModal('addTransaction')"/>
-      <AddPriceModal v-if="modals.addPrice" :asset="selectedAsset" :onSubmit="addPrice" @close="closeModal('addPrice')"/>
-      <MoveAssetModal v-if="modals.moveAsset" :asset="selectedAsset" :portfolios="parsedDashboard.portfolios" :onSubmit="moveAsset" @close="closeModal('moveAsset')"/>
-      <ImportPortfolioModal 
-        v-if="modals.import" 
-        @close="closeModal('import')" 
-        :onImport="importPortfolio"
+    <DashboardSkeleton v-if="uiStore.loading" />
+
+    <div v-else-if="!portfolios.length" class="as__empty cv-card">
+      <span class="as__empty-ic"><FolderPlus :size="22" /></span>
+      <b>У вас пока нет портфелей</b>
+      <p>Создайте первый портфель или импортируйте его из брокера, чтобы начать отслеживать активы.</p>
+      <div class="as__empty-act">
+        <button type="button" class="cv-btn" @click="openModal('import')"><Upload :size="15" /> Импорт</button>
+        <button type="button" class="cv-btn cv-btn--primary" @click="openModal('addPortfolio')"><FolderPlus :size="15" /> Создать портфель</button>
+      </div>
+    </div>
+
+    <div v-else class="cv-grid" :class="{ 'is-intro': intro }">
+      <CvKpiStrip class="is-xl" :items="kpis" :style="{ '--i': 0 }" />
+      <StructureBar v-if="holdings.length" class="is-xl" :rows="holdings" :cash="cash" :style="{ '--i': 1 }" />
+      <HoldingsPanel
+        v-model:show-sold="showSoldAssets"
+        class="is-xl"
+        :style="{ '--i': 2 }"
+        :nodes="nodes"
+        :updating="updatingPortfolios"
       />
-      <ImportStatusModal 
-        v-if="modals.importStatus && currentImportTaskId" 
-        :taskId="currentImportTaskId"
-        @close="closeTaskModal"
-        :onComplete="handleImportComplete"
-        :onError="handleImportError"
-      />
-      
-      <!-- Индикатор активных задач импорта -->
-      <div v-if="importTasksStore.getActiveTasks().length > 0" class="active-tasks-indicator">
-        <div class="tasks-badge">
-          <span class="tasks-icon">📥</span>
-          <span class="tasks-count">{{ importTasksStore.getActiveTasks().length }}</span>
-          <span class="tasks-text">активных импортов</span>
-        </div>
-        <div class="tasks-list">
-          <button
-            v-for="taskId in importTasksStore.getActiveTasks()"
-            :key="taskId"
-            class="task-item"
-            @click="openTaskModal(taskId)"
-            :class="{ active: currentImportTaskId === taskId }"
-          >
-            <span class="task-icon">📊</span>
-            <span class="task-info">
-              {{ importTasksStore.getTaskInfo(taskId)?.portfolioName || `Задача #${taskId}` }}
-            </span>
-            <span v-if="!importTasksStore.isModalOpen(taskId)" class="task-status-badge">Скрыто</span>
-          </button>
-        </div>
-      </div>
+    </div>
 
-      <LoadingState v-if="uiStore.loading" />
-      
-      <div v-else-if="parsedDashboard.portfolios.length === 0" class="empty-placeholder">
-        <div class="empty-icon">📂</div>
-        <h3>У вас пока нет портфелей</h3>
-        <p>Создайте первый портфель, чтобы начать отслеживать активы</p>
-        <Button variant="primary" @click="openModal('addPortfolio')" class="empty-btn">
-          <template #icon>
-            <FolderPlus :size="16" />
-          </template>
-          Создать портфель
-        </Button>
-      </div>
+    <ContextMenu
+      @clearPortfolio="clearPortfolio"
+      @refreshPortfolio="refreshPortfolio"
+      @deletePortfolio="deletePortfolio"
+      @removeAsset="removeAsset"
+      @addTransaction="handleAddTransaction"
+      @addPrice="handleAddPrice"
+      @moveAsset="handleMoveAsset"
+    />
 
-      <div v-else class="assets-content">
-        <PortfolioTree
-          :portfolios="parsedDashboard.portfolioTree"
-          :expandedPortfolios="expandedPortfolios"
-          :updatingPortfolios="updatingPortfolios"
-          :showSoldAssets="showSoldAssets"
-          @togglePortfolio="togglePortfolio"
-          @clearPortfolio="clearPortfolio"
-          @deletePortfolio="deletePortfolio"
-          @removeAsset="removeAsset"
-          @addTransaction="addTransaction"
-          @addPrice="addPrice"
-          @moveAsset="handleMoveAsset"
-        />
-
-        <ContextMenu
-          @clearPortfolio="clearPortfolio"
-          @refreshPortfolio="refreshPortfolio"
-          @deletePortfolio="deletePortfolio"
-          @removeAsset="removeAsset"
-          @addTransaction="handleAddTransaction"
-          @addPrice="handleAddPrice"
-          @moveAsset="handleMoveAsset"
-        />
+    <!-- активные задачи импорта -->
+    <div v-if="activeTasks.length" class="as__tasks">
+      <div class="as__tasks-head">
+        <RefreshCw :size="14" class="as__tasks-spin" />
+        <span>Импорт</span>
+        <b>{{ activeTasks.length }}</b>
       </div>
-  </PageLayout>
+      <button
+        v-for="taskId in activeTasks"
+        :key="taskId"
+        type="button"
+        class="as__task"
+        :class="{ 'is-on': currentImportTaskId === taskId }"
+        @click="openTaskModal(taskId)"
+      >
+        <span>{{ importTasksStore.getTaskInfo(taskId)?.portfolioName || `Задача #${taskId}` }}</span>
+        <small v-if="!importTasksStore.isModalOpen(taskId)">свёрнуто</small>
+      </button>
+    </div>
+
+    <AddAssetModal v-if="modals.addAsset" @close="closeModal('addAsset')" :onSave="addAsset" :referenceData="reference" :portfolios="portfolios"/>
+    <AddPortfolioModal v-if="modals.addPortfolio" @close="closeModal('addPortfolio')" :onSave="addPortfolio" :portfolios="portfolios"/>
+    <AddTransactionModal v-if="modals.addTransaction" :asset="selectedAsset" :onSubmit="addTransaction" @close="closeModal('addTransaction')"/>
+    <AddPriceModal v-if="modals.addPrice" :asset="selectedAsset" :onSubmit="addPrice" @close="closeModal('addPrice')"/>
+    <MoveAssetModal v-if="modals.moveAsset" :asset="selectedAsset" :portfolios="portfolios" :onSubmit="moveAsset" @close="closeModal('moveAsset')"/>
+    <ImportPortfolioModal v-if="modals.import" @close="closeModal('import')" :onImport="importPortfolio" />
+    <ImportStatusModal
+      v-if="modals.importStatus && currentImportTaskId"
+      :taskId="currentImportTaskId"
+      @close="closeTaskModal"
+      :onComplete="handleImportComplete"
+      :onError="handleImportError"
+    />
+  </div>
 </template>
 
 <style scoped>
+.as { padding-bottom: 8px; }
+.as :deep(.cv-ph__actions .cv-btn) { gap: 7px; }
+.as__refresh svg { transition: transform .5s var(--cv-ease); }
+.as__refresh:hover svg { transform: rotate(180deg); }
+.as__refresh.is-busy svg { animation: as-spin 1s linear infinite; }
 
-.buttons-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: transparent;
-  padding: 0;
-  flex-wrap: wrap;
-  max-width: 100%;
-}
+.as__empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 56px 16px; text-align: center; }
+.as__empty-ic { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 4px; border-radius: 14px; color: var(--cv-accent-ink); background: var(--cv-accent-soft); box-shadow: inset 0 0 0 1px var(--cv-accent-line); }
+.as__empty b { font-size: 15px; color: var(--cv-ink); }
+.as__empty p { max-width: 420px; margin: 0; font-size: 13.5px; color: var(--cv-mut); }
+.as__empty-act { display: flex; gap: 8px; margin-top: 8px; }
+.as__empty-act .cv-btn { gap: 7px; }
 
-.divider-vertical {
-  width: 1px;
-  height: 24px;
-  background: var(--lx-fill, #e5e7eb);
-  margin: 0 2px;
-  flex-shrink: 0;
+.as__tasks {
+  position: fixed; right: 20px; bottom: 20px; z-index: 50;
+  display: flex; flex-direction: column; gap: 4px; width: 260px; padding: 10px;
+  border-radius: 14px; background: #15161b; box-shadow: inset 0 0 0 1px var(--cv-line-2), var(--cv-pop-shadow);
 }
+.as__tasks-head { display: flex; align-items: center; gap: 8px; padding: 4px 6px 8px; font-size: 12.5px; font-weight: 600; color: var(--cv-ink); }
+.as__tasks-head b { margin-left: auto; min-width: 20px; padding: 1px 6px; border-radius: 9px; background: var(--cv-accent); color: #fff; font-size: 11px; text-align: center; }
+.as__tasks-spin { color: var(--cv-accent-ink); animation: as-spin 1.4s linear infinite; }
+.as__task {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  padding: 8px 10px; border: 0; border-radius: 9px; background: rgba(255, 255, 255, .03);
+  color: var(--cv-ink-2); font-size: 12.5px; text-align: left; cursor: pointer; transition: background .15s;
+}
+.as__task:hover { background: var(--cv-hover); color: var(--cv-ink); }
+.as__task.is-on { background: var(--cv-accent-soft); color: var(--cv-accent-ink); }
+.as__task span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.as__task small { flex: none; font-size: 11px; color: var(--cv-dim); }
 
-/* Группы кнопок */
-.button-group-unified {
-  display: flex;
-  gap: 0;
-}
-
-.button-group-unified :deep(.btn-group-left) {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-  border-right: none;
-}
-
-.button-group-unified :deep(.btn-group-right) {
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  border-left: 1px solid var(--lx-line, #e5e7eb);
-}
-
-.button-group-unified :deep(.btn-group-left:hover) {
-  border-right-color: var(--lx-accent, #527de5);
-}
-
-.button-group-unified :deep(.btn-group-right:hover) {
-  border-left-color: var(--lx-accent, #527de5);
-}
-
-.btn-refresh :deep(.btn-icon svg) {
-  transition: transform 0.2s ease;
-}
-
-.btn-refresh:hover :deep(.btn-icon svg) {
-  transform: rotate(180deg);
-}
-
-/* Индикатор активных задач импорта */
-.active-tasks-indicator {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 999;
-  background: var(--lx-surface, white);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 12px;
-  min-width: 200px;
-  max-width: 300px;
-  border: 1px solid var(--lx-line, #e5e7eb);
-}
-
-.tasks-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--lx-fill, #eff6ff);
-  border-radius: 8px;
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--lx-accent-ink, #1e40af);
-}
-
-.tasks-icon {
-  font-size: 16px;
-}
-
-.tasks-count {
-  background: var(--lx-accent, #3b82f6);
-  color: white;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.tasks-text {
-  flex: 1;
-}
-
-.tasks-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.task-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--lx-surface, #f9fafb);
-  border: 1px solid var(--lx-line, #e5e7eb);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 12px;
-  text-align: left;
-  width: 100%;
-}
-
-.task-item:hover {
-  background: var(--lx-fill, #f3f4f6);
-  border-color: var(--lx-accent, #3b82f6);
-  transform: translateX(-2px);
-}
-
-.task-item.active {
-  background: var(--lx-fill, #eff6ff);
-  border-color: var(--lx-accent, #3b82f6);
-  color: var(--lx-accent-ink, #1e40af);
-}
-
-.task-icon {
-  font-size: 14px;
-}
-
-.task-info {
-  flex: 1;
-  font-weight: 500;
-  color: var(--lx-ink, #374151);
-}
-
-.task-item.active .task-info {
-  color: var(--lx-accent-ink, #1e40af);
-  font-weight: 600;
-}
-
-.task-status-badge {
-  font-size: 10px;
-  padding: 2px 6px;
-  background: var(--lx-fill, #f3f4f6);
-  color: var(--lx-ink-2, #6b7280);
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-
-/* Пустое состояние */
-
-.empty-placeholder {
-  text-align: center;
-  padding: 60px 20px;
-  background: var(--lx-surface, #fff);
-  border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--lx-line, #e5e7eb);
-}
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
-.empty-placeholder h3 {
-  margin: 0 0 8px;
-  color: var(--lx-ink, #374151);
-}
-.empty-placeholder p {
-  color: var(--lx-ink-2, #6b7280);
-  margin-bottom: 24px;
-}
-
-.empty-btn {
-  margin-top: 8px;
-}
-
-.assets-content {
-  margin-top: 0;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  overflow-x: hidden;
-  box-sizing: border-box;
-}
-
-.assets-content :deep(.portfolio-list) {
-  max-width: 100%;
-}
-
-.assets-content :deep(.table-responsive) {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-@media (max-width: 1200px) {
-  .buttons-group {
-    gap: 6px;
-  }
-  .buttons-group :deep(button) {
-    flex-shrink: 0;
-  }
-}
+@keyframes as-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 768px) {
-  .buttons-group {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    width: 100%;
-  }
-
-  .buttons-group :deep(button),
-  .button-group-unified {
-    width: 100%;
-    min-width: 0;
-    justify-content: center;
-  }
-
-  .divider-vertical {
-    display: none;
-  }
-
-  /* Вторая строка: Импорт и Обновить в одну строку, без переноса на третий уровень */
-  .button-group-unified {
-    grid-column: span 2;
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    gap: 0;
-  }
-
-  .button-group-unified :deep(button) {
-    flex: 1;
-  }
-
-  .active-tasks-indicator {
-    left: 16px;
-    right: 16px;
-    bottom: 16px;
-    min-width: auto;
-    max-width: none;
-  }
-}
-
-@media (max-width: 480px) {
-  .buttons-group {
-    gap: 4px;
-  }
-  .buttons-group :deep(.btn-text) {
-    display: none;
-  }
-  .buttons-group :deep(button) {
-    padding-left: 10px;
-    padding-right: 10px;
-  }
-}
-
-@media (max-width: 480px) {
-  .empty-placeholder {
-    padding: 40px 16px;
-  }
+  .as :deep(.cv-ph__actions) { width: 100%; }
+  .as :deep(.cv-ph__actions .cv-btn--primary) { flex: 1; justify-content: center; }
+  .as__tasks { left: 16px; right: 16px; bottom: calc(var(--cv-bottom-h) + 12px); width: auto; }
 }
 </style>

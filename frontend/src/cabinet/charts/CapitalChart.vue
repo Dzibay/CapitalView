@@ -26,6 +26,8 @@ const props = defineProps({
   /** выделенный диапазон индексов { i0, i1 } */
   selection: { type: Object, default: null },
   ariaLabel: { type: String, default: 'График' },
+  /** подпись оси Y (по умолчанию — компактные рубли) */
+  axisFormat: { type: Function, default: null },
 })
 const emit = defineEmits(['hover', 'update:selection', 'zoom'])
 
@@ -135,7 +137,7 @@ const areas = computed(() => paths.value.filter((p) => p.area))
 const yTicks = computed(() => {
   const y = ys.value
   return y.ticks(4)
-    .map((v) => ({ v, y: y(v), label: axisMoney(v) }))
+    .map((v) => ({ v, y: y(v), label: (props.axisFormat || axisMoney)(v) }))
     .filter((t) => t.y >= 4 && t.y <= plotH.value - 2)
 })
 

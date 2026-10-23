@@ -3,11 +3,10 @@ import { ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.store'
 import { authService } from '../services/authService'
-import PageLayout from '../layouts/PageLayout.vue'
-import PageHeader from '../layouts/PageHeader.vue'
-import Widget from '../components/widgets/base/Widget.vue'
-import WidgetContainer from '../components/widgets/base/WidgetContainer.vue'
-import { User, Lock, LogOut, MessageCircle, CreditCard } from 'lucide-vue-next'
+import CvPageHead from '../cabinet/ui/CvPageHead.vue'
+import CvWidget from '../cabinet/ui/CvWidget.vue'
+import { LogOut, MessageCircle, CreditCard, Check, Mail, ShieldCheck } from 'lucide-vue-next'
+import { dateLong, plural } from '../cabinet/format'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -138,368 +137,182 @@ const savePassword = async () => {
   }
 }
 
+
+const initials = computed(() => {
+  const src = (settings.value.profile.name || settings.value.profile.email || '?').trim()
+  const parts = src.split(/[\s@._-]+/).filter(Boolean)
+  return ((parts[0]?.[0] || '?') + (parts[1]?.[0] || '')).toUpperCase()
+})
+
+const subscription = computed(() => authStore.user?.subscription || null)
+const SUB_STATUS = { trial: 'Пробный период', active: 'Подписка активна' }
+const subStatus = computed(() => SUB_STATUS[subscription.value?.status] || 'Доступ приостановлен')
+const subTone = computed(() => (subscription.value?.has_access ? (subscription.value?.status === 'trial' ? 'trial' : 'on') : 'off'))
+const subEndsAt = computed(() => {
+  const s = subscription.value
+  return s?.current_period_ends_at || s?.trial_ends_at || s?.access_ends_at || null
+})
+const subDaysLeft = computed(() => (subEndsAt.value ? Math.ceil((new Date(subEndsAt.value).getTime() - Date.now()) / 86400000) : null))
+
+const profileDirty = computed(() => (settings.value.profile.name || '').trim() !== (authStore.user?.name || ''))
+const pageMeta = computed(() => [
+  settings.value.profile.email,
+  authStore.user?.is_admin ? 'администратор' : subStatus.value.toLowerCase(),
+])
 </script>
 
 <template>
-  <PageLayout>
-    <PageHeader 
-      title="Настройки"
-      subtitle="Управление параметрами аккаунта"
-    >
+  <div class="st">
+    <CvPageHead eyebrow="Аккаунт" title="Настройки" :meta="pageMeta">
       <template #actions>
-        <button class="btn-logout" @click="handleLogout">
-          <LogOut :size="18" />
-          Выйти
+        <button type="button" class="cv-btn cv-btn--danger" @click="handleLogout">
+          <LogOut :size="15" /> Выйти
         </button>
       </template>
-    </PageHeader>
+    </CvPageHead>
 
-    <div class="settings-grid">
+    <div class="cv-grid is-intro">
       <!-- Профиль -->
-      <WidgetContainer :gridColumn="6" minHeight="auto">
-        <Widget title="Профиль" :icon="User">
-          <div v-if="errorMessage" class="message message-error">{{ errorMessage }}</div>
-          <div v-if="successMessage" class="message message-success">{{ successMessage }}</div>
-
-          <div class="form-group">
-            <label for="name">Имя</label>
-            <input 
-              id="name"
-              type="text" 
-              v-model="settings.profile.name"
-              placeholder="Введите ваше имя"
-              class="form-input"
-              :disabled="isLoadingProfile"
-            />
+      <CvWidget class="is-m" style="--i: 0" title="Профиль" subtitle="Как к вам обращаться в кабинете">
+        <form class="st__form" @submit.prevent="saveProfile">
+          <div class="st__who">
+            <span class="st__avatar" aria-hidden="true">{{ initials }}</span>
+            <div class="st__who-text">
+              <b>{{ authStore.user?.name || 'Без имени' }}</b>
+              <span>{{ settings.profile.email || '—' }}</span>
+            </div>
           </div>
-          
-          <div class="form-group">
-            <label for="profile-email">Email</label>
-            <p id="profile-email" class="profile-email-readonly" aria-readonly="true">
-              {{ settings.profile.email || '—' }}
+
+          <p v-if="errorMessage" class="cv-note cv-note--err" role="alert">{{ errorMessage }}</p>
+          <p v-if="successMessage" class="cv-note cv-note--ok" role="status"><Check :size="14" />{{ successMessage }}</p>
+
+          <label class="cv-field">
+            <span class="cv-label">Имя</span>
+            <input v-model="settings.profile.name" type="text" class="cv-input" placeholder="Введите ваше имя" autocomplete="name" :disabled="isLoadingProfile" />
+          </label>
+          <div class="cv-field">
+            <span id="profile-email-label" class="cv-label">Email</span>
+            <p class="cv-input cv-input--static" aria-labelledby="profile-email-label" aria-readonly="true">
+              <Mail :size="14" class="st__static-ic" />{{ settings.profile.email || '—' }}
             </p>
           </div>
-          
-          <button 
-            @click="saveProfile" 
-            class="btn-primary"
-            :disabled="isLoadingProfile"
-          >
-            {{ isLoadingProfile ? 'Сохранение...' : 'Сохранить изменения' }}
-          </button>
-        </Widget>
-      </WidgetContainer>
 
-      <WidgetContainer v-if="!authStore.user?.is_admin" :gridColumn="6" minHeight="auto">
-        <Widget title="Подписка" :icon="CreditCard">
-          <p class="oauth-password-hint">
-            Управление тарифом, пробным периодом и оплатой через ЮKassa.
-          </p>
-          <button type="button" class="btn-primary" @click="router.push('/billing')">
-            Открыть тарифы
-          </button>
-        </Widget>
-      </WidgetContainer>
+          <div class="st__actions">
+            <button type="submit" class="cv-btn cv-btn--primary" :disabled="isLoadingProfile || !profileDirty">
+              {{ isLoadingProfile ? 'Сохранение…' : 'Сохранить' }}
+            </button>
+          </div>
+        </form>
+      </CvWidget>
 
-      <!-- Смена пароля -->
-      <WidgetContainer :gridColumn="6" minHeight="auto">
-        <Widget title="Безопасность" :icon="Lock">
-          <div v-if="passwordError" class="message message-error">{{ passwordError }}</div>
-          <div v-if="passwordSuccess" class="message message-success">{{ passwordSuccess }}</div>
+      <!-- Безопасность -->
+      <CvWidget
+        class="is-m"
+        style="--i: 1"
+        title="Безопасность"
+        :subtitle="userHasPassword ? 'Пароль для входа по email' : 'Вход через Google'"
+      >
+        <form class="st__form" @submit.prevent="savePassword">
+          <p v-if="passwordError" class="cv-note cv-note--err" role="alert">{{ passwordError }}</p>
+          <p v-if="passwordSuccess" class="cv-note cv-note--ok" role="status"><Check :size="14" />{{ passwordSuccess }}</p>
 
-          <p v-if="!userHasPassword" class="oauth-password-hint" role="status">
-            Регистрация выполнена через Google. Вы можете добавить пароль для входа в аккаунт по email и паролю
-            (вход через Google по-прежнему доступен).
+          <p v-if="!userHasPassword" class="cv-note cv-note--info" role="status">
+            <ShieldCheck :size="14" />
+            Аккаунт создан через Google. Добавьте пароль, чтобы входить и по email — вход через Google останется.
           </p>
 
-          <div v-if="userHasPassword" class="form-group">
-            <label for="current-password">Текущий пароль</label>
-            <input 
-              id="current-password"
-              type="password" 
-              v-model="settings.password.current"
-              placeholder="Введите текущий пароль"
-              class="form-input"
-              autocomplete="current-password"
-              :disabled="isLoadingPassword"
-            />
+          <label v-if="userHasPassword" class="cv-field">
+            <span class="cv-label">Текущий пароль</span>
+            <input v-model="settings.password.current" type="password" class="cv-input" placeholder="Введите текущий пароль" autocomplete="current-password" :disabled="isLoadingPassword" />
+          </label>
+          <div class="st__pair">
+            <label class="cv-field">
+              <span class="cv-label">Новый пароль</span>
+              <input v-model="settings.password.new" type="password" class="cv-input" placeholder="От 8 символов" autocomplete="new-password" :disabled="isLoadingPassword" />
+            </label>
+            <label class="cv-field">
+              <span class="cv-label">Повторите пароль</span>
+              <input v-model="settings.password.confirm" type="password" class="cv-input" placeholder="Ещё раз" autocomplete="new-password" :disabled="isLoadingPassword" />
+            </label>
           </div>
+          <p class="st__hint">Минимум 8 символов, обязательно буквы и цифры.</p>
 
-          <div class="form-group">
-            <label for="new-password">Новый пароль</label>
-            <input 
-              id="new-password"
-              type="password" 
-              v-model="settings.password.new"
-              placeholder="Минимум 8 символов, буквы и цифры"
-              class="form-input"
-              autocomplete="new-password"
-              :disabled="isLoadingPassword"
-            />
+          <div class="st__actions">
+            <button type="submit" class="cv-btn cv-btn--primary" :disabled="isLoadingPassword">
+              {{ isLoadingPassword ? 'Сохранение…' : userHasPassword ? 'Изменить пароль' : 'Задать пароль' }}
+            </button>
           </div>
+        </form>
+      </CvWidget>
 
-          <div class="form-group">
-            <label for="confirm-password">Подтвердите новый пароль</label>
-            <input 
-              id="confirm-password"
-              type="password" 
-              v-model="settings.password.confirm"
-              placeholder="Повторите новый пароль"
-              class="form-input"
-              autocomplete="new-password"
-              :disabled="isLoadingPassword"
-            />
+      <!-- Подписка -->
+      <CvWidget v-if="!authStore.user?.is_admin" class="is-m" style="--i: 2" title="Подписка">
+        <div class="st__sub">
+          <div class="st__sub-row">
+            <span class="st__pill" :class="`is-${subTone}`"><i />{{ subStatus }}</span>
+            <span v-if="subDaysLeft != null && subDaysLeft >= 0" class="st__sub-days">
+              <b class="cv-num">{{ subDaysLeft }}</b> {{ plural(subDaysLeft, 'день', 'дня', 'дней') }}
+            </span>
           </div>
-          
-          <button 
-            @click="savePassword" 
-            class="btn-primary"
-            :disabled="isLoadingPassword"
-          >
-            {{
-              isLoadingPassword
-                ? 'Сохранение...'
-                : userHasPassword
-                  ? 'Изменить пароль'
-                  : 'Задать пароль'
-            }}
-          </button>
-        </Widget>
-      </WidgetContainer>
+          <p class="st__lead">
+            <template v-if="subEndsAt && subscription?.has_access">Доступ открыт до {{ dateLong(subEndsAt) }}. </template>
+            <template v-else-if="subEndsAt">Доступ закончился {{ dateLong(subEndsAt) }}. </template>
+            Тарифы, продление и оплата через ЮKassa.
+          </p>
+          <div class="st__actions">
+            <router-link to="/billing" class="cv-btn">
+              <CreditCard :size="15" /> {{ subscription?.has_access ? 'Управлять подпиской' : 'Выбрать тариф' }}
+            </router-link>
+          </div>
+        </div>
+      </CvWidget>
 
       <!-- Поддержка -->
-      <WidgetContainer id="support" :gridColumn="6" minHeight="auto">
-        <Widget title="Поддержка" :icon="MessageCircle">
-          <p class="settings-support-lead">
-            Чат с поддержкой и ответы на частые вопросы доступны на отдельной странице.
+      <CvWidget id="support" class="is-m" style="--i: 3" title="Поддержка">
+        <div class="st__sub">
+          <p class="st__lead">
+            Чат с командой сервиса и ответы на частые вопросы собраны на отдельной странице.
           </p>
-          <router-link to="/support" class="btn-primary settings-support-link">
-            Открыть поддержку
-          </router-link>
-        </Widget>
-      </WidgetContainer>
+          <div class="st__actions">
+            <router-link to="/support" class="cv-btn">
+              <MessageCircle :size="15" /> Открыть поддержку
+            </router-link>
+          </div>
+        </div>
+      </CvWidget>
     </div>
-  </PageLayout>
+  </div>
 </template>
 
 <style scoped>
-.settings-grid {
-  display: grid;
-  gap: var(--spacing);
-  grid-template-columns: repeat(12, 1fr);
-  width: 100%;
-  min-width: 0;
+.st__form, .st__sub { display: flex; flex-direction: column; gap: 14px; height: 100%; }
+.st__who { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--cv-line); }
+.st__avatar {
+  display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 50%;
+  font-family: var(--cv-display); font-size: 15px; font-weight: 600; letter-spacing: .02em; color: var(--cv-accent-ink);
+  background: var(--cv-accent-soft); box-shadow: inset 0 0 0 1px var(--cv-accent-line);
 }
-
-.form-group {
-  margin-bottom: 1rem;
+.st__who-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.st__who-text b { font-size: 14.5px; font-weight: 600; color: var(--cv-ink); }
+.st__who-text span { overflow: hidden; font-size: 12.5px; color: var(--cv-mut); text-overflow: ellipsis; white-space: nowrap; }
+.st__static-ic { flex: none; margin-right: 8px; color: var(--cv-dim); }
+.st__pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.st__hint { margin: -4px 0 0; font-size: 12px; color: var(--cv-dim); }
+.st__actions { display: flex; gap: 8px; margin-top: auto; padding-top: 4px; }
+.st__lead { margin: 0; font-size: 13px; line-height: 1.55; color: var(--cv-mut); }
+.st__sub-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st__sub-days { font-size: 12.5px; color: var(--cv-mut); }
+.st__sub-days b { font-family: var(--cv-display); font-size: 22px; font-weight: 600; letter-spacing: -0.02em; color: var(--cv-ink); }
+.st__pill {
+  display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border-radius: 99px;
+  font-size: 12px; font-weight: 550; color: var(--cv-ink-2); background: rgba(255, 255, 255, .04);
 }
-
-.form-group:last-of-type {
-  margin-bottom: 1.25rem;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 0.375rem;
-  font-size: var(--text-caption-size);
-  font-weight: var(--text-label-weight);
-  color: var(--text-tertiary);
-}
-
-.form-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--axis-border);
-  border-radius: 8px;
-  font-size: var(--text-body-secondary-size);
-  color: var(--text-primary);
-  background: var(--bg-primary);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.form-input::placeholder {
-  color: var(--text-quaternary);
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--lx-accent-soft, rgba(82, 125, 229, 0.15));
-}
-
-.form-input:disabled {
-  background: var(--bg-tertiary);
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.form-textarea {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--axis-border);
-  border-radius: 8px;
-  font-size: var(--text-body-secondary-size);
-  color: var(--text-primary);
-  background: var(--bg-primary);
-  transition: border-color 0.2s, box-shadow 0.2s;
-  resize: vertical;
-  min-height: 100px;
-  font-family: inherit;
-}
-
-.form-textarea::placeholder {
-  color: var(--text-quaternary);
-}
-
-.form-textarea:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--lx-accent-soft, rgba(82, 125, 229, 0.15));
-}
-
-.form-textarea:disabled {
-  background: var(--bg-tertiary);
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.char-count {
-  display: block;
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
-  color: var(--text-quaternary);
-}
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  height: 36px;
-  padding: 0 15px;
-  color: #fff;
-  background: linear-gradient(180deg, #7080ff, #5866ee);
-  border: none;
-  border-radius: var(--cv-r-sm, 10px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 6px 18px -10px rgba(100, 116, 255, .8);
-  font-size: 13px;
-  font-weight: 550;
-  text-decoration: none;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #7b8aff, #616ff2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24), 0 8px 22px -10px rgba(100, 116, 255, .9);
-}
-
-.btn-primary:active:not(:disabled) {
-  transform: scale(.97);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.btn-logout {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 36px;
-  padding: 0 14px;
-  background: transparent;
-  color: var(--cv-mut, var(--text-tertiary));
-  border: 0;
-  box-shadow: inset 0 0 0 1px var(--cv-line-2, var(--axis-border));
-  border-radius: var(--cv-r-sm, 10px);
-  font-size: 13px;
-  font-weight: 550;
-  cursor: pointer;
-  transition: color 0.2s, box-shadow 0.2s, background 0.2s;
-}
-
-.btn-logout:hover {
-  color: var(--cv-down, var(--danger));
-  box-shadow: inset 0 0 0 1px rgba(242, 119, 122, .3);
-  background: var(--cv-down-bg, rgba(239, 68, 68, 0.05));
-}
-
-.message {
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  font-size: var(--text-caption-size);
-}
-
-.message-error {
-  background: var(--lx-down-soft, rgba(239, 68, 68, 0.1));
-  color: var(--danger);
-  border: 1px solid var(--lx-down-line, rgba(239, 68, 68, 0.3));
-}
-
-.message-success {
-  background: var(--lx-up-soft, rgba(28, 189, 136, 0.1));
-  color: var(--success);
-  border: 1px solid var(--lx-up-line, rgba(28, 189, 136, 0.3));
-}
-
-.profile-email-readonly {
-  margin: 0;
-  padding: 0.65rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--axis-border, var(--lx-line, #e5e7eb));
-  background: var(--bg-secondary, var(--lx-surface, #f9fafb));
-  color: var(--text-secondary, var(--lx-ink, #374151));
-  font-size: var(--text-caption-size, 0.875rem);
-  word-break: break-all;
-}
-
-.profile-email-hint {
-  margin: 0.35rem 0 0;
-  font-size: 0.75rem;
-  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
-  line-height: 1.4;
-}
-
-.oauth-password-hint {
-  margin: 0 0 1rem;
-  padding: 0.65rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--axis-border, var(--lx-line, #e5e7eb));
-  background: var(--bg-secondary, var(--lx-surface, #f9fafb));
-  color: var(--text-secondary, var(--lx-ink, #374151));
-  font-size: var(--text-caption-size, 0.875rem);
-  line-height: 1.45;
-}
-
-.settings-support-lead {
-  margin: 0 0 1rem;
-  font-size: var(--text-caption-size, 0.875rem);
-  line-height: 1.5;
-  color: var(--text-secondary, var(--lx-ink-2, #475569));
-}
-
-.settings-support-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  box-sizing: border-box;
-}
-
-@media (max-width: 768px) {
-  .settings-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .settings-grid :deep(.widget-container) {
-    grid-column: 1 / -1 !important;
-  }
+.st__pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.st__pill.is-on { color: var(--cv-up); background: var(--cv-up-bg); }
+.st__pill.is-trial { color: var(--cv-accent-ink); background: var(--cv-accent-soft); }
+.st__pill.is-off { color: var(--cv-down); background: var(--cv-down-bg); }
+@media (max-width: 600px) {
+  .st__pair { grid-template-columns: 1fr; }
+  .st__actions > .cv-btn { flex: 1; }
 }
 </style>

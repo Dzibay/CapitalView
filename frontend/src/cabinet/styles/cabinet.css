@@ -171,6 +171,37 @@ body.cv-body { background: #08090b; }
 .cv-btn--icon { width: 36px; padding: 0; }
 .cv-btn--icon.cv-btn--sm { width: 30px; }
 .cv-btn.is-on { color: var(--cv-accent-ink); background: var(--cv-accent-soft); box-shadow: inset 0 0 0 1px var(--cv-accent-line); }
+.cv-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.cv-btn--danger:hover { color: var(--cv-down); background: var(--cv-down-bg); box-shadow: inset 0 0 0 1px rgba(242, 119, 122, .28); }
+
+/* --------------------------------------------------------------------------
+   Поля форм и уведомления
+   -------------------------------------------------------------------------- */
+.cv-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cv-label { font-size: 12px; font-weight: 550; color: var(--cv-mut); }
+.cv-input {
+  width: 100%; height: 40px; padding: 0 12px; border: 0; border-radius: var(--cv-r-sm);
+  font: inherit; font-size: 13.5px; color: var(--cv-ink);
+  background: rgba(255, 255, 255, .03);
+  box-shadow: inset 0 0 0 1px var(--cv-line-2);
+  transition: box-shadow .2s var(--cv-ease), background .2s var(--cv-ease);
+}
+.cv-input::placeholder { color: var(--cv-dim); }
+.cv-input:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--cv-line-3); }
+.cv-input:focus { outline: none; background: rgba(255, 255, 255, .045); box-shadow: inset 0 0 0 1px var(--cv-accent-line), 0 0 0 3px var(--cv-accent-soft); }
+.cv-input:disabled { opacity: .55; cursor: not-allowed; }
+textarea.cv-input { height: auto; padding: 10px 12px; line-height: 1.5; resize: vertical; }
+.cv-input--static { display: flex; align-items: center; color: var(--cv-ink-2); background: transparent; box-shadow: inset 0 0 0 1px var(--cv-line); overflow-wrap: anywhere; }
+
+.cv-note {
+  display: flex; align-items: flex-start; gap: 9px; margin: 0; padding: 10px 12px; border-radius: var(--cv-r-sm);
+  font-size: 12.5px; line-height: 1.5; color: var(--cv-ink-2);
+  background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px var(--cv-line);
+}
+.cv-note > svg { flex: none; margin-top: 2px; }
+.cv-note--err { color: var(--cv-down); background: var(--cv-down-bg); box-shadow: inset 0 0 0 1px rgba(242, 119, 122, .22); }
+.cv-note--ok { color: var(--cv-up); background: var(--cv-up-bg); box-shadow: inset 0 0 0 1px rgba(91, 209, 139, .22); }
+.cv-note--info { color: var(--cv-accent-ink); background: var(--cv-accent-soft); box-shadow: inset 0 0 0 1px var(--cv-accent-line); }
 
 .cv-kbd {
   display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px;

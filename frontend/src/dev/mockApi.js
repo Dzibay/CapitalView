@@ -515,6 +515,11 @@ const user = () => ({
   },
 })
 
+const supportThread = [
+  { id: 1, is_from_admin: false, message: 'Здравствуйте! Подскажите, как добавить второй брокерский счёт?', created_at: new Date(Date.now() - 2 * DAY - 3600000).toISOString() },
+  { id: 2, is_from_admin: true, message: 'Добрый день! Откройте «Активы» → «Импорт» и подключите ещё один токен — счёт появится отдельным портфелем.', created_at: new Date(Date.now() - 2 * DAY).toISOString() },
+]
+
 const tariffs = [
   { id: 1, name: 'Старт', period_days: 30, price_rub: 390, is_active: true },
   { id: 2, name: 'Оптимальный', period_days: 180, price_rub: 1990, is_active: true },
@@ -664,6 +669,11 @@ function route(method, url, params, body) {
   if (path === '/transactions/') return { transactions: s.transactions }
   if (path === '/operations/') return { operations: [] }
   if (path.startsWith('/missed-payouts')) return { missed_payouts: [] }
+  if (path === '/support/messages') return { messages: supportThread }
+  if (path === '/support/message' && method === 'post') {
+    supportThread.push({ id: supportThread.length + 1, is_from_admin: false, message: String(body?.message || ''), created_at: new Date().toISOString() })
+    return {}
+  }
   if (path === '/billing/public') return { trial_days: 14, tariffs }
   if (path === '/billing/me') return { subscription: user().subscription, tariffs, trial_days: 14, timeline: billingTimeline(), payments: [] }
   if (/^\/portfolios\/\d+\/description$/.test(path) && method !== 'get') {
