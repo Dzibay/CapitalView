@@ -409,8 +409,8 @@ onUnmounted(() => {
   left: 12px;
   font-size: 11px;
   font-weight: 600;
-  color: #6b7280;
-  background: #fff;
+  color: var(--lx-ink-2, #6b7280);
+  background: var(--lx-surface, #fff);
   padding: 0 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -423,9 +423,9 @@ onUnmounted(() => {
   width: 100%;
   max-width: 100%;
   padding: 9px 36px 9px 12px;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--lx-line, #e5e7eb);
   border-radius: 10px;
-  background: #fff;
+  background: var(--lx-surface, #fff);
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
@@ -454,19 +454,19 @@ onUnmounted(() => {
 }
 
 .custom-select:hover {
-  border-color: #d1d5db;
-  background: #fafafa;
+  border-color: var(--lx-line, #d1d5db);
+  background: var(--lx-surface, #fafafa);
 }
 
 .custom-select.is-open {
-  border-color: var(--primary, #2f5f8f);
-  box-shadow: 0 0 0 2px rgba(47, 95, 143, 0.15);
-  background: #fff;
+  border-color: var(--primary, var(--lx-accent, #2f5f8f));
+  box-shadow: 0 0 0 2px var(--lx-accent-soft, rgba(47, 95, 143, 0.15));
+  background: var(--lx-surface, #fff);
 }
 
 .custom-select-value {
   font-size: 14px;
-  color: #111827;
+  color: var(--lx-ink, #111827);
   font-weight: 400;
   flex: 1;
   overflow: hidden;
@@ -475,7 +475,7 @@ onUnmounted(() => {
 }
 
 .custom-select-value.placeholder {
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
 }
 
 .custom-select-arrow {
@@ -483,7 +483,7 @@ onUnmounted(() => {
   right: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-size: 12px;
   transition: all 0.2s ease;
   pointer-events: none;
@@ -493,18 +493,18 @@ onUnmounted(() => {
 }
 
 .custom-select:hover .custom-select-arrow {
-  color: #374151;
+  color: var(--lx-ink, #374151);
 }
 
 .custom-select.is-open .custom-select-arrow {
   transform: translateY(-50%) rotate(180deg);
-  color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
 }
 
 .custom-select-dropdown {
   position: fixed !important;
-  background: #fff !important;
-  border: 1.5px solid #e5e7eb !important;
+  background: var(--lx-surface, #fff) !important;
+  border: 1.5px solid var(--lx-line, #e5e7eb) !important;
   border-radius: 8px !important;
   box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05) !important;
   overflow-y: auto !important;
@@ -556,17 +556,17 @@ onUnmounted(() => {
 }
 
 .custom-select-dropdown::-webkit-scrollbar-track {
-  background: #f9fafb;
+  background: var(--lx-surface, #f9fafb);
   border-radius: 3px;
 }
 
 .custom-select-dropdown::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--lx-fill-2, #d1d5db);
   border-radius: 3px;
 }
 
 .custom-select-dropdown::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--lx-fill-3, #9ca3af);
 }
 
 .custom-select-option {
@@ -578,7 +578,7 @@ onUnmounted(() => {
   transition: all 0.15s ease;
   border-left: 3px solid transparent;
   font-size: 14px;
-  color: #111827;
+  color: var(--lx-ink, #111827);
   position: relative;
   min-width: 0;
   overflow: hidden;
@@ -604,25 +604,25 @@ onUnmounted(() => {
 }
 
 .custom-select-option:hover {
-  background: linear-gradient(90deg, #f3f4f6 0%, #f9fafb 100%);
-  border-left-color: #3b82f6;
+  background: linear-gradient(90deg, var(--lx-fill, #f3f4f6) 0%, var(--lx-surface, #f9fafb) 100%);
+  border-left-color: var(--lx-accent, #3b82f6);
   padding-left: 13px;
 }
 
 .custom-select-option.is-selected {
-  background: linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%);
-  color: #2563eb;
+  background: linear-gradient(90deg, var(--lx-fill, #eff6ff) 0%, var(--lx-fill, #dbeafe) 100%);
+  color: var(--lx-accent-ink, #2563eb);
   font-weight: 600;
-  border-left-color: #3b82f6;
-  box-shadow: inset 0 0 0 1px rgba(59,130,246,0.1);
+  border-left-color: var(--lx-accent, #3b82f6);
+  box-shadow: inset 0 0 0 1px var(--lx-accent-soft, rgba(59,130,246,0.1));
 }
 
 .custom-select-option.is-selected:hover {
-  background: linear-gradient(90deg, #dbeafe 0%, #bfdbfe 100%);
+  background: linear-gradient(90deg, var(--lx-fill, #dbeafe) 0%, var(--lx-accent-soft, #bfdbfe) 100%);
 }
 
 .check-icon {
-  color: #2563eb;
+  color: var(--lx-accent-ink, #2563eb);
   font-weight: 700;
   font-size: 18px;
   margin-left: 8px;
@@ -632,7 +632,7 @@ onUnmounted(() => {
   justify-content: center;
   width: 20px;
   height: 20px;
-  background: rgba(37,99,235,0.1);
+  background: var(--lx-accent-soft, rgba(37,99,235,0.1));
   border-radius: 50%;
   line-height: 1;
 }

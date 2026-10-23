@@ -424,10 +424,10 @@ function mobilePlTotalClass(asset) {
 }
 
 .portfolio-card {
-  background: #ffffff;
+  background: var(--lx-surface, #ffffff);
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  border: 1px solid #eef0f2;
+  border: 1px solid var(--lx-line, #eef0f2);
   overflow: hidden;
   transition: box-shadow 0.2s;
   min-width: 0;
@@ -441,8 +441,8 @@ function mobilePlTotalClass(asset) {
 .portfolio-card.is-child {
   margin-top: 16px;
   box-shadow: none;
-  border: 1px solid #e2e8f0;
-  background: #fcfcfc;
+  border: 1px solid var(--lx-line, #e2e8f0);
+  background: var(--lx-surface, #fcfcfc);
 }
 
 /* --- Шапка --- */
@@ -451,17 +451,17 @@ function mobilePlTotalClass(asset) {
   justify-content: space-between;
   align-items: center;
   padding: 14px 20px;
-  background: #fff;
+  background: var(--lx-surface, #fff);
   cursor: pointer;
   user-select: none;
   transition: background 0.2s;
   min-width: 0;
 }
 .portfolio-card.is-child > .portfolio-header {
-  background: #fcfcfc;
+  background: var(--lx-surface, #fcfcfc);
 }
 .portfolio-header:hover {
-  background: #f8fafc;
+  background: var(--lx-surface, #f8fafc);
 }
 
 .portfolio-info {
@@ -474,7 +474,7 @@ function mobilePlTotalClass(asset) {
 
 .toggle-icon {
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--lx-mut, #94a3b8);
   transition: transform 0.2s ease;
 }
 .toggle-icon.rotated {
@@ -492,7 +492,7 @@ function mobilePlTotalClass(asset) {
 .portfolio-name {
   font-weight: 600;
   font-size: 16px;
-  color: #1e293b;
+  color: var(--lx-ink, #1e293b);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -507,7 +507,7 @@ function mobilePlTotalClass(asset) {
 
 .portfolio-value {
   font-size: 14px;
-  color: #64748b;
+  color: var(--lx-ink-2, #64748b);
   font-weight: 500;
 }
 
@@ -517,7 +517,7 @@ function mobilePlTotalClass(asset) {
 
 /* --- Тело --- */
 .portfolio-body {
-  border-top: 1px solid #eef0f2;
+  border-top: 1px solid var(--lx-line, #eef0f2);
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -526,14 +526,14 @@ function mobilePlTotalClass(asset) {
 /* --- Обёртка дочерних портфелей (базовые стили, переопределяются в @media) --- */
 .child-portfolios {
   padding: 0 16px 16px 16px;
-  background: #ffffff;
+  background: var(--lx-surface, #ffffff);
 }
 
 /* --- Баланс портфеля --- */
 .portfolio-balance-section {
   padding: 12px 20px;
-  border-top: 1px solid #eef0f2;
-  background: #fafbfc;
+  border-top: 1px solid var(--lx-line, #eef0f2);
+  background: var(--lx-surface, #fafbfc);
   font-size: 13px;
 }
 
@@ -545,21 +545,21 @@ function mobilePlTotalClass(asset) {
 }
 
 .balance-label {
-  color: #64748b;
+  color: var(--lx-ink-2, #64748b);
   font-weight: 500;
 }
 
 .balance-amount {
-  color: #1e293b;
+  color: var(--lx-ink, #1e293b);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace;
+  font-family: inherit; font-variant-numeric: tabular-nums;
 }
 
 .empty-state {
   padding: 24px;
   text-align: center;
-  color: #94a3b8;
+  color: var(--lx-mut, #94a3b8);
   font-style: italic;
   font-size: 14px;
 }
@@ -687,22 +687,22 @@ function mobilePlTotalClass(asset) {
   min-width: 700px;
   border-collapse: collapse;
   font-size: 13px;
-  color: #334155;
+  color: var(--lx-ink, #334155);
   table-layout: auto;
 }
 
 .asset-table th {
   font-weight: 600;
-  color: #64748b;
+  color: var(--lx-ink-2, #64748b);
   padding: 12px 16px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--lx-surface, #f8fafc);
+  border-bottom: 1px solid var(--lx-line, #e2e8f0);
   white-space: nowrap;
 }
 
 .asset-table td {
   padding: 12px 16px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--lx-line, #f1f5f9);
   vertical-align: middle;
 }
 
@@ -711,7 +711,7 @@ function mobilePlTotalClass(asset) {
 }
 
 .asset-table tr:hover td {
-  background: #fbfbfc;
+  background: var(--lx-surface, #fbfbfc);
 }
 
 .asset-table tr.sold-asset {
@@ -724,7 +724,7 @@ function mobilePlTotalClass(asset) {
 
 .sold-badge {
   font-size: 11px;
-  color: #ef4444;
+  color: var(--lx-down, #ef4444);
   font-weight: 500;
   margin-left: 6px;
 }
@@ -746,7 +746,7 @@ function mobilePlTotalClass(asset) {
 
 /* Настройки шрифта */
 .num-font {
-  font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace;
+  font-family: inherit; font-variant-numeric: tabular-nums;
   font-size: 12px;
   letter-spacing: -0.3px;
 }
@@ -756,10 +756,10 @@ function mobilePlTotalClass(asset) {
 
 /* Цвета */
 .text-green {
-  color: #10b981;
+  color: var(--lx-up, #10b981);
 }
 .text-red {
-  color: #ef4444;
+  color: var(--lx-down, #ef4444);
 }
 
 /* Стили ячеек актива */
@@ -767,13 +767,13 @@ function mobilePlTotalClass(asset) {
   cursor: pointer;
 }
 .cell-name.clickable:hover {
-  background: #f1f5f9;
+  background: var(--lx-fill, #f1f5f9);
 }
 .m-asset-row--clickable {
   cursor: pointer;
 }
 .m-asset-row--clickable:active {
-  background: #f8fafc;
+  background: var(--lx-surface, #f8fafc);
 }
 .asset-main {
   display: flex;
@@ -781,7 +781,7 @@ function mobilePlTotalClass(asset) {
 }
 .asset-name {
   font-weight: 500;
-  color: #0f172a;
+  color: var(--lx-ink, #0f172a);
   margin-bottom: 2px;
 }
 .asset-meta {
@@ -791,18 +791,18 @@ function mobilePlTotalClass(asset) {
 }
 .asset-ticker {
   font-size: 11px;
-  color: #94a3b8;
-  background: #f1f5f9;
+  color: var(--lx-mut, #94a3b8);
+  background: var(--lx-fill, #f1f5f9);
   padding: 1px 4px;
   border-radius: 4px;
 }
 .badge-leverage {
   font-size: 10px;
-  background: #fff7ed;
-  color: #ea580c;
+  background: var(--lx-fill, #fff7ed);
+  color: var(--lx-warn, #ea580c);
   padding: 1px 4px;
   border-radius: 4px;
-  border: 1px solid #ffedd5;
+  border: 1px solid var(--lx-line, #ffedd5);
   font-weight: bold;
 }
 
@@ -811,7 +811,7 @@ function mobilePlTotalClass(asset) {
   background: transparent;
   border: none;
   font-size: 18px;
-  color: #94a3b8;
+  color: var(--lx-mut, #94a3b8);
   cursor: pointer;
   padding: 6px 8px;
   border-radius: 8px;
@@ -835,15 +835,15 @@ function mobilePlTotalClass(asset) {
 }
 
 .menu-btn:hover {
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  color: #3b82f6;
+  background: linear-gradient(180deg, var(--lx-surface, #f8fafc) 0%, var(--lx-fill, #f1f5f9) 100%);
+  color: var(--lx-accent-ink, #3b82f6);
   transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(59,130,246,0.15);
+  box-shadow: 0 2px 6px var(--lx-accent-soft, rgba(59,130,246,0.15));
 }
 
 .menu-btn:active {
   transform: translateY(0);
-  box-shadow: 0 1px 3px rgba(59,130,246,0.1);
+  box-shadow: 0 1px 3px var(--lx-accent-soft, rgba(59,130,246,0.1));
 }
 
 .icon-btn {
@@ -861,7 +861,7 @@ function mobilePlTotalClass(asset) {
   max-width: 100%;
   box-sizing: border-box;
   padding: 0;
-  background: #fff;
+  background: var(--lx-surface, #fff);
 }
 
 .m-asset-row {
@@ -869,7 +869,7 @@ function mobilePlTotalClass(asset) {
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
-  border-bottom: 1px solid #eef0f2;
+  border-bottom: 1px solid var(--lx-line, #eef0f2);
   min-width: 0;
   box-sizing: border-box;
 }
@@ -898,7 +898,7 @@ function mobilePlTotalClass(asset) {
 .m-asset-name {
   font-weight: 500;
   font-size: 13px;
-  color: #0f172a;
+  color: var(--lx-ink, #0f172a);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -924,11 +924,11 @@ function mobilePlTotalClass(asset) {
   align-items: baseline;
   flex-shrink: 0;
   gap: 0;
-  color: #334155;
+  color: var(--lx-ink, #334155);
 }
 
 .m-asset-dot {
-  color: #94a3b8;
+  color: var(--lx-mut, #94a3b8);
   font-weight: 700;
   line-height: 1;
   margin-right: 10px;
@@ -954,7 +954,7 @@ function mobilePlTotalClass(asset) {
 .m-asset-value {
   font-weight: 600;
   font-size: 14px;
-  color: #334155;
+  color: var(--lx-ink, #334155);
   white-space: nowrap;
 }
 

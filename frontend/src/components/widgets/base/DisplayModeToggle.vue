@@ -34,7 +34,7 @@ const updateValue = (value) => {
 <style scoped>
 .display-mode-toggle {
   display: flex;
-  background-color: #f3f4f6;
+  background-color: var(--lx-fill, #f3f4f6);
   padding: 0.25rem;
   border-radius: 8px;
   gap: 0.25rem;
@@ -53,13 +53,13 @@ const updateValue = (value) => {
 }
 
 .mode-toggle-btn:hover {
-  background-color: #e5e7eb;
+  background-color: var(--lx-fill, #e5e7eb);
 }
 
 .mode-toggle-btn.active {
-  background-color: #fff;
+  background-color: var(--lx-surface, #fff);
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  color: #5478EA;
+  color: var(--lx-accent-ink, #5478EA);
   font-weight: 600;
 }
 </style>

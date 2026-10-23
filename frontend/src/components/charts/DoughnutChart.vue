@@ -14,9 +14,7 @@ const props = defineProps({
   colors: {
     type: Array,
     default: () => [
-      '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-      '#f472b6', '#60a5fa', '#fbbf24', '#a78bfa', '#ec4899',
-      '#14b8a6', '#f97316', '#6366f1'
+      '#7381ff', '#b0b8ff', '#5060dc', '#c6cad6', '#8e93a5', '#5f6478', '#a08cf5', '#7a7f92', '#464a57'
     ]
   },
   height: {

@@ -300,7 +300,7 @@ const topSectionStyle = computed(() =>
 .main-value {
   font-size: var(--widget-font-main, 1.5rem);
   font-weight: var(--widget-font-main-weight, 600);
-  color: var(--text-primary, #111827);
+  color: var(--text-primary, var(--lx-ink, #111827));
   line-height: 1.2;
   margin: 0;
 }
@@ -310,7 +310,7 @@ const topSectionStyle = computed(() =>
 .secondary-text {
   margin: 0;
   font-size: var(--widget-font-secondary, 1rem);
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   line-height: 1.2;
 }
 
@@ -325,7 +325,7 @@ const topSectionStyle = computed(() =>
 }
 .profit-label {
   font-size: var(--widget-font-secondary, 1rem);
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   font-weight: var(--text-body-secondary-weight);
 }
 .profit-right {
@@ -340,10 +340,10 @@ const topSectionStyle = computed(() =>
   font-weight: var(--text-value-weight);
 }
 .profit-value.positive {
-  color: var(--positiveColor, #1CBD88);
+  color: var(--positiveColor, var(--lx-up, #1CBD88));
 }
 .profit-value.negative {
-  color: var(--negativeColor, #EF4444);
+  color: var(--negativeColor, var(--lx-down, #EF4444));
 }
 
 .profit-from-invested {
@@ -351,17 +351,17 @@ const topSectionStyle = computed(() =>
   text-align: right;
 }
 .profit-from-invested .positive {
-  color: var(--positiveColor, #1cbd88);
+  color: var(--positiveColor, var(--lx-up, #1cbd88));
   font-weight: var(--text-value-weight, 600);
 }
 .profit-from-invested .negative {
-  color: var(--negativeColor, #ef4444);
+  color: var(--negativeColor, var(--lx-down, #ef4444));
   font-weight: var(--text-value-weight, 600);
 }
 
 .separator {
   height: 1px;
-  background: #e2e8f0;
+  background: var(--lx-fill, #e2e8f0);
   margin: 0.5rem 0;
 }
 
@@ -378,12 +378,12 @@ const topSectionStyle = computed(() =>
 .bottom-label {
   font-size: var(--widget-font-label, 0.95rem);
   font-weight: var(--widget-font-label-weight, 500);
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
 }
 .bottom-value {
   font-size: var(--widget-font-main, 1.5rem);
   font-weight: var(--widget-font-main-weight, 600);
-  color: var(--text-primary, #111827);
+  color: var(--text-primary, var(--lx-ink, #111827));
   line-height: 1.2;
 }
 </style>

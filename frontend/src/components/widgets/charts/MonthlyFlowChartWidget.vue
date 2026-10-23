@@ -34,10 +34,10 @@ const chartDatasets = computed(() => {
     datasets.push({
       label: 'Приток',
       data: props.monthlyFlow?.map(m => m.inflow || 0) || [],
-      backgroundColor: 'rgba(16, 185, 129, 0.9)',
+      backgroundColor: 'rgba(91, 209, 139, 0.75)',
       borderColor: 'transparent',
       borderWidth: 0,
-      hoverBackgroundColor: 'rgba(16, 185, 129, 1)',
+      hoverBackgroundColor: 'rgba(91, 209, 139, 1)',
       hoverBorderColor: 'transparent',
       categoryPercentage: 0.8,
       barPercentage: 0.95
@@ -48,10 +48,10 @@ const chartDatasets = computed(() => {
     datasets.push({
       label: 'Отток',
       data: props.monthlyFlow?.map(m => m.outflow || 0) || [],
-      backgroundColor: 'rgba(239, 68, 68, 0.9)',
+      backgroundColor: 'rgba(242, 119, 122, 0.75)',
       borderColor: 'transparent',
       borderWidth: 0,
-      hoverBackgroundColor: 'rgba(239, 68, 68, 1)',
+      hoverBackgroundColor: 'rgba(242, 119, 122, 1)',
       hoverBorderColor: 'transparent',
       categoryPercentage: 0.8,
       barPercentage: 0.95
@@ -62,10 +62,10 @@ const chartDatasets = computed(() => {
     datasets.push({
       label: 'Чистый приток',
       data: props.monthlyFlow?.map(m => (m.inflow || 0) + (m.outflow || 0)) || [],
-      backgroundColor: 'rgba(59, 130, 246, 0.9)',
+      backgroundColor: 'rgba(115, 129, 255, 0.85)',
       borderColor: 'transparent',
       borderWidth: 0,
-      hoverBackgroundColor: 'rgba(59, 130, 246, 1)',
+      hoverBackgroundColor: 'rgba(115, 129, 255, 1)',
       hoverBorderColor: 'transparent',
       categoryPercentage: 0.8,
       barPercentage: 0.95
@@ -83,19 +83,19 @@ const chartDatasets = computed(() => {
         <ToggleSwitch 
           v-model="showInflow"
           label="Приток"
-          active-color="#10b981"
+          active-color="#3f9d68"
           hover-color="#059669"
         />
         <ToggleSwitch 
           v-model="showOutflow"
           label="Отток"
-          active-color="#ef4444"
+          active-color="#c35a5d"
           hover-color="#dc2626"
         />
         <ToggleSwitch 
           v-model="showDifference"
           label="Чистый приток"
-          active-color="#3b82f6"
+          active-color="#5866ee"
           hover-color="#2563eb"
         />
       </div>
@@ -127,7 +127,7 @@ const chartDatasets = computed(() => {
   width: 25px;
   height: 25px;
   border-radius: 6px;
-  background-color: #F6F6F6;
+  background-color: var(--lx-fill, #F6F6F6);
 }
 
 .widget-title h2 {
@@ -161,7 +161,7 @@ const chartDatasets = computed(() => {
   text-align: center;
   color: var(--text-tertiary);
   font-size: var(--text-caption-size);
-  background: white;
+  background: var(--lx-surface, white);
   z-index: 10;
 }
 

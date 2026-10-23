@@ -7,7 +7,8 @@ const props = defineProps({
   changeValue: { type: Number, default: 0 },
   changePercent: { type: Number, default: 0 },
   formatValue: { type: Function, default: null },
-  showDot: { type: Boolean, default: true }
+  showDot: { type: Boolean, default: true },
+  unit: { type: String, default: '₽' }
 })
 
 const isPositive = computed(() => props.changeValue >= 0)
@@ -31,7 +32,7 @@ const absChangeText = computed(() => {
   const abs = Math.abs(props.changeValue)
   const sign = props.changeValue >= 0 ? '+' : '−'
   const formatted = props.formatValue ? props.formatValue(abs) : abs.toLocaleString('ru-RU')
-  return `${sign}${formatted} ₽`
+  return props.unit ? `${sign}${formatted} ${props.unit}` : `${sign}${formatted}`
 })
 
 const percentText = computed(() => {
@@ -70,7 +71,7 @@ const percentText = computed(() => {
 .cps-date-range {
   font-size: 12px;
   font-weight: 400;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   letter-spacing: 0.01em;
 }
 
@@ -82,11 +83,11 @@ const percentText = computed(() => {
 }
 
 .cps-dot--positive {
-  background-color: #3b82f6;
+  background-color: var(--lx-accent, #3b82f6);
 }
 
 .cps-dot--negative {
-  background-color: #ef4444;
+  background-color: var(--lx-down, #ef4444);
 }
 
 .cps-change {
@@ -98,11 +99,11 @@ const percentText = computed(() => {
 }
 
 .cps-change--positive {
-  color: var(--positiveColor, #1cbd88);
+  color: var(--positiveColor, var(--lx-up, #1cbd88));
 }
 
 .cps-change--negative {
-  color: var(--negativeColor, #ef4444);
+  color: var(--negativeColor, var(--lx-down, #ef4444));
 }
 
 .cps-pct {

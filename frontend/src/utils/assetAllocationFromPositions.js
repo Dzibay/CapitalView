@@ -26,15 +26,7 @@ export function assetAllocationFromPositions(assets) {
     datasets: [
       {
         backgroundColor: [
-          '#3b82f6',
-          '#f59e0b',
-          '#ef4444',
-          '#8b5cf6',
-          '#10b981',
-          '#f472b6',
-          '#60a5fa',
-          '#fbbf24',
-          '#a78bfa',
+          '#7381ff', '#b0b8ff', '#5060dc', '#c6cad6', '#8e93a5', '#5f6478', '#a08cf5', '#7a7f92', '#464a57',
         ],
         data: Object.values(allocation),
       },

@@ -117,13 +117,13 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onClickOutside))
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
-  color: var(--text-secondary, #374151);
+  color: var(--text-secondary, var(--lx-ink, #374151));
   white-space: nowrap;
 }
 
 .chart-variant-trigger:hover,
 .chart-variant-trigger.is-open {
-  background: var(--bg-tertiary, #f3f4f6);
+  background: var(--bg-tertiary, var(--lx-fill, #f3f4f6));
 }
 
 .chart-variant-label {
@@ -135,7 +135,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onClickOutside))
 .chart-variant-chevron {
   flex-shrink: 0;
   transition: transform 0.2s ease;
-  color: var(--text-tertiary, #9ca3b8);
+  color: var(--text-tertiary, var(--lx-mut, #9ca3b8));
 }
 
 .chart-variant-trigger.is-open .chart-variant-chevron {
@@ -147,8 +147,8 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onClickOutside))
   top: calc(100% + 4px);
   right: 0;
   min-width: 160px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--lx-surface, #fff);
+  border: 1px solid var(--lx-line, #e5e7eb);
   border-radius: 10px;
   box-shadow: 0 8px 24px -4px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.04);
   z-index: 50;
@@ -162,18 +162,18 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onClickOutside))
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   transition: background 0.12s ease;
   white-space: nowrap;
 }
 
 .chart-variant-option:hover {
-  background: #f3f4f6;
+  background: var(--lx-fill, #f3f4f6);
 }
 
 .chart-variant-option.is-selected {
-  color: #527de5;
-  background: rgba(82, 125, 229, 0.08);
+  color: var(--lx-accent-ink, #527de5);
+  background: var(--lx-accent-soft, rgba(82, 125, 229, 0.08));
 }
 
 .chart-variant-dd-enter-active {

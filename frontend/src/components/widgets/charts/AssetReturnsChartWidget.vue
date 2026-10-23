@@ -241,8 +241,8 @@ const chartDatasets = computed(() => {
     {
       label: displayMode.value === 'currency' ? 'Прибыль' : 'Доходность',
       data: values,
-      backgroundColor: signs.map(isPositive => isPositive ? 'rgba(16, 185, 129, 0.85)' : 'rgba(239, 68, 68, 0.85)'),
-      borderColor: signs.map(isPositive => isPositive ? '#10b981' : '#ef4444'),
+      backgroundColor: signs.map(isPositive => isPositive ? 'rgba(91, 209, 139, 0.8)' : 'rgba(242, 119, 122, 0.8)'),
+      borderColor: signs.map(isPositive => isPositive ? '#5bd18b' : '#f2777a'),
       borderWidth: 0,
       borderRadius: 4,
       maxBarThickness: 30,
@@ -429,7 +429,7 @@ const percentPlugin = {
         // Проверяем, что текст помещается в видимую область
         if (textX >= chartArea.left && textX <= chartArea.right && 
             textY >= chartArea.top && textY <= chartArea.bottom) {
-          ctx.fillStyle = '#374151'
+          ctx.fillStyle = '#c3c5ce'
           ctx.fillText(text, textX, textY)
         }
       }

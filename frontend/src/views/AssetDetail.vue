@@ -487,7 +487,7 @@ const chartData = computed(() => {
         datasets = [{
           label: 'Стоимость позиции',
           data,
-          color: '#3b82f6',
+          color: '#7381ff',
           fill: true
         }]
         
@@ -513,7 +513,7 @@ const chartData = computed(() => {
     datasets = [{
       label: 'Стоимость позиции',
       data,
-      color: '#3b82f6',
+      color: '#7381ff',
       fill: true
     }]
   } else if (selectedChartType.value === 'quantity') {
@@ -538,7 +538,7 @@ const chartData = computed(() => {
         datasets = [{
           label: 'Количество актива',
           data,
-          color: '#10b981',
+          color: '#b0b8ff',
           fill: true
         }]
         
@@ -555,7 +555,7 @@ const chartData = computed(() => {
     datasets = [{
       label: 'Количество актива',
       data,
-      color: '#10b981',
+      color: '#b0b8ff',
       fill: true
     }]
   } else if (selectedChartType.value === 'price') {
@@ -564,7 +564,7 @@ const chartData = computed(() => {
     datasets = [{
       label: 'Цена единицы актива',
       data,
-      color: '#f59e0b',
+      color: '#7381ff',
       fill: true
     }]
   }
@@ -593,7 +593,7 @@ const priceChartData = computed(() => {
     datasets: [{
       label: 'Цена единицы актива',
       data,
-      color: '#f59e0b',
+      color: '#7381ff',
       fill: true
     }]
   }
@@ -624,7 +624,7 @@ const positionChartData = computed(() => {
         datasets: [{
           label: 'Стоимость позиции',
           data: filteredValues.map(v => Number(v.position_value ?? 0)),
-          color: '#3b82f6',
+          color: '#7381ff',
           fill: true
         }]
       }
@@ -664,7 +664,7 @@ const positionChartData = computed(() => {
         const price = priceMap.get(date) || 0
         return (qty * price / leverage) * currencyRate
       }),
-      color: '#3b82f6',
+      color: '#7381ff',
       fill: true
     }]
   }
@@ -691,7 +691,7 @@ const quantityChartData = computed(() => {
         datasets: [{
           label: 'Количество актива',
           data: filteredValues.map(v => v.quantity || 0),
-          color: '#10b981',
+          color: '#b0b8ff',
           fill: true
         }]
       }
@@ -719,7 +719,7 @@ const quantityChartData = computed(() => {
     datasets: [{
       label: 'Количество актива',
       data: labels.map(date => quantities[date.split('T')[0]] || 0),
-      color: '#10b981',
+      color: '#b0b8ff',
       fill: true
     }]
   }
@@ -1154,7 +1154,7 @@ const contributionAssetAllocation = computed(() => {
     labels: [contributionAssetLabel.value, 'Остальные активы'],
     datasets: [{
       data: [asset, rest],
-      backgroundColor: ['#3b82f6', '#e5e7eb']
+      backgroundColor: ['#7381ff', 'rgba(255, 255, 255, 0.08)']
     }]
   }
 })
@@ -1954,6 +1954,7 @@ async function handlePortfolioChange(portfolioId) {
                   :changeValue="priceChartPeriodStats.changeValue"
                   :changePercent="priceChartPeriodStats.changePercent"
                   :formatValue="formatPriceChangeValue"
+                  unit=""
                 />
               </template>
               <div class="asset-chart-body">
@@ -2001,6 +2002,7 @@ async function handlePortfolioChange(portfolioId) {
                   :changeValue="analyticsChartPeriodStats.changeValue"
                   :changePercent="analyticsChartPeriodStats.changePercent"
                   :formatValue="formatAnalyticsChangeValue"
+                  unit=""
                 />
               </template>
               <div class="asset-chart-body">
@@ -2179,7 +2181,7 @@ async function handlePortfolioChange(portfolioId) {
 <style scoped>
 .asset-detail-page {
   min-height: 100vh;
-  background: #f8fafc;
+  background: var(--lx-transparent, #f8fafc);
 }
 
 .widgets-grid {
@@ -2226,21 +2228,24 @@ async function handlePortfolioChange(portfolioId) {
   border-radius: 0.375rem;
   cursor: pointer;
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   transition: all 0.2s;
 }
 
 .btn-back:hover {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--lx-fill, #f3f4f6);
+  color: var(--lx-ink, #111827);
 }
 
 /* Блок с названием актива, ценой, метриками и табами */
 .asset-overview-block {
-  background: white;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, var(--cv-surface-2, white), var(--cv-surface, white)) padding-box,
+    var(--cv-card-border, transparent) border-box;
   padding: 1.5rem 1.5rem 0rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  border-radius: var(--cv-r-lg, 12px);
+  box-shadow: var(--cv-card-shadow, 0 4px 10px rgba(0,0,0,0.05));
   margin-bottom: 0;
   display: flex;
   flex-direction: column;
@@ -2256,11 +2261,13 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .asset-name {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #111827;
-  margin: 0 0 0.25rem 0;
-  line-height: 1.3;
+  font-family: var(--cv-display, inherit);
+  font-size: clamp(26px, 2.5vw, 34px);
+  font-weight: 550;
+  letter-spacing: -0.035em;
+  color: var(--lx-ink, #111827);
+  margin: 0 0 0.35rem 0;
+  line-height: 1.12;
 }
 
 .asset-meta {
@@ -2272,12 +2279,12 @@ async function handlePortfolioChange(portfolioId) {
 
 .meta-item {
   font-size: 0.8125rem;
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
   font-weight: 400;
 }
 
 .meta-item.ticker {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-weight: 500;
 }
 
@@ -2289,16 +2296,18 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .price-main {
+  font-family: var(--cv-display, inherit);
   font-size: 1.75rem;
-  font-weight: 700;
-  color: #111827;
+  font-weight: 550;
+  letter-spacing: -0.03em;
+  color: var(--lx-ink, #111827);
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 
 .price-currency {
   font-size: 1.25rem;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-weight: 500;
 }
 
@@ -2310,7 +2319,7 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .price-change-currency {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
@@ -2318,7 +2327,7 @@ async function handlePortfolioChange(portfolioId) {
 .price-change-flat {
   font-size: 0.875rem;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2327,7 +2336,7 @@ async function handlePortfolioChange(portfolioId) {
   display: flex;
   gap: 2rem;
   padding: 0.75rem 0;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--lx-line, #f3f4f6);
   flex-wrap: wrap;
   margin: 0;
   font-variant-numeric: tabular-nums;
@@ -2351,16 +2360,16 @@ async function handlePortfolioChange(portfolioId) {
 
 .key-metric-label {
   font-size: 0.6875rem;
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
   text-transform: uppercase;
   letter-spacing: 0.025em;
   font-weight: 500;
 }
 
 .key-metric-value {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #111827;
+  font-size: 0.9375rem;
+  font-weight: 550;
+  color: var(--lx-ink, #111827);
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
@@ -2371,7 +2380,7 @@ async function handlePortfolioChange(portfolioId) {
   justify-content: flex-start;
   align-items: flex-end;
   gap: 0.25rem;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--lx-line, #f3f4f6);
   margin: 0 -1.5rem;
   padding: 0 1.5rem;
   box-sizing: border-box;
@@ -2392,7 +2401,7 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .asset-tabs::-webkit-scrollbar-thumb {
-  background: #e5e7eb;
+  background: var(--lx-fill, #e5e7eb);
   border-radius: 4px;
 }
 
@@ -2411,7 +2420,7 @@ async function handlePortfolioChange(portfolioId) {
   border-bottom: 2px solid transparent;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
@@ -2433,15 +2442,15 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .asset-tab:focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--lx-accent, #3b82f6);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
 .asset-tab:hover,
 .asset-tab.active {
-  color: #3b82f6;
-  border-bottom-color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
+  border-bottom-color: var(--lx-accent, #3b82f6);
 }
 
 @media (max-width: 640px) {
@@ -2479,7 +2488,7 @@ async function handlePortfolioChange(portfolioId) {
 .section-title {
   font-size: 1rem;
   font-weight: 400;
-  color: #6B7280;
+  color: var(--lx-ink-2, #6B7280);
   margin: 0;
 }
 
@@ -2497,7 +2506,7 @@ async function handlePortfolioChange(portfolioId) {
   padding: 0.5rem 0;
   gap: 0.5rem;
   flex-wrap: wrap;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
 }
 
 .stat-item:last-child {
@@ -2505,15 +2514,15 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .stat-item.profit .stat-value {
-  color: var(--positiveColor, #1CBD88);
+  color: var(--positiveColor, var(--lx-up, #1CBD88));
 }
 
 .stat-item.loss .stat-value {
-  color: var(--negativeColor, #EF4444);
+  color: var(--negativeColor, var(--lx-down, #EF4444));
 }
 
 .stat-label {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-size: 0.875rem;
   flex: 1;
 }
@@ -2523,13 +2532,13 @@ async function handlePortfolioChange(portfolioId) {
   align-items: center;
   gap: 0.5rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--lx-ink, #111827);
   text-align: right;
 }
 
 .portfolio-name {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-weight: 500;
 }
 
@@ -2539,7 +2548,7 @@ async function handlePortfolioChange(portfolioId) {
   justify-content: center;
   height: 100%;
   min-height: 200px;
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
   font-size: 0.875rem;
 }
 
@@ -2551,31 +2560,31 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .info-card {
-  background: white;
+  background: var(--lx-surface, white);
   padding: 1.5rem;
   border-radius: 0.75rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .info-card.profit .card-value {
-  color: #10b981;
+  color: var(--lx-up, #10b981);
 }
 
 .info-card.loss .card-value {
-  color: #ef4444;
+  color: var(--lx-down, #ef4444);
 }
 
 .card-label {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   margin-bottom: 0.5rem;
 }
 
 .card-value {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--lx-ink, #111827);
 }
 
 .card-value .percentage {
@@ -2584,10 +2593,10 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .chart-section {
-  background: white;
+  background: var(--lx-surface, white);
   padding: 1.5rem;
   border-radius: 0.75rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   margin-bottom: 2rem;
   margin-top: 0;
@@ -2598,7 +2607,7 @@ async function handlePortfolioChange(portfolioId) {
   margin: 0 0 1.5rem 0;
   font-size: 1rem;
   font-weight: 400;
-  color: #6B7280;
+  color: var(--lx-ink-2, #6B7280);
 }
 
 .asset-chart-header-actions {
@@ -2639,12 +2648,12 @@ async function handlePortfolioChange(portfolioId) {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
 }
 
 
 .transactions-section {
-  background: white;
+  background: var(--lx-surface, white);
   padding: 1.5rem;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.05);
@@ -2655,7 +2664,7 @@ async function handlePortfolioChange(portfolioId) {
   margin: 0 0 1.5rem 0;
   font-size: 1.25rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--lx-ink, #111827);
 }
 
 .transactions-table {
@@ -2670,21 +2679,21 @@ async function handlePortfolioChange(portfolioId) {
 .transactions-table th {
   text-align: left;
   padding: 0.75rem;
-  border-bottom: 2px solid #e5e7eb;
-  color: #6b7280;
+  border-bottom: 2px solid var(--lx-line, #e5e7eb);
+  color: var(--lx-ink-2, #6b7280);
   font-weight: 600;
   font-size: 0.875rem;
 }
 
 .transactions-table td {
   padding: 0.75rem;
-  border-bottom: 1px solid #f3f4f6;
-  color: #111827;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
+  color: var(--lx-ink, #111827);
 }
 
 /* История выплат (в стиле таблицы операций) */
 .payouts-section {
-  background: white;
+  background: var(--lx-surface, white);
   padding: 1.5rem;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.05);
@@ -2695,7 +2704,7 @@ async function handlePortfolioChange(portfolioId) {
   margin: 0 0 1.5rem 0;
   font-size: 1.25rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--lx-ink, #111827);
 }
 
 .payouts-table {
@@ -2710,16 +2719,16 @@ async function handlePortfolioChange(portfolioId) {
 .payouts-table th {
   text-align: left;
   padding: 0.75rem;
-  border-bottom: 2px solid #e5e7eb;
-  color: #6b7280;
+  border-bottom: 2px solid var(--lx-line, #e5e7eb);
+  color: var(--lx-ink-2, #6b7280);
   font-weight: 600;
   font-size: 0.875rem;
 }
 
 .payouts-table td {
   padding: 0.75rem;
-  border-bottom: 1px solid #f3f4f6;
-  color: #111827;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
+  color: var(--lx-ink, #111827);
 }
 
 /* Badges для типов операций (как на странице Transactions) */
@@ -2742,28 +2751,28 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .badge-buy {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--lx-fill, #dcfce7);
+  color: var(--lx-up, #166534);
 }
 
 .badge-sell {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--lx-fill, #fee2e2);
+  color: var(--lx-down, #991b1b);
 }
 
 .badge-dividend {
-  background: rgba(37, 99, 235, 0.1);
-  color: var(--payout-dividends, #2563eb);
+  background: var(--lx-accent-soft, rgba(37, 99, 235, 0.1));
+  color: var(--payout-dividends, var(--lx-accent-ink, #2563eb));
 }
 
 .badge-coupon {
-  background: rgba(6, 182, 212, 0.1);
-  color: var(--payout-coupons, #06b6d4);
+  background: var(--lx-accent-soft, rgba(6, 182, 212, 0.1));
+  color: var(--payout-coupons, var(--lx-accent-ink, #06b6d4));
 }
 
 .badge-amortization {
-  background: rgba(251, 146, 60, 0.1);
-  color: var(--payout-amortizations, #fb923c);
+  background: var(--lx-warn-soft, rgba(251, 146, 60, 0.1));
+  color: var(--payout-amortizations, var(--lx-warn, #fb923c));
 }
 
 .payout-status-badge {
@@ -2776,43 +2785,43 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .payout-status-badge--paid {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--lx-fill, #dcfce7);
+  color: var(--lx-up, #166534);
 }
 
 .payout-status-badge--forecast {
-  background: #e0e7ff;
-  color: #3730a3;
+  background: var(--lx-fill, #e0e7ff);
+  color: var(--lx-accent-ink, #3730a3);
 }
 
 .payout-status-badge--unknown {
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--lx-fill, #f3f4f6);
+  color: var(--lx-ink-2, #6b7280);
 }
 
 .badge-other {
-  background: #f3f4f6;
-  color: #4b5563;
+  background: var(--lx-fill, #f3f4f6);
+  color: var(--lx-ink-2, #4b5563);
 }
 
 .badge-deposit {
-  background: #ccfbf1;
-  color: #0f766e;
+  background: var(--lx-fill-2, #ccfbf1);
+  color: var(--lx-accent-ink, #0f766e);
 }
 
 .badge-withdraw {
-  background: #ffedd5;
-  color: #9a3412;
+  background: var(--lx-fill, #ffedd5);
+  color: var(--lx-down, #9a3412);
 }
 
 .badge-tax {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--lx-fill, #fee2e2);
+  color: var(--lx-down, #991b1b);
 }
 
 .badge-commission {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--lx-fill-2, #fef3c7);
+  color: var(--lx-warn, #92400e);
 }
 
 /* Стили таблицы */
@@ -2829,12 +2838,12 @@ async function handlePortfolioChange(portfolioId) {
 .transactions-table th {
   text-align: left;
   padding: 12px 16px;
-  background: #f9fafb;
-  color: #6b7280;
+  background: var(--lx-surface, #f9fafb);
+  color: var(--lx-ink-2, #6b7280);
   font-weight: 600;
   font-size: 12px;
   text-transform: uppercase;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--lx-line, #e5e7eb);
 }
 
 .transactions-table th.text-right {
@@ -2843,7 +2852,7 @@ async function handlePortfolioChange(portfolioId) {
 
 .transactions-table td {
   padding: 12px 16px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
   vertical-align: middle;
 }
 
@@ -2852,11 +2861,11 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .transactions-table tr:hover {
-  background: #f9fafb;
+  background: var(--lx-surface, #f9fafb);
 }
 
 .td-date {
-  color: #374151;
+  color: var(--lx-ink, #374151);
   white-space: nowrap;
 }
 
@@ -2865,7 +2874,7 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .num-font {
-  font-family: 'SF Mono', 'Roboto Mono', Menlo, monospace;
+  font-family: inherit; font-variant-numeric: tabular-nums;
   font-size: 13px;
   letter-spacing: -0.5px;
 }
@@ -2875,11 +2884,11 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .text-green {
-  color: #059669;
+  color: var(--lx-up, #059669);
 }
 
 .text-red {
-  color: #dc2626;
+  color: var(--lx-down, #dc2626);
 }
 
 .empty-cell {
@@ -2888,7 +2897,7 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .empty-state {
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
 }
 
 .empty-icon {
@@ -2900,7 +2909,7 @@ async function handlePortfolioChange(portfolioId) {
 
 .btn-primary {
   padding: 0.75rem 1.5rem;
-  background: #3b82f6;
+  background: var(--lx-accent, #3b82f6);
   color: white;
   border: none;
   border-radius: 0.5rem;
@@ -2910,7 +2919,7 @@ async function handlePortfolioChange(portfolioId) {
 }
 
 .btn-primary:hover {
-  background: #2563eb;
+  background: var(--lx-accent, #2563eb);
 }
 
 @media (max-width: 1200px) {

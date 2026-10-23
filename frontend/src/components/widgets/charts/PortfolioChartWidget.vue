@@ -229,13 +229,13 @@ const formattedChartData = computed(() => {
     {
       label: includeBalance.value ? "Капитал (с балансом)" : "Капитал",
       data: valueWithBalance,
-      color: '#3b82f6',
+      color: '#7381ff',
       fill: true
     },
     {
       label: includeBalance.value ? "Инвестиции (с балансом)" : "Инвестиции",
       data: investedWithBalance,
-      color: '#10b981',
+      color: '#8a8d99',
       fill: false
     }
   ]

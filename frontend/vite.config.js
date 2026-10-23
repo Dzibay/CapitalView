@@ -5,7 +5,7 @@ import vue from '@vitejs/plugin-vue'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [vue()],
   resolve: {
     alias: {
@@ -31,7 +31,8 @@ export default defineConfig({
     host: true,
     strictPort: false,      // позволяет использовать любой порт
     allowedHosts: 'all',    // разрешаем все хосты
-    origin: 'http://localhost:5173', // можно указать, но обычно не нужно
+    // В демо-режиме (другой порт) фиксированный origin ломает URL ассетов
+    origin: mode === 'demo' ? undefined : 'http://localhost:5173',
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:5001',
@@ -40,4 +41,4 @@ export default defineConfig({
       },
     },
   }
-})
+}))

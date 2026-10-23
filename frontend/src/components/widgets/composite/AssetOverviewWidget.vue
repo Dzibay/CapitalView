@@ -129,15 +129,15 @@ const props = defineProps({
   padding: 1rem;
   background: transparent;
   border-radius: 0;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
 }
 
 .metric-item.profit {
-  border-left: 4px solid var(--positiveColor, #1CBD88);
+  border-left: 4px solid var(--positiveColor, var(--lx-up, #1CBD88));
 }
 
 .metric-item.loss {
-  border-left: 4px solid var(--negativeColor, #EF4444);
+  border-left: 4px solid var(--negativeColor, var(--lx-down, #EF4444));
 }
 
 .metric-label {
@@ -158,15 +158,15 @@ const props = defineProps({
 }
 
 .metric-value.primary {
-  color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
 }
 
 .metric-value.profit {
-  color: var(--positiveColor, #1CBD88);
+  color: var(--positiveColor, var(--lx-up, #1CBD88));
 }
 
 .metric-value.loss {
-  color: var(--negativeColor, #EF4444);
+  color: var(--negativeColor, var(--lx-down, #EF4444));
 }
 
 .metric-change {
@@ -186,7 +186,7 @@ const props = defineProps({
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--lx-line, #e5e7eb);
 }
 
 .detail-item {

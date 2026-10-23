@@ -341,7 +341,7 @@ watch(() => props.show, (newVal) => {
   justify-content: center;
   padding: 60px 20px;
   text-align: center;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
 }
 
 .empty-state {
@@ -349,7 +349,7 @@ watch(() => props.show, (newVal) => {
 }
 
 .empty-icon {
-  color: #10b981;
+  color: var(--lx-up, #10b981);
   margin-bottom: 16px;
   opacity: 0.8;
 }
@@ -357,7 +357,7 @@ watch(() => props.show, (newVal) => {
 .empty-state p {
   font-size: 14px;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
 }
 
 .error-state {
@@ -366,17 +366,17 @@ watch(() => props.show, (newVal) => {
 
 .error-text {
   padding: 12px 16px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--lx-surface, #fef2f2);
+  border: 1px solid var(--lx-line, #fecaca);
   border-radius: 10px;
-  color: #dc2626;
+  color: var(--lx-down, #dc2626);
   font-size: 13px;
   font-weight: 500;
 }
 
 .list-header {
   padding: 12px 0;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
   margin-bottom: 16px;
 }
 
@@ -390,25 +390,25 @@ watch(() => props.show, (newVal) => {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #527de5;
+  accent-color: var(--lx-accent, #527de5);
   flex-shrink: 0;
 }
 
 .select-all-text {
   font-weight: 600;
   font-size: 13px;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   cursor: pointer;
   user-select: none;
   transition: color 0.2s ease;
 }
 
 .select-all-text:hover {
-  color: #527de5;
+  color: var(--lx-accent-ink, #527de5);
 }
 
 .selected-count {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-size: 12px;
   font-weight: 500;
 }
@@ -425,41 +425,41 @@ watch(() => props.show, (newVal) => {
 }
 
 .payouts-items::-webkit-scrollbar-track {
-  background: #f9fafb;
+  background: var(--lx-surface, #f9fafb);
   border-radius: 3px;
 }
 
 .payouts-items::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--lx-fill-2, #d1d5db);
   border-radius: 3px;
 }
 
 .payouts-items::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--lx-fill-3, #9ca3af);
 }
 
 .payout-item {
   display: flex;
   gap: 12px;
   padding: 14px 16px;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--lx-line, #e5e7eb);
   border-radius: 10px;
   margin-bottom: 10px;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
-  background: #fff;
+  background: var(--lx-surface, #fff);
 }
 
 .payout-item:hover {
-  border-color: #527de5;
-  background-color: #f9fafb;
+  border-color: var(--lx-accent, #527de5);
+  background-color: var(--lx-surface, #f9fafb);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .payout-item.selected {
-  border-color: #527de5;
-  background-color: #eff6ff;
-  box-shadow: 0 2px 8px rgba(82, 125, 229, 0.15);
+  border-color: var(--lx-accent, #527de5);
+  background-color: var(--lx-fill, #eff6ff);
+  box-shadow: 0 2px 8px var(--lx-accent-soft, rgba(82, 125, 229, 0.15));
 }
 
 .payout-checkbox {
@@ -489,7 +489,7 @@ watch(() => props.show, (newVal) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #111827;
+  color: var(--lx-ink, #111827);
   font-weight: 600;
   font-size: 14px;
   flex: 1;
@@ -498,19 +498,19 @@ watch(() => props.show, (newVal) => {
 
 .asset-info svg {
   flex-shrink: 0;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   opacity: 0.8;
 }
 
 .asset-name {
-  color: #111827;
+  color: var(--lx-ink, #111827);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .asset-ticker {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-weight: 400;
   font-size: 13px;
   white-space: nowrap;
@@ -536,18 +536,18 @@ watch(() => props.show, (newVal) => {
 
 /* Цвета как у бейджей типов в Transactions.vue (.badge-dividend / .badge-coupon / .badge-amortization) */
 .payout-type.coupon {
-  background-color: #ecfeff;
-  color: #06b6d4;
+  background-color: var(--lx-fill, #ecfeff);
+  color: var(--lx-accent-ink, #06b6d4);
 }
 
 .payout-type.dividend {
-  background-color: #eff6ff;
-  color: #2563eb;
+  background-color: var(--lx-fill, #eff6ff);
+  color: var(--lx-accent-ink, #2563eb);
 }
 
 .payout-type.amortization {
-  background-color: #f5f3ff;
-  color: #7c3aed;
+  background-color: var(--lx-surface, #f5f3ff);
+  color: var(--lx-accent-ink, #7c3aed);
 }
 
 .payout-details {
@@ -560,7 +560,7 @@ watch(() => props.show, (newVal) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-size: 13px;
   flex-wrap: wrap;
 }
@@ -569,17 +569,17 @@ watch(() => props.show, (newVal) => {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
 }
 
 .amount-label {
   font-weight: 500;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
 }
 
 .amount-value {
   font-weight: 700;
-  color: #10b981;
+  color: var(--lx-up, #10b981);
   font-size: 15px;
 }
 
@@ -587,7 +587,7 @@ watch(() => props.show, (newVal) => {
   display: flex;
   gap: 10px;
   padding-top: 16px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--lx-line, #f3f4f6);
   margin-top: 16px;
   flex-shrink: 0;
 }

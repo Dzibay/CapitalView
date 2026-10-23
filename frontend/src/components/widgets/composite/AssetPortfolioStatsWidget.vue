@@ -127,7 +127,7 @@ const handlePortfolioChange = (value) => {
   justify-content: space-between;
   align-items: flex-start;
   padding: 0.75rem 0;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
   flex-wrap: wrap;
   gap: 0.5rem;
 }
@@ -137,11 +137,11 @@ const handlePortfolioChange = (value) => {
 }
 
 .stat-item.profit .stat-value {
-  color: var(--positiveColor, #1CBD88);
+  color: var(--positiveColor, var(--lx-up, #1CBD88));
 }
 
 .stat-item.loss .stat-value {
-  color: var(--negativeColor, #EF4444);
+  color: var(--negativeColor, var(--lx-down, #EF4444));
 }
 
 .stat-label {

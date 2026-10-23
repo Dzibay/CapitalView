@@ -53,7 +53,7 @@ const isNegative = computed(() => {
   font-size: var(--widget-font-small, 0.8125rem);
   font-weight: 500;
   line-height: 1.15;
-  background: rgba(28, 189, 136, 0.12);
+  background: var(--lx-up-soft, rgba(28, 189, 136, 0.12));
 }
 .value-change-pill :deep(.value-change) {
   font-size: inherit;
@@ -68,7 +68,7 @@ const isNegative = computed(() => {
   color: var(--positiveColor);
 }
 .value-change-pill--negative {
-  background: rgba(239, 68, 68, 0.12);
+  background: var(--lx-down-soft, rgba(239, 68, 68, 0.12));
 }
 .value-change-pill--negative :deep(.value-change.negative) {
   color: var(--negativeColor);

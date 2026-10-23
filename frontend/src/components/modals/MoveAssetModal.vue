@@ -172,22 +172,22 @@ onMounted(() => {
 
 .section-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+  background: linear-gradient(90deg, transparent, var(--lx-fill, #e5e7eb), transparent);
   margin: 16px 0;
 }
 
 .info-card {
   padding: 12px 16px;
-  background: #f9fafb;
+  background: var(--lx-surface, #f9fafb);
   border-radius: 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
 .info-icon {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   flex-shrink: 0;
   opacity: 0.8;
 }
@@ -195,7 +195,7 @@ onMounted(() => {
 .info-label {
   font-size: 11px;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 4px;
@@ -203,17 +203,17 @@ onMounted(() => {
 
 .info-value {
   font-size: 14px;
-  color: #111827;
+  color: var(--lx-ink, #111827);
   font-weight: 500;
 }
 
 .info-value strong {
-  color: #111827;
+  color: var(--lx-ink, #111827);
   font-weight: 600;
 }
 
 .ticker {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   margin-left: 6px;
   font-size: 13px;
   font-weight: 400;
@@ -228,11 +228,11 @@ onMounted(() => {
   gap: 12px;
   font-weight: 500;
   font-size: 14px;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
 }
 
 .spinner-icon {
-  color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
   animation: spin 1s linear infinite;
 }
 
@@ -244,10 +244,10 @@ onMounted(() => {
 
 .error {
   padding: 10px 14px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--lx-surface, #fef2f2);
+  border: 1px solid var(--lx-line, #fecaca);
   border-radius: 10px;
-  color: #dc2626;
+  color: var(--lx-down, #dc2626);
   font-size: 13px;
   margin-bottom: 12px;
 }
@@ -258,7 +258,7 @@ onMounted(() => {
   justify-content: flex-end;
   padding-top: 16px;
   margin-top: 8px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--lx-line, #f3f4f6);
 }
 </style>
 

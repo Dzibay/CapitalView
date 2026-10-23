@@ -136,10 +136,10 @@ const totalsPlugin = computed(() => {
           
           if (textY >= minY && textY <= maxY) {
             // Стиль текста как на примере
-            ctx.fillStyle = '#374151'
+            ctx.fillStyle = '#c3c5ce'
             
             // Очень легкая белая тень для читаемости
-            ctx.shadowColor = 'rgba(255, 255, 255, 0.9)'
+            ctx.shadowColor = 'rgba(8, 9, 11, 0.9)'
             ctx.shadowBlur = 2
             ctx.shadowOffsetX = 0
             ctx.shadowOffsetY = 0
@@ -152,8 +152,8 @@ const totalsPlugin = computed(() => {
           } else if (textY < minY) {
             // Если столбец слишком высокий, размещаем текст внизу видимой области
             const adjustedY = minY
-            ctx.fillStyle = '#374151'
-            ctx.shadowColor = 'rgba(255, 255, 255, 0.9)'
+            ctx.fillStyle = '#c3c5ce'
+            ctx.shadowColor = 'rgba(8, 9, 11, 0.9)'
             ctx.shadowBlur = 2
             ctx.shadowOffsetX = 0
             ctx.shadowOffsetY = 0
@@ -215,7 +215,7 @@ const chartOptions = computed(() => {
   // Получаем цвета из CSS переменных
   const getCSSVariable = (varName) => {
     if (typeof window !== 'undefined') {
-      return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || '#6b7280'
+      return getComputedStyle(document.body).getPropertyValue(varName).trim() || '#6b7280'
     }
     return '#6b7280'
   }
@@ -264,7 +264,7 @@ const chartOptions = computed(() => {
       tooltip: {
         mode: interactionMode,
         intersect: false,
-        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+        backgroundColor: 'rgba(21, 22, 27, 0.97)',
         backdropFilter: 'blur(8px)',
         titleColor: '#ffffff',
         bodyColor: '#f9fafb',

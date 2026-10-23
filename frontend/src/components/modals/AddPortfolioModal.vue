@@ -113,30 +113,30 @@ const submitForm = async () => {
   margin-bottom: 8px;
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   letter-spacing: -0.01em;
 }
 
 .label-icon {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   flex-shrink: 0;
 }
 
 .form-input {
   width: 100%;
   padding: 9px 12px;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--lx-line, #e5e7eb);
   border-radius: 10px;
   font-size: 14px;
   transition: all 0.2s ease;
-  background: #fff;
-  color: #111827;
+  background: var(--lx-surface, #fff);
+  color: var(--lx-ink, #111827);
   box-sizing: border-box;
   font-family: inherit;
 }
 
 .form-input::placeholder {
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
 }
 
 .form-input.textarea {
@@ -146,15 +146,15 @@ const submitForm = async () => {
 }
 
 .form-input:hover {
-  border-color: #d1d5db;
-  background: #fafafa;
+  border-color: var(--lx-line, #d1d5db);
+  background: var(--lx-surface, #fafafa);
 }
 
 .form-input:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
-  background: #fff;
+  border-color: var(--lx-accent, #3b82f6);
+  box-shadow: 0 0 0 3px var(--lx-accent-soft, rgba(59,130,246,0.1));
+  background: var(--lx-surface, #fff);
 }
 
 .modal-loading {
@@ -166,11 +166,11 @@ const submitForm = async () => {
   gap: 16px;
   font-weight: 500;
   font-size: 14px;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
 }
 
 .spinner-icon {
-  color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
   animation: spin 1s linear infinite;
 }
 
@@ -185,6 +185,6 @@ const submitForm = async () => {
   gap: 10px;
   padding-top: 16px;
   margin-top: 8px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--lx-line, #f3f4f6);
 }
 </style>

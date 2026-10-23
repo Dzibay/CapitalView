@@ -85,13 +85,13 @@ const formatDate = formatDateForDisplay
 .payout-item {
   padding: 1rem 0;
   background: transparent;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
   transition: all 0.2s;
 }
 
 .payout-item:hover {
   background: transparent;
-  border-bottom-color: #e5e7eb;
+  border-bottom-color: var(--lx-line, #e5e7eb);
 }
 
 .payout-header {
@@ -114,19 +114,19 @@ const formatDate = formatDateForDisplay
 .payout-type.dividend {
   background: transparent;
   color: var(--text-tertiary);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
 }
 
 .payout-type.coupon {
   background: transparent;
   color: var(--text-tertiary);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
 }
 
 .payout-type.other {
   background: transparent;
   color: var(--text-tertiary);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
 }
 
 .payout-amount {

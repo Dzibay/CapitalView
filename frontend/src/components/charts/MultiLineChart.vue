@@ -93,8 +93,8 @@ function attachChartResizeObserver() {
 }
 
 const LABEL_FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"
-const LABEL_COLOR = '#94a3b8'
-const LABEL_COLOR_BOLD = '#64748b'
+const LABEL_COLOR = '#6b6e7a'
+const LABEL_COLOR_BOLD = '#8a8d99'
 
 /* --------------------------------------------------------------------------
    Crosshair plugin — vertical line at hovered point
@@ -110,7 +110,7 @@ const crosshairPlugin = {
     ctx.beginPath()
     ctx.setLineDash([4, 4])
     ctx.lineWidth = 1
-    ctx.strokeStyle = '#cbd5e1'
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)'
     ctx.moveTo(x, chartArea.top)
     ctx.lineTo(x, chartArea.bottom)
     ctx.stroke()
@@ -118,8 +118,8 @@ const crosshairPlugin = {
   }
 }
 
-const MIN_MAX_GUIDE_LINE = '#d1d5db'
-const MIN_MAX_GUIDE_TEXT = '#94a3b8'
+const MIN_MAX_GUIDE_LINE = 'rgba(255, 255, 255, 0.14)'
+const MIN_MAX_GUIDE_TEXT = '#6b6e7a'
 
 /** Линии на уровнях глобального min/max ряда и подписи «max: …» / «min: …» у правого края области графика */
 const minMaxGuidePlugin = {
@@ -855,7 +855,7 @@ const renderChart = (aggr, boundsAggr = null) => {
   }
 
   const datasets = props.chartData.datasets.map((ds, i) => {
-    const lineColor = ds.color || ds.borderColor || '#5478EA'
+    const lineColor = ds.color || ds.borderColor || '#7381ff'
     const base = {
       label: ds.label,
       data: aggr.datasets[i],
@@ -866,7 +866,7 @@ const renderChart = (aggr, boundsAggr = null) => {
       pointHoverRadius: ds.pointHoverRadius ?? (i === 0 ? 5 : 3),
       pointHitRadius: ds.pointHitRadius ?? 8,
       pointBackgroundColor: ds.pointBackgroundColor ?? ds.backgroundColor ?? lineColor,
-      pointBorderColor: ds.pointBorderColor ?? '#fff',
+      pointBorderColor: ds.pointBorderColor ?? '#101115',
       pointHoverBorderWidth: ds.pointHoverBorderWidth ?? 2,
       pointBorderWidth: ds.pointBorderWidth ?? 0,
       spanGaps: props.drawProgress < 1 ? false : (ds.spanGaps ?? false)
@@ -909,7 +909,7 @@ const renderChart = (aggr, boundsAggr = null) => {
 
   const css = (v) =>
     typeof window !== 'undefined'
-      ? getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#e5e7eb'
+      ? getComputedStyle(document.body).getPropertyValue(v).trim() || '#e5e7eb'
       : '#e5e7eb'
 
   const axisGrid = css('--axis-grid') || '#e5e7eb'
@@ -1105,7 +1105,7 @@ onUnmounted(() => {
   font-weight: 500;
   font-size: 12px;
   margin-bottom: 4px;
-  color: #94a3b8;
+  color: var(--lx-mut, #94a3b8);
 }
 .chart-tooltip__line {
   font-size: 13px;

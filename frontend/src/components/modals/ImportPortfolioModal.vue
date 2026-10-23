@@ -182,10 +182,10 @@ const handleImport = async () => {
 .import-hint {
   margin: 0 0 16px;
   padding: 10px 12px;
-  background: #eff6ff;
+  background: var(--lx-fill, #eff6ff);
   border-radius: 8px;
   font-size: 13px;
-  color: #1e40af;
+  color: var(--lx-accent-ink, #1e40af);
 }
 
 .form-section {
@@ -198,10 +198,10 @@ const handleImport = async () => {
 
 .error {
   padding: 10px 14px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--lx-surface, #fef2f2);
+  border: 1px solid var(--lx-line, #fecaca);
   border-radius: 10px;
-  color: #dc2626;
+  color: var(--lx-down, #dc2626);
   font-size: 13px;
   margin-bottom: 12px;
 }
@@ -215,11 +215,11 @@ const handleImport = async () => {
   gap: 16px;
   font-weight: 500;
   font-size: 14px;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
 }
 
 .spinner-icon {
-  color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
   animation: spin 1s linear infinite;
 }
 
@@ -234,6 +234,6 @@ const handleImport = async () => {
   gap: 10px;
   padding-top: 16px;
   margin-top: 8px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--lx-line, #f3f4f6);
 }
 </style>

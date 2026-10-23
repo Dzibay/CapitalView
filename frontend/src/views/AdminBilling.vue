@@ -304,8 +304,8 @@ onMounted(load)
 }
 
 .card {
-  background: var(--color-surface, #fff);
-  border: 1px solid var(--color-border, #e2e8f0);
+  background: var(--color-surface, var(--lx-surface, #fff));
+  border: 1px solid var(--color-border, var(--lx-line, #e2e8f0));
   border-radius: 16px;
   padding: 20px 22px;
 }
@@ -349,7 +349,7 @@ onMounted(load)
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-secondary, var(--lx-ink-2, #64748b));
 }
 
 .grid label.full {
@@ -365,17 +365,17 @@ onMounted(load)
 
 input,
 textarea {
-  border: 1px solid var(--color-border, #e2e8f0);
+  border: 1px solid var(--color-border, var(--lx-line, #e2e8f0));
   border-radius: 10px;
   padding: 10px 12px;
   font: inherit;
-  color: var(--color-text, #0f172a);
-  background: #fff;
+  color: var(--color-text, var(--lx-ink, #0f172a));
+  background: var(--lx-surface, #fff);
 }
 
 .hint {
   font-size: 12px;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-secondary, var(--lx-ink-2, #64748b));
   margin: 0 0 14px;
 }
 
@@ -401,26 +401,26 @@ textarea {
 }
 
 .btn-primary {
-  background: var(--color-primary, #3b82f6);
+  background: var(--color-primary, var(--lx-accent, #3b82f6));
   color: #fff;
 }
 
 .btn-secondary {
-  background: #fff;
-  border-color: var(--color-border, #e2e8f0);
-  color: var(--color-text, #0f172a);
+  background: var(--lx-surface, #fff);
+  border-color: var(--color-border, var(--lx-line, #e2e8f0));
+  color: var(--color-text, var(--lx-ink, #0f172a));
 }
 
 .btn-danger {
-  background: #fff;
-  border-color: #fecaca;
-  color: #dc2626;
+  background: var(--lx-surface, #fff);
+  border-color: var(--lx-line, #fecaca);
+  color: var(--lx-down, #dc2626);
   padding: 10px;
 }
 
 .btn-icon {
-  background: #fff;
-  border-color: var(--color-border, #e2e8f0);
+  background: var(--lx-surface, #fff);
+  border-color: var(--color-border, var(--lx-line, #e2e8f0));
   padding: 8px;
 }
 
@@ -436,7 +436,7 @@ textarea {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid var(--color-border, #e2e8f0);
+  border: 1px solid var(--color-border, var(--lx-line, #e2e8f0));
   border-radius: 12px;
 }
 
@@ -444,13 +444,13 @@ textarea {
   display: block;
   margin-top: 4px;
   font-size: 13px;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-secondary, var(--lx-ink-2, #64748b));
 }
 
 .tariff-row .desc {
   margin: 6px 0 0;
   font-size: 13px;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-secondary, var(--lx-ink-2, #64748b));
 }
 
 .row-actions,
@@ -461,7 +461,7 @@ textarea {
 }
 
 .empty {
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-secondary, var(--lx-ink-2, #64748b));
   font-size: 14px;
   margin-bottom: 12px;
 }
@@ -474,13 +474,13 @@ textarea {
 }
 
 .msg-error {
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--lx-surface, #fef2f2);
+  color: var(--lx-down, #b91c1c);
 }
 
 .msg-ok {
-  background: #ecfdf5;
-  color: #047857;
+  background: var(--lx-fill, #ecfdf5);
+  color: var(--lx-up, #047857);
 }
 
 @media (max-width: 700px) {

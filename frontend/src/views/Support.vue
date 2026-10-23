@@ -49,7 +49,14 @@ import '../site/styles/landing-page.css'
   width: 100%;
   min-width: 0;
   margin: 0 -0.25rem;
+  /* .cv-landing задаёт светлые токены лендинга — в кабинете заменяем на тёмные */
+  --color-text: var(--cv-ink, #0f172a);
+  --color-text-secondary: var(--cv-mut, #64748b);
+  --color-primary: var(--cv-accent, #3b82f6);
+  background: transparent;
 }
+.support-faq-wrap :deep(.faq-num) { color: var(--cv-dim, rgba(59, 130, 246, 0.15)); }
+.support-faq-wrap :deep(.faq-question) { font-family: var(--cv-text, inherit); font-size: 15px; font-weight: 550; }
 
 @media (max-width: 768px) {
   .support-grid {

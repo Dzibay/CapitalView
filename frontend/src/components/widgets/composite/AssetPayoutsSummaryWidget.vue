@@ -57,12 +57,12 @@ const hasPayouts = computed(() => {
   padding: 1rem;
   background: transparent;
   border-radius: 0;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
 }
 
 .summary-item.primary {
   background: transparent;
-  border-bottom: 2px solid #e5e7eb;
+  border-bottom: 2px solid var(--lx-line, #e5e7eb);
 }
 
 .summary-item.primary .summary-label {
@@ -100,7 +100,7 @@ const hasPayouts = computed(() => {
   color: var(--text-quaternary);
   text-align: center;
   padding-top: 0.5rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--lx-line, #e5e7eb);
 }
 
 .empty-state {

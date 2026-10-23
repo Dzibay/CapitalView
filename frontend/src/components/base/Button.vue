@@ -76,205 +76,75 @@ const handleClick = (event) => {
 
 <style scoped>
 .btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: var(--radius-sm, 6px);
-  border: none;
-  cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  position: relative;
-  overflow: hidden;
+  gap: 7px;
+  border: 0;
+  border-radius: var(--cv-r-sm, 10px);
   font-family: inherit;
+  font-weight: 550;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background .2s var(--cv-ease), box-shadow .2s var(--cv-ease), color .2s, transform .2s var(--cv-ease);
 }
+.btn:active:not(.btn-disabled):not(:disabled) { transform: scale(.97); }
 
-/* Размеры */
-.btn-sm {
-  height: 32px;
-  padding: 0 12px;
-  font-size: 12px;
-}
+.btn-sm { height: 30px; padding: 0 11px; font-size: 12.5px; border-radius: 9px; }
+.btn-md { height: 36px; padding: 0 14px; font-size: 13px; }
+.btn-lg { height: 44px; padding: 0 20px; font-size: 14px; }
+.btn-icon-only { width: 36px; padding: 0; }
+.btn-icon-only.btn-sm { width: 30px; }
+.btn-icon-only.btn-lg { width: 44px; }
 
-.btn-md {
-  height: 38px;
-  padding: 0 16px;
-  font-size: 13px;
-}
-
-.btn-lg {
-  height: 44px;
-  padding: 0 20px;
-  font-size: 14px;
-}
-
-.btn-icon-only {
-  padding: 0;
-  width: 38px;
-}
-
-.btn-icon-only.btn-sm {
-  width: 32px;
-}
-
-.btn-icon-only.btn-lg {
-  width: 44px;
-}
-
-/* Основной вариант */
 .btn-primary {
-  background: var(--primary, #2f5f8f);
-  color: white;
-  box-shadow: none;
+  color: #fff;
+  background: linear-gradient(180deg, #7080ff, #5866ee);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), inset 0 0 0 1px rgba(255, 255, 255, .06), 0 6px 18px -10px rgba(100, 116, 255, .8);
 }
-
 .btn-primary:hover:not(.btn-disabled) {
-  background: var(--primary-hover, #264d75);
-  transform: none;
-  box-shadow: none;
+  background: linear-gradient(180deg, #7b8aff, #616ff2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24), inset 0 0 0 1px rgba(255, 255, 255, .08), 0 8px 22px -10px rgba(100, 116, 255, .9);
 }
 
-.btn-primary:active:not(.btn-disabled) {
-  transform: none;
-  box-shadow: none;
-  background: var(--primary-dark, #1e3f61);
-}
-
-/* Вторичный вариант */
-.btn-secondary {
-  background: white;
-  color: var(--text-secondary, #3d4654);
-  border: 1px solid var(--border-subtle, #d8dee6);
-  box-shadow: none;
-}
-
-.btn-secondary:hover:not(.btn-disabled) {
-  background: var(--bg-secondary, #eef1f4);
-  border-color: var(--border-strong, #c5ced8);
-  transform: none;
-  box-shadow: none;
-}
-
-.btn-secondary:active:not(.btn-disabled) {
-  transform: none;
-  box-shadow: none;
-}
-
-/* Контурный вариант */
+.btn-secondary,
 .btn-outline {
-  background: transparent;
-  border: 1px solid var(--border-subtle, #d8dee6);
-  color: var(--text-tertiary, #6b7380);
+  color: var(--cv-ink);
+  background: rgba(255, 255, 255, .05);
+  box-shadow: inset 0 0 0 1px var(--cv-line-2);
 }
-
+.btn-outline { background: transparent; color: var(--cv-ink-2); }
+.btn-secondary:hover:not(.btn-disabled),
 .btn-outline:hover:not(.btn-disabled) {
-  border-color: var(--primary, #2f5f8f);
-  color: var(--primary, #2f5f8f);
-  background: rgba(47, 95, 143, 0.06);
-  transform: none;
+  color: var(--cv-ink);
+  background: rgba(255, 255, 255, .08);
+  box-shadow: inset 0 0 0 1px var(--cv-line-3);
 }
 
-.btn-outline:active:not(.btn-disabled) {
-  transform: none;
-  background: rgba(47, 95, 143, 0.1);
-}
+.btn-ghost { color: var(--cv-mut); background: transparent; }
+.btn-ghost:hover:not(.btn-disabled) { color: var(--cv-ink); background: var(--cv-hover); }
 
-/* Прозрачный вариант */
-.btn-ghost {
-  background: transparent;
-  color: var(--text-tertiary, #6b7380);
-  border: none;
-}
-
-.btn-ghost:hover:not(.btn-disabled) {
-  background: var(--bg-tertiary, #e4e8ed);
-  color: var(--primary, #2f5f8f);
-}
-
-/* Вариант «опасность» */
 .btn-danger {
-  background: var(--danger, #d14343);
-  color: white;
-  box-shadow: none;
+  color: var(--cv-down);
+  background: var(--cv-down-bg);
+  box-shadow: inset 0 0 0 1px rgba(242, 119, 122, .22);
 }
+.btn-danger:hover:not(.btn-disabled) { background: rgba(242, 119, 122, .16); }
 
-.btn-danger:hover:not(.btn-disabled) {
-  background: var(--danger-dark, #a83232);
-  transform: none;
-  box-shadow: none;
-}
+.btn-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.btn-icon :deep(svg) { width: 15px; height: 15px; stroke-width: 2; }
+.btn-sm .btn-icon :deep(svg) { width: 14px; height: 14px; }
+.btn-lg .btn-icon :deep(svg) { width: 18px; height: 18px; }
 
-.btn-danger:active:not(.btn-disabled) {
-  transform: none;
-  box-shadow: none;
-}
+.btn-text { line-height: 1; }
 
-/* Иконка */
-.btn-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
+.btn-spinner { display: flex; align-items: center; justify-content: center; }
+.spinner-icon { width: 16px; height: 16px; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-.btn-icon :deep(svg) {
-  width: 16px;
-  height: 16px;
-  stroke-width: 2;
-}
-
-.btn-sm .btn-icon :deep(svg) {
-  width: 14px;
-  height: 14px;
-}
-
-.btn-lg .btn-icon :deep(svg) {
-  width: 18px;
-  height: 18px;
-}
-
-/* Текст */
-.btn-text {
-  line-height: 1;
-}
-
-/* Спиннер */
-.btn-spinner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.spinner-icon {
-  width: 16px;
-  height: 16px;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Состояние «отключено» */
 .btn-disabled,
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none !important;
-}
-
-.btn-disabled:hover,
-.btn:disabled:hover {
-  transform: none !important;
-  box-shadow: none !important;
-}
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
 </style>

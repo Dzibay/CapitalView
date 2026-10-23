@@ -49,9 +49,7 @@ const formatMoney = (value) => {
 
 // Общий массив цветов для графика и легенды
 const colors = [
-  '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#10b981', '#f472b6', '#60a5fa', '#fbbf24', '#a78bfa',
-  '#ec4899', '#14b8a6', '#f97316', '#6366f1'
+  '#7381ff', '#b0b8ff', '#5060dc', '#c6cad6', '#8e93a5', '#5f6478', '#a08cf5', '#7a7f92', '#464a57'
 ]
 
 const chartData = computed(() => {
@@ -189,9 +187,9 @@ const rightColumnAssets = computed(() => {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
   border-radius: 8px;
-  background: #fff;
+  background: var(--lx-surface, #fff);
   color: var(--text-primary);
   font-size: var(--text-body-secondary-size);
   font-weight: var(--text-label-weight);
@@ -200,8 +198,8 @@ const rightColumnAssets = computed(() => {
 }
 
 .filter-button:hover {
-  border-color: #d1d5db;
-  background: #f9fafb;
+  border-color: var(--lx-line, #d1d5db);
+  background: var(--lx-surface, #f9fafb);
 }
 
 .filter-button svg {

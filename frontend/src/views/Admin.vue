@@ -410,9 +410,9 @@ async function refreshAdminData() {
   flex-shrink: 0;
   padding: 0.5rem 1rem;
   border-radius: 10px;
-  border: 1px solid var(--axis-border, #d1d5db);
-  background: var(--bg-primary, #fff);
-  color: var(--primary, #527de5);
+  border: 1px solid var(--axis-border, var(--lx-line, #d1d5db));
+  background: var(--bg-primary, var(--lx-surface, #fff));
+  color: var(--primary, var(--lx-accent-ink, #527de5));
   font-size: var(--text-caption-size, 0.875rem);
   font-weight: 600;
   font-family: inherit;
@@ -424,13 +424,13 @@ async function refreshAdminData() {
 }
 
 .admin-page__to-app:hover {
-  border-color: var(--primary, #527de5);
-  background: rgba(82, 125, 229, 0.06);
-  color: var(--primary-hover, #4568d4);
+  border-color: var(--primary, var(--lx-accent, #527de5));
+  background: var(--lx-accent-soft, rgba(82, 125, 229, 0.06));
+  color: var(--primary-hover, var(--lx-accent-ink, #4568d4));
 }
 
 .admin-page__to-app:focus-visible {
-  outline: 2px solid var(--primary, #527de5);
+  outline: 2px solid var(--primary, var(--lx-accent, #527de5));
   outline-offset: 2px;
 }
 
@@ -463,9 +463,9 @@ async function refreshAdminData() {
 .admin-error {
   padding: 1rem 1.25rem;
   border-radius: 12px;
-  background: #fef2f2;
-  color: var(--danger-dark, #b91c1c);
-  border: 1px solid #fecaca;
+  background: var(--lx-surface, #fef2f2);
+  color: var(--danger-dark, var(--lx-down, #b91c1c));
+  border: 1px solid var(--lx-line, #fecaca);
 }
 
 .admin-body {
@@ -503,9 +503,9 @@ async function refreshAdminData() {
   gap: 0.375rem;
   padding: 1rem 1.125rem;
   border-radius: 14px;
-  background: var(--bg-primary, #fff);
-  border: 1px solid var(--axis-grid, #e5e7eb);
-  border-left: 3px solid var(--primary, #527de5);
+  background: var(--bg-primary, var(--lx-surface, #fff));
+  border: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
+  border-left: 3px solid var(--primary, var(--lx-accent, #527de5));
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
   min-width: 0;
   max-width: 100%;
@@ -514,7 +514,7 @@ async function refreshAdminData() {
 .stat-label {
   font-size: 0.6875rem;
   font-weight: 700;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   text-transform: uppercase;
   letter-spacing: 0.06em;
   line-height: 1.3;
@@ -523,7 +523,7 @@ async function refreshAdminData() {
 .stat-value {
   font-size: clamp(1.375rem, 4vw, 1.75rem);
   font-weight: 800;
-  color: var(--text-primary, #111827);
+  color: var(--text-primary, var(--lx-ink, #111827));
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
 }
@@ -531,8 +531,8 @@ async function refreshAdminData() {
 .admin-panel {
   padding: 1.125rem 1.125rem 1.25rem;
   border-radius: 16px;
-  background: var(--bg-primary, #fff);
-  border: 1px solid var(--axis-grid, #e5e7eb);
+  background: var(--bg-primary, var(--lx-surface, #fff));
+  border: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
   box-shadow: 0 4px 24px -8px rgba(15, 23, 42, 0.08);
   min-width: 0;
   max-width: 100%;
@@ -548,10 +548,10 @@ async function refreshAdminData() {
   margin: 0;
   font-size: 1.125rem;
   font-weight: 700;
-  color: var(--text-primary, #111827);
+  color: var(--text-primary, var(--lx-ink, #111827));
   letter-spacing: -0.02em;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--axis-grid, #e5e7eb);
+  border-bottom: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
   position: relative;
 }
 
@@ -563,14 +563,14 @@ async function refreshAdminData() {
   width: 2.75rem;
   height: 2px;
   border-radius: 2px;
-  background: var(--primary-gradient, linear-gradient(135deg, #527de5, #6b91ea));
+  background: var(--primary-gradient, linear-gradient(135deg, var(--lx-accent, #527de5), var(--lx-accent, #6b91ea)));
 }
 
 .admin-section-caption {
   margin: 0.75rem 0 1rem;
   font-size: var(--text-caption-size, 0.875rem);
   line-height: 1.5;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   max-width: 100%;
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -579,11 +579,11 @@ async function refreshAdminData() {
 .chart-empty {
   padding: 2rem 1rem;
   text-align: center;
-  color: var(--text-tertiary, #64748b);
+  color: var(--text-tertiary, var(--lx-ink-2, #64748b));
   font-size: 0.9375rem;
-  background: var(--bg-secondary, #f8fafc);
+  background: var(--bg-secondary, var(--lx-surface, #f8fafc));
   border-radius: 12px;
-  border: 1px dashed var(--axis-border, #e2e8f0);
+  border: 1px dashed var(--axis-border, var(--lx-line, #e2e8f0));
 }
 
 .chart-legend {
@@ -592,7 +592,7 @@ async function refreshAdminData() {
   gap: 1rem 1.5rem;
   margin-bottom: 0.75rem;
   font-size: 0.8125rem;
-  color: var(--text-secondary, #475569);
+  color: var(--text-secondary, var(--lx-ink-2, #475569));
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -616,11 +616,11 @@ async function refreshAdminData() {
 }
 
 .chart-legend-swatch--primary {
-  background: var(--primary, #527de5);
+  background: var(--primary, var(--lx-accent, #527de5));
 }
 
 .chart-legend-swatch--verified {
-  background: var(--success, #0d9488);
+  background: var(--success, var(--lx-up, #0d9488));
 }
 
 .admin-chart-wrap {
@@ -636,11 +636,11 @@ async function refreshAdminData() {
 .users-empty {
   padding: 1.5rem 1rem;
   text-align: center;
-  color: var(--text-tertiary, #64748b);
+  color: var(--text-tertiary, var(--lx-ink-2, #64748b));
   font-size: 0.9375rem;
-  background: var(--bg-secondary, #f8fafc);
+  background: var(--bg-secondary, var(--lx-surface, #f8fafc));
   border-radius: 12px;
-  border: 1px dashed var(--axis-border, #e2e8f0);
+  border: 1px dashed var(--axis-border, var(--lx-line, #e2e8f0));
 }
 
 .users-table-wrap {
@@ -650,8 +650,8 @@ async function refreshAdminData() {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   border-radius: 12px;
-  border: 1px solid var(--axis-grid, #e5e7eb);
-  background: var(--bg-secondary, #f9fafb);
+  border: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
+  background: var(--bg-secondary, var(--lx-surface, #f9fafb));
 }
 
 .users-table {
@@ -659,7 +659,7 @@ async function refreshAdminData() {
   min-width: 32rem;
   border-collapse: collapse;
   font-size: var(--text-caption-size, 0.875rem);
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary, var(--lx-surface, #fff));
 }
 
 @media (min-width: 768px) {
@@ -672,13 +672,13 @@ async function refreshAdminData() {
 .users-table thead th.users-table__th {
   text-align: left;
   padding: 0.625rem 0.75rem;
-  background: var(--bg-tertiary, #f3f4f6);
-  color: var(--text-tertiary, #6b7280);
+  background: var(--bg-tertiary, var(--lx-fill, #f3f4f6));
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   font-weight: 700;
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border-bottom: 1px solid var(--axis-grid, #e5e7eb);
+  border-bottom: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
   vertical-align: middle;
   line-height: 1.25;
 }
@@ -725,29 +725,29 @@ async function refreshAdminData() {
 }
 
 .users-table__th-btn:hover {
-  color: var(--text-secondary, #374151);
-  background: rgba(82, 125, 229, 0.08);
+  color: var(--text-secondary, var(--lx-ink, #374151));
+  background: var(--lx-accent-soft, rgba(82, 125, 229, 0.08));
 }
 
 .users-table__th-btn:focus-visible {
-  outline: 2px solid var(--primary, #527de5);
+  outline: 2px solid var(--primary, var(--lx-accent, #527de5));
   outline-offset: -2px;
 }
 
 .users-table__sort-icon {
   display: inline-flex;
-  color: var(--primary, #527de5);
+  color: var(--primary, var(--lx-accent-ink, #527de5));
   flex-shrink: 0;
 }
 
 .users-table__sort-icon--muted {
-  color: var(--axis-text-light, #9ca3af);
+  color: var(--axis-text-light, var(--lx-mut, #9ca3af));
 }
 
 .users-table td {
   padding: 0.65rem 0.75rem;
-  border-bottom: 1px solid var(--axis-grid-light, #f3f4f6);
-  color: var(--text-secondary, #374151);
+  border-bottom: 1px solid var(--axis-grid-light, var(--lx-line, #f3f4f6));
+  color: var(--text-secondary, var(--lx-ink, #374151));
   vertical-align: top;
 }
 
@@ -762,7 +762,7 @@ async function refreshAdminData() {
 }
 
 .users-table tbody tr:hover td {
-  background: rgba(82, 125, 229, 0.03);
+  background: var(--lx-accent-soft, rgba(82, 125, 229, 0.03));
 }
 
 .users-table__row--clickable {
@@ -770,13 +770,13 @@ async function refreshAdminData() {
 }
 
 .users-table__row--clickable:focus-visible {
-  outline: 2px solid var(--primary, #527de5);
+  outline: 2px solid var(--primary, var(--lx-accent, #527de5));
   outline-offset: -2px;
 }
 
 .users-table__name {
   font-weight: 600;
-  color: var(--text-primary, #111827);
+  color: var(--text-primary, var(--lx-ink, #111827));
 }
 
 .users-table__email {
@@ -787,7 +787,7 @@ async function refreshAdminData() {
 .users-table__date {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   font-size: 0.8125rem;
 }
 
@@ -907,7 +907,7 @@ async function refreshAdminData() {
   }
 
   .users-table__row--clickable:active td {
-    background: rgba(82, 125, 229, 0.08);
+    background: var(--lx-accent-soft, rgba(82, 125, 229, 0.08));
   }
 
   .admin-error {

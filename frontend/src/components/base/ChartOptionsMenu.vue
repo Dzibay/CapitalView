@@ -146,15 +146,15 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   border: none;
   background: transparent;
-  color: var(--text-tertiary, #9ca3b8);
+  color: var(--text-tertiary, var(--lx-mut, #9ca3b8));
   cursor: pointer;
   transition: all 0.15s ease;
   flex-shrink: 0;
 }
 .chart-options-btn:hover,
 .chart-options-btn--active {
-  background: var(--bg-tertiary, #f3f4f6);
-  color: var(--text-secondary, #4b5563);
+  background: var(--bg-tertiary, var(--lx-fill, #f3f4f6));
+  color: var(--text-secondary, var(--lx-ink-2, #4b5563));
 }
 
 .chart-options-dropdown {
@@ -162,8 +162,8 @@ onBeforeUnmount(() => {
   top: calc(100% + 6px);
   right: 0;
   min-width: 190px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--lx-surface, #fff);
+  border: 1px solid var(--lx-line, #e5e7eb);
   border-radius: 10px;
   box-shadow: 0 8px 24px -4px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.04);
   z-index: 50;
@@ -189,7 +189,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
 }
 
 .chart-options-item {
@@ -202,7 +202,7 @@ onBeforeUnmount(() => {
   transition: background 0.12s ease;
 }
 .chart-options-item:hover {
-  background: #f3f4f6;
+  background: var(--lx-fill, #f3f4f6);
 }
 
 .chart-options-item--radio {
@@ -213,7 +213,7 @@ onBeforeUnmount(() => {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid #d1d5db;
+  border: 2px solid var(--lx-line, #d1d5db);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -221,13 +221,13 @@ onBeforeUnmount(() => {
   transition: border-color 0.15s ease;
 }
 .chart-options-radio-outer.is-selected {
-  border-color: #527de5;
+  border-color: var(--lx-accent, #527de5);
 }
 .chart-options-radio-inner {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #527de5;
+  background: var(--lx-accent, #527de5);
 }
 
 .chart-options-item-track {
@@ -235,12 +235,12 @@ onBeforeUnmount(() => {
   width: 32px;
   height: 18px;
   border-radius: 9px;
-  background: #e5e7eb;
+  background: var(--lx-fill, #e5e7eb);
   transition: background 0.2s ease;
   flex-shrink: 0;
 }
 .chart-options-item-track.is-on {
-  background: #527de5;
+  background: var(--lx-accent, #527de5);
 }
 
 .chart-options-item-thumb {
@@ -250,7 +250,7 @@ onBeforeUnmount(() => {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--lx-surface, #fff);
   box-shadow: 0 1px 3px rgba(0,0,0,0.18);
   transition: transform 0.2s cubic-bezier(0.4,0,0.2,1);
 }
@@ -261,7 +261,7 @@ onBeforeUnmount(() => {
 .chart-options-item-label {
   font-size: 13px;
   font-weight: 500;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   line-height: 1.2;
   white-space: nowrap;
 }

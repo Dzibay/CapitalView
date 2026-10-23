@@ -291,8 +291,8 @@ const goalProjection = computed(() => {
       {
         label: 'Прогноз капитала',
         data: projectionData,
-        borderColor: '#5478EA',
-        backgroundColor: 'rgba(84, 120, 234, 0.06)',
+        borderColor: '#7381ff',
+        backgroundColor: 'rgba(115, 129, 255, 0.08)',
         fill: true,
         tension: 0.4,
         pointRadius: 0,
@@ -302,7 +302,7 @@ const goalProjection = computed(() => {
       {
         label: 'Целевой капитал',
         data: targetLine,
-        borderColor: '#9ca3af',
+        borderColor: '#5d606c',
         backgroundColor: 'transparent',
         borderDash: [5, 5],
         borderWidth: 1.5,
@@ -312,12 +312,12 @@ const goalProjection = computed(() => {
       {
         label: 'Достижение цели',
         data: goalMarkerData,
-        borderColor: '#fff',
+        borderColor: '#101115',
         backgroundColor: '#10b981',
         pointRadius: 8,
         pointHoverRadius: 10,
         pointBorderWidth: 2.5,
-        pointBorderColor: '#fff',
+        pointBorderColor: '#101115',
         pointBackgroundColor: '#10b981',
         showLine: false,
         order: 1,
@@ -613,11 +613,11 @@ const formatAmountShort = (value) => {
 }
 
 .progress-circle-bg {
-  stroke: #f3f4f6;
+  stroke: var(--lx-line, #f3f4f6);
 }
 
 .progress-circle-fill {
-  stroke: #5478EA;
+  stroke: var(--lx-accent, #5478EA);
   transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   stroke-linecap: round;
   animation: progressAnimation 1s ease-out;
@@ -683,7 +683,7 @@ const formatAmountShort = (value) => {
   align-items: center;
   gap: 0.5rem;
   padding: 0.375rem 0.625rem;
-  background: #f9fafb;
+  background: var(--lx-surface, #f9fafb);
   border-radius: 6px;
   min-width: 0;
   max-width: 100%;
@@ -759,7 +759,7 @@ const formatAmountShort = (value) => {
     linear-gradient(
       160deg,
       rgba(15, 28, 46, 0.55) 0%,
-      rgba(32, 58, 92, 0.42) 45%,
+      var(--lx-accent, rgba(32, 58, 92, 0.42)) 45%,
       rgba(20, 40, 68, 0.58) 100%
     );
 }
@@ -803,8 +803,8 @@ const formatAmountShort = (value) => {
   border: none;
   border-radius: 999px;
   padding: 0.75rem 1.5rem;
-  background: #fff;
-  color: #1e3a5f;
+  background: var(--lx-surface, #fff);
+  color: var(--lx-accent-ink, #1e3a5f);
   font: inherit;
   font-size: 0.95rem;
   font-weight: 650;
@@ -819,7 +819,7 @@ const formatAmountShort = (value) => {
 }
 
 .goal-empty:focus-visible {
-  outline: 2px solid #5478EA;
+  outline: 2px solid var(--lx-accent, #5478EA);
   outline-offset: 2px;
 }
 

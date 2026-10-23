@@ -384,7 +384,7 @@ const handleMoveAsset = (asset) => {
 .divider-vertical {
   width: 1px;
   height: 24px;
-  background: #e5e7eb;
+  background: var(--lx-fill, #e5e7eb);
   margin: 0 2px;
   flex-shrink: 0;
 }
@@ -404,15 +404,15 @@ const handleMoveAsset = (asset) => {
 .button-group-unified :deep(.btn-group-right) {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
-  border-left: 1px solid #e5e7eb;
+  border-left: 1px solid var(--lx-line, #e5e7eb);
 }
 
 .button-group-unified :deep(.btn-group-left:hover) {
-  border-right-color: #527de5;
+  border-right-color: var(--lx-accent, #527de5);
 }
 
 .button-group-unified :deep(.btn-group-right:hover) {
-  border-left-color: #527de5;
+  border-left-color: var(--lx-accent, #527de5);
 }
 
 .btn-refresh :deep(.btn-icon svg) {
@@ -429,13 +429,13 @@ const handleMoveAsset = (asset) => {
   bottom: 20px;
   right: 20px;
   z-index: 999;
-  background: white;
+  background: var(--lx-surface, white);
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   padding: 12px;
   min-width: 200px;
   max-width: 300px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
 }
 
 .tasks-badge {
@@ -443,12 +443,12 @@ const handleMoveAsset = (asset) => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: #eff6ff;
+  background: var(--lx-fill, #eff6ff);
   border-radius: 8px;
   margin-bottom: 8px;
   font-size: 13px;
   font-weight: 600;
-  color: #1e40af;
+  color: var(--lx-accent-ink, #1e40af);
 }
 
 .tasks-icon {
@@ -456,7 +456,7 @@ const handleMoveAsset = (asset) => {
 }
 
 .tasks-count {
-  background: #3b82f6;
+  background: var(--lx-accent, #3b82f6);
   color: white;
   padding: 2px 8px;
   border-radius: 12px;
@@ -479,8 +479,8 @@ const handleMoveAsset = (asset) => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: var(--lx-surface, #f9fafb);
+  border: 1px solid var(--lx-line, #e5e7eb);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -490,15 +490,15 @@ const handleMoveAsset = (asset) => {
 }
 
 .task-item:hover {
-  background: #f3f4f6;
-  border-color: #3b82f6;
+  background: var(--lx-fill, #f3f4f6);
+  border-color: var(--lx-accent, #3b82f6);
   transform: translateX(-2px);
 }
 
 .task-item.active {
-  background: #eff6ff;
-  border-color: #3b82f6;
-  color: #1e40af;
+  background: var(--lx-fill, #eff6ff);
+  border-color: var(--lx-accent, #3b82f6);
+  color: var(--lx-accent-ink, #1e40af);
 }
 
 .task-icon {
@@ -508,19 +508,19 @@ const handleMoveAsset = (asset) => {
 .task-info {
   flex: 1;
   font-weight: 500;
-  color: #374151;
+  color: var(--lx-ink, #374151);
 }
 
 .task-item.active .task-info {
-  color: #1e40af;
+  color: var(--lx-accent-ink, #1e40af);
   font-weight: 600;
 }
 
 .task-status-badge {
   font-size: 10px;
   padding: 2px 6px;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--lx-fill, #f3f4f6);
+  color: var(--lx-ink-2, #6b7280);
   border-radius: 4px;
   font-weight: 500;
 }
@@ -531,10 +531,10 @@ const handleMoveAsset = (asset) => {
 .empty-placeholder {
   text-align: center;
   padding: 60px 20px;
-  background: #fff;
+  background: var(--lx-surface, #fff);
   border-radius: 12px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
 }
 .empty-icon {
   font-size: 48px;
@@ -542,10 +542,10 @@ const handleMoveAsset = (asset) => {
 }
 .empty-placeholder h3 {
   margin: 0 0 8px;
-  color: #374151;
+  color: var(--lx-ink, #374151);
 }
 .empty-placeholder p {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   margin-bottom: 24px;
 }
 

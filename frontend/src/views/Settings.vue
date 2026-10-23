@@ -325,7 +325,7 @@ const savePassword = async () => {
 .form-input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(82, 125, 229, 0.15);
+  box-shadow: 0 0 0 3px var(--lx-accent-soft, rgba(82, 125, 229, 0.15));
 }
 
 .form-input:disabled {
@@ -355,7 +355,7 @@ const savePassword = async () => {
 .form-textarea:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(82, 125, 229, 0.15);
+  box-shadow: 0 0 0 3px var(--lx-accent-soft, rgba(82, 125, 229, 0.15));
 }
 
 .form-textarea:disabled {
@@ -372,51 +372,61 @@ const savePassword = async () => {
 }
 
 .btn-primary {
-  padding: 0.5rem 1rem;
-  background: var(--primary);
-  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 15px;
+  color: #fff;
+  background: linear-gradient(180deg, #7080ff, #5866ee);
   border: none;
-  border-radius: 8px;
-  font-size: var(--text-caption-size);
-  font-weight: var(--text-label-weight);
+  border-radius: var(--cv-r-sm, 10px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 6px 18px -10px rgba(100, 116, 255, .8);
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background 0.2s, transform 0.2s;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--primary-hover);
-  transform: translateY(-1px);
+  background: linear-gradient(180deg, #7b8aff, #616ff2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24), 0 8px 22px -10px rgba(100, 116, 255, .9);
 }
 
 .btn-primary:active:not(:disabled) {
-  transform: translateY(0);
+  transform: scale(.97);
 }
 
 .btn-primary:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
   transform: none;
 }
 
 .btn-logout {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
   background: transparent;
-  color: var(--text-tertiary);
-  border: 1px solid var(--axis-border);
-  border-radius: 8px;
-  font-size: var(--text-caption-size);
-  font-weight: var(--text-label-weight);
+  color: var(--cv-mut, var(--text-tertiary));
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--cv-line-2, var(--axis-border));
+  border-radius: var(--cv-r-sm, 10px);
+  font-size: 13px;
+  font-weight: 550;
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  transition: color 0.2s, box-shadow 0.2s, background 0.2s;
 }
 
 .btn-logout:hover {
-  color: var(--danger);
-  border-color: var(--danger-light);
-  background: rgba(239, 68, 68, 0.05);
+  color: var(--cv-down, var(--danger));
+  box-shadow: inset 0 0 0 1px rgba(242, 119, 122, .3);
+  background: var(--cv-down-bg, rgba(239, 68, 68, 0.05));
 }
 
 .message {
@@ -427,24 +437,24 @@ const savePassword = async () => {
 }
 
 .message-error {
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--lx-down-soft, rgba(239, 68, 68, 0.1));
   color: var(--danger);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  border: 1px solid var(--lx-down-line, rgba(239, 68, 68, 0.3));
 }
 
 .message-success {
-  background: rgba(28, 189, 136, 0.1);
+  background: var(--lx-up-soft, rgba(28, 189, 136, 0.1));
   color: var(--success);
-  border: 1px solid rgba(28, 189, 136, 0.3);
+  border: 1px solid var(--lx-up-line, rgba(28, 189, 136, 0.3));
 }
 
 .profile-email-readonly {
   margin: 0;
   padding: 0.65rem 0.75rem;
   border-radius: 8px;
-  border: 1px solid var(--axis-border, #e5e7eb);
-  background: var(--bg-secondary, #f9fafb);
-  color: var(--text-secondary, #374151);
+  border: 1px solid var(--axis-border, var(--lx-line, #e5e7eb));
+  background: var(--bg-secondary, var(--lx-surface, #f9fafb));
+  color: var(--text-secondary, var(--lx-ink, #374151));
   font-size: var(--text-caption-size, 0.875rem);
   word-break: break-all;
 }
@@ -452,7 +462,7 @@ const savePassword = async () => {
 .profile-email-hint {
   margin: 0.35rem 0 0;
   font-size: 0.75rem;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   line-height: 1.4;
 }
 
@@ -460,9 +470,9 @@ const savePassword = async () => {
   margin: 0 0 1rem;
   padding: 0.65rem 0.75rem;
   border-radius: 8px;
-  border: 1px solid var(--axis-border, #e5e7eb);
-  background: var(--bg-secondary, #f9fafb);
-  color: var(--text-secondary, #374151);
+  border: 1px solid var(--axis-border, var(--lx-line, #e5e7eb));
+  background: var(--bg-secondary, var(--lx-surface, #f9fafb));
+  color: var(--text-secondary, var(--lx-ink, #374151));
   font-size: var(--text-caption-size, 0.875rem);
   line-height: 1.45;
 }
@@ -471,7 +481,7 @@ const savePassword = async () => {
   margin: 0 0 1rem;
   font-size: var(--text-caption-size, 0.875rem);
   line-height: 1.5;
-  color: var(--text-secondary, #475569);
+  color: var(--text-secondary, var(--lx-ink-2, #475569));
 }
 
 .settings-support-link {

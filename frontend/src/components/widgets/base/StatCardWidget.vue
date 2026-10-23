@@ -440,13 +440,13 @@ const mainWrapperStyle = computed(() => {
 .main-value {
   font-size: var(--widget-font-main, 1.5rem);
   font-weight: var(--widget-font-main-weight, 600);
-  color: var(--text-primary, #111827);
+  color: var(--text-primary, var(--lx-ink, #111827));
   line-height: 1.2;
 }
 
 .main-value-suffix {
   font-size: var(--widget-font-secondary, 1rem);
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   line-height: 1;
   padding-bottom: 0.2rem;
   margin: 0;
@@ -456,15 +456,15 @@ const mainWrapperStyle = computed(() => {
   margin: 0;
   margin-top: 0;
   font-size: var(--widget-font-secondary, 1rem);
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   line-height: 1.2;
 }
 
 .secondary-text .positive {
-  color: var(--positiveColor, #1cbd88);
+  color: var(--positiveColor, var(--lx-up, #1cbd88));
 }
 
 .secondary-text .negative {
-  color: var(--negativeColor, #ef4444);
+  color: var(--negativeColor, var(--lx-down, #ef4444));
 }
 </style>

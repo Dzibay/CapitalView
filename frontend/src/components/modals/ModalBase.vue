@@ -63,7 +63,7 @@ const emit = defineEmits(['close'])
 }
 
 .modal {
-  background: white;
+  background: var(--lx-surface, white);
   border-radius: 20px;
   width: 100%;
   max-width: 480px;
@@ -97,8 +97,8 @@ const emit = defineEmits(['close'])
   align-items: center;
   justify-content: space-between;
   padding: 18px 20px;
-  border-bottom: 1px solid #f3f4f6;
-  background: #fff;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
+  background: var(--lx-surface, #fff);
   flex-shrink: 0;
 }
 
@@ -112,19 +112,19 @@ const emit = defineEmits(['close'])
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
 }
 
 .modal-header h2 {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
-  color: #111827;
+  color: var(--lx-ink, #111827);
   letter-spacing: -0.01em;
 }
 
 .close-btn {
-  background: #f3f4f6;
+  background: var(--lx-fill, #f3f4f6);
   border: none;
   width: 32px;
   height: 32px;
@@ -133,14 +133,14 @@ const emit = defineEmits(['close'])
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .close-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--lx-fill, #fee2e2);
+  color: var(--lx-down, #dc2626);
   transform: scale(1.05);
 }
 
@@ -161,11 +161,11 @@ const emit = defineEmits(['close'])
 }
 
 .form-content::-webkit-scrollbar-track {
-  background: #f9fafb;
+  background: var(--lx-surface, #f9fafb);
 }
 
 .form-content::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--lx-fill-2, #d1d5db);
   border-radius: 3px;
 }
 </style>

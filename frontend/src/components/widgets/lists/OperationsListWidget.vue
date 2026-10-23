@@ -139,7 +139,7 @@ table {
 }
 
 thead {
-  background: #f9fafb;
+  background: var(--lx-surface, #f9fafb);
 }
 
 th {
@@ -150,16 +150,16 @@ th {
   color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--lx-line, #e5e7eb);
 }
 
 tbody tr {
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
   transition: background-color 0.15s;
 }
 
 tbody tr:hover {
-  background-color: #f9fafb;
+  background-color: var(--lx-surface, #f9fafb);
 }
 
 td {
@@ -179,27 +179,27 @@ td {
 }
 
 .badge-buy {
-  background: #dcfce7;
-  color: #16a34a;
+  background: var(--lx-fill, #dcfce7);
+  color: var(--lx-up, #16a34a);
 }
 
 .badge-sell {
-  background: #fee2e2;
-  color: #ef4444;
+  background: var(--lx-fill, #fee2e2);
+  color: var(--lx-down, #ef4444);
 }
 
 .badge-dividend {
-  background: #dbeafe;
-  color: #2563eb;
+  background: var(--lx-fill, #dbeafe);
+  color: var(--lx-accent-ink, #2563eb);
 }
 
 .badge-coupon {
-  background: #cffafe;
-  color: #0891b2;
+  background: var(--lx-fill, #cffafe);
+  color: var(--lx-accent-ink, #0891b2);
 }
 
 .badge-other {
-  background: #f3f4f6;
+  background: var(--lx-fill, #f3f4f6);
   color: var(--text-tertiary);
 }
 </style>

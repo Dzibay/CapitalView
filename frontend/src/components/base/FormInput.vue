@@ -166,17 +166,17 @@ const handleChange = (event) => {
   margin-bottom: 10px;
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   letter-spacing: -0.01em;
 }
 
 .label-icon {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   flex-shrink: 0;
 }
 
 .loading-icon {
-  color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
   animation: spin 1s linear infinite;
   margin-left: 8px;
 }
@@ -189,35 +189,35 @@ const handleChange = (event) => {
 .form-input {
   width: 100%;
   padding: 11px 14px;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--lx-line, #e5e7eb);
   border-radius: 10px;
   font-size: 14px;
   transition: all 0.2s ease;
-  background: #fff;
-  color: #111827;
+  background: var(--lx-surface, #fff);
+  color: var(--lx-ink, #111827);
   box-sizing: border-box;
   font-family: inherit;
 }
 
 .form-input::placeholder {
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
 }
 
 .form-input:hover {
-  border-color: #d1d5db;
-  background: #fafafa;
+  border-color: var(--lx-line, #d1d5db);
+  background: var(--lx-surface, #fafafa);
 }
 
 .form-input:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
-  background: #fff;
+  border-color: var(--lx-accent, #3b82f6);
+  box-shadow: 0 0 0 3px var(--lx-accent-soft, rgba(59,130,246,0.1));
+  background: var(--lx-surface, #fff);
 }
 
 .form-input:disabled {
-  background: #f9fafb;
-  color: #9ca3af;
+  background: var(--lx-surface, #f9fafb);
+  color: var(--lx-mut, #9ca3af);
   cursor: not-allowed;
 }
 
@@ -240,11 +240,11 @@ const handleChange = (event) => {
   gap: 4px;
   margin-top: 6px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
 }
 
 .hint-icon {
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
   flex-shrink: 0;
 }
 </style>

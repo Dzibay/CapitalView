@@ -460,9 +460,9 @@ async function onDeletePortfolio(portfolioId) {
   flex-shrink: 0;
   padding: 0.5rem 1rem;
   border-radius: 10px;
-  border: 1px solid var(--axis-border, #d1d5db);
-  background: var(--bg-primary, #fff);
-  color: var(--primary, #527de5);
+  border: 1px solid var(--axis-border, var(--lx-line, #d1d5db));
+  background: var(--bg-primary, var(--lx-surface, #fff));
+  color: var(--primary, var(--lx-accent-ink, #527de5));
   font-size: var(--text-caption-size, 0.875rem);
   font-weight: 600;
   font-family: inherit;
@@ -474,9 +474,9 @@ async function onDeletePortfolio(portfolioId) {
 }
 
 .admin-user-actions__btn:hover:not(:disabled) {
-  border-color: var(--primary, #527de5);
-  background: rgba(82, 125, 229, 0.06);
-  color: var(--primary-hover, #4568d4);
+  border-color: var(--primary, var(--lx-accent, #527de5));
+  background: var(--lx-accent-soft, rgba(82, 125, 229, 0.06));
+  color: var(--primary-hover, var(--lx-accent-ink, #4568d4));
 }
 
 .admin-user-actions__btn:disabled {
@@ -498,8 +498,8 @@ async function onDeletePortfolio(portfolioId) {
   margin: 0 0 0.75rem;
   padding: 0.65rem 0.85rem;
   border-radius: 10px;
-  background: rgba(13, 148, 136, 0.08);
-  color: var(--text-secondary, #374151);
+  background: var(--lx-up-soft, rgba(13, 148, 136, 0.08));
+  color: var(--text-secondary, var(--lx-ink, #374151));
   font-size: var(--text-caption-size, 0.875rem);
   line-height: 1.45;
 }
@@ -508,9 +508,9 @@ async function onDeletePortfolio(portfolioId) {
   margin: 0 0 0.75rem;
   padding: 0.65rem 0.85rem;
   border-radius: 10px;
-  background: #fef2f2;
-  color: var(--danger-dark, #b91c1c);
-  border: 1px solid #fecaca;
+  background: var(--lx-surface, #fef2f2);
+  color: var(--danger-dark, var(--lx-down, #b91c1c));
+  border: 1px solid var(--lx-line, #fecaca);
   font-size: var(--text-caption-size, 0.875rem);
   line-height: 1.45;
 }
@@ -542,7 +542,7 @@ async function onDeletePortfolio(portfolioId) {
   padding: 0.35rem 0.6rem 0.35rem 0.25rem;
   border: none;
   background: transparent;
-  color: var(--primary, #527de5);
+  color: var(--primary, var(--lx-accent-ink, #527de5));
   font-size: var(--text-caption-size, 0.875rem);
   font-weight: 600;
   font-family: inherit;
@@ -551,37 +551,37 @@ async function onDeletePortfolio(portfolioId) {
 }
 
 .admin-back:hover {
-  background: rgba(82, 125, 229, 0.08);
+  background: var(--lx-accent-soft, rgba(82, 125, 229, 0.08));
 }
 
 .admin-back:focus-visible {
-  outline: 2px solid var(--primary, #527de5);
+  outline: 2px solid var(--primary, var(--lx-accent, #527de5));
   outline-offset: 2px;
 }
 
 .admin-error {
   padding: 1rem 1.25rem;
   border-radius: 12px;
-  background: #fef2f2;
-  color: var(--danger-dark, #b91c1c);
-  border: 1px solid #fecaca;
+  background: var(--lx-surface, #fef2f2);
+  color: var(--danger-dark, var(--lx-down, #b91c1c));
+  border: 1px solid var(--lx-line, #fecaca);
 }
 
 .admin-empty {
   padding: 2rem 1rem;
   text-align: center;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   font-size: var(--text-caption-size, 0.875rem);
-  background: var(--bg-secondary, #f8fafc);
+  background: var(--bg-secondary, var(--lx-surface, #f8fafc));
   border-radius: 12px;
-  border: 1px dashed var(--axis-border, #e2e8f0);
+  border: 1px dashed var(--axis-border, var(--lx-line, #e2e8f0));
 }
 
 .admin-panel {
   padding: 1.125rem;
   border-radius: 16px;
-  background: var(--bg-primary, #fff);
-  border: 1px solid var(--axis-grid, #e5e7eb);
+  background: var(--bg-primary, var(--lx-surface, #fff));
+  border: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
   box-shadow: 0 4px 24px -8px rgba(15, 23, 42, 0.08);
 }
 
@@ -594,7 +594,7 @@ async function onDeletePortfolio(portfolioId) {
 .admin-ro-hint {
   margin: 0 0 1rem;
   font-size: var(--text-caption-size, 0.875rem);
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   line-height: 1.5;
   max-width: 48rem;
 }
@@ -638,14 +638,14 @@ async function onDeletePortfolio(portfolioId) {
 .admin-tree-section {
   margin-top: 0.25rem;
   padding-top: 1.25rem;
-  border-top: 1px solid var(--axis-grid, #e5e7eb);
+  border-top: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
 }
 
 .admin-tree-section__title {
   margin: 0 0 0.875rem;
   font-size: var(--text-heading-2-size, 1rem);
   font-weight: 600;
-  color: var(--text-heading-2-color, var(--text-secondary, #374151));
+  color: var(--text-heading-2-color, var(--text-secondary, var(--lx-ink, #374151)));
 }
 
 @media (max-width: 1200px) {

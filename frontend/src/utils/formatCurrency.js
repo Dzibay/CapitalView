@@ -1,3 +1,5 @@
+import { privacyMode, maskAmount } from './privacyMode'
+
 /**
  * Утилиты для форматирования валюты
  * Используются во всех виджетах для единообразного форматирования
@@ -17,13 +19,14 @@ export const formatCurrency = (value, options = {}) => {
     ...restOptions
   } = options
 
-  return new Intl.NumberFormat('ru-RU', {
+  const formatted = new Intl.NumberFormat('ru-RU', {
     style: 'currency',
     currency,
     maximumFractionDigits,
     minimumFractionDigits,
     ...restOptions
   }).format(value || 0)
+  return privacyMode.value ? maskAmount(formatted) : formatted
 }
 
 /**
@@ -64,6 +67,11 @@ export const formatPercent = (value, options = {}) => {
  * @returns {string} Отформатированная строка
  */
 export const formatOperationAmount = (value, currency = 'RUB') => {
+  const formatted = formatOperationAmountRaw(value, currency)
+  return privacyMode.value ? maskAmount(formatted) : formatted
+}
+
+function formatOperationAmountRaw(value, currency) {
   if (value === null || value === undefined || isNaN(value)) {
     return '0 ₽'
   }

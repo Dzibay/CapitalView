@@ -14,11 +14,11 @@ const props = defineProps({
   },
   activeColor: {
     type: String,
-    default: '#527de5'
+    default: '#6474ff'
   },
   hoverColor: {
     type: String,
-    default: '#4568d4'
+    default: '#5060dc'
   },
 })
 
@@ -71,7 +71,7 @@ const handleChange = (event) => {
   cursor: pointer;
   user-select: none;
   font-size: 14px;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   max-width: 100%;
 }
 
@@ -91,34 +91,42 @@ const handleChange = (event) => {
 
 .toggle-switch-track {
   position: relative;
-  width: 44px;
-  height: 24px;
-  background-color: #e5e7eb;
-  border-radius: 12px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 34px;
+  height: 20px;
+  background-color: var(--lx-fill-3, #e5e7eb);
+  border-radius: 10px;
+  transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s;
   flex-shrink: 0;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: inset 0 0 0 1px var(--lx-line-2, rgba(0, 0, 0, 0.04));
 }
 
 .toggle-switch-thumb {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 20px;
-  height: 20px;
-  background-color: white;
+  width: 16px;
+  height: 16px;
+  background-color: var(--lx-ink-2, white);
   border-radius: 50%;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.25s cubic-bezier(0.34, 1.4, 0.64, 1), background-color 0.2s;
   transform: translateX(0);
 }
 
 .toggle-switch--checked .toggle-switch-thumb {
-  transform: translateX(20px);
+  transform: translateX(14px);
+  background-color: #fff;
+}
+.toggle-switch--checked .toggle-switch-track {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.toggle-switch-input:focus-visible + .toggle-switch-track {
+  outline: 2px solid var(--lx-accent, #3b82f6);
+  outline-offset: 2px;
 }
 
 .toggle-switch:not(.toggle-switch--disabled):not(.toggle-switch--checked):hover .toggle-switch-track {
-  background-color: #d1d5db;
+  background-color: var(--lx-fill-2, #d1d5db);
 }
 
 .toggle-switch--checked:not(.toggle-switch--disabled):hover .toggle-switch-track {
@@ -128,7 +136,7 @@ const handleChange = (event) => {
 .toggle-switch-label {
   font-size: 13px;
   font-weight: 500;
-  color: #374151;
+  color: var(--lx-ink-2, #374151);
   line-height: 1.2;
   min-width: 0;
   white-space: normal;

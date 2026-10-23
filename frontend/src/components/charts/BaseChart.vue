@@ -40,7 +40,7 @@ const defaultOptions = {
       position: 'top',
       labels: {
         font: { size: 12, family: 'Inter, system-ui, sans-serif' },
-        color: '#6b7280',
+        color: '#8a8d99',
         usePointStyle: true,
         padding: 15,
         boxWidth: 12,
@@ -49,7 +49,7 @@ const defaultOptions = {
     },
     tooltip: {
       enabled: true,
-      backgroundColor: 'rgba(31, 41, 55, 0.95)',
+      backgroundColor: 'rgba(21, 22, 27, 0.97)',
       titleFont: { weight: 'bold', size: 14, family: 'Inter, system-ui, sans-serif' },
       bodyFont: { size: 13, family: 'Inter, system-ui, sans-serif' },
       padding: 12,

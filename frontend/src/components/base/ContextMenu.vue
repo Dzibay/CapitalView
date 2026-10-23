@@ -189,10 +189,10 @@ onBeforeUnmount(() => {
 <style scoped>
 .context-menu {
   position: fixed;
-  background: white;
+  background: var(--lx-surface, white);
   border-radius: 12px;
   min-width: 200px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05);
   z-index: 9999;
   padding: 6px;
@@ -218,19 +218,19 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 10px 12px;
   margin: -2px -2px 4px;
-  background: #f9fafb;
-  border-bottom: 1px solid #f3f4f6;
+  background: var(--lx-surface, #f9fafb);
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
 }
 
 .menu-icon {
-  color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
   flex-shrink: 0;
 }
 
 .menu-title {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   letter-spacing: -0.01em;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -249,28 +249,28 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   transition: all 0.15s ease;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   font-weight: 500;
   margin: 1px 0;
 }
 
 .context-menu .item:hover {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--lx-fill, #f3f4f6);
+  color: var(--lx-ink, #111827);
 }
 
 .context-menu .item:active {
-  background: #e5e7eb;
+  background: var(--lx-fill, #e5e7eb);
   transform: scale(0.98);
 }
 
 .item-icon {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   flex-shrink: 0;
 }
 
 .context-menu .item:hover .item-icon {
-  color: #374151;
+  color: var(--lx-ink, #374151);
 }
 
 .item-text {
@@ -279,25 +279,25 @@ onBeforeUnmount(() => {
 }
 
 .context-menu .item.danger {
-  color: #dc2626;
+  color: var(--lx-down, #dc2626);
 }
 
 .context-menu .item.danger .item-icon {
-  color: #dc2626;
+  color: var(--lx-down, #dc2626);
 }
 
 .context-menu .item.danger:hover {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--lx-surface, #fef2f2);
+  color: var(--lx-down, #dc2626);
 }
 
 .context-menu .item.danger:hover .item-icon {
-  color: #dc2626;
+  color: var(--lx-down, #dc2626);
 }
 
 .divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+  background: linear-gradient(90deg, transparent, var(--lx-fill, #e5e7eb), transparent);
   margin: 4px 0;
   border: none;
 }

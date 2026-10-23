@@ -941,8 +941,8 @@ onUnmounted(() => {
   left: 12px;
   font-size: 11px;
   font-weight: 600;
-  color: #6b7280;
-  background: #fff;
+  color: var(--lx-ink-2, #6b7280);
+  background: var(--lx-surface, #fff);
   padding: 0 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -955,8 +955,8 @@ onUnmounted(() => {
   display: flex;
   align-items: stretch;
   min-height: 42px;
-  background: #fff;
-  border: 1.5px solid #e5e7eb;
+  background: var(--lx-surface, #fff);
+  border: 1.5px solid var(--lx-line, #e5e7eb);
   border-radius: 10px;
   overflow: hidden;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -964,19 +964,19 @@ onUnmounted(() => {
 
 .pf-dates:focus-within .pf-dates-inner,
 .pf-dates-inner:hover {
-  border-color: #d1d5db;
+  border-color: var(--lx-line, #d1d5db);
 }
 
 .pf-dates:focus-within .pf-dates-inner {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: var(--lx-accent, #3b82f6);
+  box-shadow: 0 0 0 3px var(--lx-accent-soft, rgba(59, 130, 246, 0.1));
 }
 
 .pf-dates-divider {
   width: 1px;
   align-self: stretch;
   margin: 8px 0;
-  background: linear-gradient(180deg, transparent, #e5e7eb 15%, #e5e7eb 85%, transparent);
+  background: linear-gradient(180deg, transparent, var(--lx-fill, #e5e7eb) 15%, var(--lx-fill, #e5e7eb) 85%, transparent);
   flex-shrink: 0;
 }
 
@@ -993,7 +993,7 @@ onUnmounted(() => {
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
-  color: #111827;
+  color: var(--lx-ink, #111827);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -1008,26 +1008,26 @@ onUnmounted(() => {
 
 .pf-date-chip-icon {
   flex-shrink: 0;
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
   transition: color 0.15s ease;
 }
 
 .pf-date-chip:hover {
-  background: #f9fafb;
-  color: #2563eb;
+  background: var(--lx-surface, #f9fafb);
+  color: var(--lx-accent-ink, #2563eb);
 }
 
 .pf-date-chip:hover .pf-date-chip-icon {
-  color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
 }
 
 .pf-date-chip.active {
-  background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
-  color: #2563eb;
+  background: linear-gradient(180deg, var(--lx-fill, #eff6ff) 0%, var(--lx-surface, #f8fafc) 100%);
+  color: var(--lx-accent-ink, #2563eb);
 }
 
 .pf-date-chip.active .pf-date-chip-icon {
-  color: #2563eb;
+  color: var(--lx-accent-ink, #2563eb);
 }
 
 .pf-date-chip-input {
@@ -1037,32 +1037,32 @@ onUnmounted(() => {
   padding: 8px 10px;
   border: none;
   border-radius: 0;
-  background: #fff;
+  background: var(--lx-surface, #fff);
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: #111827;
+  color: var(--lx-ink, #111827);
   outline: none;
   box-sizing: border-box;
   cursor: text;
 }
 
 .pf-date-chip-input::placeholder {
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
   font-weight: 400;
 }
 
 .pf-dates--all .pf-date-chip-text {
   font-weight: 600;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   text-transform: lowercase;
   letter-spacing: 0.04em;
 }
 
 .pf-dates--all .pf-date-chip:hover .pf-date-chip-text,
 .pf-dates--all .pf-date-chip.active .pf-date-chip-text {
-  color: #2563eb;
+  color: var(--lx-accent-ink, #2563eb);
 }
 
 .pf-slider-area {
@@ -1086,7 +1086,7 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   height: 5px;
-  background: #e5e7eb;
+  background: var(--lx-fill, #e5e7eb);
   border-radius: 3px;
 }
 
@@ -1094,7 +1094,7 @@ onUnmounted(() => {
   position: absolute;
   top: 12px;
   height: 5px;
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  background: linear-gradient(90deg, var(--lx-accent, #3b82f6), var(--lx-accent, #60a5fa));
   border-radius: 3px;
   transition: left 0.25s ease, width 0.25s ease;
   pointer-events: none;
@@ -1106,8 +1106,8 @@ onUnmounted(() => {
   top: 5px;
   width: 20px;
   height: 20px;
-  background: #fff;
-  border: 2.5px solid #3b82f6;
+  background: var(--lx-surface, #fff);
+  border: 2.5px solid var(--lx-accent, #3b82f6);
   border-radius: 50%;
   transform: translateX(-50%);
   cursor: grab;
@@ -1119,11 +1119,11 @@ onUnmounted(() => {
   transition: box-shadow 0.15s, transform 0.15s;
 }
 .pf-thumb:hover {
-  box-shadow: 0 0 0 6px rgba(59,130,246,0.12), 0 1px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 0 0 6px var(--lx-accent-soft, rgba(59,130,246,0.12)), 0 1px 4px rgba(0,0,0,0.1);
   transform: translateX(-50%) scale(1.1);
 }
 .pf-thumb.active {
-  box-shadow: 0 0 0 8px rgba(59,130,246,0.15), 0 2px 8px rgba(0,0,0,0.12);
+  box-shadow: 0 0 0 8px var(--lx-accent-soft, rgba(59,130,246,0.15)), 0 2px 8px rgba(0,0,0,0.12);
   transform: translateX(-50%) scale(1.15);
   cursor: grabbing;
 }
@@ -1147,12 +1147,12 @@ onUnmounted(() => {
 .pf-tick-mark {
   width: 1px;
   height: 6px;
-  background: #d1d5db;
+  background: var(--lx-fill-2, #d1d5db);
 }
 
 .pf-tick-label {
   font-size: 10px;
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
   white-space: nowrap;
   margin-top: 1px;
   letter-spacing: 0.01em;

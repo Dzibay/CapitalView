@@ -42,7 +42,7 @@ const updateValue = (value) => {
 <style scoped>
 .period-filters {
   display: flex;
-  background-color: #f3f4f6;
+  background-color: var(--lx-fill, #f3f4f6);
   padding: 3px;
   border-radius: 8px;
   gap: 2px;
@@ -58,20 +58,20 @@ const updateValue = (value) => {
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s, color 0.2s;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   white-space: nowrap;
   line-height: 1.2;
 }
 
 .filter-btn:hover {
-  background-color: #e5e7eb;
-  color: var(--text-secondary, #4b5563);
+  background-color: var(--lx-fill, #e5e7eb);
+  color: var(--text-secondary, var(--lx-ink-2, #4b5563));
 }
 
 .filter-btn.active {
-  background-color: #fff;
+  background-color: var(--lx-surface, #fff);
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  color: #5478EA;
+  color: var(--lx-accent-ink, #5478EA);
   font-weight: 600;
 }
 

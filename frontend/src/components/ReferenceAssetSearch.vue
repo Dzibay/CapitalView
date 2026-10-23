@@ -249,7 +249,7 @@ defineExpose({
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
   z-index: 1;
 }
 
@@ -261,55 +261,55 @@ defineExpose({
 
 .ref-asset-search__input--modal {
   padding: 11px 14px 11px 36px;
-  border: 1px solid var(--border-subtle, #d8dee6);
+  border: 1px solid var(--border-subtle, var(--lx-line, #d8dee6));
   border-radius: var(--radius-sm, 6px);
   font-size: 14px;
-  background: #fff;
-  color: var(--text-primary, #0f1419);
+  background: var(--lx-surface, #fff);
+  color: var(--text-primary, var(--lx-ink, #0f1419));
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .ref-asset-search__input--modal:hover {
-  border-color: var(--border-strong, #c5ced8);
-  background: #fff;
+  border-color: var(--border-strong, var(--lx-line-2, #c5ced8));
+  background: var(--lx-surface, #fff);
 }
 
 .ref-asset-search__input--modal:focus {
   outline: none;
-  border-color: var(--primary, #2f5f8f);
-  box-shadow: 0 0 0 2px rgba(47, 95, 143, 0.15);
-  background: #fff;
+  border-color: var(--primary, var(--lx-accent, #2f5f8f));
+  box-shadow: 0 0 0 2px var(--lx-accent-soft, rgba(47, 95, 143, 0.15));
+  background: var(--lx-surface, #fff);
 }
 
 .ref-asset-search__input--modal:disabled {
-  background: var(--bg-secondary, #eef1f4);
-  color: var(--text-quaternary, #8b939e);
+  background: var(--bg-secondary, var(--lx-fill, #eef1f4));
+  color: var(--text-quaternary, var(--lx-mut, #8b939e));
   cursor: not-allowed;
 }
 
 .ref-asset-search__input--header {
   height: 40px;
   padding: 0 14px 0 38px;
-  border: 1px solid var(--border-subtle, #d8dee6);
+  border: 1px solid var(--border-subtle, var(--lx-line, #d8dee6));
   border-radius: var(--radius-sm, 6px);
   font-size: 14px;
-  background: #fff;
-  color: var(--text-primary, #0f1419);
+  background: var(--lx-surface, #fff);
+  color: var(--text-primary, var(--lx-ink, #0f1419));
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .ref-asset-search__input--header::placeholder {
-  color: var(--text-quaternary, #8b939e);
+  color: var(--text-quaternary, var(--lx-mut, #8b939e));
 }
 
 .ref-asset-search__input--header:hover {
-  border-color: var(--border-strong, #c5ced8);
+  border-color: var(--border-strong, var(--lx-line-2, #c5ced8));
 }
 
 .ref-asset-search__input--header:focus {
   outline: none;
-  border-color: var(--primary, #2f5f8f);
-  box-shadow: 0 0 0 2px rgba(47, 95, 143, 0.15);
+  border-color: var(--primary, var(--lx-accent, #2f5f8f));
+  box-shadow: 0 0 0 2px var(--lx-accent-soft, rgba(47, 95, 143, 0.15));
 }
 
 .ref-asset-search__dropdown {
@@ -321,8 +321,8 @@ defineExpose({
   margin: 0;
   padding: 4px 0;
   list-style: none;
-  background: #fff;
-  border: 1px solid var(--border-subtle, #d8dee6);
+  background: var(--lx-surface, #fff);
+  border: 1px solid var(--border-subtle, var(--lx-line, #d8dee6));
   border-radius: var(--radius-md, 8px);
   box-shadow: 0 12px 28px rgba(15, 20, 25, 0.1);
   max-height: min(280px, 50vh);
@@ -365,8 +365,8 @@ defineExpose({
 }
 
 .ref-asset-search__item:hover {
-  background: #f3f4f6;
-  border-left-color: #3b82f6;
+  background: var(--lx-fill, #f3f4f6);
+  border-left-color: var(--lx-accent, #3b82f6);
   padding-left: 11px;
 }
 
@@ -380,7 +380,7 @@ defineExpose({
 
 .ref-asset-search__name {
   font-weight: 500;
-  color: #111827;
+  color: var(--lx-ink, #111827);
   font-size: 13px;
   min-width: 0;
   overflow: hidden;
@@ -390,8 +390,8 @@ defineExpose({
 
 .ref-asset-search__ticker {
   font-size: 12px;
-  color: #6b7280;
-  background: #f3f4f6;
+  color: var(--lx-ink-2, #6b7280);
+  background: var(--lx-fill, #f3f4f6);
   padding: 2px 6px;
   border-radius: 4px;
   font-weight: 500;
@@ -404,7 +404,7 @@ defineExpose({
   justify-content: center;
   gap: 8px;
   padding: 16px 14px;
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
   font-size: 12px;
   cursor: default;
   text-align: center;
@@ -417,12 +417,12 @@ defineExpose({
 }
 
 .ref-asset-search__spinner {
-  color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
   animation: ref-asset-search-spin 1s linear infinite;
 }
 
 .ref-asset-search__empty-icon {
-  color: #d1d5db;
+  color: var(--lx-dim, #d1d5db);
   opacity: 0.6;
 }
 

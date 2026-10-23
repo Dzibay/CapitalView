@@ -168,9 +168,9 @@ const statusText = {
 
 const statusColor = {
   pending: '#6b7280',
-  processing: '#3b82f6',
-  completed: '#10b981',
-  failed: '#ef4444',
+  processing: '#7381ff',
+  completed: '#5bd18b',
+  failed: '#f2777a',
   cancelled: '#9ca3af'
 }
 </script>
@@ -277,7 +277,7 @@ const statusColor = {
   align-items: center;
   gap: 8px;
   padding: 12px 20px;
-  background: #f9fafb;
+  background: var(--lx-surface, #f9fafb);
   border-radius: 12px;
   font-weight: 600;
   font-size: 15px;
@@ -302,7 +302,7 @@ const statusColor = {
 .progress-bar-container {
   width: 100%;
   height: 8px;
-  background: #e5e7eb;
+  background: var(--lx-fill, #e5e7eb);
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 8px;
@@ -310,7 +310,7 @@ const statusColor = {
 
 .progress-bar {
   height: 100%;
-  background: #3b82f6;
+  background: var(--lx-accent, #3b82f6);
   border-radius: 4px;
   transition: width 0.3s ease;
   animation: pulse 2s ease-in-out infinite;
@@ -330,12 +330,12 @@ const statusColor = {
   justify-content: space-between;
   align-items: center;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
 }
 
 .progress-percent {
   font-weight: 600;
-  color: #374151;
+  color: var(--lx-ink, #374151);
 }
 
 .progress-message {
@@ -349,10 +349,10 @@ const statusColor = {
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--lx-surface, #fef2f2);
+  border: 1px solid var(--lx-line, #fecaca);
   border-radius: 10px;
-  color: #dc2626;
+  color: var(--lx-down, #dc2626);
   font-size: 13px;
   margin-bottom: 16px;
 }
@@ -363,8 +363,8 @@ const statusColor = {
 
 .result-box {
   padding: 16px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
+  background: var(--lx-fill, #f0fdf4);
+  border: 1px solid var(--lx-up-line, #bbf7d0);
   border-radius: 10px;
   margin-bottom: 16px;
 }
@@ -375,7 +375,7 @@ const statusColor = {
   gap: 8px;
   margin-bottom: 8px;
   font-weight: 600;
-  color: #059669;
+  color: var(--lx-up, #059669);
   font-size: 14px;
 }
 
@@ -385,14 +385,14 @@ const statusColor = {
 
 .result-info {
   font-size: 13px;
-  color: #047857;
+  color: var(--lx-up, #047857);
   margin-left: 26px;
 }
 
 .completed-time {
   text-align: center;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
   margin-top: 16px;
 }
 
@@ -402,11 +402,11 @@ const statusColor = {
   gap: 10px;
   padding-top: 16px;
   margin-top: 8px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--lx-line, #f3f4f6);
 }
 
 .close-btn {
-  background: #f3f4f6;
+  background: var(--lx-fill, #f3f4f6);
   border: none;
   width: 32px;
   height: 32px;
@@ -415,14 +415,14 @@ const statusColor = {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .close-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--lx-fill, #fee2e2);
+  color: var(--lx-down, #dc2626);
   transform: scale(1.05);
 }
 

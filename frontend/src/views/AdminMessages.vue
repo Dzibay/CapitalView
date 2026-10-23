@@ -291,7 +291,7 @@ onMounted(() => {
   padding: 0.35rem 0.6rem 0.35rem 0.25rem;
   border: none;
   background: transparent;
-  color: var(--primary, #527de5);
+  color: var(--primary, var(--lx-accent-ink, #527de5));
   font-size: var(--text-caption-size, 0.875rem);
   font-weight: 600;
   font-family: inherit;
@@ -300,11 +300,11 @@ onMounted(() => {
 }
 
 .admin-back:hover {
-  background: rgba(82, 125, 229, 0.08);
+  background: var(--lx-accent-soft, rgba(82, 125, 229, 0.08));
 }
 
 .admin-back:focus-visible {
-  outline: 2px solid var(--primary, #527de5);
+  outline: 2px solid var(--primary, var(--lx-accent, #527de5));
   outline-offset: 2px;
 }
 
@@ -314,9 +314,9 @@ onMounted(() => {
   margin-top: 0.125rem;
   padding: 0.5rem 1rem;
   border-radius: 10px;
-  border: 1px solid var(--axis-border, #d1d5db);
-  background: var(--bg-primary, #fff);
-  color: var(--primary, #527de5);
+  border: 1px solid var(--axis-border, var(--lx-line, #d1d5db));
+  background: var(--bg-primary, var(--lx-surface, #fff));
+  color: var(--primary, var(--lx-accent-ink, #527de5));
   font-size: var(--text-caption-size, 0.875rem);
   font-weight: 600;
   font-family: inherit;
@@ -328,13 +328,13 @@ onMounted(() => {
 }
 
 .admin-page__to-app:hover:not(:disabled) {
-  border-color: var(--primary, #527de5);
-  background: rgba(82, 125, 229, 0.06);
-  color: var(--primary-hover, #4568d4);
+  border-color: var(--primary, var(--lx-accent, #527de5));
+  background: var(--lx-accent-soft, rgba(82, 125, 229, 0.06));
+  color: var(--primary-hover, var(--lx-accent-ink, #4568d4));
 }
 
 .admin-page__to-app:focus-visible {
-  outline: 2px solid var(--primary, #527de5);
+  outline: 2px solid var(--primary, var(--lx-accent, #527de5));
   outline-offset: 2px;
 }
 
@@ -362,9 +362,9 @@ onMounted(() => {
 .admin-error {
   padding: 1rem 1.25rem;
   border-radius: 12px;
-  background: #fef2f2;
-  color: var(--danger-dark, #b91c1c);
-  border: 1px solid #fecaca;
+  background: var(--lx-surface, #fef2f2);
+  color: var(--danger-dark, var(--lx-down, #b91c1c));
+  border: 1px solid var(--lx-line, #fecaca);
 }
 
 .messenger {
@@ -375,15 +375,15 @@ onMounted(() => {
   height: clamp(420px, 72vh, 640px);
   min-height: 0;
   border-radius: 16px;
-  border: 1px solid var(--axis-grid, #e5e7eb);
-  background: var(--bg-primary, #fff);
+  border: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
+  background: var(--bg-primary, var(--lx-surface, #fff));
   overflow: hidden;
   box-shadow: 0 4px 24px -8px rgba(15, 23, 42, 0.08);
 }
 
 .messenger__sidebar {
-  border-right: 1px solid var(--axis-grid, #e5e7eb);
-  background: var(--bg-secondary, #f9fafb);
+  border-right: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
+  background: var(--bg-secondary, var(--lx-surface, #f9fafb));
   overflow-y: auto;
   min-width: 0;
   min-height: 0;
@@ -392,7 +392,7 @@ onMounted(() => {
 .messenger__empty-side {
   padding: 1.25rem;
   font-size: 0.875rem;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
 }
 
 .messenger__users {
@@ -414,33 +414,33 @@ onMounted(() => {
 }
 
 .messenger__user-btn:hover {
-  background: rgba(82, 125, 229, 0.06);
+  background: var(--lx-accent-soft, rgba(82, 125, 229, 0.06));
 }
 
 .messenger__user-btn--active {
-  background: rgba(82, 125, 229, 0.1);
-  border-left-color: var(--primary, #527de5);
+  background: var(--lx-accent-soft, rgba(82, 125, 229, 0.1));
+  border-left-color: var(--primary, var(--lx-accent, #527de5));
 }
 
 .messenger__user-email {
   display: block;
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--text-primary, #111827);
+  color: var(--text-primary, var(--lx-ink, #111827));
   word-break: break-word;
 }
 
 .messenger__user-name {
   display: block;
   font-size: 0.75rem;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   margin-top: 0.15rem;
 }
 
 .messenger__user-preview {
   display: block;
   font-size: 0.72rem;
-  color: var(--text-tertiary, #9ca3af);
+  color: var(--text-tertiary, var(--lx-mut, #9ca3af));
   margin-top: 0.35rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -462,26 +462,26 @@ onMounted(() => {
   justify-content: center;
   padding: 1.5rem;
   text-align: center;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   font-size: 0.9rem;
 }
 
 .messenger__thread-head {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--axis-grid, #e5e7eb);
+  border-bottom: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
   flex-shrink: 0;
 }
 
 .messenger__thread-email {
   font-size: 0.875rem;
   font-weight: 700;
-  color: var(--text-primary, #111827);
+  color: var(--text-primary, var(--lx-ink, #111827));
   word-break: break-word;
 }
 
 .messenger__thread-name {
   font-size: 0.8125rem;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   margin-top: 0.2rem;
 }
 
@@ -494,7 +494,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary, var(--lx-surface, #fff));
 }
 
 .messenger__row {
@@ -514,13 +514,13 @@ onMounted(() => {
   max-width: min(92%, 400px);
   padding: 0.55rem 0.75rem 0.45rem;
   border-radius: 12px;
-  border: 1px solid var(--axis-grid, #e5e7eb);
-  background: var(--bg-secondary, #f9fafb);
+  border: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
+  background: var(--bg-secondary, var(--lx-surface, #f9fafb));
 }
 
 .messenger__row--admin .messenger__bubble {
-  background: rgba(82, 125, 229, 0.1);
-  border-color: rgba(82, 125, 229, 0.25);
+  background: var(--lx-accent-soft, rgba(82, 125, 229, 0.1));
+  border-color: var(--lx-accent-line, rgba(82, 125, 229, 0.25));
 }
 
 .messenger__role {
@@ -529,7 +529,7 @@ onMounted(() => {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-tertiary, #6b7280);
+  color: var(--text-tertiary, var(--lx-ink-2, #6b7280));
   margin-bottom: 0.25rem;
 }
 
@@ -537,7 +537,7 @@ onMounted(() => {
   margin: 0;
   font-size: 0.875rem;
   line-height: 1.45;
-  color: var(--text-secondary, #374151);
+  color: var(--text-secondary, var(--lx-ink, #374151));
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -546,19 +546,19 @@ onMounted(() => {
   display: block;
   margin-top: 0.35rem;
   font-size: 0.7rem;
-  color: var(--text-tertiary, #9ca3af);
+  color: var(--text-tertiary, var(--lx-mut, #9ca3af));
 }
 
 .messenger__reply {
   flex-shrink: 0;
   padding: 0.75rem 1rem 1rem;
-  border-top: 1px solid var(--axis-grid, #e5e7eb);
-  background: var(--bg-secondary, #f9fafb);
+  border-top: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
+  background: var(--bg-secondary, var(--lx-surface, #f9fafb));
 }
 
 .messenger__reply-error {
   font-size: 0.8125rem;
-  color: var(--danger-dark, #b91c1c);
+  color: var(--danger-dark, var(--lx-down, #b91c1c));
   margin-bottom: 0.5rem;
 }
 
@@ -566,17 +566,17 @@ onMounted(() => {
   width: 100%;
   box-sizing: border-box;
   border-radius: 10px;
-  border: 1px solid var(--axis-border, #d1d5db);
+  border: 1px solid var(--axis-border, var(--lx-line, #d1d5db));
   padding: 0.5rem 0.65rem;
   font-family: inherit;
   font-size: 0.875rem;
   resize: vertical;
   min-height: 72px;
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary, var(--lx-surface, #fff));
 }
 
 .messenger__textarea:focus {
-  outline: 2px solid rgba(82, 125, 229, 0.35);
+  outline: 2px solid var(--lx-accent, rgba(82, 125, 229, 0.35));
   outline-offset: 1px;
 }
 
@@ -594,7 +594,7 @@ onMounted(() => {
 
 .messenger__counter {
   font-size: 0.75rem;
-  color: var(--text-tertiary, #9ca3af);
+  color: var(--text-tertiary, var(--lx-mut, #9ca3af));
 }
 
 .messenger__send {
@@ -604,7 +604,7 @@ onMounted(() => {
   padding: 0.45rem 0.9rem;
   border-radius: 999px;
   border: none;
-  background: var(--primary, #527de5);
+  background: var(--primary, var(--lx-accent, #527de5));
   color: #fff;
   font-size: 0.8125rem;
   font-weight: 600;
@@ -650,7 +650,7 @@ onMounted(() => {
 
   .messenger__sidebar {
     border-right: none;
-    border-bottom: 1px solid var(--axis-grid, #e5e7eb);
+    border-bottom: 1px solid var(--axis-grid, var(--lx-line, #e5e7eb));
     max-height: 200px;
   }
 }

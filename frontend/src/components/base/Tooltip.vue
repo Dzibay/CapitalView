@@ -222,7 +222,7 @@ onUnmounted(() => {
   transform: translateX(-50%);
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
-  border-top: 6px solid rgba(31, 41, 55, 0.95);
+  border-top: 6px solid var(--lx-line-2, rgba(31, 41, 55, 0.95));
 }
 
 .tooltip-bottom .tooltip-arrow {
@@ -231,7 +231,7 @@ onUnmounted(() => {
   transform: translateX(-50%);
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
-  border-bottom: 6px solid rgba(31, 41, 55, 0.95);
+  border-bottom: 6px solid var(--lx-line-2, rgba(31, 41, 55, 0.95));
 }
 
 .tooltip-left .tooltip-arrow {
@@ -240,7 +240,7 @@ onUnmounted(() => {
   transform: translateY(-50%);
   border-top: 6px solid transparent;
   border-bottom: 6px solid transparent;
-  border-left: 6px solid rgba(31, 41, 55, 0.95);
+  border-left: 6px solid var(--lx-line-2, rgba(31, 41, 55, 0.95));
 }
 
 .tooltip-right .tooltip-arrow {
@@ -249,6 +249,6 @@ onUnmounted(() => {
   transform: translateY(-50%);
   border-top: 6px solid transparent;
   border-bottom: 6px solid transparent;
-  border-right: 6px solid rgba(31, 41, 55, 0.95);
+  border-right: 6px solid var(--lx-line-2, rgba(31, 41, 55, 0.95));
 }
 </style>

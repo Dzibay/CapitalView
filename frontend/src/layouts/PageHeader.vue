@@ -34,122 +34,81 @@ defineProps({
 
 <style scoped>
 .page-header {
-  margin-bottom: var(--spacing);
+  padding: 26px 0 28px;
+  animation: ph-rise .7s var(--cv-ease) backwards;
 }
+@keyframes ph-rise { from { opacity: 0; transform: translateY(10px); } }
 
-/* Широкий экран: [ заголовок + переключатель | меню кнопок ] в одну строку */
 .page-header-content {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 16px 20px;
   flex-wrap: nowrap;
 }
 
-/* Первый уровень: заголовок и actions (переключатель) */
 .page-header-row1 {
   display: flex;
   align-items: flex-end;
+  gap: 16px;
   flex-wrap: nowrap;
   min-width: 0;
   width: 100%;
-  max-width: 100%;
 }
 
-.page-header-title {
-  flex: 1 1 auto;
-  min-width: 0;
-}
+.page-header-title { flex: 1 1 auto; min-width: 0; }
 
 .page-header h1 {
-  font-size: var(--text-heading-1-size);
-  font-weight: var(--text-heading-1-weight);
-  color: var(--text-heading-1-color);
   margin: 0;
-  line-height: var(--text-heading-1-line);
+  font-family: var(--cv-display);
+  font-size: clamp(26px, 2.5vw, 34px);
+  font-weight: 550;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+  color: var(--cv-ink);
 }
 
 .page-header h2 {
-  font-size: var(--text-heading-2-size);
-  font-weight: var(--text-heading-2-weight);
-  color: var(--text-heading-2-color);
-  margin: 0;
-  margin-top: 0.25rem;
+  margin: 8px 0 0;
+  font-family: var(--cv-text);
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0;
+  color: var(--cv-mut);
 }
 
-/* Высота как у .btn-md (Button.vue), контент по вертикали по центру */
 .page-header-actions {
   display: flex;
   align-items: center;
-  min-height: 38px;
-  gap: 1rem;
+  gap: 12px;
+  min-height: 36px;
   flex: 0 0 auto;
   margin-left: auto;
-  width: fit-content;
-  max-width: 100%;
   flex-wrap: wrap;
 }
 
-@media (max-width: 768px) {
-  /* Одна строка: подзаголовок слева на всё свободное место, actions справа по содержимому */
-  .page-header-row1 {
-    flex-wrap: nowrap;
-    align-items: flex-end;
-    gap: 0.75rem;
-  }
-
-  .page-header-title {
-    flex: 1 1 auto;
-    min-width: 0;
-    width: auto;
-  }
-
-  .page-header-actions {
-    flex: 0 0 auto;
-    width: fit-content;
-    max-width: 100%;
-    margin-left: auto;
-    justify-content: flex-end;
-  }
-
-  /* Крупный заголовок убираем, если есть подзаголовок — на мобильном виден только h2 */
-  .page-header-title:has(h2) h1 {
-    display: none;
-  }
-
-  .page-header-title:has(h2) h2 {
-    margin-top: 0;
-  }
-}
-
-/* Меню кнопок: одна строка, не переносим кнопки внутри */
 .page-header-menu {
   display: flex;
-  align-items: flex-end;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 8px;
   flex-wrap: nowrap;
   min-width: 0;
   flex-shrink: 0;
 }
 
-/* Меню кнопок переходит вниз до наезда на «Показать проданные активы» */
 @media (max-width: 1240px) {
-  .page-header-content {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.75rem;
-  }
-
-  .page-header-menu {
-    width: 100%;
-    max-width: 100%;
-  }
+  .page-header-content { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .page-header-menu { width: 100%; max-width: 100%; flex-wrap: wrap; }
 }
 
-/* Очень узкий экран: кнопкам разрешаем перенос, чтобы не уезжали за край */
-@media (max-width: 480px) {
-  .page-header-menu {
-    flex-wrap: wrap;
-  }
+@media (max-width: 768px) {
+  .page-header { padding: 14px 0 20px; }
+  .page-header-row1 { gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .page-header-actions { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-header { animation: none; }
 }
 </style>

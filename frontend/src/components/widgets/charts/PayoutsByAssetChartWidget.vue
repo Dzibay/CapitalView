@@ -9,22 +9,22 @@ import { HandCoins } from 'lucide-vue-next'
 // Фирменные цвета для типов выплат
 const payoutColors = {
   // Дивиденды - синий
-  dividends: '#2563eb',
-  dividendsAlpha: 'rgba(37, 99, 235, 0.85)',
-  dividendsHover: '#1d4ed8',
-  dividendsDark: '#1e40af',
+  dividends: '#7381ff',
+  dividendsAlpha: 'rgba(115, 129, 255, 0.85)',
+  dividendsHover: '#8f9bff',
+  dividendsDark: '#5060dc',
   
   // Купоны - голубой/cyan
-  coupons: '#06b6d4',
-  couponsAlpha: 'rgba(6, 182, 212, 0.85)',
-  couponsHover: '#0891b2',
-  couponsDark: '#0e7490',
+  coupons: '#b0b8ff',
+  couponsAlpha: 'rgba(176, 184, 255, 0.85)',
+  couponsHover: '#c6cbff',
+  couponsDark: '#8f9bff',
   
   // Амортизации - оранжевый
-  amortizations: '#fb923c',
-  amortizationsAlpha: 'rgba(251, 146, 60, 0.85)',
-  amortizationsHover: '#f97316',
-  amortizationsDark: '#ea580c'
+  amortizations: '#8e93a5',
+  amortizationsAlpha: 'rgba(142, 147, 165, 0.85)',
+  amortizationsHover: '#a4a8b8',
+  amortizationsDark: '#6f7486'
 }
 
 const props = defineProps({

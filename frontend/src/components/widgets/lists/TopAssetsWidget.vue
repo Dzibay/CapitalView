@@ -59,7 +59,7 @@ function positionValueRub(asset) {
   padding: 0.75rem 0; 
 }
 .asset-item:not(:last-child) { 
-  border-bottom: 1px solid #e5e7eb; 
+  border-bottom: 1px solid var(--lx-line, #e5e7eb); 
 }
 .asset-name {
   display: block;

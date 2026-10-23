@@ -1,56 +1,52 @@
 <script setup>
-import { onMounted, watch, nextTick } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.store'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
-import { useTransactionsStore } from '../stores/transactions.store'
+import { useLandingFonts } from '../site/components/home/useLandingMotion'
 
-import AppSidebar from './AppSidebar.vue'
-import AppHeader from './AppHeader.vue'
-import AppFooter from './AppFooter.vue'
-import AppBottomNav from './AppBottomNav.vue'
+import '../cabinet/styles/cabinet.css'
+import CvSidebar from '../cabinet/shell/CvSidebar.vue'
+import CvHeader from '../cabinet/shell/CvHeader.vue'
+import CvFooter from '../cabinet/shell/CvFooter.vue'
+import CvBottomNav from '../cabinet/shell/CvBottomNav.vue'
+import CommandPalette from '../cabinet/shell/CommandPalette.vue'
 
 const router = useRouter()
-
-// Используем stores вместо ref
 const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
-const transactionsStore = useTransactionsStore()
 
-// Инициализация при загрузке
+useLandingFonts('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap')
+
+// Страницы на новых компонентах кабинета. Остальные — легаси-разметка в тёмной теме (.cv-legacy).
+const DARK_ROUTES = new Set(['/dashboard'])
+const viewKey = (route) => route.matched[route.matched.length - 1]?.path ?? route.path
+const isDark = (route) => DARK_ROUTES.has(viewKey(route))
+
 onMounted(async () => {
+  document.body.classList.add('cv-body')
   try {
-    // ОПТИМИЗИРОВАНО: проверяем токен только если он еще не проверен
-    // (router guard уже проверил токен, но может быть не обновил store)
+    // router guard уже проверил токен, но store мог не обновиться
     if (!authStore.isAuthenticated) {
       await authStore.checkToken()
     }
-    
     if (!authStore.isAuthenticated) {
       router.push('/login')
       return
     }
-    
-    // ОПТИМИЗИРОВАНО: загружаем dashboard в фоновом режиме после загрузки основного контента
-    // Это особенно важно для страницы актива, чтобы не блокировать загрузку
+
     const currentRoute = router.currentRoute.value
-    const isAdminPage = currentRoute.path.startsWith('/admin')
-    const isAssetDetailPage = currentRoute.path.startsWith('/assets/')
+    if (currentRoute.path.startsWith('/admin')) return
 
-    if (isAdminPage) {
-      return
-    }
-
-    if (isAssetDetailPage) {
-      // Для страницы актива откладываем загрузку dashboard
+    if (currentRoute.path.startsWith('/assets/')) {
+      // страница актива грузится первой, дашборд — следом
       setTimeout(async () => {
         await dashboardStore.fetchDashboard()
         uiStore.initSelectedPortfolioId(dashboardStore.portfolios)
       }, 0)
     } else {
-      // Для других страниц загружаем сразу
       await dashboardStore.fetchDashboard()
       uiStore.initSelectedPortfolioId(dashboardStore.portfolios)
     }
@@ -58,7 +54,7 @@ onMounted(async () => {
     if (import.meta.env.VITE_APP_DEV) {
       console.error('Ошибка при загрузке данных:', err)
     }
-    // При ошибке сети не перенаправляем на логин, просто показываем ошибку
+    // при ошибке сети не выкидываем на логин
     if (err.code !== 'ERR_NETWORK') {
       authStore.logout()
       router.push('/login')
@@ -66,101 +62,93 @@ onMounted(async () => {
   }
 })
 
-// Следим за портфелями: обновляем выбранный портфель при изменении данных
+onBeforeUnmount(() => {
+  document.body.classList.remove('cv-body')
+})
+
+// выбранный портфель должен существовать в актуальных данных
 watch(() => dashboardStore.portfolios, (portfolios) => {
   if (portfolios.length > 0) {
-    const exists = portfolios.find(p => p.id === uiStore.selectedPortfolioId)
+    const exists = portfolios.find((p) => p.id === uiStore.selectedPortfolioId)
     if (!uiStore.selectedPortfolioId || !exists) {
       uiStore.setSelectedPortfolioId(portfolios[0].id)
     }
   }
 }, { immediate: true })
 
-function handleToggleSidebar() {
-  if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-    return
-  }
+function toggleSidebar() {
+  if (typeof window !== 'undefined' && window.innerWidth <= 768) return
   uiStore.toggleSidebar()
 }
-
 </script>
 
 <template>
-  <div class="dashboard-layout">
-    <AppSidebar
+  <div class="cv cv-shell" :class="{ 'is-collapsed': uiStore.isSidebarCollapsed }">
+    <div class="cv-shell__aurora" aria-hidden="true" />
+    <CvSidebar
       :user="authStore.user"
       :collapsed="uiStore.isSidebarCollapsed"
-      :mobile-open="false"
+      @toggle="toggleSidebar"
     />
-    <main class="main-content" :class="{ 'full-width': uiStore.isSidebarCollapsed }">
-      <AppHeader
-        :user="authStore.user"
-        :sidebar-collapsed="uiStore.isSidebarCollapsed"
-        @toggle-sidebar="handleToggleSidebar"
-      />
-      <div class="page-content">
-        <router-view />
-      </div>
-      <AppFooter />
-    </main>
-    <AppBottomNav />
+    <div class="cv-shell__main">
+      <CvHeader :user="authStore.user" />
+      <main class="cv-shell__content">
+        <router-view v-slot="{ Component, route }">
+          <Transition name="cv-page" mode="out-in">
+            <div :key="viewKey(route)" class="cv-view" :class="{ 'cv-legacy': !isDark(route) }">
+              <component :is="Component" />
+            </div>
+          </Transition>
+        </router-view>
+      </main>
+      <CvFooter />
+    </div>
+    <CvBottomNav :user="authStore.user" />
+    <CommandPalette :user="authStore.user" />
   </div>
 </template>
 
 <style scoped>
-.sidebar-hidden {
-  transform: translateX(-100%);
-}
-
-.main-content {
-  flex-grow: 1;
-  flex-shrink: 1;
-  margin-left: var(--sidebarWidth);
-  transition: margin-left 0.3s ease-in-out;
+.cv-shell {
+  position: relative;
   min-height: 100vh;
+  min-height: 100dvh;
+}
+/* едва заметный свет сверху — без цветных пятен */
+.cv-shell__aurora {
+  position: fixed; inset: 0 0 auto 0; height: 520px; z-index: 0; pointer-events: none;
+  background: radial-gradient(55% 60% at 30% -18%, rgba(100, 116, 255, .07), transparent 72%);
+}
+.cv-shell__main {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
   min-width: 0;
-  max-width: 100%;
-  display: flex;
-  flex-direction: column;
+  margin-left: var(--cv-side-w);
+  transition: margin-left .32s var(--cv-ease);
 }
+.cv-shell.is-collapsed .cv-shell__main { margin-left: var(--cv-side-w-c); }
 
-.main-content.full-width {
-  margin-left: var(--sidebarWidthCollapsed);
-}
-
-.page-content {
-  margin-top: var(--headerHeight);
-  padding: var(--spacing);
+.cv-shell__content {
   flex: 1;
   min-width: 0;
-  /* Не даём широким детям раздувать всю колонку; горизонтальный скролл — внутри своих обёрток (таблицы и т.д.) */
-  overflow-x: hidden;
-  width: 100%;
+  padding: 8px var(--cv-pad) 0;
+  /* широкие дети не раздувают колонку; горизонтальный скролл — внутри своих обёрток */
+  overflow-x: clip;
 }
+.cv-view { min-width: 0; max-width: 1600px; margin: 0 auto; }
 
-/* Планшет: меньше боковых отступов */
 @media (max-width: 1200px) {
-  .page-content {
-    padding: 16px 12px;
-  }
+  .cv-shell { --cv-pad: 20px; }
 }
-
-/* Адаптив: мобильные */
 @media (max-width: 768px) {
-  .main-content,
-  .main-content.full-width {
+  .cv-shell { --cv-pad: 12px; }
+  .cv-shell__main,
+  .cv-shell.is-collapsed .cv-shell__main {
     margin-left: 0;
-    padding-bottom: calc(var(--bottomNavHeight) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--cv-bottom-h) + 14px + env(safe-area-inset-bottom, 0px));
   }
-
-  .page-content {
-    padding: 10px 12px;
-  }
-}
-
-@media (max-width: 480px) {
-  .page-content {
-    padding: 8px 4px;
-  }
+  .cv-shell__content { padding-top: 4px; }
 }
 </style>

@@ -54,7 +54,7 @@ const txLineTotal = (tx) => {
 }
 
 .transaction-item:not(:last-child) {
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--lx-line, #e5e7eb);
 }
 
 .tx-info {
@@ -99,10 +99,10 @@ const txLineTotal = (tx) => {
 }
 
 .tx-amount.buy {
-  color: #ef4444;
+  color: var(--lx-down, #ef4444);
 }
 
 .tx-amount.sell {
-  color: #16a34a;
+  color: var(--lx-up, #16a34a);
 }
 </style>

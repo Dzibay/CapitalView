@@ -1787,15 +1787,15 @@ const handleSubmit = async () => {
 
 .section-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+  background: linear-gradient(90deg, transparent, var(--lx-fill, #e5e7eb), transparent);
   margin: 16px 0;
 }
 
 .asset-info {
   padding: 12px 16px;
-  background: #f9fafb;
+  background: var(--lx-surface, #f9fafb);
   border-radius: 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1803,18 +1803,18 @@ const handleSubmit = async () => {
 }
 
 .asset-icon {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   flex-shrink: 0;
   opacity: 0.8;
 }
 
 .asset-info strong {
-  color: #111827;
+  color: var(--lx-ink, #111827);
   font-weight: 600;
 }
 
 .ticker {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   margin-left: 6px;
   font-size: 13px;
 }
@@ -1826,50 +1826,50 @@ const handleSubmit = async () => {
   margin-bottom: 8px;
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   letter-spacing: -0.01em;
 }
 
 .label-icon {
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   flex-shrink: 0;
 }
 
 .form-input {
   width: 100%;
   padding: 9px 12px;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--lx-line, #e5e7eb);
   border-radius: 10px;
   font-size: 14px;
   transition: all 0.2s ease;
-  background: #fff;
-  color: #111827;
+  background: var(--lx-surface, #fff);
+  color: var(--lx-ink, #111827);
   box-sizing: border-box;
   font-family: inherit;
 }
 
 .form-input:hover {
-  border-color: #d1d5db;
-  background: #fafafa;
+  border-color: var(--lx-line, #d1d5db);
+  background: var(--lx-surface, #fafafa);
 }
 
 .form-input:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
-  background: #fff;
+  border-color: var(--lx-accent, #3b82f6);
+  box-shadow: 0 0 0 3px var(--lx-accent-soft, rgba(59,130,246,0.1));
+  background: var(--lx-surface, #fff);
 }
 
 .form-hint {
   display: block;
   margin-top: 4px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
 }
 
 .label-hint {
   font-weight: 400;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-size: 11px;
   margin-left: 4px;
 }
@@ -1884,7 +1884,7 @@ const handleSubmit = async () => {
 
 .toggle-label-text {
   font-size: 13px;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   font-weight: 500;
 }
 
@@ -1905,10 +1905,10 @@ const handleSubmit = async () => {
 
 .error {
   padding: 10px 14px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--lx-surface, #fef2f2);
+  border: 1px solid var(--lx-line, #fecaca);
   border-radius: 10px;
-  color: #dc2626;
+  color: var(--lx-down, #dc2626);
   font-size: 13px;
   margin-bottom: 12px;
 }
@@ -1916,7 +1916,7 @@ const handleSubmit = async () => {
 .mode-switch {
   display: flex;
   gap: 8px;
-  background: #f3f4f6;
+  background: var(--lx-fill, #f3f4f6);
   padding: 4px;
   border-radius: 12px;
 }
@@ -1927,7 +1927,7 @@ const handleSubmit = async () => {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -1935,36 +1935,36 @@ const handleSubmit = async () => {
 }
 
 .mode-btn:hover {
-  background: rgba(255, 255, 255, 0.5);
-  color: #374151;
+  background: var(--lx-fill, rgba(255, 255, 255, 0.5));
+  color: var(--lx-ink, #374151);
 }
 
 .mode-btn.active {
-  background: white;
-  color: #111827;
+  background: var(--lx-surface, white);
+  color: var(--lx-ink, #111827);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .info-box {
   margin-top: 12px;
   padding: 12px 16px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  background: var(--lx-fill, #eff6ff);
+  border: 1px solid var(--lx-accent-line, #bfdbfe);
   border-radius: 10px;
   display: flex;
   align-items: center;
   gap: 10px;
   font-size: 13px;
-  color: #1e40af;
+  color: var(--lx-accent-ink, #1e40af);
 }
 
 .info-icon {
-  color: #3b82f6;
+  color: var(--lx-accent-ink, #3b82f6);
   flex-shrink: 0;
 }
 
 .info-box strong {
-  color: #1e3a8a;
+  color: var(--lx-accent-ink, #1e3a8a);
   font-weight: 600;
 }
 
@@ -1974,17 +1974,17 @@ const handleSubmit = async () => {
   gap: 10px;
   padding-top: 16px;
   margin-top: 8px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--lx-line, #f3f4f6);
 }
 
 .market-price-btn {
   white-space: nowrap;
   padding: 8px 16px;
   min-width: auto;
-  border: 1.5px solid #3b82f6;
+  border: 1.5px solid var(--lx-accent, #3b82f6);
   border-radius: 10px;
-  background: #eff6ff;
-  color: #3b82f6;
+  background: var(--lx-fill, #eff6ff);
+  color: var(--lx-accent-ink, #3b82f6);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -1996,17 +1996,17 @@ const handleSubmit = async () => {
 }
 
 .market-price-btn:hover:not(:disabled) {
-  background: #dbeafe;
-  border-color: #2563eb;
-  color: #2563eb;
+  background: var(--lx-fill, #dbeafe);
+  border-color: var(--lx-accent, #2563eb);
+  color: var(--lx-accent-ink, #2563eb);
 }
 
 .market-price-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  border-color: #d1d5db;
-  background: #f3f4f6;
-  color: #9ca3af;
+  border-color: var(--lx-line, #d1d5db);
+  background: var(--lx-fill, #f3f4f6);
+  color: var(--lx-mut, #9ca3af);
 }
 
 </style>

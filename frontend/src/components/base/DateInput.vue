@@ -702,12 +702,12 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 8px;
   padding: 9px 12px;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--lx-line, #e5e7eb);
   border-radius: 10px;
   font-size: 14px;
   transition: all 0.2s ease;
-  background: #fff;
-  color: #111827;
+  background: var(--lx-surface, #fff);
+  color: var(--lx-ink, #111827);
   box-sizing: border-box;
   font-family: inherit;
   text-align: left;
@@ -715,20 +715,20 @@ onUnmounted(() => {
 }
 
 .di-date-trigger:hover:not(:disabled) {
-  border-color: #d1d5db;
-  background: #fafafa;
+  border-color: var(--lx-line, #d1d5db);
+  background: var(--lx-surface, #fafafa);
 }
 
 .di-date-trigger:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  background: #fff;
+  border-color: var(--lx-accent, #3b82f6);
+  box-shadow: 0 0 0 3px var(--lx-accent-soft, rgba(59, 130, 246, 0.1));
+  background: var(--lx-surface, #fff);
 }
 
 .di-date-trigger:disabled {
-  background: #f9fafb;
-  color: #9ca3af;
+  background: var(--lx-surface, #f9fafb);
+  color: var(--lx-mut, #9ca3af);
   cursor: not-allowed;
 }
 
@@ -749,17 +749,17 @@ input.di-date-native.di-date-trigger::-webkit-date-and-time-value {
 }
 
 .di-date-field__text--placeholder {
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
 }
 
 .di-date-field__icon {
   flex-shrink: 0;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
 }
 
 .di-calendar-panel {
-  background: #fff;
-  border: 1.5px solid #e5e7eb;
+  background: var(--lx-surface, #fff);
+  border: 1.5px solid var(--lx-line, #e5e7eb);
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
   padding: 14px;
@@ -803,18 +803,18 @@ input.di-date-native.di-date-trigger::-webkit-date-and-time-value {
   font-family: inherit;
   font-weight: 600;
   font-size: 14px;
-  color: #111827;
+  color: var(--lx-ink, #111827);
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .di-cal-title-btn:hover {
-  background: #f3f4f6;
+  background: var(--lx-fill, #f3f4f6);
 }
 
 .di-cal-title-btn:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+  box-shadow: 0 0 0 2px var(--lx-accent-soft, rgba(59, 130, 246, 0.25));
   border-radius: 8px;
 }
 
@@ -827,7 +827,7 @@ input.di-date-native.di-date-trigger::-webkit-date-and-time-value {
 
 .di-cal-title-chevron {
   flex-shrink: 0;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   transition: transform 0.2s ease;
 }
 
@@ -868,30 +868,30 @@ input.di-date-native.di-date-trigger::-webkit-date-and-time-value {
 
 .di-cal-month-cell {
   padding: 10px 4px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--lx-line, #e5e7eb);
   border-radius: 8px;
-  background: #fff;
+  background: var(--lx-surface, #fff);
   font-size: 13px;
   font-weight: 500;
   font-family: inherit;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
 
 .di-cal-month-cell:hover:not(:disabled) {
-  border-color: #d1d5db;
-  background: #fafafa;
+  border-color: var(--lx-line, #d1d5db);
+  background: var(--lx-surface, #fafafa);
 }
 
 .di-cal-month-cell--current {
-  border-color: #2563eb;
-  color: #2563eb;
-  background: #eff6ff;
+  border-color: var(--lx-accent, #2563eb);
+  color: var(--lx-accent-ink, #2563eb);
+  background: var(--lx-fill, #eff6ff);
 }
 
 .di-cal-month-cell--current:hover:not(:disabled) {
-  background: #dbeafe;
+  background: var(--lx-fill, #dbeafe);
 }
 
 .di-cal-month-cell--disabled,
@@ -904,7 +904,7 @@ input.di-date-native.di-date-trigger::-webkit-date-and-time-value {
   background: none;
   border: none;
   font-size: 20px;
-  color: #6b7280;
+  color: var(--lx-ink-2, #6b7280);
   cursor: pointer;
   padding: 4px 10px;
   border-radius: 6px;
@@ -913,8 +913,8 @@ input.di-date-native.di-date-trigger::-webkit-date-and-time-value {
   font-family: inherit;
 }
 .di-cal-nav:hover {
-  background: #f3f4f6;
-  color: #374151;
+  background: var(--lx-fill, #f3f4f6);
+  color: var(--lx-ink, #374151);
 }
 
 .di-cal-grid {
@@ -928,7 +928,7 @@ input.di-date-native.di-date-trigger::-webkit-date-and-time-value {
 
 .di-cal-dn {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--lx-mut, #9ca3af);
   font-weight: 600;
   padding: 4px 0;
   display: flex;
@@ -942,7 +942,7 @@ input.di-date-native.di-date-trigger::-webkit-date-and-time-value {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.12s;
-  color: #374151;
+  color: var(--lx-ink, #374151);
   user-select: none;
   display: flex;
   align-items: center;
@@ -951,17 +951,17 @@ input.di-date-native.di-date-trigger::-webkit-date-and-time-value {
   box-sizing: border-box;
 }
 .di-cal-day:hover {
-  background: #f3f4f6;
+  background: var(--lx-fill, #f3f4f6);
 }
 .di-cal-day.other {
-  color: #d1d5db;
+  color: var(--lx-dim, #d1d5db);
   cursor: default;
 }
 .di-cal-day.other:hover {
   background: transparent;
 }
 .di-cal-day.disabled {
-  color: #e5e7eb;
+  color: var(--lx-dim, #e5e7eb);
   cursor: not-allowed;
   pointer-events: none;
 }
@@ -969,17 +969,17 @@ input.di-date-native.di-date-trigger::-webkit-date-and-time-value {
   background: transparent;
 }
 .di-cal-day.in-range {
-  background: #eff6ff;
-  color: #2563eb;
+  background: var(--lx-fill, #eff6ff);
+  color: var(--lx-accent-ink, #2563eb);
 }
 .di-cal-day.range-start,
 .di-cal-day.range-end {
-  background: #2563eb;
+  background: var(--lx-accent, #2563eb);
   color: #fff;
   font-weight: 600;
 }
 .di-cal-day.range-start:hover,
 .di-cal-day.range-end:hover {
-  background: #1d4ed8;
+  background: var(--lx-accent, #1d4ed8);
 }
 </style>

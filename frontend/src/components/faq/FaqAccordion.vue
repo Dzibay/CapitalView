@@ -54,16 +54,16 @@ function toggle(i) {
 
 .faq-row {
   width: 100%;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  border-top: 1px solid var(--lx-line, rgba(15, 23, 42, 0.06));
   transition: border-color 0.35s ease;
 }
 
 .faq-row.open {
-  border-top-color: rgba(59, 130, 246, 0.12);
+  border-top-color: var(--lx-accent-line, rgba(59, 130, 246, 0.12));
 }
 
 .faq-row:last-child {
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid var(--lx-line, rgba(15, 23, 42, 0.06));
 }
 
 .faq-trigger {
@@ -101,7 +101,7 @@ function toggle(i) {
   font-weight: 200;
   font-size: 28px;
   line-height: 1;
-  color: rgba(59, 130, 246, 0.15);
+  color: var(--lx-accent-ink, rgba(59, 130, 246, 0.15));
   letter-spacing: -0.04em;
   transition: color 0.35s;
 }
@@ -124,7 +124,7 @@ function toggle(i) {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--lx-line, rgba(15, 23, 42, 0.08));
   color: var(--color-text-secondary);
   transition:
     transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
@@ -142,7 +142,7 @@ function toggle(i) {
 }
 
 .faq-row.open .faq-num {
-  color: rgba(59, 130, 246, 0.55);
+  color: var(--lx-accent-ink, rgba(59, 130, 246, 0.55));
 }
 
 .faq-row.open .faq-question {
@@ -154,7 +154,7 @@ function toggle(i) {
   color: #fff;
   background: var(--color-primary);
   border-color: var(--color-primary);
-  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+  box-shadow: 0 4px 14px var(--lx-accent, rgba(59, 130, 246, 0.35));
 }
 
 .faq-row.open .faq-trigger:hover .faq-icon {

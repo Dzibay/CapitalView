@@ -1,56 +1,47 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { VueDraggable } from 'vue-draggable-plus'
+import { SlidersHorizontal, Check, RotateCcw, Plus, GripVertical } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth.store'
 import { useDashboardStore } from '../stores/dashboard.store'
 import { useUIStore } from '../stores/ui.store'
 import { usePortfoliosStore } from '../stores/portfolios.store'
+import { useDividendsStore } from '../stores/dividends.store'
 import { usePortfolioAnalytics } from '../composables/usePortfolioAnalytics'
-import { assetAllocationFromPositions } from '../utils/assetAllocationFromPositions'
 import { collectSubtreeAssets } from '../utils/collectSubtreeAssets'
+import { expandPortfolioHistoryForCharts } from '../utils/portfolioHistory'
+import { dashboardEditing } from '../cabinet/state'
+import { plural } from '../cabinet/format'
+import { useDashboardLayout, WIDGETS } from '../cabinet/dashboard/useDashboardLayout'
 
-// Компоненты
-import LoadingState from '../components/base/LoadingState.vue'
-import PageLayout from '../layouts/PageLayout.vue'
-import PageHeader from '../layouts/PageHeader.vue'
-
-// Виджеты
-import { 
-  TotalCapitalWidget, 
-  PortfolioProfitWidget, 
-  DividendsWidget, 
-  ReturnWidget,
-  ConsolidatedStatsWidget
-} from '../components/widgets/stats'
-import { GoalProgressWidget } from '../components/widgets/composite'
-import { 
-  PortfolioChartWidget, 
-  AssetAllocationWidget, 
-  PayoutsChartWidget 
-} from '../components/widgets/charts'
-import { 
-  TopMoversWidget, 
-  RecentTransactionsWidget 
-} from '../components/widgets/lists'
-import { WidgetContainer } from '../components/widgets/base'
+import DashboardSkeleton from '../cabinet/dashboard/DashboardSkeleton.vue'
+import CapitalWidget from '../cabinet/dashboard/CapitalWidget.vue'
+import ProfitWidget from '../cabinet/dashboard/ProfitWidget.vue'
+import AllocationWidget from '../cabinet/dashboard/AllocationWidget.vue'
+import PayoutsWidget from '../cabinet/dashboard/PayoutsWidget.vue'
+import MoversWidget from '../cabinet/dashboard/MoversWidget.vue'
+import GoalWidget from '../cabinet/dashboard/GoalWidget.vue'
+import IncomeWidget from '../cabinet/dashboard/IncomeWidget.vue'
+import TransactionsWidget from '../cabinet/dashboard/TransactionsWidget.vue'
+import InsightsWidget from '../cabinet/dashboard/InsightsWidget.vue'
+import TopPositionsWidget from '../cabinet/dashboard/TopPositionsWidget.vue'
+import CalendarWidget from '../cabinet/dashboard/CalendarWidget.vue'
 
 const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 const portfoliosStore = usePortfoliosStore()
-const phase2Ready = ref(false)
-const phase3Ready = ref(false)
+const dividendsStore = useDividendsStore()
 
-// Используем composable для аналитики портфеля
 const {
   portfolios,
   selectedPortfolio,
   selectedPortfolioAnalytics,
-  isLoadingAnalytics,
+  balance,
   totalCapitalWidgetData,
   profitWidgetData,
   calculatedAnnualDividends,
   returnData,
-  portfolioChartData
 } = usePortfolioAnalytics()
 
 const childrenByParent = computed(() => {
@@ -85,49 +76,43 @@ const selectedPortfolioIds = computed(() => {
 const selectedTransactions = computed(() => {
   const ids = selectedPortfolioIds.value
   if (ids.size === 0) return []
-  return (dashboardStore.transactions ?? []).filter(t => ids.has(t.portfolio_id))
+  return (dashboardStore.transactions ?? []).filter((t) => ids.has(t.portfolio_id))
 })
 
 const goalData = computed(() => {
   if (!selectedPortfolio.value) return null
-
-    const desc = selectedPortfolio.value.description || {} // если пустой, используем пустой объект
-    
-    const result = {
-      portfolioId: selectedPortfolio.value.id,
-      title: desc.capital_target_name || desc.text || 'Цель не задана',
-      targetAmount: desc.capital_target_value || 0,
-      currentAmount: selectedPortfolio.value.total_value || 0, // total_value уже включает баланс на бэкенде
-      deadline: desc.capital_target_deadline || null,
-      currency: desc.capital_target_currency || 'RUB',
-      monthlyContribution: desc.monthly_contribution || 0,
-      annualReturn: desc.annual_return || 0,
-      useInflation: desc.use_inflation || false,
-      inflationRate: desc.inflation_rate || 7.5
-    }
-  
-  return result
+  const desc = selectedPortfolio.value.description || {}
+  return {
+    portfolioId: selectedPortfolio.value.id,
+    title: desc.capital_target_name || desc.text || 'Цель не задана',
+    targetAmount: desc.capital_target_value || 0,
+    currentAmount: selectedPortfolio.value.total_value || 0, // total_value уже включает баланс на бэкенде
+    deadline: desc.capital_target_deadline || null,
+    currency: desc.capital_target_currency || 'RUB',
+    monthlyContribution: desc.monthly_contribution || 0,
+    annualReturn: desc.annual_return || 0,
+    useInflation: desc.use_inflation || false,
+    inflationRate: desc.inflation_rate || 7.5,
+  }
 })
 
-// Позиции выбранной ветки (родитель + дочерние) — для графиков, т.к. у узла в store только прямые assets
+// Позиции выбранной ветки (родитель + дочерние) — у узла в store только прямые assets
 const selectedSubtreeAssets = computed(() => {
   if (!selectedPortfolio.value) return []
   return collectSubtreeAssets(selectedPortfolio.value, portfolios.value)
 })
 
-const assetAllocationData = computed(() => {
-  if (!selectedPortfolio.value) {
-    return { labels: [], datasets: [{ backgroundColor: [], data: [] }] }
-  }
-  return assetAllocationFromPositions(selectedSubtreeAssets.value)
+// Выплаты по позициям для календаря: один запрос на корневой портфель, фильтр ветки — на клиенте
+const selectedPayoutPositions = computed(() => {
+  const ids = selectedPortfolioIds.value
+  return (dividendsStore.payoutPositionsFlat || []).filter((p) => ids.has(p.portfolio_id))
 })
 
-// Данные для MonthlyPayoutsChartWidget
-const monthlyPayouts = computed(() => {
-  return selectedPortfolioAnalytics.value?.monthly_payouts || []
-})
+const capitalHistory = computed(() => expandPortfolioHistoryForCharts(selectedPortfolio.value?.history))
+const monthlyPayouts = computed(() => selectedPortfolioAnalytics.value?.monthly_payouts || [])
+const futurePayouts = computed(() => selectedPortfolioAnalytics.value?.future_payouts || [])
 
-// Данные для RecentTransactionsWidget - последние транзакции, отсортированные по дате
+// Последние 10 операций по дате
 const recentTransactions = computed(() => {
   const top = []
   for (const tx of selectedTransactions.value) {
@@ -148,229 +133,285 @@ const recentTransactions = computed(() => {
   return top
 })
 
-onMounted(() => {
-  // Фаза 2: после первого кадра подключаем основной график.
-  requestAnimationFrame(() => {
-    phase2Ready.value = true
-  })
-
-  // Фаза 3: второстепенные тяжёлые виджеты рендерим в idle-время.
-  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-    window.requestIdleCallback(() => {
-      phase3Ready.value = true
-    }, { timeout: 250 })
-  } else {
-    setTimeout(() => {
-      phase3Ready.value = true
-    }, 80)
-  }
+// ── Шапка ──────────────────────────────────────────────
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  const hello = h >= 5 && h < 12 ? 'Доброе утро' : h >= 12 && h < 18 ? 'Добрый день' : h >= 18 && h < 23 ? 'Добрый вечер' : 'Доброй ночи'
+  const name = String(authStore.user?.name || '').trim().split(/\s+/)[0]
+  return name ? `${hello}, ${name}` : hello
 })
+const today = (() => {
+  const s = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
+  return s.charAt(0).toUpperCase() + s.slice(1)
+})()
+const positionsCount = computed(() => new Set(selectedSubtreeAssets.value.filter((a) => Number(a.quantity) > 0).map((a) => a.asset_id)).size)
 
+// ── Раскладка ──────────────────────────────────────────
+const { state: layout, visible, hiddenList, isCustom, resize, hide, show, reset } = useDashboardLayout()
+const editing = dashboardEditing
+const setEditing = (v) => { dashboardEditing.value = v }
+
+const widgets = computed(() => ({
+  capital: {
+    is: CapitalWidget,
+    props: {
+      history: capitalHistory.value,
+      totalAmount: totalCapitalWidgetData.value.totalAmount,
+      investedAmount: totalCapitalWidgetData.value.investedAmount,
+      balance: Number(balance.value) || 0,
+      inflationRate: Number(selectedPortfolio.value?.description?.inflation_rate) || 7.5,
+    },
+  },
+  profit: {
+    is: ProfitWidget,
+    props: {
+      totalProfit: profitWidgetData.value.totalProfit,
+      monthlyChange: profitWidgetData.value.monthlyChange,
+      investedAmount: profitWidgetData.value.investedAmount,
+      analytics: profitWidgetData.value.analytics,
+      history: capitalHistory.value,
+    },
+  },
+  insights: {
+    is: InsightsWidget,
+    props: { assets: selectedSubtreeAssets.value, analytics: selectedPortfolioAnalytics.value, history: capitalHistory.value },
+  },
+  allocation: { is: AllocationWidget, props: { assets: selectedSubtreeAssets.value } },
+  top: { is: TopPositionsWidget, props: { assets: selectedSubtreeAssets.value } },
+  calendar: {
+    is: CalendarWidget,
+    props: {
+      positions: selectedPayoutPositions.value,
+      referenceData: dashboardStore.referenceData,
+      loading: dividendsStore.payoutPositionsLoading,
+    },
+  },
+  payouts: { is: PayoutsWidget, props: { past: monthlyPayouts.value, future: futurePayouts.value } },
+  movers: { is: MoversWidget, props: { assets: selectedSubtreeAssets.value } },
+  goal: {
+    is: GoalWidget,
+    props: { goal: goalData.value, defaultReturn: returnData.value.returnPercent, onSave: portfoliosStore.updatePortfolioGoal },
+  },
+  income: {
+    is: IncomeWidget,
+    props: {
+      annual: calculatedAnnualDividends.value,
+      yieldPercent: returnData.value.returnPercent,
+      yieldOnInvested: returnData.value.returnPercentOnInvested,
+      future: futurePayouts.value,
+    },
+  },
+  transactions: { is: TransactionsWidget, props: { transactions: recentTransactions.value, assets: selectedSubtreeAssets.value } },
+}))
+
+const ready = computed(() => !uiStore.loading && !!selectedPortfolio.value)
+
+// каскадное появление — только при первом показе, чтобы перетаскивание не перезапускало анимацию
+const intro = ref(true)
+let introTimer
+watch(ready, (r) => {
+  if (!r) return
+  clearTimeout(introTimer)
+  introTimer = setTimeout(() => { intro.value = false }, 1400)
+}, { immediate: true })
+
+// календарь выплат грузит позиции с выплатами, только когда он виден
+watch(
+  () => ready.value && visible.value.includes('calendar'),
+  (need) => {
+    if (need && dividendsStore.payoutPositionsCacheIsEmpty && !dividendsStore.payoutPositionsLoading) {
+      dividendsStore.fetchPayoutPositionsForAllPortfolios()
+    }
+  },
+  { immediate: true },
+)
+
+const dragging = ref(false)
+
+function onKey(e) {
+  if (e.key === 'Escape' && editing.value) editing.value = false
+}
+onMounted(() => window.addEventListener('keydown', onKey))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKey)
+  clearTimeout(introTimer)
+  editing.value = false
+})
 </script>
 
 <template>
-  <PageLayout v-if="!uiStore.loading && selectedPortfolio">
-    <PageHeader 
-      :title="`С возвращением, ${authStore.user?.name}`"
-      subtitle="Главная"
-    />
+  <div class="dash" :class="{ 'is-editing': editing, 'is-dragging': dragging }">
+    <Transition name="dash-swap" mode="out-in">
+      <DashboardSkeleton v-if="!ready" key="skel" />
 
-    <div class="widgets-grid">
-      <!-- Статы: на десктопе — 4 виджета, на мобильном — один сводный -->
-      <div class="stats-desktop">
-        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-          <TotalCapitalWidget 
-            :total-amount="totalCapitalWidgetData.totalAmount"
-            :invested-amount="totalCapitalWidgetData.investedAmount"
-            :unrealized-pl="totalCapitalWidgetData.unrealizedPl"
-            :unrealized-percent="totalCapitalWidgetData.unrealizedPercent"
-          />
-        </WidgetContainer>
-        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-          <PortfolioProfitWidget 
-            :total-amount="profitWidgetData.totalAmount"
-            :total-profit="profitWidgetData.totalProfit"
-            :monthly-change="profitWidgetData.monthlyChange"
-            :invested-amount="profitWidgetData.investedAmount"
-            :analytics="profitWidgetData.analytics"
-          />
-        </WidgetContainer>
-        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-          <DividendsWidget 
-            :annual-dividends="calculatedAnnualDividends"
-          />
-        </WidgetContainer>
-        <WidgetContainer :gridColumn="3" minHeight="var(--widget-height-small)">
-          <ReturnWidget 
-            :return-percent="returnData.returnPercent"
-            :return-percent-on-invested="returnData.returnPercentOnInvested"
-            :total-value="returnData.totalValue"
-            :total-invested="returnData.totalInvested"
-          />
-        </WidgetContainer>
+      <div v-else key="ready">
+        <header class="dash__head">
+          <div class="dash__titles">
+            <p class="dash__date cv-eyebrow">{{ today }}</p>
+            <h1 class="dash__title">{{ greeting }}</h1>
+            <p class="dash__sub">
+              {{ selectedPortfolio.name }}
+              <span class="dash__dot" />
+              {{ positionsCount }} {{ plural(positionsCount, 'позиция', 'позиции', 'позиций') }}
+            </p>
+          </div>
+          <div class="dash__actions">
+            <template v-if="editing">
+              <button v-if="isCustom" type="button" class="cv-btn cv-btn--ghost" @click="reset">
+                <RotateCcw :size="15" /> Сбросить
+              </button>
+              <button type="button" class="cv-btn cv-btn--primary" @click="setEditing(false)">
+                <Check :size="16" /> Готово
+              </button>
+            </template>
+            <button v-else type="button" class="cv-btn" @click="setEditing(true)">
+              <SlidersHorizontal :size="15" /> Настроить
+            </button>
+          </div>
+        </header>
+
+        <Transition name="dash-tray">
+          <div v-if="editing" class="dash__tray">
+            <p class="dash__hint">
+              <GripVertical :size="15" />
+              Перетаскивайте виджеты за ручку, меняйте ширину и скрывайте лишнее. Раскладка сохранится.
+            </p>
+            <div v-if="hiddenList.length" class="dash__hidden">
+              <span>Скрыты:</span>
+              <button v-for="id in hiddenList" :key="id" type="button" class="dash__chip" @click="show(id)">
+                <Plus :size="13" /> {{ WIDGETS[id].title }}
+              </button>
+            </div>
+          </div>
+        </Transition>
+
+        <VueDraggable
+          v-model="visible"
+          class="dash__grid"
+          :class="{ 'is-intro': intro }"
+          handle=".cv-drag-handle"
+          :disabled="!editing"
+          :animation="260"
+          easing="cubic-bezier(.22, 1, .36, 1)"
+          ghost-class="is-ghost"
+          chosen-class="is-chosen"
+          drag-class="is-drag"
+          @start="dragging = true"
+          @end="dragging = false"
+        >
+          <div
+            v-for="(id, i) in visible"
+            :key="id"
+            class="dash__item"
+            :class="`is-${layout.sizes[id]}`"
+            :style="{ '--i': i }"
+          >
+            <component
+              :is="widgets[id].is"
+              v-bind="widgets[id].props"
+              :editing="editing"
+              :size="layout.sizes[id]"
+              :sizes="WIDGETS[id].sizes"
+              @resize="(s) => resize(id, s)"
+              @hide="hide(id)"
+            />
+          </div>
+        </VueDraggable>
+
+        <div v-if="!visible.length" class="dash__nothing cv-card">
+          <b>Все виджеты скрыты</b>
+          <p>Верните нужные из списка выше или сбросьте раскладку.</p>
+          <button type="button" class="cv-btn cv-btn--primary cv-btn--sm" @click="reset">Сбросить раскладку</button>
+        </div>
       </div>
-      <div class="stats-mobile">
-        <WidgetContainer gridColumn="1" minHeight="var(--widget-height-small)">
-          <ConsolidatedStatsWidget
-            :total-amount="totalCapitalWidgetData.totalAmount"
-            :invested-amount="totalCapitalWidgetData.investedAmount"
-            :total-profit="profitWidgetData.totalProfit"
-            :monthly-change="profitWidgetData.monthlyChange"
-            :analytics="profitWidgetData.analytics"
-            :annual-dividends="calculatedAnnualDividends"
-            :return-percent="returnData.returnPercent"
-            :return-percent-on-invested="returnData.returnPercentOnInvested"
-          />
-        </WidgetContainer>
-      </div>
-
-      <!-- 1. Динамика капитала — на планшете на всю ширину -->
-      <WidgetContainer class="chart-dynamics-widget" :gridColumn="8" minHeight="var(--widget-height-xlarge)">
-        <PortfolioChartWidget v-if="phase2Ready" :chartData="portfolioChartData" />
-      </WidgetContainer>
-
-      <!-- 2. Рост и падение за день (на планшете в одну строку) -->
-      <WidgetContainer class="top-up-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
-        <TopMoversWidget v-if="phase3Ready"
-          title="Топ роста за день"
-          :assets="selectedSubtreeAssets"
-          direction="up"
-        />
-      </WidgetContainer>
-      <WidgetContainer class="top-down-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
-        <TopMoversWidget v-if="phase3Ready"
-          title="Топ падений за день"
-          :assets="selectedSubtreeAssets"
-          direction="down"
-        />
-      </WidgetContainer>
-
-      <!-- 3. Распределение активов и последние операции (на планшете в одну строку) -->
-      <WidgetContainer class="allocation-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
-        <AssetAllocationWidget v-if="phase3Ready"
-          :assetAllocation="assetAllocationData"
-        />
-      </WidgetContainer>
-      <WidgetContainer class="recent-tx-widget" :gridColumn="4" minHeight="var(--widget-height-medium)">
-        <RecentTransactionsWidget v-if="phase3Ready"
-          :transactions="recentTransactions"
-        />
-      </WidgetContainer>
-
-      <!-- 4. Выплаты по месяцам — на планшете на всю ширину -->
-      <WidgetContainer class="payouts-chart-widget" :gridColumn="6" minHeight="var(--widget-height-medium)">
-        <PayoutsChartWidget v-if="phase3Ready"
-          title="Полученные выплаты "
-          :payouts="monthlyPayouts"
-          mode="past"
-          enable-bar-navigation
-        />
-      </WidgetContainer>
-
-      <!-- 5. Достижение цели — на планшете на всю ширину -->
-      <WidgetContainer class="goal-progress-widget" :gridColumn="6" minHeight="var(--widget-height-medium)">
-        <GoalProgressWidget v-if="phase3Ready"
-          :goal-data="goalData"
-          :onSaveGoal="portfoliosStore.updatePortfolioGoal"
-          :default-return-percent="returnData.returnPercent"
-        />
-      </WidgetContainer>
-    </div>
-  </PageLayout>
-
-  <LoadingState v-else />
+    </Transition>
+  </div>
 </template>
 
 <style scoped>
-.widgets-grid {
-  display: grid;
-  gap: var(--spacing);
-  grid-template-columns: repeat(12, 1fr);
-  grid-auto-rows: min-content;
-  width: 100%;
-  min-width: 0;
+.dash { padding-bottom: 8px; }
+
+.dash__head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 26px 0 30px;
+}
+.dash__date { color: var(--cv-dim); animation: dash-rise .7s var(--cv-ease) backwards; }
+.dash__title {
+  margin-top: 10px;
+  font-family: var(--cv-display); font-size: clamp(26px, 2.5vw, 34px); font-weight: 550; line-height: 1.12; letter-spacing: -0.035em;
+  color: var(--cv-ink);
+  animation: dash-rise .7s var(--cv-ease) backwards .04s;
+}
+.dash__sub {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 8px;
+  font-size: 13.5px; color: var(--cv-mut);
+  animation: dash-rise .7s var(--cv-ease) backwards .08s;
+}
+.dash__dot { width: 3px; height: 3px; border-radius: 50%; background: var(--cv-dim); }
+.dash__actions { display: flex; gap: 8px; animation: dash-rise .7s var(--cv-ease) backwards .1s; }
+.dash__actions .cv-btn { gap: 7px; }
+
+.dash__tray {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap;
+  margin-bottom: 16px; padding: 12px 14px; border-radius: 14px;
+  background: rgba(100, 116, 255, .06);
+  box-shadow: inset 0 0 0 1px var(--cv-accent-line);
+}
+.dash__hint { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--cv-ink-2); }
+.dash__hint svg { color: var(--cv-accent-ink); flex: none; }
+.dash__hidden { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; color: var(--cv-mut); }
+.dash__chip {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border: 0; border-radius: 99px;
+  background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px var(--cv-line-2);
+  color: var(--cv-ink); font-size: 12.5px; font-weight: 550; cursor: pointer;
+  transition: background .2s, box-shadow .2s, transform .2s var(--cv-ease);
+}
+.dash__chip:hover { background: var(--cv-accent-soft); box-shadow: inset 0 0 0 1px var(--cv-accent-line); }
+.dash__chip:active { transform: scale(.96); }
+
+.dash__grid {
+  display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--cv-gap);
+  align-items: stretch;
+}
+.dash__item { min-width: 0; grid-column: span 6; }
+.dash__item.is-s { grid-column: span 4; }
+.dash__item.is-m { grid-column: span 6; }
+.dash__item.is-l { grid-column: span 8; }
+.dash__item.is-xl { grid-column: span 12; }
+
+.dash__grid.is-intro .dash__item { animation: dash-rise .75s var(--cv-ease) backwards; animation-delay: calc(var(--i) * 70ms + 120ms); }
+@keyframes dash-rise {
+  from { opacity: 0; transform: translateY(14px); filter: blur(4px); }
 }
 
-/* Блок из 4 стат-виджетов (десктоп) */
-.stats-desktop {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: var(--spacing);
-  order: 1;
-}
-/* Сводный стат-виджет (мобильный) */
-.stats-mobile {
-  display: none;
-  grid-column: 1 / -1;
-  order: 1;
-}
+/* перетаскивание */
+.dash__item.is-ghost > * { opacity: .35; box-shadow: 0 0 0 1px var(--cv-accent-line), 0 0 0 3px rgba(100, 116, 255, .18); }
+.dash__item.is-ghost > * :deep(*) { visibility: hidden; }
+.dash__item.is-drag > * { transform: rotate(1.2deg); box-shadow: var(--cv-pop-shadow); }
+.dash.is-dragging { cursor: grabbing; user-select: none; }
 
-/* ПК и мобильная: распределение активов сразу после графика капитала */
-.widgets-grid :deep(.chart-dynamics-widget) { order: 2; }
-.widgets-grid :deep(.allocation-widget) { order: 3; }
-.widgets-grid :deep(.top-up-widget) { order: 4; }
-.widgets-grid :deep(.top-down-widget) { order: 5; }
-.widgets-grid :deep(.recent-tx-widget) { order: 6; }
-.widgets-grid :deep(.payouts-chart-widget) { order: 7; }
-.widgets-grid :deep(.goal-progress-widget) { order: 8; }
+.dash__nothing { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 16px; text-align: center; color: var(--cv-mut); }
+.dash__nothing b { color: var(--cv-ink); font-size: 15px; }
 
-/* Планшет: порядок по DOM — динамика (вся ширина), рост/падение (2), распределение и операции (2), выплаты (вся ширина), цель (вся ширина). Распределение активов «переезжает» сюда только на планшете */
+.dash-swap-enter-active { transition: opacity .35s var(--cv-ease); }
+.dash-swap-leave-active { transition: opacity .15s ease; }
+.dash-swap-enter-from, .dash-swap-leave-to { opacity: 0; }
+
+.dash-tray-enter-active, .dash-tray-leave-active { transition: opacity .25s var(--cv-ease), transform .3s var(--cv-ease), margin .3s var(--cv-ease); }
+.dash-tray-enter-from, .dash-tray-leave-to { opacity: 0; transform: translateY(-6px); }
+
 @media (max-width: 1200px) {
-  .widgets-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-  }
-  .stats-desktop {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-  }
-  .stats-desktop :deep(.widget-container) {
-    grid-column: span 1 !important;
-  }
-  .widgets-grid :deep(.widget-container) {
-    grid-column: span 1 !important;
-  }
-  .widgets-grid :deep(.chart-dynamics-widget),
-  .widgets-grid :deep(.payouts-chart-widget),
-  .widgets-grid :deep(.goal-progress-widget) {
-    grid-column: 1 / -1 !important;
-  }
-  /* Статы остаются сверху (order: 0), остальные по разметке: график, топы, распределение, операции, выплаты, цель */
-  .stats-desktop {
-    order: 0;
-  }
-  .widgets-grid :deep(.chart-dynamics-widget) { order: 1; }
-  .widgets-grid :deep(.top-up-widget) { order: 2; }
-  .widgets-grid :deep(.top-down-widget) { order: 3; }
-  .widgets-grid :deep(.allocation-widget) { order: 4; }
-  .widgets-grid :deep(.recent-tx-widget) { order: 5; }
-  .widgets-grid :deep(.payouts-chart-widget) { order: 6; }
-  .widgets-grid :deep(.goal-progress-widget) { order: 7; }
+  /* малые блоки становятся половинными — dense закрывает дыры рядом с широкими */
+  .dash__grid { grid-auto-flow: row dense; }
+  .dash__item.is-s, .dash__item.is-m { grid-column: span 6; }
+  .dash__item.is-l, .dash__item.is-xl { grid-column: span 12; }
 }
-
-/* Мобильный: одна колонка, порядок как на ПК (распределение после графика) */
 @media (max-width: 768px) {
-  .widgets-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-  .stats-desktop {
-    display: none;
-  }
-  .stats-mobile {
-    display: block;
-  }
-  .widgets-grid :deep(.widget-container) {
-    grid-column: 1 / -1 !important;
-  }
-  /* Восстанавливаем порядок ПК: график, затем распределение активов */
-  .widgets-grid :deep(.chart-dynamics-widget) { order: 2; }
-  .widgets-grid :deep(.allocation-widget) { order: 3; }
-  .widgets-grid :deep(.top-up-widget) { order: 4; }
-  .widgets-grid :deep(.top-down-widget) { order: 5; }
-  .widgets-grid :deep(.recent-tx-widget) { order: 6; }
-  .widgets-grid :deep(.payouts-chart-widget) { order: 7; }
-  .widgets-grid :deep(.goal-progress-widget) { order: 8; }
+  .dash__head { padding: 14px 0 20px; align-items: flex-start; }
+  .dash__grid { gap: 12px; }
+  .dash__item { grid-column: span 12 !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash__grid.is-intro .dash__item, .dash__date, .dash__title, .dash__sub, .dash__actions { animation: none; }
 }
 </style>

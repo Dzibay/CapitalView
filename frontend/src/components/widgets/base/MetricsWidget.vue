@@ -107,7 +107,7 @@ const formatValue = (item) => {
   padding: 0.5rem 0;
   gap: 0.5rem;
   flex-wrap: wrap;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--lx-line, #f3f4f6);
 }
 
 .stat-item:last-child {
@@ -115,11 +115,11 @@ const formatValue = (item) => {
 }
 
 .stat-item.profit .stat-value {
-  color: var(--positiveColor, #1CBD88);
+  color: var(--positiveColor, var(--lx-up, #1CBD88));
 }
 
 .stat-item.loss .stat-value {
-  color: var(--negativeColor, #EF4444);
+  color: var(--negativeColor, var(--lx-down, #EF4444));
 }
 
 .stat-label {

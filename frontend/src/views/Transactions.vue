@@ -8,14 +8,17 @@ import { useContextMenu } from '../composables/useContextMenu'
 import EditTransactionModal from '../components/modals/EditTransactionModal.vue'
 import ContextMenu from '../components/base/ContextMenu.vue'
 import CustomSelect from '../components/base/CustomSelect.vue'
-import { DateInput, ToggleSwitch, PeriodFilter, Tooltip } from '../components/base'
-import { Search, SlidersHorizontal, ChevronDown } from 'lucide-vue-next'
-import PageLayout from '../layouts/PageLayout.vue'
-import PageHeader from '../layouts/PageHeader.vue'
-import { ValueChange } from '../components/widgets/base'
+import { ToggleSwitch, PeriodFilter, Tooltip } from '../components/base'
+import { Search, SlidersHorizontal, ChevronDown, RotateCcw, MoreHorizontal, Trash2 } from 'lucide-vue-next'
+import CvPageHead from '../cabinet/ui/CvPageHead.vue'
+import CvKpiStrip from '../cabinet/ui/CvKpiStrip.vue'
+import CvSegmented from '../cabinet/ui/CvSegmented.vue'
+import OpsActivityWidget from '../cabinet/operations/OpsActivityWidget.vue'
+import { OP_GROUPS, TX_ORDER, OP_ORDER, groupOf } from '../cabinet/operations/opKinds'
+import { money, moneyIn, plural } from '../cabinet/format'
+import { payoutAmountToRub } from '../utils/currencyRatesToRub'
 import { formatOperationAmount } from '../utils/formatCurrency'
 import { normalizeDateToString, formatDateForDisplay } from '../utils/date'
-import { getCurrencySymbol } from '../utils/currencySymbols'
 import operationsService from '../services/operationsService'
 
 const dashboardStore = useDashboardStore()
@@ -220,7 +223,7 @@ const normalizeType = (type) => {
   if (t.includes('аморт') || t.includes('amort') || t.includes('погаш')) return 'amortization'
   if (t.includes('налог') || t.includes('tax')) return 'tax'
   if (t.includes('комисс') || t.includes('commission') || t.includes('commision')) return 'commission'
-  if (t.includes('ввод') || t.includes('депозит') || t.includes('deposit')) return 'deposit'
+  if (t.includes('ввод') || t.includes('пополн') || t.includes('депозит') || t.includes('deposit')) return 'deposit'
   if (t.includes('вывод') || t.includes('withdraw')) return 'withdraw'
   return 'other'
 }
@@ -924,1288 +927,531 @@ const periodFilterLabel = computed(() => {
   }
   return labels[periodPreset.value] || periodPreset.value
 })
+
+// ── вид страницы в стиле дашборда ──────────────────────────────────────────
+const VIEW_OPTIONS = [
+  { value: 'transactions', label: 'Сделки' },
+  { value: 'operations', label: 'Движение денег' },
+]
+const isTx = computed(() => viewMode.value === 'transactions')
+
+const txValue = (tx) => Number(tx.quantity || 0) * Number(tx.price || 0)
+/** сумма сделки в ₽ по курсу справочника; без курса — в валюте сделки */
+const txRub = (tx) => {
+  const v = txValue(tx)
+  return payoutAmountToRub(v, tx.currency_ticker || 'RUB', referenceData.value) ?? v
+}
+const ymOf = (raw) => (normalizeDateToString(raw) || '').slice(0, 7)
+
+const activityRows = computed(() =>
+  isTx.value
+    ? filteredTransactions.value
+        .map((tx) => ({ ym: ymOf(tx.transaction_date), group: groupOf(normalizeType(tx.transaction_type)), value: Math.abs(txRub(tx)) }))
+        .filter((r) => r.group === 'buy' || r.group === 'sell')
+    : filteredOperations.value.map((op) => ({
+        ym: ymOf(op.operation_date),
+        group: groupOf(normalizeType(op.operation_type)),
+        value: Math.abs(getOperationAmount(op, { rubOnly: true })),
+      })),
+)
+
+const groupStats = computed(() => {
+  const s = {}
+  for (const r of activityRows.value) {
+    const g = (s[r.group] ||= { sum: 0, n: 0 })
+    g.sum += r.value
+    g.n += 1
+  }
+  return s
+})
+
+const realizedPnl = computed(() => filteredTransactions.value.reduce((s, tx) => s + (txSellRealizedPnlNumber(tx) || 0), 0))
+
+const countTx = (n) => `${n} ${plural(n, 'сделка', 'сделки', 'сделок')}`
+const countOp = (n) => `${n} ${plural(n, 'операция', 'операции', 'операций')}`
+
+const kpis = computed(() => {
+  const g = (k) => groupStats.value[k] || { sum: 0, n: 0 }
+  const f = (v) => money(v)
+  if (isTx.value) {
+    const buy = g('buy')
+    const sell = g('sell')
+    const pnl = realizedPnl.value
+    return [
+      { key: 'buy', label: 'Куплено', value: buy.sum, format: f, note: countTx(buy.n) },
+      { key: 'sell', label: 'Продано', value: sell.sum, format: f, note: countTx(sell.n) },
+      { key: 'pnl', label: 'Результат продаж', value: pnl, format: (v) => money(v, { sign: true }), tone: pnl > 0 ? 'up' : pnl < 0 ? 'down' : '', note: 'по продажам' },
+      { key: 'net', label: 'Чистые покупки', value: buy.sum - sell.sum, format: (v) => money(v, { sign: true }), note: `оборот ${money(buy.sum + sell.sum)}` },
+    ]
+  }
+  const dep = g('deposit')
+  const wd = g('withdraw')
+  const pay = g('payout')
+  const fee = g('fee')
+  return [
+    { key: 'dep', label: 'Пополнено', value: dep.sum, format: f, note: countOp(dep.n) },
+    { key: 'wd', label: 'Выведено', value: wd.sum, format: f, note: `чистый приток ${money(dep.sum - wd.sum, { sign: true })}` },
+    { key: 'pay', label: 'Получено выплат', value: pay.sum, format: f, note: countOp(pay.n) },
+    { key: 'fee', label: 'Налоги и комиссии', value: fee.sum, format: f, note: countOp(fee.n) },
+  ]
+})
+
+const pageEyebrow = computed(() => {
+  const list = normalizeFilterList(selectedPortfolio.value)
+  if (!list.length) return 'Все портфели'
+  return list.length === 1 ? list[0] : `${list.length} ${plural(list.length, 'портфель', 'портфеля', 'портфелей')}`
+})
+const pageMeta = computed(() => {
+  const n = isTx.value ? filteredTransactions.value.length : filteredOperations.value.length
+  return [isTx.value ? countTx(n) : countOp(n), periodPreset.value === 'all' ? 'за всё время' : periodFilterLabel.value]
+})
+
+/** строки списка в одном виде для сделок и операций */
+const listRows = computed(() =>
+  isTx.value
+    ? filteredTransactions.value.map((tx) => ({
+        id: tx.transaction_id,
+        kind: 'transaction',
+        raw: tx,
+        date: tx.transaction_date,
+        type: tx.transaction_type,
+        group: groupOf(normalizeType(tx.transaction_type)),
+        asset: tx.asset_name,
+        ticker: tx.ticker,
+        portfolio: tx.portfolio_name,
+        qty: tx.quantity,
+        price: tx.price,
+        currency: tx.currency_ticker,
+        amount: txValue(tx),
+        pnl: txSellRealizedPnlNumber(tx),
+        tip: '',
+      }))
+    : filteredOperations.value.map((op) => ({
+        id: op.cash_operation_id || op.id,
+        kind: 'operation',
+        raw: op,
+        date: op.operation_date,
+        type: op.operation_type,
+        group: groupOf(normalizeType(op.operation_type)),
+        asset: op.asset_name,
+        ticker: op.ticker,
+        portfolio: op.portfolio_name,
+        qty: null,
+        price: null,
+        currency: getOperationCurrency(op),
+        amount: Math.abs(getOperationAmount(op)),
+        pnl: null,
+        tip: getOperationCommissionTooltipContent(op),
+      })),
+)
+
+const PAGE = 100
+const limit = ref(PAGE)
+watch([filteredTransactions, filteredOperations, viewMode], () => { limit.value = PAGE })
+const shownRows = computed(() => listRows.value.slice(0, limit.value))
+
+const selIds = computed({
+  get: () => (isTx.value ? selectedTxIds.value : selectedOpIds.value),
+  set: (v) => {
+    if (isTx.value) selectedTxIds.value = v
+    else selectedOpIds.value = v
+  },
+})
+const allSel = computed({
+  get: () => (isTx.value ? allSelected.value : allOperationsSelected.value),
+  set: (v) => {
+    if (isTx.value) { allSelected.value = v; toggleAll() } else { allOperationsSelected.value = v; toggleAllOperations() }
+  },
+})
+const deleteSel = () => (isTx.value ? deleteSelected() : deleteSelectedOperations())
+
+/** знак суммы в движении денег: приток «+», отток «−» */
+const opSign = (r) => (r.kind === 'operation' ? OP_GROUPS[r.group].dir : 0)
+const fmtAmount = (r) =>
+  r.kind === 'operation'
+    ? `${opSign(r) > 0 ? '+' : '−'}${formatOperationAmount(r.amount, r.currency)}`
+    : moneyIn(r.amount, r.currency, { digits: 2 })
+const fmtPrice = (r) => moneyIn(r.price, r.currency, { digits: 2 })
+const fmtQty = (v) => Number(v || 0).toLocaleString('ru-RU', { maximumFractionDigits: 6 })
+
+const assetOptions = computed(() => (isTx.value ? filteredAssetsList.value : filteredOperationsAssetsList.value))
+// каскадное появление — только при первом показе
+const intro = ref(true)
+onMounted(() => setTimeout(() => { intro.value = false }, 1600))
+
+const clearAsset = () => {
+  assetSearch.value = ''
+  selectedAsset.value = ''
+  applyFilter()
+}
 </script>
 
 <template>
-  <PageLayout>
-    <PageHeader title="История транзакций">
+  <div class="ops">
+    <CvPageHead :eyebrow="pageEyebrow" title="Операции" :meta="pageMeta">
       <template #actions>
-        <div class="header-actions">
-          <div v-if="selectedTxIds.length > 0 && viewMode === 'transactions'" class="bulk-actions bulk-actions-desktop">
-            <span class="selected-count">Выбрано: {{ selectedTxIds.length }}</span>
-            <button @click="deleteSelected" class="btn btn-danger-soft" :disabled="selectedTxIds.length === 0">
-              Удалить выбранные ({{ selectedTxIds.length }})
-            </button>
-          </div>
-          <div v-if="selectedOpIds.length > 0 && viewMode === 'operations'" class="bulk-actions bulk-actions-desktop">
-            <span class="selected-count">Выбрано: {{ selectedOpIds.length }}</span>
-            <button @click="deleteSelectedOperations" class="btn btn-danger-soft" :disabled="selectedOpIds.length === 0">
-              Удалить выбранные ({{ selectedOpIds.length }})
-            </button>
-          </div>
-          <div class="view-mode-switcher">
-            <button 
-              class="btn btn-ghost" 
-              :class="{ active: viewMode === 'transactions' }"
-              @click="viewMode = 'transactions'"
-            >
-              Транзакции
-            </button>
-            <button 
-              class="btn btn-ghost" 
-              :class="{ active: viewMode === 'operations' }"
-              @click="viewMode = 'operations'"
-            >
-              Операции
-            </button>
-          </div>
-        </div>
+        <CvSegmented v-model="viewMode" :options="VIEW_OPTIONS" aria-label="Что показывать" />
       </template>
-    </PageHeader>
+    </CvPageHead>
 
-    <div class="transactions-content">
-      <div class="main-content">
+    <div class="cv-grid" :class="{ 'is-intro': intro }">
+      <CvKpiStrip class="is-xl" :items="kpis" :style="{ '--i': 0 }" />
 
-        <div class="transactions-main">
-          <div class="card">
-          <div class="toolbar">
-            <div class="mobile-filter-bar">
-              <button @click="showMobileFilters = !showMobileFilters" class="mobile-filter-toggle-btn" type="button">
-                <SlidersHorizontal :size="16" />
-                <span>Фильтры</span>
-                <span v-if="activeFilterCount > 0" class="mobile-filter-badge">{{ activeFilterCount }}</span>
-                <ChevronDown :size="16" class="mobile-filter-chevron" :class="{ 'mobile-filter-chevron--open': showMobileFilters }" />
+      <OpsActivityWidget
+        :key="viewMode"
+        class="is-xl"
+        :style="{ '--i': 1 }"
+        :title="isTx ? 'Сделки по месяцам' : 'Движение денег по месяцам'"
+        :rows="activityRows"
+        :order="isTx ? TX_ORDER : OP_ORDER"
+        :net-label="isTx ? 'Чистые покупки' : 'Чистый поток'"
+      />
+
+      <section class="ops__panel cv-card is-xl" :style="{ '--i': 2 }">
+        <!-- фильтры -->
+        <div class="ops__filters">
+          <button v-if="isCardView" type="button" class="ops__mtoggle" @click="showMobileFilters = !showMobileFilters">
+            <SlidersHorizontal :size="15" />
+            <span>Фильтры</span>
+            <b v-if="activeFilterCount" class="ops__badge">{{ activeFilterCount }}</b>
+            <ChevronDown :size="15" class="ops__chev" :class="{ 'is-open': showMobileFilters }" />
+          </button>
+
+          <div v-show="!isCardView || showMobileFilters" class="ops__fbody">
+            <div class="ops__frow">
+              <div class="ops__search">
+                <Search :size="15" class="ops__search-ic" />
+                <input v-model="assetSearch" type="text" placeholder="Поиск по активу" class="ops__input" />
+                <button v-if="assetSearch" type="button" class="ops__clear" aria-label="Очистить" @click="clearAsset">×</button>
+                <ul v-if="assetSearch && selectedAsset !== assetSearch" class="ops__dd">
+                  <li v-for="a in assetOptions" :key="a" @click="selectAssetFilter(a)">
+                    <span v-html="highlightMatch(a)" />
+                    <small v-if="isTx && getAssetMeta(a)">{{ getAssetMeta(a).ticker }}</small>
+                  </li>
+                  <li v-if="!assetOptions.length" class="is-empty">Ничего не найдено</li>
+                </ul>
+              </div>
+
+              <CustomSelect
+                v-model="selectedPortfolio"
+                :options="portfolios"
+                label="Портфель"
+                placeholder="Все портфели"
+                empty-option-text="Все портфели"
+                option-label="name"
+                option-value="name"
+                multiple
+                min-width="190px"
+                flex="0 0 auto"
+                @change="applyFilter"
+              />
+              <CustomSelect
+                v-model="selectedType"
+                :options="(isTx ? txTypes : operationTypes).map((t) => ({ value: t, label: t }))"
+                label="Тип"
+                placeholder="Все типы"
+                empty-option-text="Все типы"
+                multiple
+                min-width="190px"
+                flex="0 0 auto"
+                @change="applyFilter"
+              />
+              <CustomSelect
+                v-if="!isTx"
+                v-model="selectedCurrency"
+                :options="[
+                  { value: 'RUB', label: 'В рублях' },
+                  { value: 'ORIGINAL', label: 'В валюте операции' },
+                ]"
+                label="Валюта"
+                placeholder="Валюта"
+                min-width="170px"
+                flex="0 0 auto"
+                @change="applyFilter"
+              />
+              <button type="button" class="cv-btn cv-btn--ghost cv-btn--icon ops__reset" title="Сбросить фильтры" aria-label="Сбросить фильтры" @click="resetFilters">
+                <RotateCcw :size="15" />
               </button>
-              <div v-if="!showMobileFilters && activeFilterCount > 0" class="active-filters-summary">
-                <span v-if="selectedAsset" class="active-filter-chip">
-                  {{ selectedAsset }}
-                  <button @click.stop="assetSearch=''; selectedAsset=''; applyFilter()" class="chip-remove" type="button">&times;</button>
-                </span>
-                <span v-for="p in normalizeFilterList(selectedPortfolio)" :key="'p-' + p" class="active-filter-chip">{{ p }}</span>
-                <span v-for="t in normalizeFilterList(selectedType)" :key="'t-' + t" class="active-filter-chip">{{ t }}</span>
-                <span v-if="periodPreset !== 'all'" class="active-filter-chip">{{ periodFilterLabel }}</span>
-                <button @click.stop="resetFilters" class="active-filter-chip active-filter-chip--reset" type="button">Сбросить</button>
-              </div>
-            </div>
-            <div class="filters-collapsible" :class="{ 'filters-collapsible--hidden': isCardView && !showMobileFilters }">
-            <div class="filters-top">
-              <!-- Строка 1: поиск по активу + сброс (всегда вместе при сужении) -->
-              <div class="filters-row filters-row--primary">
-                <div v-if="viewMode === 'transactions'" class="asset-search-wrapper">
-                  <span class="select-label">Актив</span>
-                  <span class="input-icon"><Search :size="16" /></span>
-                  <input
-                    type="text"
-                    v-model="assetSearch"
-                    placeholder="Поиск актива"
-                    class="form-input"
-                  />
-                  <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
-
-                  <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
-                    <li v-for="a in filteredAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
-                      <span v-html="highlightMatch(a)" />
-                      <span v-if="getAssetMeta(a)" class="meta-ticker">{{ getAssetMeta(a).ticker }}</span>
-                    </li>
-                    <li v-if="filteredAssetsList.length === 0" class="asset-empty">
-                      <span class="asset-empty-icon"><Search :size="20" /></span>
-                      Ничего не найдено
-                    </li>
-                  </ul>
-                </div>
-
-                <div v-else class="asset-search-wrapper">
-                  <span class="select-label">Актив</span>
-                  <span class="input-icon"><Search :size="16" /></span>
-                  <input
-                    type="text"
-                    v-model="assetSearch"
-                    placeholder="Поиск актива"
-                    class="form-input"
-                  />
-                  <button v-if="assetSearch" @click="assetSearch=''; selectedAsset=''; applyFilter()" class="clear-btn">×</button>
-
-                  <ul v-if="assetSearch && selectedAsset !== assetSearch" class="asset-dropdown">
-                    <li v-for="a in filteredOperationsAssetsList" :key="a" @click="selectAssetFilter(a)" class="asset-option">
-                      <span v-html="highlightMatch(a)" />
-                    </li>
-                    <li v-if="filteredOperationsAssetsList.length === 0" class="asset-empty">
-                      <span class="asset-empty-icon"><Search :size="20" /></span>
-                      Ничего не найдено
-                    </li>
-                  </ul>
-                </div>
-
-                <button
-                  type="button"
-                  @click="resetFilters"
-                  class="btn btn-ghost reset-btn"
-                  title="Сбросить фильтры"
-                >
-                  <span class="reset-icon">↺</span>
-                </button>
-              </div>
-
-              <!-- Строка 2: портфель, тип, валюта — переносятся только внутри этой строки -->
-              <div class="filters-row filters-row--secondary select-group">
-                <CustomSelect
-                  v-model="selectedPortfolio"
-                  :options="portfolios"
-                  label="Портфель"
-                  placeholder="Все портфели"
-                  empty-option-text="Все портфели"
-                  option-label="name"
-                  option-value="name"
-                  multiple
-                  min-width="200px"
-                  @change="applyFilter"
-                />
-                <CustomSelect
-                  v-model="selectedType"
-                  :options="viewMode === 'transactions' ? txTypes.map(t => ({ value: t, label: t })) : operationTypes.map(t => ({ value: t, label: t }))"
-                  label="Тип"
-                  placeholder="Все типы"
-                  empty-option-text="Все типы"
-                  multiple
-                  min-width="220px"
-                  @change="applyFilter"
-                />
-                <CustomSelect
-                  v-if="viewMode === 'operations'"
-                  v-model="selectedCurrency"
-                  :options="[
-                    { value: 'RUB', label: 'Рубли (RUB)' },
-                    { value: 'ORIGINAL', label: 'Оригинальная валюта' }
-                  ]"
-                  label="Валюта"
-                  placeholder="Выберите валюту"
-                  @change="applyFilter"
-                />
-              </div>
             </div>
 
-        <div class="filters-bottom">
-          <PeriodFilter
-            :preset="periodPreset"
-            :start-date="startDate"
-            :end-date="endDate"
-            :track-min-date="earliestDataDate"
-            :show-track="showPeriodTrack"
-            @update:preset="v => { periodPreset = v }"
-            @update:start-date="v => { startDate = v; applyFilter() }"
-            @update:end-date="v => { endDate = v; applyFilter() }"
-          >
-            <template #controls-suffix>
-              <ToggleSwitch
-                v-model="showPeriodTrack"
-                label="Отображать трек"
-                active-color="#2563eb"
-                hover-color="#1d4ed8"
-              />
-            </template>
-          </PeriodFilter>
+            <PeriodFilter
+              :preset="periodPreset"
+              :start-date="startDate"
+              :end-date="endDate"
+              :track-min-date="earliestDataDate"
+              :show-track="showPeriodTrack"
+              @update:preset="(v) => { periodPreset = v }"
+              @update:start-date="(v) => { startDate = v; applyFilter() }"
+              @update:end-date="(v) => { endDate = v; applyFilter() }"
+            >
+              <template #controls-suffix>
+                <ToggleSwitch v-model="showPeriodTrack" label="Шкала периода" active-color="#6474ff" hover-color="#7b8aff" />
+              </template>
+            </PeriodFilter>
+          </div>
         </div>
 
-            <div class="sums-toggle-row">
-              <ToggleSwitch
-                v-model="showSumsSummary"
-                :label="viewMode === 'transactions' ? 'Показывать суммы по транзакциям' : 'Показывать суммы по операциям'"
-                active-color="#2563eb"
-                hover-color="#1d4ed8"
-              />
-            </div>
-            </div>
-          </div>
+        <!-- шапка списка: выбор и удаление -->
+        <div class="ops__lhead" :class="{ 'has-sel': selIds.length }">
+          <label class="ops__check">
+            <input v-model="allSel" type="checkbox" class="ops__cb" :disabled="!listRows.length" />
+            <span v-if="selIds.length">Выбрано: <b class="cv-num">{{ selIds.length }}</b></span>
+            <span v-else>{{ isTx ? countTx(listRows.length) : countOp(listRows.length) }}</span>
+          </label>
+          <button v-if="selIds.length" type="button" class="cv-btn cv-btn--sm ops__del" @click="deleteSel">
+            <Trash2 :size="14" /> Удалить
+          </button>
+        </div>
 
-          <!-- Блок сумм между фильтрами и таблицей -->
-          <div v-if="showSumsSummary" class="sums-summary-block">
-            <template v-if="viewMode === 'transactions'">
-              <h3 class="sums-block-title">Суммы по транзакциям</h3>
-              <div class="transactions-summary">
-                <div class="summary-item">
-                  <span class="summary-item-label">Покупки:</span>
-                  <span class="summary-item-value">
-                    {{ transactionsSummary.buy.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-                  </span>
-                </div>
-                <div class="summary-item">
-                  <span class="summary-item-label">Продажи:</span>
-                  <span class="summary-item-value">
-                    {{ transactionsSummary.sell.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-                  </span>
-                </div>
-                <div class="summary-item">
-                  <span class="summary-item-label">Оборот:</span>
-                  <span class="summary-item-value">
-                    {{ (transactionsSummary.buy + transactionsSummary.sell).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-                  </span>
-                </div>
-              </div>
-            </template>
-            <template v-else>
-              <h3 class="sums-block-title">Суммы по операциям</h3>
-              <div class="operations-sums">
-                <div class="sums-list">
-                  <div
-                    v-for="opType in operationTypes"
-                    :key="opType"
-                    class="sum-item"
-                  >
-                    <span class="sum-type">{{ opType }}:</span>
-                    <span class="sum-value">
-                      {{ getOperationTypeSum(opType).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' }) }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </template>
-          </div>
-
-          <!-- Кнопка удаления выбранных — на мобильных показывается здесь, чтобы не сдвигать переключатель в шапке -->
-          <div v-if="(selectedTxIds.length > 0 && viewMode === 'transactions') || (selectedOpIds.length > 0 && viewMode === 'operations')" class="bulk-actions-mobile">
-            <span class="selected-count">Выбрано: {{ viewMode === 'transactions' ? selectedTxIds.length : selectedOpIds.length }}</span>
-            <button
-              v-if="viewMode === 'transactions'"
-              @click="deleteSelected"
-              class="btn btn-danger-soft"
-              :disabled="selectedTxIds.length === 0"
-            >
-              Удалить ({{ selectedTxIds.length }})
-            </button>
-            <button
-              v-else
-              @click="deleteSelectedOperations"
-              class="btn btn-danger-soft"
-              :disabled="selectedOpIds.length === 0"
-            >
-              Удалить ({{ selectedOpIds.length }})
-            </button>
-          </div>
-
-          <div class="table-container">
-          <!-- Карточки транзакций (планшет/мобильные) -->
-          <div v-if="isCardView && viewMode === 'transactions'" class="transactions-cards-wrapper">
-            <div class="cards-select-all">
-              <label class="select-all-label">
-                <input type="checkbox" v-model="allSelected" @change="toggleAll" class="custom-checkbox" />
-                <span>Выбрать все</span>
-              </label>
-            </div>
-            <div class="transactions-cards">
-            <div
-              v-for="tx in filteredTransactions"
-              :key="tx.transaction_id"
-              class="transaction-card"
-            >
-              <div class="transaction-card-header">
-                <span class="card-date">{{ formatDate(tx.transaction_date) }}</span>
-                <span :class="['badge', 'badge-' + normalizeType(tx.transaction_type)]">{{ tx.transaction_type }}</span>
-              </div>
-              <div class="transaction-card-actions">
-                <input type="checkbox" :value="tx.transaction_id" v-model="selectedTxIds" class="custom-checkbox" />
-                <button class="icon-btn" @click="openMenu($event, 'transaction', tx)">⋯</button>
-              </div>
-              <div class="transaction-card-body">
-                <div class="transaction-card-row">
-                  <span class="card-label">Актив</span>
-                  <span class="card-value font-medium">{{ tx.asset_name }}</span>
-                </div>
-                <div class="transaction-card-row">
-                  <span class="card-label">Портфель</span>
-                  <span class="card-value text-secondary">{{ tx.portfolio_name }}</span>
-                </div>
-                <div class="transaction-card-row">
-                  <span class="card-label">Кол-во</span>
-                  <span class="card-value num-font">{{ tx.quantity }}</span>
-                </div>
-                <div class="transaction-card-row">
-                  <span class="card-label">Цена</span>
-                  <span class="card-value num-font">{{ tx.price.toLocaleString() }} {{ getCurrencySymbol(tx.currency_ticker) }}</span>
-                </div>
-                <div class="transaction-card-row">
-                  <span class="card-label">Сумма</span>
-                  <span class="card-value num-font font-semibold tx-sum-stack">
-                    <span class="tx-sum-line">
-                      {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }} {{ getCurrencySymbol(tx.currency_ticker) }}
-                    </span>
-                    <ValueChange
-                      v-if="txSellRealizedPnlNumber(tx) !== null"
-                      :value="txSellRealizedPnlNumber(tx)"
-                      format="currency"
-                    />
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div v-if="filteredTransactions.length === 0" class="empty-cell">
-              <div class="empty-state">
-                <span class="empty-icon">🔍</span>
-                <p>Транзакции не найдены</p>
-              </div>
-            </div>
-            </div>
-          </div>
-          <!-- Карточки операций (планшет/мобильные) -->
-          <div v-else-if="isCardView && viewMode === 'operations'" class="transactions-cards-wrapper">
-            <div class="cards-select-all">
-              <label class="select-all-label">
-                <input type="checkbox" v-model="allOperationsSelected" @change="toggleAllOperations" class="custom-checkbox" />
-                <span>Выбрать все</span>
-              </label>
-            </div>
-            <div class="transactions-cards">
-            <div
-              v-for="op in filteredOperations"
-              :key="op.cash_operation_id || op.id"
-              class="transaction-card"
-            >
-              <div class="transaction-card-header">
-                <span class="card-date">{{ formatDate(op.operation_date) }}</span>
-                <span :class="['badge', 'badge-' + normalizeType(op.operation_type)]">{{ op.operation_type }}</span>
-              </div>
-              <div class="transaction-card-actions">
-                <input type="checkbox" :value="op.cash_operation_id || op.id" v-model="selectedOpIds" class="custom-checkbox" />
-                <button class="icon-btn" @click="openMenu($event, 'operation', op)">⋯</button>
-              </div>
-              <div class="transaction-card-body">
-                <div class="transaction-card-row">
-                  <span class="card-label">Актив</span>
-                  <span class="card-value font-medium">{{ op.asset_name || '—' }}</span>
-                </div>
-                <div class="transaction-card-row">
-                  <span class="card-label">Портфель</span>
-                  <span class="card-value text-secondary">{{ op.portfolio_name }}</span>
-                </div>
-                <div class="transaction-card-row">
-                  <span class="card-label">Сумма</span>
-                  <Tooltip
-                    v-if="getOperationCommissionTooltipContent(op)"
-                    class="op-amount-tooltip"
-                    :content="getOperationCommissionTooltipContent(op)"
-                    position="top"
-                  >
-                    <span class="card-value num-font font-semibold">
-                    {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
-                  </span>
-                  </Tooltip>
-                  <span v-else class="card-value num-font font-semibold">
-                    {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div v-if="filteredOperations.length === 0" class="empty-cell">
-              <div class="empty-state">
-                <span class="empty-icon">🔍</span>
-                <p>Операции не найдены</p>
-              </div>
-            </div>
-            </div>
-          </div>
-          <!-- Таблица транзакций (десктоп) -->
-          <table v-else-if="viewMode === 'transactions'" class="transactions-table">
+        <!-- таблица (десктоп) -->
+        <div v-if="!isCardView && listRows.length" class="ops__tablewrap">
+          <table class="ops__table">
             <thead>
               <tr>
-                <th class="w-checkbox">
-                  <input type="checkbox" v-model="allSelected" @change="toggleAll" class="custom-checkbox" />
-                </th>
+                <th class="c-cb" />
                 <th>Дата</th>
                 <th>Тип</th>
                 <th>Актив</th>
-                <th>Портфель</th>
-                <th class="text-right">Кол-во</th>
-                <th class="text-right">Цена</th>
-                <th class="text-right">Сумма</th>
-                <th class="w-actions"></th>
+                <th class="c-pf">Портфель</th>
+                <template v-if="isTx">
+                  <th class="r">Кол-во</th>
+                  <th class="r">Цена</th>
+                </template>
+                <th class="r">Сумма</th>
+                <th class="c-act" />
               </tr>
             </thead>
             <tbody>
-              <tr v-for="tx in filteredTransactions" :key="tx.transaction_id" class="tx-row">
-                <td class="w-checkbox">
-                  <input type="checkbox" :value="tx.transaction_id" v-model="selectedTxIds" class="custom-checkbox" />
-                </td>
-                <td class="td-date">{{ formatDate(tx.transaction_date) }}</td>
+              <tr v-for="r in shownRows" :key="`${r.kind}-${r.id}`" :class="{ 'is-sel': selIds.includes(r.id) }">
+                <td class="c-cb"><input v-model="selIds" type="checkbox" :value="r.id" class="ops__cb" /></td>
+                <td class="c-date cv-num">{{ formatDate(r.date) }}</td>
                 <td>
-                  <span :class="['badge', 'badge-' + normalizeType(tx.transaction_type)]">
-                    {{ tx.transaction_type }}
-                  </span>
+                  <span class="ops__type"><i :style="{ background: OP_GROUPS[r.group].color }" />{{ r.type }}</span>
                 </td>
-                <td class="font-medium">{{ tx.asset_name }}</td>
-                <td class="text-secondary">{{ tx.portfolio_name }}</td>
-                <td class="text-right num-font">{{ tx.quantity }}</td>
-                <td class="text-right num-font">{{ tx.price.toLocaleString() }} {{ getCurrencySymbol(tx.currency_ticker) }}</td>
-                <td class="text-right num-font font-semibold tx-sum-cell">
-                  <div class="tx-sum-stack">
-                    <div class="tx-sum-line">
-                      {{ (tx.quantity * tx.price).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }} {{ getCurrencySymbol(tx.currency_ticker) }}
-                    </div>
-                    <ValueChange
-                      v-if="txSellRealizedPnlNumber(tx) !== null"
-                      :value="txSellRealizedPnlNumber(tx)"
-                      format="currency"
-                    />
-                  </div>
+                <td class="c-asset">
+                  <b>{{ r.asset || '—' }}</b>
+                  <small v-if="r.ticker && r.ticker !== r.asset">{{ r.ticker }}</small>
+                  <small class="c-pf-inline">{{ r.portfolio }}</small>
                 </td>
-                <td class="w-actions">
-                  <button class="icon-btn" @click="openMenu($event, 'transaction', tx)">⋯</button>
+                <td class="c-pf">{{ r.portfolio }}</td>
+                <template v-if="isTx">
+                  <td class="r cv-num c-mut">{{ fmtQty(r.qty) }}</td>
+                  <td class="r cv-num c-mut">{{ fmtPrice(r) }}</td>
+                </template>
+                <td class="r c-amt">
+                  <Tooltip v-if="r.tip" :content="r.tip" position="top">
+                    <b class="cv-num is-tip">{{ fmtAmount(r) }}</b>
+                  </Tooltip>
+                  <b v-else class="cv-num" :class="{ 'is-out': opSign(r) < 0 }">{{ fmtAmount(r) }}</b>
+                  <small v-if="r.pnl != null" class="cv-num" :class="r.pnl > 0 ? 'cv-up' : r.pnl < 0 ? 'cv-down' : ''">
+                    {{ money(r.pnl, { sign: true }) }}
+                  </small>
                 </td>
-              </tr>
-              <tr v-if="filteredTransactions.length === 0">
-                <td colspan="9" class="empty-cell">
-                  <div class="empty-state">
-                    <span class="empty-icon">🔍</span>
-                    <p>Транзакции не найдены</p>
-                  </div>
+                <td class="c-act">
+                  <button type="button" class="cv-btn cv-btn--ghost cv-btn--sm cv-btn--icon" aria-label="Действия" @click="openMenu($event, r.kind, r.raw)">
+                    <MoreHorizontal :size="16" />
+                  </button>
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
 
-          <!-- Таблица операций (десктоп) -->
-          <table v-else class="transactions-table">
-            <thead>
-              <tr>
-                <th class="w-checkbox">
-                  <input type="checkbox" v-model="allOperationsSelected" @change="toggleAllOperations" class="custom-checkbox" />
-                </th>
-                <th>Дата</th>
-                <th>Тип</th>
-                <th>Актив</th>
-                <th>Портфель</th>
-                <th class="text-right">Сумма</th>
-                <th class="text-right">Валюта</th>
-                <th class="w-actions"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="op in filteredOperations" :key="op.cash_operation_id || op.id" class="tx-row">
-                <td class="w-checkbox">
-                  <input type="checkbox" :value="op.cash_operation_id || op.id" v-model="selectedOpIds" class="custom-checkbox" />
-                </td>
-                <td class="td-date">{{ formatDate(op.operation_date) }}</td>
-                <td>
-                  <span :class="['badge', 'badge-' + normalizeType(op.operation_type)]">
-                    {{ op.operation_type }}
-                  </span>
-                </td>
-                <td class="font-medium">{{ op.asset_name || '—' }}</td>
-                <td class="text-secondary">{{ op.portfolio_name }}</td>
-                <td class="text-right num-font font-semibold op-amount-cell">
-                  <Tooltip
-                    v-if="getOperationCommissionTooltipContent(op)"
-                    class="op-amount-tooltip"
-                    :content="getOperationCommissionTooltipContent(op)"
-                    position="top"
-                  >
-                    <span class="op-amount-trigger">{{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}</span>
-                  </Tooltip>
-                  <template v-else>
-                    {{ formatOperationAmount(Math.abs(getOperationAmount(op)), getOperationCurrency(op)) }}
-                  </template>
-                </td>
-                <td class="text-right num-font">{{ getOperationCurrency(op) }}</td>
-                <td class="w-actions">
-                  <button class="icon-btn" @click="openMenu($event, 'operation', op)">⋯</button>
-                </td>
-              </tr>
-              <tr v-if="filteredOperations.length === 0">
-                <td colspan="8" class="empty-cell">
-                  <div class="empty-state">
-                    <span class="empty-icon">🔍</span>
-                    <p>Операции не найдены</p>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          </div>
+        <!-- карточки (планшет и телефон) -->
+        <ul v-else-if="listRows.length" class="ops__cards">
+          <li v-for="r in shownRows" :key="`${r.kind}-${r.id}`" class="ops__card" :class="{ 'is-sel': selIds.includes(r.id) }">
+            <input v-model="selIds" type="checkbox" :value="r.id" class="ops__cb" />
+            <div class="ops__cmain">
+              <b>{{ r.asset || r.type }}</b>
+              <small>
+                <i :style="{ background: OP_GROUPS[r.group].color }" />
+                <span>{{ r.type }} · {{ formatDate(r.date) }}</span>
+              </small>
+              <small class="ops__cmeta">
+                {{ r.portfolio }}<template v-if="isTx"> · {{ fmtQty(r.qty) }} × {{ fmtPrice(r) }}</template>
+              </small>
+            </div>
+            <div class="ops__camt">
+              <b class="cv-num" :class="{ 'is-out': opSign(r) < 0 }">{{ fmtAmount(r) }}</b>
+              <small v-if="r.pnl != null" class="cv-num" :class="r.pnl > 0 ? 'cv-up' : r.pnl < 0 ? 'cv-down' : ''">
+                {{ money(r.pnl, { sign: true }) }}
+              </small>
+            </div>
+            <button type="button" class="cv-btn cv-btn--ghost cv-btn--sm cv-btn--icon" aria-label="Действия" @click="openMenu($event, r.kind, r.raw)">
+              <MoreHorizontal :size="16" />
+            </button>
+          </li>
+        </ul>
+
+        <div v-if="!listRows.length" class="ops__empty">
+          <b>{{ isTx ? 'Сделки не найдены' : 'Операции не найдены' }}</b>
+          <p v-if="activeFilterCount">Попробуйте изменить или сбросить фильтры.</p>
+          <button v-if="activeFilterCount" type="button" class="cv-btn cv-btn--sm" @click="resetFilters">Сбросить фильтры</button>
         </div>
+
+        <div v-if="listRows.length > limit" class="ops__more">
+          <button type="button" class="cv-btn cv-btn--sm" @click="limit += PAGE">
+            Показать ещё {{ Math.min(PAGE, listRows.length - limit) }}
+          </button>
+          <span>показано {{ limit }} из {{ listRows.length }}</span>
         </div>
-      </div>
+      </section>
     </div>
 
     <EditTransactionModal :visible="showEditModal" :transaction="currentTransaction" @close="showEditModal = false" @save="handleSaveEdit" />
-    
     <ContextMenu
       @editTransaction="handleEditTransaction"
       @deleteTransaction="handleDeleteTransaction"
       @deleteOperation="handleDeleteOperation"
     />
-  </PageLayout>
+  </div>
 </template>
 
 <style scoped>
-/* =========================================
-   1. БАЗОВАЯ РАЗМЕТКА И ТИПОГРАФИКА
-   ========================================= */
-.transactions-content {
-  display: flex;
-  gap: 24px;
-  align-items: flex-start;
-  min-width: 0;
-  width: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: #1f2937;
-}
-
-.main-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.transactions-main {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-  width: 100%;
-}
-
-.card {
-  background: #fff;
-  width: 100%;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e5e7eb;
-  overflow: visible;
-  box-sizing: border-box;
-}
-
-/* =========================================
-   2. ШАПКА И ПЕРЕКЛЮЧАТЕЛИ
-   ========================================= */
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-height: 40px;
-  flex-wrap: wrap;
-}
-
-.view-mode-switcher {
-  display: flex;
-  gap: 4px;
-  background: #f3f4f6;
-  padding: 4px;
-  border-radius: 8px;
-  margin-left: auto;
-}
-
-.view-mode-switcher .btn {
-  padding: 8px 16px;
-  border-radius: 6px;
-  transition: all 0.2s;
-  border: none;
-  background: transparent;
-  color: #6b7280;
-  cursor: pointer;
-}
-
-.view-mode-switcher .btn:hover {
-  color: #374151;
-}
-
-.view-mode-switcher .btn.active {
-  background: white;
-  color: #2563eb;
-  font-weight: 500;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-/* Массовые действия (Bulk Actions) */
-.bulk-actions, .bulk-actions-mobile {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: #fef2f2;
-  border-radius: 8px;
-  border: 1px solid #fee2e2;
-}
-
-.bulk-actions {
-  padding: 6px 12px;
-}
-
-.bulk-actions-mobile {
-  display: none;
-  padding: 8px 12px;
-  margin-bottom: 12px;
-}
-
-.selected-count {
-  font-size: 13px;
-  font-weight: 600;
-  color: #b91c1c;
-}
-
-.btn-danger-soft {
-  background: #fff;
-  border: 1px solid #fca5a5;
-  color: #b91c1c;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-danger-soft:hover {
-  background: #ef4444;
-  color: #fff;
-}
-
-/* =========================================
-   3. ПАНЕЛЬ ИНСТРУМЕНТОВ И ФИЛЬТРЫ
-   ========================================= */
-.toolbar {
-  padding: 20px;
-  border-bottom: 1px solid #f3f4f6;
-  box-sizing: border-box;
-}
-
-.filters-top {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
-  width: 100%;
-}
-
-.filters-row {
-  display: flex;
-  align-items: flex-end;
-  width: 100%;
-  min-width: 0;
-}
-
-.filters-row--primary {
-  flex-wrap: nowrap;
-  gap: 12px;
-}
-
-.filters-row--primary .asset-search-wrapper {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.filters-row--primary .reset-btn {
-  flex: 0 0 42px;
-}
-
-.filters-row--secondary {
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.filters-bottom {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-/* Поиск актива (ширина задаётся в .filters-row--primary) */
-.asset-search-wrapper {
-  position: relative;
-  min-width: 0;
-}
-
-.asset-search-wrapper .select-label {
-  position: absolute;
-  top: -8px;
-  left: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #6b7280;
-  background: #fff;
-  padding: 0 4px;
-  text-transform: uppercase;
-  z-index: 2;
-  pointer-events: none;
-}
-
-.input-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #6b7280;
-  z-index: 1;
-}
-
-.asset-search-wrapper:focus-within .input-icon {
-  color: #3b82f6;
-}
-
-.form-input {
-  width: 100%;
-  padding: 10px 40px 10px 36px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 14px;
-  outline: none;
-  transition: all 0.2s ease;
-  background: #fff;
-  color: #111827;
-  min-height: 42px;
-  box-sizing: border-box;
-}
-
-.form-input:hover {
-  border-color: #d1d5db;
-}
-
-.form-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-/* Выпадающий список поиска (Dropdown) */
-.asset-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  width: 100%;
-  background: white;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-  list-style: none;
-  padding: 6px 0;
-  max-height: 300px;
-  overflow-y: auto;
-  z-index: 100;
-  margin: 0;
-}
-
-.asset-option {
-  padding: 10px 16px;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  transition: all 0.15s ease;
-  border-left: 3px solid transparent;
-}
-
-.asset-option:hover {
-  background: #f3f4f6;
-  border-left-color: #3b82f6;
-}
-
-.asset-option mark {
-  background: #fef3c7;
-  color: #92400e;
-  font-weight: 600;
-  padding: 0 2px;
-  border-radius: 2px;
-}
-
-.meta-ticker {
-  background: #eff6ff;
-  color: #1e40af;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 12px;
-}
-
-.asset-empty {
-  padding: 20px;
-  text-align: center;
-  color: #9ca3af;
-  font-size: 13px;
-  font-style: italic;
-}
-
-.clear-btn {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: #f3f4f6;
-  border: none;
-  font-size: 18px;
-  color: #6b7280;
-  cursor: pointer;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2;
-}
-
-.clear-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-/* Селекты второй строки */
-.select-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  min-width: 0;
-}
-
-.select-group :deep(.custom-select-wrapper) {
-  flex: 1 1 130px; /* Гибкая ширина с базой 130px */
-  min-width: 120px;
-}
-
-.reset-btn {
-  flex: 0 0 42px;
-  height: 42px;
-  font-size: 18px;
-  color: #6b7280;
-  background: #f9fafb;
-  border: 1.5px solid #e5e7eb;
-  cursor: pointer;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.reset-btn:hover {
-  background: #f3f4f6;
-  border-color: #d1d5db;
-}
-
-/* Чипсы периода */
-.chips-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  background: #f9fafb;
-  border: 1.5px solid #e5e7eb;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #4b5563;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.chip:hover {
-  background: #f3f4f6;
-}
-
-.chip.active {
-  background: #eff6ff;
-  color: #2563eb;
-  border-color: #3b82f6;
-  font-weight: 600;
-}
-
-.date-range {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: #f9fafb;
-  border-radius: 8px;
-  border: 1.5px solid #e5e7eb;
-  flex-wrap: wrap;
-}
-
-.date-input {
-  padding: 8px;
-  border: 1.5px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 13px;
-}
-
-/* =========================================
-   4. БЛОК СУММ И ИТОГОВ
-   ========================================= */
-.sums-toggle-row {
-  padding: 10px 0 0;
-  margin-top: 8px;
-  border-top: 1px solid #f3f4f6;
-}
-
-.sums-summary-block {
-  margin-top: 16px;
-  padding: 16px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  box-sizing: border-box;
-}
-
-.sums-block-title {
-  margin: 0 0 12px 0;
-  font-size: 15px;
-  font-weight: 600;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.summary-item, .sum-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: #fff;
-  border-radius: 6px;
-  margin-bottom: 6px;
-  border: 1px solid #e5e7eb;
-  font-size: 13px;
-}
-
-.summary-item-label, .sum-type {
-  color: #6b7280;
-  font-weight: 500;
-}
-
-.summary-item-value, .sum-value {
-  font-weight: 600;
-}
-
-/* =========================================
-   5. ТАБЛИЦЫ (Десктоп)
-   ========================================= */
-.table-container {
-  overflow-x: auto;
-  width: 100%;
-}
-
-.transactions-table {
-  width: 100%;
-  min-width: 800px;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.transactions-table th {
-  text-align: left;
-  padding: 12px 16px;
-  background: #f9fafb;
-  color: #6b7280;
-  font-weight: 600;
-  font-size: 12px;
-  text-transform: uppercase;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.transactions-table td {
-  padding: 12px 16px;
-  border-bottom: 1px solid #f3f4f6;
-  vertical-align: middle;
-}
-
-.transactions-table tr:hover {
-  background: #f9fafb;
-}
-
-/* =========================================
-   6. КАРТОЧКИ (Планшет и Мобильные)
-   ========================================= */
-.transactions-cards-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-}
-
-.cards-select-all {
-  padding: 8px 12px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-}
-
-.select-all-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.transactions-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-}
-
-.transaction-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 12px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-}
-
-.transaction-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.transaction-card-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.transaction-card-body {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 16px;
-  font-size: 12px;
-}
-
-.transaction-card-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.card-label { color: #6b7280; }
-.card-value { color: #111827; text-align: right; }
-
-/* =========================================
-   7. УТИЛИТЫ И БЕЙДЖИ
-   ========================================= */
-.w-checkbox { width: 40px; text-align: center; }
-.w-actions { width: 40px; }
-.text-right { text-align: right !important; }
-.font-medium { font-weight: 500; }
-.font-semibold { font-weight: 600; }
-.text-secondary { color: #6b7280; font-size: 13px; }
-.num-font { font-family: 'SF Mono', 'Roboto Mono', monospace; }
-
-.badge {
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-.badge-buy { background: #dcfce7; color: #166534; }
-.badge-sell { background: #fee2e2; color: #991b1b; }
-.badge-dividend { background: #eff6ff; color: #2563eb; }
-.badge-coupon { background: #ecfeff; color: #06b6d4; }
-.badge-amortization { background: #f5f3ff; color: #7c3aed; }
-.badge-deposit { background: #ccfbf1; color: #0f766e; }
-.badge-withdraw { background: #ffedd5; color: #9a3412; }
-.badge-tax, .badge-commission { background: #fef3c7; color: #92400e; }
-.badge-other { background: #f3f4f6; color: #4b5563; }
-
-.tx-sum-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.125rem;
-}
-.tx-sum-line {
-  line-height: 1.25;
-}
-.tx-sum-stack :deep(.value-change) {
-  font-size: 0.8125rem;
-}
-.tx-sum-cell {
-  vertical-align: middle;
-}
-
-.icon-btn {
-  background: none;
-  border: none;
-  color: #9ca3af;
-  font-size: 16px;
-  cursor: pointer;
-  border-radius: 4px;
-}
-
-.icon-btn:hover { color: #374151; background: #f3f4f6; }
-.custom-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: #2563eb; }
-
-.empty-cell { text-align: center; padding: 40px; }
-.empty-state { color: #9ca3af; }
-.empty-icon { font-size: 32px; display: block; opacity: 0.5; }
-
-/* =========================================
-   8. МОБИЛЬНАЯ ПАНЕЛЬ ФИЛЬТРОВ
-   ========================================= */
-.mobile-filter-bar {
-  display: none;
-}
-
-.mobile-filter-toggle-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 10px;
-  background: #f9fafb;
-  color: #374151;
-  font-size: 14px;
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.mobile-filter-toggle-btn:hover {
-  background: #f3f4f6;
-  border-color: #d1d5db;
-}
-
-.mobile-filter-toggle-btn:active {
-  background: #e5e7eb;
-}
-
-.mobile-filter-badge {
-  background: #2563eb;
-  color: white;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 1px 7px;
-  border-radius: 10px;
-  min-width: 18px;
-  text-align: center;
-  line-height: 1.4;
-}
-
-.mobile-filter-chevron {
-  margin-left: auto;
-  color: #6b7280;
-  transition: transform 0.25s ease;
-  flex-shrink: 0;
-}
-
-.mobile-filter-chevron--open {
-  transform: rotate(180deg);
-}
-
-.active-filters-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.active-filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  background: #eff6ff;
-  color: #2563eb;
-  border-radius: 16px;
-  font-size: 12px;
-  font-weight: 500;
-  border: 1px solid #bfdbfe;
-  white-space: nowrap;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.active-filter-chip--reset {
-  background: #fef2f2;
-  color: #dc2626;
-  border-color: #fecaca;
-  cursor: pointer;
-  font-family: inherit;
-  transition: all 0.15s;
-}
-
-.active-filter-chip--reset:hover {
-  background: #fee2e2;
-}
-
-.chip-remove {
-  background: none;
-  border: none;
-  color: #3b82f6;
-  font-size: 14px;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-}
-
-.chip-remove:hover {
-  color: #1d4ed8;
-}
-
-.filters-collapsible {
-  overflow: hidden;
-  max-height: 600px;
-  opacity: 1;
-  /* Место под «плавающие» подписи (Актив и т.д.), иначе overflow:hidden обрезает top: -8px */
-  padding-top: 12px;
-  transition: max-height 0.3s ease, opacity 0.2s ease, padding-top 0.25s ease;
-}
-
-.filters-collapsible--hidden {
-  max-height: 0;
-  opacity: 0;
-  pointer-events: none;
-  padding-top: 0;
-}
-
-/* =========================================
-   9. АДАПТИВ (MEDIA QUERIES)
-   ========================================= */
-@media (max-width: 1024px) {
-  .transactions-content {
-    flex-direction: column;
-  }
-  .chips-group { gap: 6px; }
-  .chip { padding: 6px 12px; font-size: 12px; }
-
-  .mobile-filter-bar {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 4px;
-  }
-}
+.ops { padding-bottom: 8px; }
+
+/* ── панель: фильтры + список ─────────────────────────────────────────── */
+.ops__panel { display: flex; flex-direction: column; min-width: 0; padding: 0; }
+.ops__filters { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; border-bottom: 1px solid var(--cv-line); }
+.ops__fbody { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ops__frow { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.ops__reset { flex: none; height: 42px; width: 42px; }
+
+.ops__search { position: relative; flex: 1 1 240px; min-width: 200px; }
+.ops__search-ic { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--cv-dim); pointer-events: none; }
+.ops__search:focus-within .ops__search-ic { color: var(--cv-accent-ink, var(--cv-accent)); }
+.ops__input {
+  width: 100%; height: 42px; padding: 0 36px 0 38px; box-sizing: border-box;
+  border: 0; border-radius: 11px; outline: none;
+  background: rgba(255, 255, 255, .04); box-shadow: inset 0 0 0 1px var(--cv-line);
+  color: var(--cv-ink); font-size: 13.5px; transition: box-shadow .2s, background .2s;
+}
+.ops__input::placeholder { color: var(--cv-dim); }
+.ops__input:hover { box-shadow: inset 0 0 0 1px var(--cv-line-2); }
+.ops__input:focus { background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px var(--cv-accent-line), 0 0 0 3px rgba(100, 116, 255, .12); }
+.ops__clear {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 24px; height: 24px; border: 0; border-radius: 7px; background: transparent;
+  color: var(--cv-mut); font-size: 17px; line-height: 1; cursor: pointer;
+}
+.ops__clear:hover { background: var(--cv-hover); color: var(--cv-ink); }
+.ops__dd {
+  position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0;
+  max-height: 300px; overflow-y: auto; margin: 0; padding: 6px; list-style: none;
+  border-radius: 12px; background: #17181d; box-shadow: inset 0 0 0 1px var(--cv-line-2), 0 18px 40px -12px rgba(0, 0, 0, .7);
+}
+.ops__dd li {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--cv-ink-2); cursor: pointer;
+}
+.ops__dd li:hover { background: var(--cv-hover); color: var(--cv-ink); }
+.ops__dd li small { font-size: 11.5px; color: var(--cv-dim); }
+.ops__dd li.is-empty { justify-content: center; color: var(--cv-dim); cursor: default; }
+.ops__dd li.is-empty:hover { background: transparent; }
+.ops__dd :deep(mark) { background: transparent; color: var(--cv-accent-ink, #aab3ff); font-weight: 600; }
+
+.ops__mtoggle {
+  display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;
+  height: 36px; padding: 0 12px; border: 0; border-radius: 10px;
+  background: rgba(255, 255, 255, .04); box-shadow: inset 0 0 0 1px var(--cv-line);
+  color: var(--cv-ink-2); font-size: 13px; font-weight: 550; cursor: pointer;
+}
+.ops__badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--cv-accent); color: #fff; font-size: 11px; }
+.ops__chev { color: var(--cv-dim); transition: transform .25s var(--cv-ease); }
+.ops__chev.is-open { transform: rotate(180deg); }
+
+/* ── шапка списка ─────────────────────────────────────────────────────── */
+.ops__lhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 8px 20px; }
+.ops__lhead.has-sel { background: rgba(100, 116, 255, .06); }
+.ops__check { display: inline-flex; align-items: center; gap: 12px; font-size: 12.5px; color: var(--cv-mut); cursor: pointer; }
+.ops__check b { color: var(--cv-ink); font-weight: 600; }
+.ops__del { gap: 6px; color: #ff8a8a; }
+.ops__del:hover { color: #ffb0b0; background: rgba(255, 90, 90, .1); box-shadow: inset 0 0 0 1px rgba(255, 90, 90, .25); }
+
+.ops__cb {
+  appearance: none; flex: none; width: 16px; height: 16px; margin: 0; border-radius: 5px; cursor: pointer;
+  background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1.5px var(--cv-line-2);
+  display: inline-grid; place-items: center; transition: background .15s, box-shadow .15s;
+}
+.ops__cb:hover { box-shadow: inset 0 0 0 1.5px var(--cv-mut); }
+.ops__cb:checked { background: var(--cv-accent); box-shadow: none; }
+.ops__cb:checked::after { content: ''; width: 8px; height: 4px; margin-top: -2px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg); }
+.ops__cb:disabled { opacity: .4; cursor: default; }
+
+/* ── таблица ──────────────────────────────────────────────────────────── */
+.ops__tablewrap { overflow-x: auto; }
+.ops__table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ops__table th {
+  padding: 10px 12px; text-align: left; white-space: nowrap;
+  font-size: 11px; font-weight: 550; letter-spacing: .06em; text-transform: uppercase; color: var(--cv-dim);
+  border-top: 1px solid var(--cv-line); border-bottom: 1px solid var(--cv-line);
+}
+.ops__table td { padding: 11px 12px; color: var(--cv-ink-2); border-bottom: 1px solid var(--cv-line); vertical-align: middle; }
+.ops__table tbody tr { transition: background .15s; }
+.ops__table tbody tr:hover { background: var(--cv-hover); }
+.ops__table tbody tr.is-sel { background: rgba(100, 116, 255, .07); }
+.ops__table tbody tr:last-child td { border-bottom: 0; }
+.ops__table .r { text-align: right; }
+.ops__table th:first-child, .ops__table td:first-child { padding-left: 20px; }
+.ops__table th:last-child, .ops__table td:last-child { padding-right: 14px; }
+.c-cb { width: 16px; }
+.c-act { width: 30px; }
+.c-date { white-space: nowrap; color: var(--cv-mut) !important; }
+.c-mut { color: var(--cv-mut) !important; white-space: nowrap; }
+.c-asset b { display: block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; color: var(--cv-ink); }
+.c-asset small { font-size: 11.5px; color: var(--cv-dim); }
+.c-pf { color: var(--cv-mut) !important; white-space: nowrap; }
+.c-asset small { display: block; }
+.c-pf-inline { display: none !important; }
+/* на узком экране портфель уходит под название актива */
+@media (max-width: 1360px) {
+  .ops__table .c-pf { display: none; }
+  .c-pf-inline { display: block !important; }
+  .ops__table th, .ops__table td { padding-left: 9px; padding-right: 9px; }
+  .c-asset b, .c-asset small { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+.c-amt { white-space: nowrap; }
+.c-amt b { display: block; font-weight: 600; color: var(--cv-ink); }
+.c-amt b.is-out { color: var(--cv-ink-2); }
+.c-amt b.is-tip { border-bottom: 1px dashed var(--cv-line-2); cursor: help; }
+.c-amt small { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 550; }
+.c-amt :deep(.tooltip-wrapper), .c-amt :deep(.tooltip-container) { display: inline-block; }
+
+.ops__type { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; color: var(--cv-ink-2); }
+.ops__type i, .ops__cmain small i { width: 7px; height: 7px; flex: none; border-radius: 2px; }
+
+/* ── карточки ─────────────────────────────────────────────────────────── */
+.ops__cards { list-style: none; margin: 0; padding: 0 8px 8px; border-top: 1px solid var(--cv-line); }
+.ops__card {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto 30px; align-items: center; gap: 12px;
+  padding: 11px 8px 11px 12px;
+}
+.ops__card + .ops__card { border-top: 1px solid var(--cv-line); }
+.ops__card.is-sel { background: rgba(100, 116, 255, .07); }
+.ops__cmain { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ops__cmain b { font-size: 13.5px; font-weight: 550; color: var(--cv-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops__cmain small { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--cv-mut); white-space: nowrap; overflow: hidden; }
+.ops__cmain small span { overflow: hidden; text-overflow: ellipsis; }
+.ops__cmeta { color: var(--cv-dim) !important; display: block !important; text-overflow: ellipsis; }
+.ops__camt { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; white-space: nowrap; }
+.ops__camt b { font-size: 13.5px; font-weight: 600; color: var(--cv-ink); }
+.ops__camt b.is-out { color: var(--cv-ink-2); }
+.ops__camt small { font-size: 11.5px; font-weight: 550; }
+
+.ops__empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 48px 16px 56px; text-align: center; border-top: 1px solid var(--cv-line); }
+.ops__empty b { color: var(--cv-ink); font-size: 14.5px; font-weight: 550; }
+.ops__empty p { margin: 0; font-size: 13px; color: var(--cv-mut); }
+.ops__empty .cv-btn { margin-top: 6px; }
+
+.ops__more { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 14px 20px 18px; border-top: 1px solid var(--cv-line); font-size: 12px; color: var(--cv-dim); }
 
 @media (max-width: 768px) {
-  .toolbar {
-    padding: 12px;
-  }
-
-  .select-group :deep(.custom-select-wrapper) {
-    flex: 1 1 calc(50% - 10px);
-    min-width: 100px;
-  }
-
-  .bulk-actions-desktop { display: none !important; }
-  .bulk-actions-mobile { display: flex; }
-  
-  .filters-bottom {
-    flex-direction: column;
-    align-items: stretch;
-  }
-}
-
-@media (max-width: 480px) {
-  .select-group {
-    flex-direction: column;
-  }
-  .select-group :deep(.custom-select-wrapper) {
-    width: 100%;
-  }
-
-  .transactions-cards { padding: 8px; }
-  .transaction-card-body { grid-template-columns: 1fr; }
+  .ops__filters { padding: 14px; }
+  .ops__lhead { padding: 8px 14px; }
+  .ops__search { flex-basis: 100%; min-width: 0; }
+  .ops__frow > :deep(*) { flex: 1 1 100%; min-width: 0 !important; }
+  .ops__frow > .ops__reset { flex: 0 0 42px; }
+  .ops__cards { padding: 0 4px 4px; }
+  .ops__card { gap: 10px; padding: 10px 4px 10px 10px; }
 }
 </style>
