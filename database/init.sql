@@ -256,6 +256,9 @@ CREATE TABLE IF NOT EXISTS import_tasks (
   progress integer DEFAULT 0,
   progress_message text,
   portfolio_name character varying,
+  broker_token_hash text,
+  trigger character varying NOT NULL DEFAULT 'manual',
+  not_before timestamp without time zone,
   CONSTRAINT import_tasks_pkey PRIMARY KEY (id),
   CONSTRAINT import_tasks_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,
   CONSTRAINT import_tasks_broker_id_fkey FOREIGN KEY (broker_id) REFERENCES brokers(id)
@@ -267,6 +270,13 @@ CREATE TABLE IF NOT EXISTS user_broker_connections (
   portfolio_id bigint NOT NULL,
   api_key text,
   last_sync_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP(0),
+  api_key_hash text,
+  auto_sync boolean NOT NULL DEFAULT true,
+  last_sync_status character varying,
+  last_sync_error text,
+  last_sync_attempt_at timestamp without time zone,
+  last_sync_summary jsonb,
+  created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT user_broker_connections_pkey PRIMARY KEY (id),
   CONSTRAINT user_broker_connections_broker_id_fkey FOREIGN KEY (broker_id) REFERENCES brokers(id),
   CONSTRAINT user_broker_connections_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE,
@@ -372,4 +382,49 @@ ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code, name_ru = EXCLUDED.name_ru;
 SELECT setval(
   pg_get_serial_sequence('payout_types', 'id'),
   (SELECT COALESCE(MAX(id), 1) FROM payout_types)
+);
+
+-- ============================================================================
+-- Новые колонки для уже развёрнутых БД (идемпотентно, выполняется при каждом init_db)
+-- ============================================================================
+
+-- Токены брокеров: хранятся зашифрованными, поиск — по отпечатку (*_hash).
+-- Шифрование старых открытых токенов — в scripts/init_db.py (_encrypt_legacy_broker_tokens).
+ALTER TABLE import_tasks ADD COLUMN IF NOT EXISTS broker_token_hash text;
+-- Кто запустил импорт: manual (пользователь), auto (ежедневная синхронизация), admin
+ALTER TABLE import_tasks ADD COLUMN IF NOT EXISTS trigger character varying NOT NULL DEFAULT 'manual';
+-- Повтор после сбоя брокера — не раньше этого времени (пауза растёт с каждой попыткой)
+ALTER TABLE import_tasks ADD COLUMN IF NOT EXISTS not_before timestamp without time zone;
+
+ALTER TABLE user_broker_connections ADD COLUMN IF NOT EXISTS api_key_hash text;
+ALTER TABLE user_broker_connections ADD COLUMN IF NOT EXISTS auto_sync boolean NOT NULL DEFAULT true;
+-- ok | error | token_invalid
+ALTER TABLE user_broker_connections ADD COLUMN IF NOT EXISTS last_sync_status character varying;
+ALTER TABLE user_broker_connections ADD COLUMN IF NOT EXISTS last_sync_error text;
+ALTER TABLE user_broker_connections ADD COLUMN IF NOT EXISTS last_sync_attempt_at timestamp without time zone;
+-- Итог последней синхронизации: счета, пропущенные операции, сверка позиций с брокером
+ALTER TABLE user_broker_connections ADD COLUMN IF NOT EXISTS last_sync_summary jsonb;
+ALTER TABLE user_broker_connections ADD COLUMN IF NOT EXISTS created_at timestamp without time zone DEFAULT now();
+
+-- Синхронизация с брокером не трогает ручные записи.
+-- source: 'broker' — из импорта, 'manual' — добавлено или изменено пользователем,
+-- NULL — записи до появления разметки (считаются брокерскими: так их и стирала старая синхронизация).
+-- Колонку добавляем без DEFAULT, чтобы старые строки остались NULL, и только потом ставим DEFAULT.
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source character varying;
+ALTER TABLE transactions ALTER COLUMN source SET DEFAULT 'manual';
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS external_id text;
+ALTER TABLE cash_operations ADD COLUMN IF NOT EXISTS source character varying;
+ALTER TABLE cash_operations ALTER COLUMN source SET DEFAULT 'manual';
+ALTER TABLE cash_operations ADD COLUMN IF NOT EXISTS external_id text;
+-- Счёт брокера, к которому привязан дочерний портфель (портфель переживает синхронизацию)
+ALTER TABLE portfolios ADD COLUMN IF NOT EXISTS broker_account_id text;
+
+-- Брокерские операции, которые пользователь удалил или изменил: при синхронизации не возвращаем.
+-- Заполняется триггером (broker_sync_tracking.sql).
+CREATE TABLE IF NOT EXISTS broker_operation_suppressions (
+  portfolio_id bigint NOT NULL,
+  external_id text NOT NULL,
+  created_at timestamp without time zone NOT NULL DEFAULT now(),
+  CONSTRAINT broker_operation_suppressions_pkey PRIMARY KEY (portfolio_id, external_id),
+  CONSTRAINT broker_operation_suppressions_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
 );

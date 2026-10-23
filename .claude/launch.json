@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "frontend", "run", "dev:demo"],
       "port": 5186
+    },
+    {
+      "name": "frontend-demo-import",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev", "--", "--mode", "demo", "--port", "5191", "--strictPort"],
+      "port": 5191
     }
   ]
 }

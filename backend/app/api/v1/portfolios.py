@@ -87,23 +87,45 @@ async def add_portfolio_route(
     )
 
 
-@router.get("/{portfolio_id}/broker-credentials")
-async def portfolio_broker_credentials_route(
+@router.post("/{portfolio_id}/sync", status_code=HTTPStatus.ACCEPTED)
+async def portfolio_broker_sync_route(
     portfolio_id: int,
     user: dict = Depends(get_current_user),
 ):
-    """Секрет брокера для синхронизации."""
-    from app.domain.services.broker_connections_service import get_user_portfolio_connections
+    """Синхронизация портфеля с брокером по сохранённому токену (токен не покидает сервер)."""
+    from app.domain.services.broker_connections_service import (
+        SYNC_STATUS_TOKEN_INVALID,
+        enqueue_connection_syncs,
+    )
 
     await check_portfolio_access(portfolio_id, user["id"])
-    conns = await get_user_portfolio_connections(str(user["id"]))
-    cred = conns.get(portfolio_id)
-    if not cred or not cred.get("api_key"):
+    results = await enqueue_connection_syncs(user["id"], portfolio_ids=[portfolio_id])
+    result = results[0] if results else None
+    if not result or result.get("skipped") == "no_token":
         raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND,
-            detail="Нет сохранённого API-ключа брокера для этого портфеля",
+            detail="Портфель не подключён к брокеру",
         )
-    return success_response(data=cred)
+    if result.get("skipped") == SYNC_STATUS_TOKEN_INVALID:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail={
+                "success": False,
+                "error": "Брокер отклонил сохранённый токен. Обновите токен в разделе «Подключения брокеров».",
+                "error_code": "TOKEN_INVALID",
+                "details": {"connection_id": result.get("connection_id")},
+            },
+        )
+    if not result.get("task_id"):
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Не удалось запустить синхронизацию",
+        )
+    return success_response(
+        data=result,
+        message="Синхронизация запущена",
+        status_code=HTTPStatus.ACCEPTED,
+    )
 
 
 @router.get("/{portfolio_id}/payout-positions")
@@ -274,6 +296,8 @@ async def import_broker_route(
     from app.domain.services.broker_connections_service import check_broker_token_exists, check_portfolio_broker_conflict
 
     if data.portfolio_id:
+        # Сразу понятная ошибка, а не падение задачи в воркере
+        await check_portfolio_access(data.portfolio_id, user["id"])
         conflict = await check_portfolio_broker_conflict(user["id"], data.broker_id, data.portfolio_id)
         if conflict:
             raise HTTPException(
@@ -338,13 +362,18 @@ async def import_broker_route(
             detail="Ошибка при создании задачи импорта"
         )
 
-    logger.info(f"Создана задача импорта: task_id={task['id']}, user_id={user['id']}")
+    logger.info(f"Задача импорта: task_id={task['id']}, user_id={user['id']}")
 
     return success_response(
         data={
             "task_id": task["id"],
-            "status": task["status"]
+            "status": task["status"],
+            "already_active": bool(task.get("already_active")),
         },
-        message="Задача импорта создана. Импорт выполняется в фоновом режиме.",
+        message=(
+            "Импорт этого портфеля уже выполняется — дождитесь его завершения."
+            if task.get("already_active")
+            else "Задача импорта создана. Импорт выполняется в фоновом режиме."
+        ),
         status_code=HTTPStatus.ACCEPTED
     )

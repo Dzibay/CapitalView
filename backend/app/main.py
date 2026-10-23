@@ -65,6 +65,7 @@ from app.api.v1 import (
     missed_payouts,
     support,
     billing,
+    broker_connections,
 )
 
 # Регистрация API v1 роутеров
@@ -82,6 +83,7 @@ app.include_router(test_errors.router, prefix="/api/v1", tags=["test-errors"])
 app.include_router(missed_payouts.router, prefix="/api/v1", tags=["missed-payouts"])
 app.include_router(support.router, prefix="/api/v1", tags=["support"])
 app.include_router(billing.router, prefix="/api/v1", tags=["billing"])
+app.include_router(broker_connections.router, prefix="/api/v1", tags=["broker-connections"])
 
 
 @app.on_event("startup")

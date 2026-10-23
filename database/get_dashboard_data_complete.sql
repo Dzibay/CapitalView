@@ -15,8 +15,13 @@ connections_data AS (
     SELECT DISTINCT ON (ubc.portfolio_id)
         ubc.portfolio_id,
         jsonb_build_object(
+            'connection_id', ubc.id,
             'broker_id', ubc.broker_id,
-            'last_sync_at', ubc.last_sync_at
+            'has_token', ubc.api_key IS NOT NULL,
+            'auto_sync', ubc.auto_sync,
+            'last_sync_at', ubc.last_sync_at,
+            'last_sync_status', ubc.last_sync_status,
+            'last_sync_error', ubc.last_sync_error
         ) AS connection
     FROM user_broker_connections ubc
     INNER JOIN portfolios_base pb ON pb.id = ubc.portfolio_id

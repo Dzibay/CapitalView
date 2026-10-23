@@ -16,7 +16,9 @@ BEGIN
         error_message = COALESCE(p_error_message, error_message),
         result = COALESCE(p_result, result),
         started_at = CASE WHEN p_status = 'processing' AND started_at IS NULL THEN NOW() ELSE started_at END,
-        completed_at = CASE WHEN p_status IN ('completed', 'failed', 'cancelled') THEN NOW() ELSE completed_at END
+        completed_at = CASE WHEN p_status IN ('completed', 'failed', 'cancelled') THEN NOW() ELSE completed_at END,
+        -- Токен нужен только на время импорта: в завершённой задаче его не храним
+        broker_token = CASE WHEN p_status IN ('completed', 'failed', 'cancelled') THEN NULL ELSE broker_token END
     WHERE id = p_task_id;
     
     RETURN FOUND;

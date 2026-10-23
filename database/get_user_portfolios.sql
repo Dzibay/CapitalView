@@ -41,7 +41,8 @@ BEGIN
         COALESCE(
             jsonb_build_object(
                 'broker_id', ubc.broker_id,
-                'api_key', ubc.api_key,
+                -- Сам токен наружу не отдаётся (см. broker_connections_service)
+                'has_token', ubc.api_key IS NOT NULL,
                 'last_sync_at', ubc.last_sync_at
             ), '{}'::jsonb
         ) AS connection

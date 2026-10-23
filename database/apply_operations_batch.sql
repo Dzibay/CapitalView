@@ -99,8 +99,12 @@ BEGIN
         COALESCE((op->>'payment')::numeric(20,6), (op->>'amount')::numeric(20,6)) as payment,
         COALESCE((op->>'commission')::numeric(20,6), 0) as commission,
         (op->>'commission_rub')::numeric(20,6) as commission_rub,
-        op as original_json
-    FROM jsonb_array_elements(p_operations) op
+        -- 'broker' — из синхронизации (её очистка удаляет только такие строки), иначе 'manual'
+        COALESCE(NULLIF(op->>'source', ''), 'manual')::varchar as source,
+        NULLIF(op->>'external_id', '') as external_id,
+        op as original_json,
+        e.op_idx
+    FROM jsonb_array_elements(p_operations) WITH ORDINALITY AS e(op, op_idx)
     ORDER BY 
         operation_date,
         (op->>'portfolio_id')::bigint,
@@ -144,15 +148,19 @@ BEGIN
                         quantity,
                         price,
                         transaction_date,
-                        realized_pnl
+                        realized_pnl,
+                        source,
+                        external_id
                     )
-                    SELECT 
+                    SELECT
                         t.portfolio_asset_id,
                         1,
                         t.quantity,
                         t.price,
                         t.operation_date,
-                        0
+                        0,
+                        t.source,
+                        t.external_id
                     FROM temp_sorted_ops t
                     WHERE t.operation_type = v_buy_op_type_id
                       AND t.portfolio_asset_id IS NOT NULL
@@ -188,7 +196,53 @@ BEGIN
                     price,
                     transaction_date
                 FROM inserted_transactions;
-                
+
+                -- Каждая вставленная покупка ↔ ровно одна исходная операция.
+                -- Ключ — те же значения, что легли в transactions (дата округляется до секунды
+                -- timestamp(0), цена/количество — numeric(20,6)); одинаковые покупки внутри ключа
+                -- нумеруются по порядку. Раньше нечёткий JOIN размножал строки, и две одинаковые
+                -- покупки (один день, цена, количество) роняли весь батч на PRIMARY KEY.
+                CREATE TEMP TABLE temp_buy_pairs AS
+                WITH b AS (
+                    SELECT
+                        tibt.tx_id,
+                        tibt.portfolio_asset_id,
+                        tibt.transaction_date,
+                        tibt.price,
+                        tibt.quantity,
+                        row_number() OVER (
+                            PARTITION BY tibt.portfolio_asset_id, tibt.transaction_date, tibt.price, tibt.quantity
+                            ORDER BY tibt.tx_id
+                        ) AS rn
+                    FROM temp_inserted_buy_tx tibt
+                ), s AS (
+                    SELECT
+                        tso.op_idx,
+                        tso.portfolio_asset_id,
+                        tso.operation_date::timestamp(0) without time zone AS operation_date,
+                        tso.price::numeric(20,6) AS price,
+                        tso.quantity::numeric(20,6) AS quantity,
+                        row_number() OVER (
+                            PARTITION BY tso.portfolio_asset_id,
+                                         tso.operation_date::timestamp(0) without time zone,
+                                         tso.price::numeric(20,6),
+                                         tso.quantity::numeric(20,6)
+                            ORDER BY tso.op_idx
+                        ) AS rn
+                    FROM temp_sorted_ops tso
+                    WHERE tso.operation_type = v_buy_op_type_id
+                      AND tso.portfolio_asset_id IS NOT NULL
+                      AND tso.quantity IS NOT NULL
+                      AND tso.price IS NOT NULL
+                )
+                SELECT b.tx_id, s.op_idx
+                FROM b
+                JOIN s ON s.portfolio_asset_id = b.portfolio_asset_id
+                      AND s.operation_date = b.transaction_date
+                      AND s.price = b.price
+                      AND s.quantity = b.quantity
+                      AND s.rn = b.rn;
+
                 INSERT INTO temp_tx_payment_map (transaction_id, payment, user_id, portfolio_asset_id, transaction_type, transaction_date, price, quantity, currency_id, commission, commission_rub)
                 SELECT
                     tibt.tx_id,
@@ -206,15 +260,8 @@ BEGIN
                 JOIN transactions t ON t.id = tibt.tx_id
                 JOIN portfolio_assets pa ON pa.id = tibt.portfolio_asset_id
                 JOIN portfolios p ON p.id = pa.portfolio_id
-                LEFT JOIN temp_sorted_ops tso ON
-                    tso.portfolio_asset_id = tibt.portfolio_asset_id
-                    AND tso.operation_type = v_buy_op_type_id
-                    AND (
-                        tso.operation_date = tibt.transaction_date
-                        OR ABS(EXTRACT(EPOCH FROM (tso.operation_date - tibt.transaction_date))) < 1
-                    )
-                    AND ABS(COALESCE(tso.price, 0) - COALESCE(tibt.price, 0)) < 0.0001
-                    AND ABS(COALESCE(tso.quantity, 0) - COALESCE(tibt.quantity, 0)) < 0.0001;
+                LEFT JOIN temp_buy_pairs bp ON bp.tx_id = tibt.tx_id
+                LEFT JOIN temp_sorted_ops tso ON tso.op_idx = bp.op_idx;
 
                 INSERT INTO temp_tx_payment_map (transaction_id, payment, user_id, portfolio_asset_id, transaction_type, transaction_date, price, quantity, currency_id, commission, commission_rub)
                 SELECT DISTINCT ON (tibt.tx_id)
@@ -275,15 +322,8 @@ BEGIN
                             END
                         ) AS commission_rub
                     FROM temp_inserted_buy_tx tibt
-                    LEFT JOIN temp_sorted_ops tso ON
-                        tso.portfolio_asset_id = tibt.portfolio_asset_id
-                        AND tso.operation_type = v_buy_op_type_id
-                        AND (
-                            tso.operation_date = tibt.transaction_date
-                            OR ABS(EXTRACT(EPOCH FROM (tso.operation_date - tibt.transaction_date))) < 1
-                        )
-                        AND ABS(COALESCE(tso.price, 0) - COALESCE(tibt.price, 0)) < 0.0001
-                        AND ABS(COALESCE(tso.quantity, 0) - COALESCE(tibt.quantity, 0)) < 0.0001
+                    LEFT JOIN temp_buy_pairs bp ON bp.tx_id = tibt.tx_id
+                    LEFT JOIN temp_sorted_ops tso ON tso.op_idx = bp.op_idx
                     LEFT JOIN LATERAL (
                         SELECT COALESCE(tso.currency_id, a.quote_asset_id, 1) AS eff_cid
                         FROM portfolio_assets pa
@@ -316,6 +356,7 @@ BEGIN
                 ORDER BY t.transaction_date, t.tx_id;
                 
                 DROP TABLE temp_inserted_buy_tx;
+                DROP TABLE temp_buy_pairs;
             END IF;
 
             -- Продажи и погашения по одной (FIFO)
@@ -330,8 +371,10 @@ BEGIN
                     t.currency_id,
                     t.commission,
                     t.commission_rub,
+                    t.source,
+                    t.external_id,
                     t.original_json,
-                    CASE 
+                    CASE
                         WHEN t.operation_type = v_sell_op_type_id THEN 2
                         WHEN t.operation_type = v_amortization_op_type_id THEN 3
                         ELSE 2
@@ -362,6 +405,8 @@ BEGIN
                           AND existing.transaction_type = v_tx_item.transaction_type
                           AND ABS(existing.price - v_tx_item.price) < 0.000001
                           AND ABS(existing.quantity - v_tx_item.quantity) < 0.000001
+                          -- одинаковые продажи внутри одного батча — разные сделки брокера, не дубли
+                          AND NOT (existing.id = ANY(v_tx_ids))
                     ) THEN
                         v_failed_count := v_failed_count + 1;
                         v_failed_ops := v_failed_ops || jsonb_build_object(
@@ -401,7 +446,9 @@ BEGIN
                         quantity,
                         price,
                         transaction_date,
-                        realized_pnl
+                        realized_pnl,
+                        source,
+                        external_id
                     )
                     VALUES (
                         v_tx_item.portfolio_asset_id,
@@ -409,7 +456,9 @@ BEGIN
                         v_tx_item.quantity,
                         v_tx_item.price,
                         v_tx_date,
-                        0
+                        0,
+                        v_tx_item.source,
+                        v_tx_item.external_id
                     )
                     RETURNING id INTO v_tx_id;
 
@@ -490,7 +539,7 @@ BEGIN
             -- Батч-создание cash_operations для всех вставленных транзакций (Buy/Sell/Amortization)
             -- currency из переданных данных или из актива (quote_asset_id); amount_rub по курсу на дату операции
             IF array_length(v_tx_ids, 1) > 0 THEN
-                INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id, amount_rub, commission, commission_rub)
+                INSERT INTO cash_operations (user_id, portfolio_id, type, amount, currency, date, transaction_id, asset_id, amount_rub, commission, commission_rub, source, external_id)
                 SELECT
                     p.user_id,
                     pa.portfolio_id,
@@ -535,7 +584,9 @@ BEGIN
                         )
                     END),
                     COALESCE(tpm.commission, 0),
-                    tpm.commission_rub
+                    tpm.commission_rub,
+                    COALESCE(t.source, 'manual'),
+                    t.external_id
                 FROM transactions t
                 JOIN portfolio_assets pa ON pa.id = t.portfolio_asset_id
                 JOIN portfolios p ON p.id = pa.portfolio_id
@@ -730,7 +781,9 @@ BEGIN
                 asset_id,
                 amount_rub,
                 commission,
-                commission_rub
+                commission_rub,
+                source,
+                external_id
             )
             VALUES (
                 v_op_record.user_id,
@@ -742,7 +795,9 @@ BEGIN
                 v_asset_id,
                 v_amount_rub,
                 COALESCE(v_op_record.commission, 0),
-                v_op_commission_rub
+                v_op_commission_rub,
+                v_op_record.source,
+                v_op_record.external_id
             )
             RETURNING id INTO v_op_id;
 
@@ -861,6 +916,7 @@ EXCEPTION
         DROP TABLE IF EXISTS temp_sorted_ops;
         DROP TABLE IF EXISTS temp_tx_payment_map;
         DROP TABLE IF EXISTS temp_inserted_buy_tx;
+        DROP TABLE IF EXISTS temp_buy_pairs;
         RAISE;
 END;
 $$;

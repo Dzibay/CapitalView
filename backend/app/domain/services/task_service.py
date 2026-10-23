@@ -4,6 +4,7 @@
 import logging
 from typing import Optional, List, Dict, Any
 
+from app.core.broker_secrets import encrypt_token, token_fingerprint
 from app.infrastructure.database.database_service import table_insert_async, table_select_async, rpc_async
 from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
 from app.domain.models.task_models import TaskStatus, TaskType
@@ -11,6 +12,21 @@ from app.domain.models.task_models import TaskStatus, TaskType
 logger = logging.getLogger(__name__)
 
 _portfolio_repository = PortfolioRepository()
+
+# Секреты задачи наружу не отдаются
+_SECRET_TASK_FIELDS = ("broker_token", "broker_token_hash")
+
+# Кто запустил импорт (import_tasks.trigger)
+TRIGGER_MANUAL = "manual"
+TRIGGER_AUTO = "auto"
+TRIGGER_ADMIN = "admin"
+
+
+def public_task(task: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Задача без токена брокера — для ответов API."""
+    if not task:
+        return task
+    return {k: v for k, v in task.items() if k not in _SECRET_TASK_FIELDS}
 
 
 async def _portfolio_ids_for_user(user_id_str: str) -> list:
@@ -43,14 +59,33 @@ async def import_task_belongs_to_user(task: Optional[dict], user_id) -> bool:
     return owner == str(user_id) if user_id else False
 
 
+async def find_active_import_task(portfolio_id: int) -> Optional[Dict[str, Any]]:
+    """Незавершённая (pending/processing) задача импорта портфеля, если есть."""
+    rows = await table_select_async(
+        "import_tasks",
+        select="*",
+        filters={"portfolio_id": portfolio_id},
+        in_filters={"status": [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]},
+        order={"column": "created_at", "desc": True},
+        limit=1,
+    )
+    return rows[0] if rows else None
+
+
 async def create_import_task(
     user_id,
     broker_id: int,
-    broker_token: str,
+    broker_token: Optional[str],
     portfolio_id: int,
     portfolio_name: Optional[str] = None,
-    priority: int = 0
+    priority: int = 0,
+    trigger: str = TRIGGER_MANUAL,
 ) -> Optional[Dict[str, Any]]:
+    """Ставит импорт в очередь.
+
+    broker_token=None — синхронизация по токену, сохранённому в подключении портфеля:
+    воркер возьмёт его сам, в задаче токен не дублируется.
+    """
     try:
         user_id_str = str(user_id) if user_id else None
 
@@ -63,12 +98,26 @@ async def create_import_task(
             )
             return None
 
+        # Повторный запуск (двойной клик, «Обновить все» во время импорта) не создаёт
+        # параллельную задачу: возвращаем уже стоящую в очереди/выполняющуюся.
+        active = await find_active_import_task(portfolio_id)
+        if active:
+            logger.info(
+                "create_import_task: по портфелю %s уже есть активная задача %s (%s)",
+                portfolio_id,
+                active.get("id"),
+                active.get("status"),
+            )
+            return {**public_task(active), "already_active": True}
+
         task_data = {
             "portfolio_id": portfolio_id,
             "task_type": TaskType.IMPORT_BROKER.value,
             "status": TaskStatus.PENDING.value,
             "broker_id": int(broker_id),
-            "broker_token": broker_token,
+            "broker_token": encrypt_token(broker_token),
+            "broker_token_hash": token_fingerprint(broker_token),
+            "trigger": trigger,
             "priority": priority,
             "progress": 0,
             "retry_count": 0,
@@ -85,7 +134,7 @@ async def create_import_task(
                 result[0]["id"],
                 portfolio_id,
             )
-            return result[0]
+            return public_task(result[0])
         return None
     except Exception as e:
         logger.error(f"Ошибка при создании задачи импорта: {e}", exc_info=True)
@@ -93,6 +142,7 @@ async def create_import_task(
 
 
 async def get_task(task_id: int) -> Optional[Dict[str, Any]]:
+    """Задача целиком, включая зашифрованный токен — для внутреннего использования."""
     try:
         result = await table_select_async(
             "import_tasks",
@@ -120,7 +170,7 @@ async def get_user_tasks(user_id, limit: int = 50) -> List[Dict[str, Any]]:
             order={"column": "created_at", "desc": True},
             limit=limit
         )
-        return result or []
+        return [public_task(t) for t in (result or [])]
     except Exception as e:
         logger.error(f"Ошибка при получении задач пользователя {user_id}: {e}", exc_info=True)
         return []

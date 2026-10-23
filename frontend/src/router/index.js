@@ -299,7 +299,20 @@ const router = createRouter({
   routes,
   scrollBehavior(to, from, savedPosition) {
     if (to.hash) {
-      return { el: to.hash, behavior: 'smooth' }
+      // Страницы кабинета сменяются через out-in переход (DashboardLayout) —
+      // якорь появляется не сразу, ждём его до полутора секунд
+      const id = to.hash.slice(1)
+      const started = Date.now()
+      return new Promise((resolve) => {
+        const tryScroll = () => {
+          if (document.getElementById(id) || Date.now() - started > 1500) {
+            resolve({ el: to.hash, behavior: 'smooth' })
+          } else {
+            setTimeout(tryScroll, 50)
+          }
+        }
+        tryScroll()
+      })
     }
     if (savedPosition) {
       return savedPosition

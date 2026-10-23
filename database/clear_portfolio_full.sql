@@ -12,6 +12,10 @@ declare
     v_asset_ids bigint[];
     v_custom_asset_ids bigint[];
 begin
+    -- Явная очистка/удаление — не правка пользователя: удалённые брокерские
+    -- операции не запоминаем в broker_operation_suppressions (broker_sync_tracking.sql)
+    perform set_config('capitalview.broker_sync', 'on', true);
+
     ------------------------------------------------------------------
     -- 1. Все портфели (рекурсивно)
     ------------------------------------------------------------------
@@ -88,6 +92,10 @@ begin
     delete from import_tasks
     where portfolio_id = any(v_portfolio_ids)
       and status not in ('pending', 'processing');
+
+    -- Портфель очищен: прошлые «не возвращать» больше не нужны, следующий импорт — с нуля
+    delete from broker_operation_suppressions
+    where portfolio_id = any(v_portfolio_ids);
 
     ------------------------------------------------------------------
     -- 8. Удаляем портфели

@@ -106,7 +106,11 @@ def _normalize_trade_to_transaction(trade: dict) -> dict | None:
     price = float(trade.get("price", 0) or trade.get("pricePerUnit", 0) or 0)
     payment = float(trade.get("payment", 0) or trade.get("amount", 0) or trade.get("sum", 0) or (qty * price if qty and price else 0))
     
+    # Номер сделки — стабильный ключ операции между синхронизациями; нет его — импорт
+    # построит отпечаток по полям сделки (portfolio_import_service._broker_external_ids)
+    trade_id = trade.get("tradeNum") or trade.get("tradeId") or trade.get("id")
     tx = {
+        "operation_id": str(trade_id) if trade_id not in (None, "") else None,
         "figi": trade.get("figi"),
         "ticker": ticker,
         "name": name,
@@ -122,6 +126,9 @@ def _normalize_trade_to_transaction(trade: dict) -> dict | None:
         tx["price"] = price
         tx["quantity"] = qty
         tx["payment"] = payment
+        if classified == "Amortization":
+            # BOND_REPAYMENT — частичное погашение номинала (бумаги остаются), REDEMPTION — полное
+            tx["amortization_kind"] = "partial" if trade_type == "BOND_REPAYMENT" else "full"
     else:
         tx["price"] = None
         tx["quantity"] = None
@@ -154,6 +161,15 @@ def _parse_portfolio_positions(portfolio_rows: list) -> list:
             "current_price": curr_price,
         })
     return positions
+
+
+def list_bks_accounts(refresh_token: str) -> list:
+    """Проверка токена перед импортом: обмен refresh_token на access_token.
+
+    Неверный или истёкший токен — httpx.HTTPStatusError (400/401 от OAuth).
+    """
+    _get_access_token(refresh_token)
+    return [{"id": "default", "name": "Портфель БКС", "type": None, "status": None, "access_level": None}]
 
 
 def get_bks_portfolio(refresh_token: str) -> dict:

@@ -132,7 +132,7 @@ BEGIN
         FROM cash_operations co
         WHERE co.portfolio_id = v_portfolio_id
           AND co.asset_id = v_asset_id
-          AND co.type IN (3, 4, 7, 8)
+          AND (co.type IN (3, 4, 7, 8) OR (co.type = 9 AND co.transaction_id IS NULL))
           AND co.date::date >= v_series_start
           AND co.date::date <= CURRENT_DATE
         UNION
@@ -250,13 +250,35 @@ BEGIN
             ELSIF r_ev.sk = 1 AND r_ev.tt = 1 THEN
                 SELECT COALESCE(
                     (
-                        SELECT ABS(co.amount_rub)::numeric
+                        -- amount покупки = −(сумма сделки + комиссия); комиссию из стоимости лота
+                        -- исключаем, иначе в total_pnl она вычиталась бы дважды (ещё раз в commissions).
+                        -- Ввод бумаг от другого брокера денег не двигает (amount = 0) —
+                        -- себестоимость тогда по цене сделки (NULLIF → запасная ветка ниже)
+                        SELECT NULLIF((
+                            ABS(co.amount_rub)
+                            * CASE
+                                WHEN ABS(COALESCE(co.commission, 0)) > 0
+                                     AND ABS(COALESCE(co.amount, 0)) > ABS(co.commission)
+                                THEN (ABS(co.amount) - ABS(co.commission)) / ABS(co.amount)
+                                ELSE 1
+                              END
+                        )::numeric, 0)
                         FROM cash_operations co
                         WHERE co.transaction_id = r_ev.tid
                           AND co.type IN (1, 2)
                         LIMIT 1
                     ),
+                    -- цена сделки — в валюте котировки, лот считаем в рублях
                     r_ev.qty * r_ev.price
+                    * CASE
+                        WHEN v_quote_asset_id IS NULL OR v_quote_asset_id = 1 THEN 1::numeric
+                        ELSE COALESCE((
+                            SELECT ap.price::numeric FROM asset_prices ap
+                            WHERE ap.asset_id = v_quote_asset_id AND ap.trade_date <= r_ev.tx_date
+                            ORDER BY ap.trade_date DESC
+                            LIMIT 1
+                        ), 1::numeric)
+                      END
                 ) INTO v_amt_rub;
 
                 INSERT INTO _fifo_work_pa (rem_qty, rem_cost_rub, unit_price_quote, acquired_date)
@@ -346,13 +368,31 @@ BEGIN
                     t.price::numeric AS price,
                     COALESCE(
                         (
-                            SELECT ABS(co.amount_rub)::numeric
+                            -- amount = 0 у ввода бумаг — себестоимость по цене сделки (см. выше)
+                            SELECT NULLIF((
+                                ABS(co.amount_rub)
+                                * CASE
+                                    WHEN ABS(COALESCE(co.commission, 0)) > 0
+                                         AND ABS(COALESCE(co.amount, 0)) > ABS(co.commission)
+                                    THEN (ABS(co.amount) - ABS(co.commission)) / ABS(co.amount)
+                                    ELSE 1
+                                  END
+                            )::numeric, 0)
                             FROM cash_operations co
                             WHERE co.transaction_id = t.id
                               AND co.type IN (1, 2)
                             LIMIT 1
                         ),
                         t.quantity * t.price
+                        * CASE
+                            WHEN v_quote_asset_id IS NULL OR v_quote_asset_id = 1 THEN 1::numeric
+                            ELSE COALESCE((
+                                SELECT ap.price::numeric FROM asset_prices ap
+                                WHERE ap.asset_id = v_quote_asset_id AND ap.trade_date <= t.transaction_date::date
+                                ORDER BY ap.trade_date DESC
+                                LIMIT 1
+                            ), 1::numeric)
+                          END
                     )::numeric AS amount_rub
                 FROM transactions t
                 WHERE t.portfolio_asset_id = p_portfolio_asset_id
@@ -473,7 +513,11 @@ BEGIN
         FROM cash_operations co
         WHERE co.portfolio_id = v_portfolio_id
           AND co.asset_id = v_asset_id
-          AND co.type IN (3, 4)
+          AND (
+              co.type IN (3, 4)
+              -- частичная амортизация облигации: деньги вернулись, количество не изменилось
+              OR (co.type = 9 AND co.transaction_id IS NULL)
+          )
           AND co.date::date >= p_from_date
         GROUP BY co.date::date
     ),

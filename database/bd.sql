@@ -65,6 +65,7 @@ CREATE TABLE public.portfolios (
   parent_portfolio_id bigint,
   name text,
   description jsonb,
+  broker_account_id text,
   CONSTRAINT portfolios_pkey PRIMARY KEY (id),
   CONSTRAINT portfolios_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT portfolios_parent_portfolio_id_fkey FOREIGN KEY (parent_portfolio_id) REFERENCES public.portfolios(id)
@@ -105,6 +106,8 @@ CREATE TABLE public.transactions (
   quantity numeric(20,6) NOT NULL,
   transaction_date timestamp(0) without time zone DEFAULT CURRENT_TIMESTAMP,
   realized_pnl numeric(20,6),
+  source character varying DEFAULT 'manual'::character varying,
+  external_id text,
   CONSTRAINT transactions_pkey PRIMARY KEY (id),
   CONSTRAINT transactions_portfolio_asset_id_fkey FOREIGN KEY (portfolio_asset_id) REFERENCES public.portfolio_assets(id) ON DELETE CASCADE,
   CONSTRAINT transactions_transaction_type_fkey FOREIGN KEY (transaction_type) REFERENCES public.transactions_type(id)
@@ -123,6 +126,8 @@ CREATE TABLE public.cash_operations (
   amount_rub numeric(20,6),
   commission numeric(20,6) NOT NULL DEFAULT 0,
   commission_rub numeric(20,6),
+  source character varying DEFAULT 'manual'::character varying,
+  external_id text,
   CONSTRAINT cash_operations_pkey PRIMARY KEY (id),
   CONSTRAINT cash_operations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT cash_operations_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id) ON DELETE CASCADE,
@@ -250,17 +255,34 @@ CREATE TABLE public.import_tasks (
   progress integer DEFAULT 0,
   progress_message text,
   portfolio_name character varying,
+  broker_token_hash text,
+  trigger character varying NOT NULL DEFAULT 'manual',
+  not_before timestamp without time zone,
   CONSTRAINT import_tasks_pkey PRIMARY KEY (id),
   CONSTRAINT import_tasks_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id) ON DELETE CASCADE,
   CONSTRAINT import_tasks_broker_id_fkey FOREIGN KEY (broker_id) REFERENCES public.brokers(id)
 );
 
+CREATE TABLE public.broker_operation_suppressions (
+  portfolio_id bigint NOT NULL,
+  external_id text NOT NULL,
+  created_at timestamp without time zone NOT NULL DEFAULT now(),
+  CONSTRAINT broker_operation_suppressions_pkey PRIMARY KEY (portfolio_id, external_id),
+  CONSTRAINT broker_operation_suppressions_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id) ON DELETE CASCADE
+);
 CREATE TABLE public.user_broker_connections (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   broker_id bigint NOT NULL,
   portfolio_id bigint NOT NULL,
   api_key text,
   last_sync_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP(0),
+  api_key_hash text,
+  auto_sync boolean NOT NULL DEFAULT true,
+  last_sync_status character varying,
+  last_sync_error text,
+  last_sync_attempt_at timestamp without time zone,
+  last_sync_summary jsonb,
+  created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT user_broker_connections_pkey PRIMARY KEY (id),
   CONSTRAINT user_broker_connections_broker_id_fkey FOREIGN KEY (broker_id) REFERENCES public.brokers(id),
   CONSTRAINT user_broker_connections_portfolio_id_fkey FOREIGN KEY (portfolio_id) REFERENCES public.portfolios(id) ON DELETE CASCADE,

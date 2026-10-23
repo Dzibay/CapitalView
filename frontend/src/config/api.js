@@ -55,7 +55,8 @@ export const API_ENDPOINTS = {
     HISTORY: (id) => `/portfolios/${id}/history`,
     IMPORT_BROKER: '/portfolios/import-broker',  // Исправлено: на backend это /portfolios/import-broker
     BROKERS: '/portfolios/brokers',  // Получение списка брокеров
-    BROKER_CREDENTIALS: (id) => `/portfolios/${id}/broker-credentials`,
+    // Синхронизация по токену, сохранённому на сервере (сам токен в браузер не приходит)
+    SYNC: (id) => `/portfolios/${id}/sync`,
     PAYOUT_POSITIONS: (id) => `/portfolios/${id}/payout-positions`,
   },
   ASSETS: {
@@ -83,6 +84,14 @@ export const API_ENDPOINTS = {
   ANALYTICS: {
     BASE: '/analytics',
     PORTFOLIOS: '/analytics/portfolios',
+  },
+  BROKER_CONNECTIONS: {
+    LIST: '/broker-connections/',
+    CHECK_TOKEN: '/broker-connections/check-token',
+    SYNC_ALL: '/broker-connections/sync',
+    SYNC: (id) => `/broker-connections/${id}/sync`,
+    TOKEN: (id) => `/broker-connections/${id}/token`,
+    ITEM: (id) => `/broker-connections/${id}`,
   },
   TASKS: {
     BASE: '/tasks',

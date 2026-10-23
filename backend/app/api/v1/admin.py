@@ -22,8 +22,8 @@ from app.domain.services.admin_service import (
 from app.domain.services.dashboard_service import get_dashboard_data
 from app.domain.services.user_service import get_user_by_id
 from app.domain.services.portfolio_service import refresh_portfolio_assets_and_daily_values
-from app.domain.services.broker_connections_service import get_user_portfolio_connections
-from app.domain.services.task_service import create_import_task
+from app.domain.services.broker_connections_service import enqueue_connection_syncs
+from app.domain.services.task_service import TRIGGER_ADMIN
 from app.infrastructure.database.database_service import table_select_async, rpc_async
 from app.infrastructure.cache import invalidate_cache
 from app.utils.response import success_response
@@ -180,28 +180,12 @@ async def admin_user_broker_sync_portfolios(
     target = await get_user_by_id(uid)
     if not target:
         raise NotFoundError("Пользователь")
-    conns = await get_user_portfolio_connections(uid)
-    tasks = []
-    for pid, cred in conns.items():
-        api_key = cred.get("api_key")
-        bid = cred.get("broker_id")
-        if not api_key or bid is None:
-            continue
-        task_row = await create_import_task(
-            user_id=uid,
-            broker_id=int(bid),
-            broker_token=api_key,
-            portfolio_id=int(pid),
-            portfolio_name=None,
-            priority=0,
-        )
-        if task_row and task_row.get("id") is not None:
-            tasks.append(
-                {
-                    "task_id": int(task_row["id"]),
-                    "portfolio_id": int(pid),
-                }
-            )
+    # Токен в задачу не копируется: воркер берёт его из подключения
+    results = await enqueue_connection_syncs(uid, trigger=TRIGGER_ADMIN, include_token_invalid=True)
+    tasks = [
+        {"task_id": int(r["task_id"]), "portfolio_id": int(r["portfolio_id"])}
+        for r in results if r.get("task_id") is not None
+    ]
     return success_response(
         data={"tasks": tasks, "count": len(tasks)},
         message="Задачи поставлены в очередь" if tasks else "Нет портфелей с API-ключом брокера",

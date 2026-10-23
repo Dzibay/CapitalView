@@ -1,4 +1,4 @@
-from app.infrastructure.database.database_service import rpc_async, table_insert_async
+from app.infrastructure.database.database_service import rpc_async, table_insert_async, acquire_connection
 from app.domain.services.user_service import get_user_by_email
 from app.infrastructure.database.repositories.portfolio_repository import PortfolioRepository
 from app.infrastructure.database.repositories.portfolio_asset_repository import PortfolioAssetRepository
@@ -80,6 +80,28 @@ async def get_user_portfolio_parent(user_email: str):
     return None
 
 
+async def _portfolio_reusable_for_broker_import(portfolio_id: int, broker_id: int) -> bool:
+    """Можно ли импортировать в существующий портфель, не потеряв чужие данные."""
+    async with acquire_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                EXISTS (SELECT 1 FROM user_broker_connections c
+                        WHERE c.portfolio_id = $1 AND c.broker_id = $2) AS same_broker,
+                EXISTS (SELECT 1 FROM user_broker_connections c
+                        WHERE c.portfolio_id = $1 AND c.broker_id <> $2) AS other_broker,
+                EXISTS (SELECT 1 FROM portfolio_assets pa WHERE pa.portfolio_id = $1)
+                  OR EXISTS (SELECT 1 FROM cash_operations co WHERE co.portfolio_id = $1)
+                  OR EXISTS (SELECT 1 FROM portfolios ch WHERE ch.parent_portfolio_id = $1) AS has_data
+            """,
+            portfolio_id,
+            broker_id,
+        )
+    if row["other_broker"]:
+        return False
+    return bool(row["same_broker"]) or not row["has_data"]
+
+
 async def ensure_portfolio_for_broker_import(
     user_id: str,
     user_email: str,
@@ -91,11 +113,21 @@ async def ensure_portfolio_for_broker_import(
         raise ValueError("Корневой портфель пользователя не найден")
 
     parent_portfolio_id = user_root_portfolio["id"]
-    name_final = portfolio_name or f"Портфель {broker_id}"
+    base_name = portfolio_name or f"Портфель {broker_id}"
 
-    existing = await _portfolio_repository.find_by_parent_and_name(parent_portfolio_id, name_final)
-    if existing:
-        return int(existing["id"])
+    # Импорт полностью перезаписывает целевой портфель. Одноимённый портфель
+    # берём только если он пуст или уже подключён к этому же брокеру — иначе
+    # ручные данные пользователя были бы стёрты. В остальных случаях — новое имя.
+    name_final = base_name
+    for attempt in range(1, 21):
+        existing = await _portfolio_repository.find_by_parent_and_name(parent_portfolio_id, name_final)
+        if not existing:
+            break
+        if await _portfolio_reusable_for_broker_import(int(existing["id"]), broker_id):
+            return int(existing["id"])
+        name_final = f"{base_name} ({attempt + 1})"
+    else:
+        raise ValueError("Не удалось подобрать имя для нового портфеля импорта")
 
     new_portfolio = {
         "user_id": user_id,

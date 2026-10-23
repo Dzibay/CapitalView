@@ -2,8 +2,10 @@
 Асинхронный сервис для работы с PostgreSQL.
 """
 import asyncio
+import contextvars
 import json
 import asyncpg
+from contextlib import asynccontextmanager
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 from app.config import Config
@@ -15,6 +17,12 @@ logger = get_logger(__name__)
 
 # Пул соединений
 _connection_pool: Optional[asyncpg.Pool] = None
+
+# Соединение, привязанное к текущему контексту через db_transaction(): все хелперы ниже
+# (rpc_async, table_*_async) внутри такого блока работают в одной транзакции.
+_bound_connection: contextvars.ContextVar[Optional[asyncpg.Connection]] = contextvars.ContextVar(
+    "capitalview_bound_db_connection", default=None
+)
 
 
 async def get_connection_pool():
@@ -59,6 +67,57 @@ async def close_connection_pool():
         logger.info("Пул асинхронных соединений PostgreSQL закрыт")
 
 
+@asynccontextmanager
+async def acquire_connection():
+    """
+    Соединение для запроса: привязанное через db_transaction() или новое из пула.
+    Внутри db_transaction() нельзя запускать запросы параллельно (asyncio.gather):
+    у одного соединения asyncpg не может быть двух активных запросов.
+    """
+    bound = _bound_connection.get()
+    if bound is not None:
+        yield bound
+        return
+    pool = await get_connection_pool()
+    async with pool.acquire() as conn:
+        yield conn
+
+
+@asynccontextmanager
+async def db_transaction():
+    """
+    Атомарный блок: все rpc_async/table_*_async внутри идут через одно соединение
+    в одной транзакции. Исключение внутри блока откатывает всё целиком.
+    Вложенный вызов переиспользует внешнюю транзакцию (через savepoint).
+    """
+    bound = _bound_connection.get()
+    if bound is not None:
+        async with bound.transaction():
+            yield bound
+        return
+    pool = await get_connection_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            token = _bound_connection.set(conn)
+            try:
+                yield conn
+            finally:
+                _bound_connection.reset(token)
+
+
+@asynccontextmanager
+async def outside_transaction():
+    """
+    Запросы внутри блока идут мимо текущей db_transaction() отдельным соединением
+    и коммитятся сразу (например, прогресс задачи импорта, видимый во время импорта).
+    """
+    token = _bound_connection.set(None)
+    try:
+        yield
+    finally:
+        _bound_connection.reset(token)
+
+
 async def rpc_async(fn_name: str, params: dict):
     """
     Асинхронно вызывает SQL функцию (RPC) в PostgreSQL.
@@ -70,9 +129,7 @@ async def rpc_async(fn_name: str, params: dict):
     Returns:
         Результат выполнения функции
     """
-    pool = await get_connection_pool()
-    
-    async with pool.acquire() as conn:
+    async with acquire_connection() as conn:
         # Используем транзакцию для сохранения изменений (DML операции в функциях)
         async with conn.transaction():
             try:
@@ -152,7 +209,7 @@ async def rpc_async(fn_name: str, params: dict):
                     for item in result_list:
                         if isinstance(item, dict):
                             # Парсим известные JSONB поля
-                            for field_name in ['properties', 'description', 'result', 'settings']:
+                            for field_name in ['properties', 'description', 'result', 'settings', 'last_sync_summary']:
                                 if field_name in item and isinstance(item[field_name], str):
                                     value = item[field_name]
                                     if value and (value.startswith('{') or value.startswith('[')):
@@ -193,9 +250,7 @@ async def table_select_async(table: str, select="*", filters: dict = None,
     Асинхронно выполняет SELECT запрос к таблице.
     order: dict {'column': str, 'desc': bool} или строка для ORDER BY (например "asset_id, payment_date").
     """
-    pool = await get_connection_pool()
-    
-    async with pool.acquire() as conn:
+    async with acquire_connection() as conn:
         try:
             query_parts = [f"SELECT {select} FROM {table}"]
             conditions = []
@@ -258,7 +313,7 @@ async def table_select_async(table: str, select="*", filters: dict = None,
             for item in result_list:
                 if isinstance(item, dict):
                     # Парсим известные JSONB поля
-                    for field_name in ['properties', 'description', 'result', 'settings']:
+                    for field_name in ['properties', 'description', 'result', 'settings', 'last_sync_summary']:
                         if field_name in item and isinstance(item[field_name], str):
                             value = item[field_name]
                             if value and (value.startswith('{') or value.startswith('[')):
@@ -280,7 +335,7 @@ _JSONB_FIELDS = {
     'portfolios': {'description', 'properties'},
     'assets': {'properties'},
     'import_tasks': {'result'},
-    'user_broker_connections': {'settings'},
+    'user_broker_connections': {'settings', 'last_sync_summary'},
 }
 
 
@@ -338,9 +393,7 @@ async def table_insert_async(table: str, data):
     """
     Асинхронно вставляет данные в таблицу.
     """
-    pool = await get_connection_pool()
-    
-    async with pool.acquire() as conn:
+    async with acquire_connection() as conn:
         try:
             if isinstance(data, list) and len(data) > 0:
                 # Множественная вставка
@@ -383,9 +436,7 @@ async def table_update_async(table: str, data: dict, filters: dict):
     """
     Асинхронно обновляет записи в таблице.
     """
-    pool = await get_connection_pool()
-    
-    async with pool.acquire() as conn:
+    async with acquire_connection() as conn:
         try:
             if not filters:
                 raise ValueError("filters обязателен для UPDATE")
@@ -430,9 +481,7 @@ async def table_upsert_async(table: str, data, filters: dict = None):
         return await table_update_async(table, data, filters)
     else:
         # UPSERT (ON CONFLICT)
-        pool = await get_connection_pool()
-        
-        async with pool.acquire() as conn:
+        async with acquire_connection() as conn:
             try:
                 if isinstance(data, dict):
                     columns = list(data.keys())
@@ -462,9 +511,7 @@ async def table_delete_async(table: str, filters: dict = None, neq_filters: dict
     """
     Асинхронно удаляет записи из таблицы.
     """
-    pool = await get_connection_pool()
-    
-    async with pool.acquire() as conn:
+    async with acquire_connection() as conn:
         try:
             conditions = []
             params = []

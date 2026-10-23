@@ -54,11 +54,25 @@ BEGIN
     END IF;
 
     -- 5. Обновляем данные
+    -- Брокерские операции переезжают вместе с активом: синхронизация исходного портфеля
+    -- не должна вернуть их обратно, а в целевом это уже ручные записи пользователя.
+    INSERT INTO broker_operation_suppressions (portfolio_id, external_id)
+    SELECT DISTINCT v_source_portfolio_id, co.external_id
+    FROM cash_operations co
+    WHERE co.portfolio_id = v_source_portfolio_id
+      AND co.asset_id = v_asset_id
+      AND co.external_id IS NOT NULL
+    ON CONFLICT DO NOTHING;
+
+    UPDATE transactions SET source = 'manual', external_id = NULL
+    WHERE portfolio_asset_id = p_portfolio_asset_id
+      AND (source IS DISTINCT FROM 'manual' OR external_id IS NOT NULL);
+
     UPDATE portfolio_assets SET portfolio_id = p_target_portfolio_id WHERE id = p_portfolio_asset_id;
 
     UPDATE portfolio_asset_daily_values SET portfolio_id = p_target_portfolio_id WHERE portfolio_asset_id = p_portfolio_asset_id;
 
-    UPDATE cash_operations SET portfolio_id = p_target_portfolio_id
+    UPDATE cash_operations SET portfolio_id = p_target_portfolio_id, source = 'manual', external_id = NULL
     WHERE portfolio_id = v_source_portfolio_id AND asset_id = v_asset_id;
 
     -- 6. Пересчёт актива

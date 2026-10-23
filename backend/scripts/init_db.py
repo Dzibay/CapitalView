@@ -57,6 +57,58 @@ async def run_sql_file(conn, path: Path) -> None:
     logger.info(f"Выполнен: {path.name}")
 
 
+async def secure_broker_tokens(conn) -> None:
+    """Шифрует токены брокеров, сохранённые открытым текстом до появления шифрования.
+
+    Подключения: api_key -> enc:v1:..., api_key_hash — отпечаток для поиска дублей.
+    Задачи: у завершённых токен больше не нужен и удаляется, у активных — шифруется.
+    Повторный запуск ничего не меняет.
+    """
+    from app.core.broker_secrets import ENCRYPTED_PREFIX, decrypt_token, encrypt_token, token_fingerprint
+
+    rows = await conn.fetch(
+        "SELECT id, api_key FROM user_broker_connections "
+        "WHERE api_key IS NOT NULL AND (api_key NOT LIKE $1 OR api_key_hash IS NULL)",
+        ENCRYPTED_PREFIX + "%",
+    )
+    for r in rows:
+        try:
+            plain = decrypt_token(r["api_key"])
+        except Exception as e:
+            logger.warning(f"Токен подключения {r['id']} не расшифровывается: {e}")
+            continue
+        await conn.execute(
+            "UPDATE user_broker_connections SET api_key = $1, api_key_hash = $2 WHERE id = $3",
+            encrypt_token(plain), token_fingerprint(plain), r["id"],
+        )
+
+    cleared = await conn.execute(
+        "UPDATE import_tasks SET broker_token = NULL "
+        "WHERE broker_token IS NOT NULL AND status IN ('completed', 'failed', 'cancelled')"
+    )
+
+    tasks = await conn.fetch(
+        "SELECT id, broker_token FROM import_tasks "
+        "WHERE broker_token IS NOT NULL AND (broker_token NOT LIKE $1 OR broker_token_hash IS NULL)",
+        ENCRYPTED_PREFIX + "%",
+    )
+    for t in tasks:
+        try:
+            plain = decrypt_token(t["broker_token"])
+        except Exception as e:
+            logger.warning(f"Токен задачи {t['id']} не расшифровывается: {e}")
+            continue
+        await conn.execute(
+            "UPDATE import_tasks SET broker_token = $1, broker_token_hash = $2 WHERE id = $3",
+            encrypt_token(plain), token_fingerprint(plain), t["id"],
+        )
+
+    logger.info(
+        f"Токены брокеров: зашифровано подключений {len(rows)}, задач {len(tasks)}; "
+        f"очищены токены завершённых задач ({cleared})"
+    )
+
+
 async def init_db():
     """Инициализирует БД."""
     Config.validate()
@@ -81,7 +133,10 @@ async def init_db():
             except Exception as e:
                 logger.warning(f"fix_duplicate_payouts: {e}")
 
-        # 4. Индексы
+        # 4. Токены брокеров открытым текстом (сохранены до шифрования)
+        await secure_broker_tokens(conn)
+
+        # 5. Индексы
         await run_sql_file(conn, INDEXES_SQL)
 
     logger.info("Инициализация БД завершена.")

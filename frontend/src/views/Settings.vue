@@ -7,6 +7,7 @@ import CvPageHead from '../cabinet/ui/CvPageHead.vue'
 import CvWidget from '../cabinet/ui/CvWidget.vue'
 import { LogOut, MessageCircle, CreditCard, Check, Mail, ShieldCheck } from 'lucide-vue-next'
 import { dateLong, plural } from '../cabinet/format'
+import BrokerConnections from '../cabinet/settings/BrokerConnections.vue'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -244,6 +245,9 @@ const pageMeta = computed(() => [
           </div>
         </form>
       </CvWidget>
+
+      <!-- Подключения брокеров (ссылки «/settings#brokers» из импорта и «Обновить портфели») -->
+      <BrokerConnections id="brokers" class="is-xl" style="--i: 2" />
 
       <!-- Подписка -->
       <CvWidget v-if="!authStore.user?.is_admin" class="is-m" style="--i: 2" title="Подписка">

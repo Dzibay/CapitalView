@@ -196,9 +196,12 @@ WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_import_tasks_created_at_desc
 ON import_tasks(created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_import_tasks_broker_token
-ON import_tasks(broker_id, broker_token)
-WHERE broker_id IS NOT NULL AND broker_token IS NOT NULL;
+-- Токен хранится зашифрованным, ищем по отпечатку
+DROP INDEX IF EXISTS idx_import_tasks_broker_token;
+
+CREATE INDEX IF NOT EXISTS idx_import_tasks_broker_token_hash
+ON import_tasks(broker_id, broker_token_hash)
+WHERE broker_token_hash IS NOT NULL;
 
 -- ============================================================================
 -- ТАБЛИЦА: user_broker_connections (владелец — через portfolios.user_id)
@@ -213,9 +216,11 @@ ON user_broker_connections(portfolio_id, broker_id);
 CREATE INDEX IF NOT EXISTS idx_user_broker_connections_portfolio_last_sync_desc
 ON user_broker_connections(portfolio_id, last_sync_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_user_broker_connections_broker_api_key
-ON user_broker_connections(broker_id, api_key)
-WHERE api_key IS NOT NULL;
+DROP INDEX IF EXISTS idx_user_broker_connections_broker_api_key;
+
+CREATE INDEX IF NOT EXISTS idx_user_broker_connections_broker_api_key_hash
+ON user_broker_connections(broker_id, api_key_hash)
+WHERE api_key_hash IS NOT NULL;
 
 -- ============================================================================
 -- ТАБЛИЦА: missed_payouts (PK portfolio_asset_id + payout_id; payout_id — для выборок по выплате)

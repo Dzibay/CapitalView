@@ -139,7 +139,11 @@ BEGIN
     IF array_length(v_portfolio_ids, 1) > 0 THEN
         DECLARE
             v_first_buy_date date;
+            v_prev_sync_flag text := current_setting('capitalview.broker_sync', true);
         BEGIN
+            -- Выплаты, оставшиеся без покупки, удаляются автоматически, а не пользователем:
+            -- не помечаем их «не возвращать» — вернёт пользователь покупку, синхронизация вернёт и их.
+            PERFORM set_config('capitalview.broker_sync', 'on', true);
             FOREACH v_portfolio_id IN ARRAY v_portfolio_ids
             LOOP
                 FOR v_portfolio_asset_id, v_asset_id IN
@@ -169,6 +173,7 @@ BEGIN
                     END IF;
                 END LOOP;
             END LOOP;
+            PERFORM set_config('capitalview.broker_sync', COALESCE(v_prev_sync_flag, ''), true);
         END;
     END IF;
     

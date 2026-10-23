@@ -67,3 +67,45 @@ class ImportBrokerRequest(BaseModel):
     portfolio_id: Optional[int] = Field(None, description="ID существующего портфеля")
     portfolio_name: Optional[str] = Field(None, description="Название нового портфеля")
 
+    @field_validator("token")
+    @classmethod
+    def strip_token(cls, v: str) -> str:
+        # Токен часто копируют с пробелом или переводом строки
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("Укажите токен брокера")
+        return v
+
+
+class BrokerTokenCheckRequest(BaseModel):
+    """Проверка токена брокера до импорта."""
+    broker_id: int = Field(..., ge=1, description="ID брокера")
+    token: str = Field(..., min_length=1, description="Токен или API-ключ брокера")
+
+    @field_validator("token")
+    @classmethod
+    def strip_token(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("Укажите токен брокера")
+        return v
+
+
+class BrokerTokenUpdateRequest(BaseModel):
+    """Новый токен для существующего подключения."""
+    token: str = Field(..., min_length=1, description="Новый токен или API-ключ брокера")
+    sync_now: bool = Field(True, description="Сразу запустить синхронизацию")
+
+    @field_validator("token")
+    @classmethod
+    def strip_token(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("Укажите токен брокера")
+        return v
+
+
+class BrokerConnectionUpdateRequest(BaseModel):
+    """Настройки подключения брокера."""
+    auto_sync: Optional[bool] = Field(None, description="Ежедневная автосинхронизация")
+

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { storeToRefs } from 'pinia';
+import { useRoute, useRouter } from 'vue-router';
 import { useDashboardStore } from '../stores/dashboard.store';
 import { useUIStore } from '../stores/ui.store';
 import { useAssetsStore } from '../stores/assets.store';
@@ -17,7 +18,9 @@ import ImportStatusModal from "../components/modals/ImportStatusModal.vue";
 import AddPortfolioModal from "../components/modals/AddPortfolioModal.vue";
 import ContextMenu from '../components/base/ContextMenu.vue';
 import { useModals } from '../composables/useModal';
-import portfolioService from '../services/portfolioService';
+import brokerConnectionsService from '../services/brokerConnectionsService';
+import taskService from '../services/taskService';
+import { apiErrorMessage } from '../utils/apiError';
 import CvPageHead from '../cabinet/ui/CvPageHead.vue';
 import CvKpiStrip from '../cabinet/ui/CvKpiStrip.vue';
 import DashboardSkeleton from '../cabinet/dashboard/DashboardSkeleton.vue';
@@ -83,17 +86,37 @@ const addPrice = async (data) => {
   await assetsStore.addPrice(data);
 };
 
+// Импорт ждём в фоне: окно статуса можно закрыть — данные обновятся сами,
+// а итог покажем плашкой над страницей
+const trackImportTask = async (taskId, portfolioId, portfolioName) => {
+  if (trackedTasks.has(taskId)) return
+  trackedTasks.add(taskId)
+  importTasksStore.addTask(taskId, portfolioId, portfolioName)
+  if (portfolioId) updatingPortfolios.value.add(portfolioId)
+  const final = await taskService.waitForTask(taskId)
+  trackedTasks.delete(taskId)
+  importTasksStore.removeTask(taskId)
+  if (portfolioId) updatingPortfolios.value.delete(portfolioId)
+  if (final?.status === 'completed') await reloadDashboard()
+  // Окно статуса открыто — итог виден в нём
+  if (currentImportTaskId.value === taskId) return
+  const name = portfolioName ? `«${portfolioName}»` : ''
+  if (final?.status === 'completed') {
+    showSyncNotice({ tone: 'ok', text: `Импорт ${name} завершён.` })
+  } else if (final?.status === 'failed') {
+    showSyncNotice({
+      tone: 'err',
+      text: `Импорт ${name} не удался: ${final.error_message || 'ошибка брокера'}`,
+      link: final.result?.error_code === 'token_invalid' ? { to: '/settings#brokers', label: 'Обновить токен' } : null,
+    })
+  }
+};
+
 const importPortfolio = async (data, showStatusModal = true) => {
   const result = await portfoliosStore.importPortfolio(data);
-  // Если создана задача, добавляем её в store
   if (result.success && result.task_id) {
-    importTasksStore.addTask(
-      result.task_id,
-      data.portfolioId,
-      data.portfolio_name
-    );
+    trackImportTask(result.task_id, data.portfolioId, data.portfolio_name);
 
-    // Если нужно показать модалку статуса, открываем её
     if (showStatusModal) {
       currentImportTaskId.value = result.task_id;
       closeModal('import');
@@ -103,11 +126,15 @@ const importPortfolio = async (data, showStatusModal = true) => {
   return result;
 };
 
-// Обработчики для модалки статуса
-const handleImportComplete = async () => {
-  // Обновляем данные после успешного импорта; модалка закроется сама
-  await reloadDashboard();
+// «Повторить» в окне статуса запустило новую задачу — следим за ней и показываем её
+const handleImportRetry = ({ task_id, portfolio_id }) => {
+  const info = importTasksStore.getTaskInfo(currentImportTaskId.value);
+  trackImportTask(task_id, portfolio_id, info?.portfolioName);
+  currentImportTaskId.value = task_id;
 };
+
+// Данные после импорта перезагружает trackImportTask
+const handleImportComplete = () => {};
 
 const handleImportError = (errorMessage) => {
   console.error('Ошибка импорта:', errorMessage);
@@ -149,6 +176,8 @@ const { modals, open: openModal, close: closeModal } = useModals([
 
 // ID текущей задачи импорта
 const currentImportTaskId = ref(null);
+// Задачи, завершения которых уже ждём (импорт или «Обновить портфели»)
+const trackedTasks = new Set();
 
 const portfolios = computed(() => dashboardStore.portfolios ?? []);
 const reference = computed(() => dashboardStore.referenceData ?? {});
@@ -157,31 +186,56 @@ const reference = computed(() => dashboardStore.referenceData ?? {});
 const updatingPortfolios = ref(new Set());
 const refreshingAll = ref(false);
 
+// Итог «Обновить портфели»: { tone: 'ok' | 'warn' | 'err', text, link? }
+const syncNotice = ref(null)
+let syncNoticeTimer = null
+const showSyncNotice = (notice) => {
+  clearTimeout(syncNoticeTimer)
+  syncNotice.value = notice
+  if (notice?.tone === 'ok') syncNoticeTimer = setTimeout(() => { syncNotice.value = null }, 6000)
+}
+
+const quoteNames = (rows) => rows.map((r) => `«${r.portfolio_name || `#${r.portfolio_id}`}»`).join(', ')
+
+// Синхронизация идёт на сервере по сохранённым токенам; ждём реального окончания импорта,
+// чтобы индикатор и данные на странице соответствовали результату
 const refreshPortfolios = async () => {
   if (refreshingAll.value) return
   refreshingAll.value = true
-  const importPromises = portfolios.value.map(async (p) => {
-    if (!p.connection?.broker_id) return
-    updatingPortfolios.value.add(p.id)
-    try {
-      const cred = await portfolioService.getBrokerCredentials(p.id)
-      if (!cred?.api_key) return
-      await importPortfolio({
-        broker_id: cred.broker_id,
-        token: cred.api_key,
-        portfolioId: p.id,
-        portfolio_name: null
-      }, true)
-    } catch {
-      // Нет ключа или ошибка сети — пропускаем портфель
-    } finally {
-      updatingPortfolios.value.delete(p.id)
-    }
-  });
-
+  showSyncNotice(null)
   try {
-    await Promise.all(importPromises);
-    await reloadDashboard();
+    const res = await brokerConnectionsService.syncAll()
+    const started = res.tasks || []
+    const needToken = (res.results || []).filter((r) => r.skipped === 'token_invalid')
+
+    started.forEach((t) => {
+      updatingPortfolios.value.add(t.portfolio_id)
+      importTasksStore.addTask(t.task_id, t.portfolio_id, t.portfolio_name)
+    })
+    const finished = await Promise.all(started.map(async (t) => {
+      const final = await taskService.waitForTask(t.task_id)
+      updatingPortfolios.value.delete(t.portfolio_id)
+      importTasksStore.removeTask(t.task_id)
+      return { ...t, final }
+    }))
+    if (started.length) await reloadDashboard()
+
+    const failed = finished.filter((f) => f.final?.status === 'failed')
+    const done = finished.filter((f) => f.final?.status === 'completed')
+    const parts = []
+    if (done.length) parts.push(`Обновлено портфелей: ${done.length}.`)
+    if (failed.length === 1) parts.push(`Не удалось обновить ${quoteNames(failed)}: ${failed[0].final.error_message || 'ошибка брокера'}`)
+    else if (failed.length) parts.push(`Не удалось обновить ${quoteNames(failed)} — подробности в «Подключениях брокеров».`)
+    if (needToken.length) parts.push(`Брокер отклонил токен для ${quoteNames(needToken)} — укажите новый токен.`)
+    if (!parts.length) parts.push(res.message || 'Нет подключённых брокеров для обновления')
+
+    showSyncNotice({
+      tone: failed.length || needToken.length ? (done.length ? 'warn' : 'err') : 'ok',
+      text: parts.join(' '),
+      link: failed.length || needToken.length ? { to: '/settings#brokers', label: 'Подключения брокеров' } : null,
+    })
+  } catch (e) {
+    showSyncNotice({ tone: 'err', text: apiErrorMessage(e, 'Не удалось запустить обновление портфелей') })
   } finally {
     refreshingAll.value = false
   }
@@ -264,6 +318,17 @@ const activeTasks = computed(() => importTasksStore.getActiveTasks())
 // каскадное появление — только при первом показе
 const intro = ref(true)
 onMounted(() => setTimeout(() => { intro.value = false }, 1600))
+
+// «Подключить брокера» из настроек ведёт сюда с ?import=1 — сразу открываем форму
+const route = useRoute();
+const router = useRouter();
+onMounted(() => {
+  if (route.query.import) {
+    openModal('import');
+    const { import: _omit, ...query } = route.query;
+    router.replace({ query });
+  }
+});
 </script>
 
 <template>
@@ -292,6 +357,17 @@ onMounted(() => setTimeout(() => { intro.value = false }, 1600))
         </button>
       </template>
     </CvPageHead>
+
+    <p
+      v-if="syncNotice"
+      class="cv-note as__notice"
+      :class="syncNotice.tone === 'ok' ? 'cv-note--ok' : syncNotice.tone === 'warn' ? 'cv-note--info' : 'cv-note--err'"
+      :role="syncNotice.tone === 'ok' ? 'status' : 'alert'"
+    >
+      <span>{{ syncNotice.text }}</span>
+      <router-link v-if="syncNotice.link" :to="syncNotice.link.to" class="as__notice-link">{{ syncNotice.link.label }}</router-link>
+      <button type="button" class="as__notice-x" aria-label="Скрыть" @click="showSyncNotice(null)">×</button>
+    </p>
 
     <DashboardSkeleton v-if="uiStore.loading" />
 
@@ -357,6 +433,7 @@ onMounted(() => setTimeout(() => { intro.value = false }, 1600))
       v-if="modals.importStatus && currentImportTaskId"
       :taskId="currentImportTaskId"
       @close="closeTaskModal"
+      @retry="handleImportRetry"
       :onComplete="handleImportComplete"
       :onError="handleImportError"
     />
@@ -369,6 +446,11 @@ onMounted(() => setTimeout(() => { intro.value = false }, 1600))
 .as__refresh svg { transition: transform .5s var(--cv-ease); }
 .as__refresh:hover svg { transform: rotate(180deg); }
 .as__refresh.is-busy svg { animation: as-spin 1s linear infinite; }
+.as__notice { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin: 0 0 14px; }
+.as__notice > span { flex: 1 1 260px; }
+.as__notice-link { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.as__notice-x { margin-left: auto; padding: 0 4px; border: 0; background: none; color: inherit; font-size: 16px; line-height: 1; opacity: .7; cursor: pointer; }
+.as__notice-x:hover { opacity: 1; }
 
 .as__empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 56px 16px; text-align: center; }
 .as__empty-ic { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 4px; border-radius: 14px; color: var(--cv-accent-ink); background: var(--cv-accent-soft); box-shadow: inset 0 0 0 1px var(--cv-accent-line); }

@@ -628,10 +628,202 @@ function buildAssetDetail(s, assetId) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Подключения брокеров и задачи импорта (форма подключения, окно статуса, настройки).
+// Задача проходит «очередь → загрузка → готово» за несколько секунд.
+// В токене слово «bad» — брокер отклонит токен, «dup» — счёт уже подключён,
+// «expire» — проверку пройдёт, но импорт упадёт с token_invalid.
+// ---------------------------------------------------------------------------
+
+const BROKERS = [
+  { id: 1, name: 'Т-Инвестиции' },
+  { id: 2, name: 'БКС' },
+]
+
+const hoursAgo = (h) => new Date(Date.now() - h * 3600000).toISOString()
+
+const brokerConnections = [
+  {
+    id: 1, portfolio_id: 2, portfolio_name: 'Т-Инвестиции · ИИС', broker_id: 1,
+    token_mask: 't.Fq••••3f9a', has_token: true, auto_sync: true,
+    last_sync_at: hoursAgo(3), last_sync_status: 'ok', last_sync_error: null,
+    last_sync_summary: { inserted_count: 6, accounts: [{ account: 'ИИС' }, { account: 'Брокерский счёт' }] },
+  },
+  {
+    id: 2, portfolio_id: 4, portfolio_name: 'БКС · Брокерский', broker_id: 2,
+    token_mask: 'eyJh••••Qx2c', has_token: true, auto_sync: true,
+    last_sync_at: hoursAgo(26 * 24), last_sync_status: 'token_invalid',
+    last_sync_error: 'Брокер не принял токен: он отозван или истёк. Выпустите новый и обновите его здесь.',
+    last_sync_summary: { inserted_count: 0, accounts: [{ account: 'Брокерский счёт' }] },
+  },
+  {
+    id: 3, portfolio_id: 5, portfolio_name: 'Т-Инвестиции · Семейный', broker_id: 1,
+    token_mask: 't.Zk••••91be', has_token: true, auto_sync: false,
+    last_sync_at: hoursAgo(50), last_sync_status: 'error',
+    last_sync_error: 'Т-Инвестиции временно не отвечают. Попробуем снова при следующей синхронизации.',
+    last_sync_summary: null,
+  },
+]
+
+const mockTasks = new Map()
+let nextTaskId = 900
+
+const demoImportResult = (portfolioId) => ({
+  portfolio_id: portfolioId,
+  import_result: {
+    inserted_count: 418,
+    kept_manual_count: 3,
+    accounts: [
+      {
+        account: 'Брокерский счёт',
+        portfolio_id: portfolioId,
+        inserted_count: 391,
+        skipped_count: 1,
+        skipped_operations: [{ type: 'Coupon', isin: 'RU000A105RJ8', date: '2024-11-14T00:00:00', reason: 'asset_not_found' }],
+        failed_count: 0,
+        failed_operations: [],
+        suppressed_count: 2,
+        matched_manual_count: 3,
+        transfer_count: 2,
+        transfers: [
+          { direction: 'in', date: '2023-02-06T12:00:00', ticker: 'SBER', name: 'Сбербанк', quantity: 120, price: 152.4, price_source: 'broker_average' },
+          { direction: 'in', date: '2023-02-06T12:00:00', ticker: 'RU000A0JXQ93', name: 'ОФЗ 26222', quantity: 15, price: 0, price_source: 'unknown' },
+        ],
+        reconciliation: { mismatch_count: 0, mismatches: [] },
+      },
+      {
+        account: 'ИИС',
+        portfolio_id: portfolioId,
+        inserted_count: 27,
+        skipped_count: 0,
+        failed_count: 0,
+        transfer_count: 0,
+        transfers: [],
+        reconciliation: {
+          mismatch_count: 1,
+          mismatches: [{ ticker: 'YDEX', name: 'Яндекс', broker_quantity: 5, portfolio_quantity: 4 }],
+        },
+      },
+    ],
+  },
+})
+
+function createMockTask(portfolioId, { tokenInvalid = false } = {}) {
+  const task = { id: nextTaskId++, portfolio_id: portfolioId, created: Date.now(), tokenInvalid, cancelled: false }
+  mockTasks.set(task.id, task)
+  return task
+}
+
+function mockTaskStatus(task) {
+  const t = (Date.now() - task.created) / 1000
+  const base = { task_id: task.id, portfolio_id: task.portfolio_id, broker_id: 1, trigger: 'manual', started_at: null, completed_at: null, error_message: null, result: null }
+  if (task.cancelled) return { ...base, status: 'cancelled', progress: 0 }
+  if (t < 1.5) return { ...base, status: 'pending', progress: 0, progress_message: 'В очереди' }
+  if (task.tokenInvalid && t >= 3) {
+    return {
+      ...base, status: 'failed', progress: 10,
+      error_message: 'Брокер не принял токен: он отозван или истёк. Выпустите новый токен и обновите его в настройках.',
+      result: { error_code: 'token_invalid' }, completed_at: new Date().toISOString(),
+    }
+  }
+  if (t < 7) {
+    const progress = Math.min(95, Math.round(10 + (t - 1.5) * 16))
+    const progress_message = progress < 40 ? 'Получаем операции у брокера' : progress < 75 ? 'Записываем операции' : 'Сверяем позиции с брокером'
+    return { ...base, status: 'processing', progress, progress_message, started_at: new Date(task.created).toISOString() }
+  }
+  const conn = brokerConnections.find((c) => c.portfolio_id === task.portfolio_id)
+  if (conn && !task.applied) {
+    task.applied = true
+    Object.assign(conn, { last_sync_at: new Date().toISOString(), last_sync_status: 'ok', last_sync_error: null })
+  }
+  return { ...base, status: 'completed', progress: 100, progress_message: 'Готово', result: demoImportResult(task.portfolio_id), completed_at: new Date().toISOString() }
+}
+
+function activeTaskFor(portfolioId) {
+  for (const task of mockTasks.values()) {
+    if (task.portfolio_id !== portfolioId) continue
+    const st = mockTaskStatus(task)
+    if (st.status === 'pending' || st.status === 'processing') return { task_id: task.id, status: st.status, progress: st.progress }
+  }
+  return null
+}
+
+function routeBrokers(method, path, body) {
+  if (path === '/portfolios/brokers') return { brokers: BROKERS }
+  if (path === '/broker-connections/' && method === 'get') {
+    return { connections: brokerConnections.map((c) => ({ ...c, active_task: activeTaskFor(c.portfolio_id) })) }
+  }
+  if (path === '/broker-connections/check-token') {
+    const token = String(body?.token || '')
+    if (/bad/i.test(token)) return { __status: 400, detail: 'Брокер не принял токен. Проверьте, что скопировали его целиком и он не отозван.' }
+    const dup = /dup/i.test(token) ? brokerConnections.find((c) => c.broker_id === body?.broker_id) : null
+    return {
+      accounts: [
+        { id: '2000123', name: 'Брокерский счёт', type: 'ACCOUNT_TYPE_TINKOFF', status: 'ACCOUNT_STATUS_OPEN' },
+        { id: '2000456', name: 'ИИС', type: 'ACCOUNT_TYPE_TINKOFF_IIS', status: 'ACCOUNT_STATUS_OPEN' },
+        { id: '2000789', name: 'Старый счёт', type: 'ACCOUNT_TYPE_TINKOFF', status: 'ACCOUNT_STATUS_CLOSED' },
+      ],
+      already_connected: dup ? { portfolio_id: dup.portfolio_id, portfolio_name: dup.portfolio_name } : null,
+    }
+  }
+  if (path === '/broker-connections/sync') {
+    const tasks = brokerConnections
+      .filter((c) => c.has_token && c.last_sync_status !== 'token_invalid')
+      .map((c) => ({ portfolio_id: c.portfolio_id, portfolio_name: c.portfolio_name, connection_id: c.id, task_id: createMockTask(c.portfolio_id).id }))
+    return { results: tasks, tasks, message: `Запущено обновлений: ${tasks.length}` }
+  }
+  let m = path.match(/^\/broker-connections\/(\d+)\/sync$/)
+  if (m) {
+    const c = brokerConnections.find((x) => x.id === Number(m[1]))
+    if (!c) return { __status: 404, detail: 'Подключение не найдено' }
+    if (c.last_sync_status === 'token_invalid') return { __status: 409, detail: 'Брокер не принимает сохранённый токен — укажите новый.' }
+    const active = activeTaskFor(c.portfolio_id)
+    if (active) return { task_id: active.task_id, already_active: true }
+    return { task_id: createMockTask(c.portfolio_id).id, already_active: false }
+  }
+  m = path.match(/^\/broker-connections\/(\d+)\/token$/)
+  if (m) {
+    const c = brokerConnections.find((x) => x.id === Number(m[1]))
+    if (/bad/i.test(String(body?.token || ''))) return { __status: 400, detail: 'Брокер не принял токен. Проверьте, что скопировали его целиком.' }
+    const token = String(body?.token || '')
+    Object.assign(c, { has_token: true, token_mask: `${token.slice(0, 4)}••••${token.slice(-4)}`, last_sync_status: null, last_sync_error: null })
+    return { connection: c, task: body?.sync_now ? { task_id: createMockTask(c.portfolio_id).id } : null }
+  }
+  m = path.match(/^\/broker-connections\/(\d+)$/)
+  if (m) {
+    const i = brokerConnections.findIndex((x) => x.id === Number(m[1]))
+    if (method === 'patch' && i >= 0) Object.assign(brokerConnections[i], { auto_sync: !!body?.auto_sync })
+    if (method === 'delete' && i >= 0) brokerConnections.splice(i, 1)
+    return {}
+  }
+  if (path === '/portfolios/import-broker') {
+    const portfolioId = body?.portfolio_id || 2
+    const task = createMockTask(portfolioId, { tokenInvalid: /bad|expire/i.test(String(body?.token || '')) })
+    return { task_id: task.id, status: 'pending', portfolio_id: portfolioId }
+  }
+  m = path.match(/^\/portfolios\/(\d+)\/sync$/)
+  if (m) return { task_id: createMockTask(Number(m[1])).id }
+  m = path.match(/^\/tasks\/(\d+)\/(status|cancel)$/)
+  if (m) {
+    const task = mockTasks.get(Number(m[1]))
+    if (!task) return { __status: 404, detail: 'Задача не найдена' }
+    if (m[2] === 'cancel') {
+      if (mockTaskStatus(task).status !== 'pending') return { __status: 409, detail: 'Импорт уже идёт — его нельзя отменить' }
+      task.cancelled = true
+      return {}
+    }
+    return mockTaskStatus(task)
+  }
+  if (path === '/tasks/user/list') return { tasks: [] }
+  return null
+}
+
 function route(method, url, params, body) {
   const s = getState()
   const path = url.replace(/^https?:\/\/[^/]+/, '').replace(/^\/api\/v1/, '').split('?')[0]
 
+  const brokerData = routeBrokers(method, path, body)
+  if (brokerData) return brokerData
   if (path === '/auth/check-token') return { user: user() }
   if (path === '/dashboard/') {
     return {
@@ -716,8 +908,15 @@ export function installMockApi() {
     if (typeof body === 'string') {
       try { body = JSON.parse(body) } catch { /* not json */ }
     }
-    const data = route((config.method || 'get').toLowerCase(), config.url || '', config.params, body)
+    const { __status, ...data } = route((config.method || 'get').toLowerCase(), config.url || '', config.params, body)
     await new Promise((r) => setTimeout(r, 280 + Math.random() * 320))
+    if (__status) {
+      // как ответ FastAPI с ошибкой: apiErrorMessage возьмёт detail
+      const error = new Error(data.detail || 'demo error')
+      error.config = config
+      error.response = { data, status: __status, statusText: 'Error', headers: {}, config }
+      throw error
+    }
     return {
       data: { success: true, message: 'demo', ...data },
       status: 200,

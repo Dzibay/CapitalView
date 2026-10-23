@@ -56,7 +56,13 @@ class Config:
     _jwt_days = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES_DAYS", "1"))
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=max(1, _jwt_days))
     JWT_ALGORITHM = "HS256"
-    
+
+    # Ключ шифрования API-токенов брокеров в БД. Если не задан — выводится из JWT_SECRET_KEY.
+    # При смене ключа старый указывается в BROKER_TOKEN_ENCRYPTION_KEY_OLD (через запятую),
+    # иначе сохранённые токены не расшифруются и пользователям придётся подключить брокера заново.
+    BROKER_TOKEN_ENCRYPTION_KEY = os.getenv("BROKER_TOKEN_ENCRYPTION_KEY", "")
+    BROKER_TOKEN_ENCRYPTION_KEY_OLD = os.getenv("BROKER_TOKEN_ENCRYPTION_KEY_OLD", "")
+
     # PostgreSQL (локальная база данных)
     DB_HOST = os.getenv("DB_HOST", "localhost")
     DB_PORT = int(os.getenv("DB_PORT", "5432"))

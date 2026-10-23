@@ -1,9 +1,10 @@
 """
 Сервис импорта портфеля из Tinkoff
 """
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
-from t_tech.invest import Client, InstrumentIdType, GetOperationsByCursorRequest
+from t_tech.invest import Client, InstrumentIdType, GetOperationsByCursorRequest, OperationState
 from t_tech.invest.exceptions import RequestError
 from grpc import StatusCode
 
@@ -214,8 +215,21 @@ def _tinkoff_commission_by_parent(ops_raw) -> tuple[dict[str, float], set[str]]:
 
 
 
+def _is_canceled_operation(op: Any) -> bool:
+    """Отменённые брокером операции (state=CANCELED) не меняют ни позицию, ни деньги."""
+    state = getattr(op, "state", None)
+    if state is None:
+        return False
+    if state == OperationState.OPERATION_STATE_CANCELED:
+        return True
+    return getattr(state, "name", str(state)) == "OPERATION_STATE_CANCELED"
+
+
 def _get_all_tinkoff_operations(client, account_id: str) -> list[Any]:
-    """Fetches the complete operation history using cursor pagination."""
+    """
+    Полная история операций счёта (cursor-пагинация) без отменённых операций.
+    Исполняемые (PROGRESS) оставляем: по ним уже есть исполненное количество/деньги.
+    """
     operations: list[Any] = []
     cursor = ""
     seen_cursors: set[str] = set()
@@ -236,38 +250,81 @@ def _get_all_tinkoff_operations(client, account_id: str) -> list[Any]:
             break
         seen_cursors.add(next_cursor)
         cursor = next_cursor
-    return operations
+    canceled = [op for op in operations if _is_canceled_operation(op)]
+    if canceled:
+        logger.info(
+            "Tinkoff: пропущено отменённых операций account=%s count=%s", account_id, len(canceled),
+        )
+    return [op for op in operations if not _is_canceled_operation(op)]
 
 def classify_tinkoff_operation(operation_type_name: str) -> str:
     """Возвращает внутренний тип операции; при отсутствии в маппинге — Other."""
     return OPERATION_CLASSIFICATION.get(operation_type_name, "Other")
 
 
+_RETRYABLE_STATUS_CODES = frozenset({StatusCode.RESOURCE_EXHAUSTED, StatusCode.UNAVAILABLE})
+_INSTRUMENT_LOOKUP_ATTEMPTS = 3
+
+
+def _retry_delay_seconds(error: RequestError, attempt: int) -> float:
+    reset = getattr(getattr(error, "metadata", None), "ratelimit_reset", None)
+    try:
+        if reset:
+            return min(float(reset), 60.0)
+    except (TypeError, ValueError):
+        pass
+    return float(attempt)
+
+
 def resolve_instrument(client, figi, cache):
-    """Получение тикера, isin, имени по FIGI"""
+    """
+    Получение тикера, isin, имени по FIGI.
+    Кэшируем None только для «инструмент не найден». Сбой сети/лимит запросов
+    поднимаем наверх: иначе бумага молча становится «неизвестной», её сделки
+    пропускаются и позиция в CapitalView расходится с брокером.
+    """
     if not figi:
         return None
 
     if figi in cache:
         return cache[figi]
 
-    try:
-        inst = client.instruments.get_instrument_by(
-            id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
-            id=figi
-        ).instrument
+    for attempt in range(1, _INSTRUMENT_LOOKUP_ATTEMPTS + 1):
+        try:
+            inst = client.instruments.get_instrument_by(
+                id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
+                id=figi
+            ).instrument
+            break
+        except RequestError as e:
+            if e.code in (StatusCode.NOT_FOUND, StatusCode.INVALID_ARGUMENT):
+                cache[figi] = None
+                return None
+            if e.code in _RETRYABLE_STATUS_CODES and attempt < _INSTRUMENT_LOOKUP_ATTEMPTS:
+                time.sleep(_retry_delay_seconds(e, attempt))
+                continue
+            raise
 
-        cache[figi] = {
-            "ticker": inst.ticker,
-            "name": inst.name,
-            "isin": inst.isin,
-            "lot": inst.lot,
-        }
-        return cache[figi]
+    cache[figi] = {
+        "ticker": inst.ticker,
+        "name": inst.name,
+        "isin": inst.isin,
+        "lot": inst.lot,
+    }
+    return cache[figi]
 
-    except:
-        cache[figi] = None
-        return None
+
+def _unique_account_name(name: str, account_id: str, taken: Dict[str, Any]) -> str:
+    """Два счёта с одинаковым названием не должны перезаписывать друг друга."""
+    if name not in taken:
+        return name
+    suffix = str(account_id)[-4:] or str(len(taken) + 1)
+    candidate = f"{name} ({suffix})"
+    n = 2
+    while candidate in taken:
+        candidate = f"{name} ({suffix}-{n})"
+        n += 1
+    return candidate
 
 
 def _money_value_to_dict(mv) -> dict | None:
@@ -346,12 +403,32 @@ def tinkoff_operation_to_raw_dict(op, client, instrument_cache: dict) -> dict:
     }
 
 
-def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
+def list_tinkoff_accounts(token) -> list:
+    """Счета, доступные по токену, — для проверки токена перед импортом.
+
+    Неверный или отозванный токен — RequestError UNAUTHENTICATED/PERMISSION_DENIED.
+    """
+    with Client(token) as client:
+        accounts = client.users.get_accounts().accounts or []
+    out = []
+    for account in accounts:
+        out.append({
+            "id": account.id,
+            "name": account.name or f"Account {account.id}",
+            "type": getattr(getattr(account, "type", None), "name", None),
+            "status": getattr(getattr(account, "status", None), "name", None),
+            "access_level": getattr(getattr(account, "access_level", None), "name", None),
+        })
+    return out
+
+
+def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False, progress_callback=None):
     """
     Получает данные портфеля от брокера Tinkoff.
 
     include_raw_operations: добавить в каждый счёт ключ operations_raw — список словарей
     с максимально полным снимком операций из get_operations (удобно для отладки импорта).
+    progress_callback(index, total, account_name): вызывается перед загрузкой каждого счёта.
     """
     logger.info("Tinkoff portfolio import start")
 
@@ -366,10 +443,15 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
         now = datetime.utcnow()
         # from_date = now - timedelta(days=days)
 
-        for account in accounts:
+        for acc_index, account in enumerate(accounts):
             acc_id = account.id
-            acc_name = account.name or f"Account {acc_id}"
+            acc_name = _unique_account_name(account.name or f"Account {acc_id}", acc_id, result)
             logger.info("Tinkoff account name=%s", acc_name)
+            if progress_callback:
+                try:
+                    progress_callback(acc_index, len(accounts), acc_name)
+                except Exception:
+                    logger.debug("progress_callback failed", exc_info=True)
 
             try:
                 # ПОЗИЦИИ
@@ -387,6 +469,7 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
                             "isin": inst["isin"] if inst else None,
                             "quantity": p.quantity.units + p.quantity.nano / 1e9,
                             "average_price": p.average_position_price.units + p.average_position_price.nano / 1e9,
+                            "average_price_currency": getattr(p.average_position_price, "currency", None),
                             "current_price": p.current_price.units + p.current_price.nano / 1e9,
                         })
                 except RequestError as e:
@@ -460,6 +543,12 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
                         "type": classified,
                         "tinkoff_operation_type": op_type_name,
                     }
+                    # Ввод/вывод бумаг от другого брокера: цены у Т-Инвестиций нет —
+                    # себестоимость посчитает импорт (portfolio_import_service._transfer_direction)
+                    if op_type_name == "OPERATION_TYPE_INPUT_SECURITIES":
+                        tx["transfer"] = "in"
+                    elif op_type_name == "OPERATION_TYPE_OUTPUT_SECURITIES":
+                        tx["transfer"] = "out"
 
                     # BUY / SELL / AMORTIZATION (транзакции, которые изменяют количество актива)
                     if classified in ("Buy", "Sell", "Amortization"):
@@ -552,7 +641,9 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
                         withdraw_amount = -abs(payment) - tax_amount
                         
                         withdraw_tx = {
-                            "operation_id": None,
+                            # Свой id у синтетического вывода: пользователь может удалить его
+                            # отдельно от дивиденда (см. broker_operation_suppressions)
+                            "operation_id": f"{op_id}:withdraw" if op_id else None,
                             "figi": None,
                             "ticker": None,
                             "name": None,
@@ -580,20 +671,23 @@ def get_tinkoff_portfolio(token, *, include_raw_operations: bool = False):
                     ]
                 result[acc_name] = entry
             except RequestError as e:
-                # Обработка других ошибок RequestError
+                # Импорт — полная перезапись портфеля: пропуск счёта стёр бы его историю.
+                # Падаем целиком, задача уйдёт на повтор, текущие данные не трогаются.
                 logger.error(
                     "Tinkoff account error name=%s code=%s details=%s",
                     acc_name,
                     e.code.name,
                     e.details,
                 )
-                # Пропускаем этот счет и продолжаем обработку остальных
-                continue
+                raise RuntimeError(
+                    f"Не удалось получить данные счёта «{acc_name}» от брокера "
+                    f"({e.code.name}: {e.details}) — импорт отменён, данные портфеля не изменены"
+                ) from e
             except Exception as e:
-                # Обработка любых других неожиданных ошибок
                 logger.error("Tinkoff account unexpected error name=%s err=%s", acc_name, e, exc_info=True)
-                # Пропускаем этот счет и продолжаем обработку остальных
-                continue
+                raise RuntimeError(
+                    f"Ошибка обработки счёта «{acc_name}» ({e}) — импорт отменён, данные портфеля не изменены"
+                ) from e
 
     return result
 

@@ -38,9 +38,9 @@ export default {
     return res.data;
   },
 
-  async getBrokerCredentials(portfolio_id) {
-    const res = await apiClient.get(API_ENDPOINTS.PORTFOLIO.BROKER_CREDENTIALS(portfolio_id));
-    return { broker_id: res.data.broker_id, api_key: res.data.api_key };
+  async syncPortfolio(portfolio_id) {
+    const res = await apiClient.post(API_ENDPOINTS.PORTFOLIO.SYNC(portfolio_id), {});
+    return res.data;
   },
 
   async getPayoutPositions(portfolio_id) {

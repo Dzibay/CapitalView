@@ -8,6 +8,7 @@ from app.domain.services.task_service import (
     get_user_tasks,
     cancel_task,
     import_task_belongs_to_user,
+    public_task,
 )
 from app.constants import HTTPStatus
 from app.core.dependencies import get_current_subscriber as get_current_user
@@ -39,7 +40,7 @@ async def get_task_route(
             detail="Доступ запрещен"
         )
 
-    return success_response(data={"task": task})
+    return success_response(data={"task": public_task(task)})
 
 
 @router.get("/{task_id}/status")
@@ -69,7 +70,11 @@ async def get_task_status_route(
             "progress_message": task.get("progress_message"),
             "error_message": task.get("error_message"),
             "result": task.get("result"),
-            "completed_at": task.get("completed_at")
+            "started_at": task.get("started_at"),
+            "completed_at": task.get("completed_at"),
+            "portfolio_id": task.get("portfolio_id"),
+            "broker_id": task.get("broker_id"),
+            "trigger": task.get("trigger"),
         }
     )
 
